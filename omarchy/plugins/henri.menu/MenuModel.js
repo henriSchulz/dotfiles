@@ -360,6 +360,7 @@ function displayRow(items, itemOrder, checkedResults, entry, detail, score, sect
     iconFont: entry.iconFont || "",
     appIcon: entry.appIcon || "",
     appId: entry.appId || "",
+    isDir: false,
     label: labelFor(entry, checkedResults),
     target: target,
     detail: detail || "",

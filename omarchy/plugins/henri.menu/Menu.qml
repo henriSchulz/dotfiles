@@ -161,6 +161,276 @@ Item {
     return template.replace("%s", encodeURIComponent(query).replace(/'/g, "%27"))
   }
 
+  // -------------------------------------------------------- file search mode
+  //
+  // A query that opens with a space searches the filesystem instead of the
+  // menu: " report" finds files and folders by name under $HOME, and a query
+  // that names a path (" ~/Projects/", " /etc/ho") lists that directory. The
+  // leading space is what switches modes -- a menu search trims to nothing on
+  // it, so the two can never claim the same keystrokes.
+  //
+  // Scanning is fd (shipped in omarchy-base), ranking is FuzzySearch here:
+  // fd hands over a bounded candidate set in one pass and the ordering is
+  // recomputed on every keystroke, so the list narrows without rescanning.
+  readonly property bool fileSearchActive: !root.dmenuActive && root.filterText.charAt(0) === " "
+  readonly property string fileQuery: root.fileSearchActive ? root.filterText.slice(1).trim() : ""
+  property var fileRows: []
+  property string fileScanQuery: ""
+  property bool fileScanPending: false
+  readonly property int fileResultLimit: 40
+  readonly property string folderGlyph: "\uf07b"
+  readonly property string fileGlyph: "\uf15b"
+
+  function homeDir() { return Quickshell.env("HOME") || "" }
+
+  function expandHome(path) {
+    var value = String(path || "")
+    if (value === "~") return root.homeDir()
+    if (value.indexOf("~/") === 0) return root.homeDir() + value.slice(1)
+    return value
+  }
+
+  function prettyPath(path) {
+    var value = String(path || "")
+    var home = root.homeDir()
+    if (!home) return value
+    if (value === home) return "~"
+    if (value.indexOf(home + "/") === 0) return "~" + value.slice(home.length)
+    return value
+  }
+
+  function escapeRegex(value) {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  }
+
+  function dirNameOf(path) {
+    var value = String(path || "")
+    var cut = value.lastIndexOf("/")
+    if (cut < 0) return ""
+    return cut === 0 ? "/" : value.slice(0, cut)
+  }
+
+  function baseNameOf(path) {
+    var value = String(path || "")
+    var cut = value.lastIndexOf("/")
+    return cut < 0 ? value : value.slice(cut + 1)
+  }
+
+  // What to ask fd for. A query naming a directory browses that directory one
+  // level deep; anything else is a name search rooted at $HOME. Several words
+  // match against the whole path so "proj readme" can span directories, while
+  // a single word stays on the file name -- matched against the path, "doc"
+  // would answer with everything under ~/Documents.
+  function fileScanPlan(query) {
+    var raw = String(query || "")
+    var expanded = root.expandHome(raw)
+
+    if (!raw || raw === "~" || expanded.charAt(0) === "/") {
+      var dir = root.homeDir()
+      var base = ""
+      if (raw && raw !== "~") {
+        if (expanded.slice(-1) === "/") dir = expanded.length > 1 ? expanded.slice(0, -1) : "/"
+        else {
+          dir = root.dirNameOf(expanded) || "/"
+          base = root.baseNameOf(expanded)
+        }
+      }
+      return { mode: "path", dir: dir, pattern: root.escapeRegex(base), rank: base }
+    }
+
+    var tokens = raw.split(/\s+/).filter(function(token) { return token.length > 0 })
+    var escaped = []
+    for (var i = 0; i < tokens.length; i++) escaped.push(root.escapeRegex(tokens[i]))
+    return {
+      mode: tokens.length > 1 ? "full" : "name",
+      dir: root.homeDir(),
+      pattern: escaped.join(".*"),
+      rank: raw
+    }
+  }
+
+  // A home's worth of dotfiles is mostly caches and vendored trees; excluding
+  // them is what keeps a name search answering with the user's own files.
+  readonly property string fileScanExcludes: "--exclude .git --exclude node_modules --exclude .cache"
+    + " --exclude .npm --exclude .cargo --exclude .rustup --exclude .venv --exclude __pycache__"
+    + " --exclude .mozilla --exclude .thunderbird --exclude .steam --exclude .var --exclude Trash"
+  // Emits `<d|f>\t<absolute path>` per line. fd marks a directory with a
+  // trailing slash, which would leave the row with an empty name, so it comes
+  // back off. The query never reaches the shell as text: mode, root and
+  // pattern arrive as positional parameters.
+  readonly property string fileScanScript: "mode=$1; dir=$2; pat=$3\n"
+    + "[[ -d $dir ]] || exit 0\n"
+    + "case $mode in\n"
+    + "  path) fd --hidden --no-ignore --max-depth 1 --max-results 500 --color never --absolute-path --regex -- \"$pat\" \"$dir\" ;;\n"
+    + "  full) fd --hidden --full-path --max-results 500 --color never --absolute-path --regex "
+    + root.fileScanExcludes + " -- \"$pat\" \"$dir\" ;;\n"
+    + "  *) fd --hidden --max-results 500 --color never --absolute-path --regex "
+    + root.fileScanExcludes + " -- \"$pat\" \"$dir\" ;;\n"
+    + "esac 2>/dev/null | while IFS= read -r p; do\n"
+    + "  [[ -z $p ]] && continue\n"
+    + "  if [[ -d $p ]]; then printf 'd\\t%s\\n' \"${p%/}\"; else printf 'f\\t%s\\n' \"$p\"; fi\n"
+    + "done\n"
+
+  function requestFileScan() {
+    if (!root.fileSearchActive) return
+    fileScanDebounce.restart()
+  }
+
+  // Process ignores a command change while it is running, so a keystroke that
+  // lands mid-scan is queued rather than dropped and the exit handler starts
+  // it. `fileScanQuery` is written only here, which is what lets that handler
+  // tell the run it is finishing apart from the one the user is now typing.
+  function startFileScan() {
+    if (!root.fileSearchActive) { root.fileScanPending = false; return }
+    if (fileScanProc.running) { root.fileScanPending = true; return }
+
+    root.fileScanPending = false
+    root.fileScanQuery = root.fileQuery
+    var plan = root.fileScanPlan(root.fileScanQuery)
+    fileScanProc.collected = ""
+    fileScanProc.command = ["bash", "-c", root.fileScanScript, "bash", plan.mode, plan.dir, plan.pattern]
+    fileScanProc.running = true
+  }
+
+  function applyFileRows(raw) {
+    if (!root.opened || !root.fileSearchActive) return
+
+    var lines = String(raw || "").split("\n")
+    var rows = []
+    for (var i = 0; i < lines.length; i++) {
+      var tab = lines[i].indexOf("\t")
+      if (tab < 0) continue
+      var path = lines[i].slice(tab + 1)
+      if (!path) continue
+      rows.push({ isDir: lines[i].slice(0, tab) === "d", path: path, name: root.baseNameOf(path) })
+    }
+
+    root.fileRows = rows
+    root.rebuildDisplay()
+  }
+
+  // Ranked against whatever is in the search line right now, which may be
+  // ahead of the scan these candidates came from -- typing keeps narrowing
+  // the list already on screen while the next scan is still out.
+  function fileDisplayRows() {
+    var needle = String(root.fileScanPlan(root.fileQuery).rank || "")
+    var candidates = root.fileRows
+    var scored = []
+
+    for (var i = 0; i < candidates.length; i++) {
+      var score = 0
+      if (needle) {
+        try {
+          score = FuzzySearch.scoreBookmark(needle, {
+            title: candidates[i].name,
+            domain: "",
+            tags: [],
+            link: candidates[i].path
+          })
+        } catch (e) { score = -1 }
+        if (score < 0) continue
+      }
+      scored.push({ hit: candidates[i], score: score, index: i })
+    }
+
+    // A directory listing has no ranking to do, so it reads as a listing:
+    // folders first, then alphabetical.
+    if (!needle) {
+      scored.sort(function(a, b) {
+        if (a.hit.isDir !== b.hit.isDir) return a.hit.isDir ? -1 : 1
+        var aName = a.hit.name.toLowerCase()
+        var bName = b.hit.name.toLowerCase()
+        return aName < bName ? -1 : (aName > bName ? 1 : 0)
+      })
+    } else {
+      scored.sort(function(a, b) {
+        if (a.score !== b.score) return b.score - a.score
+        if (a.hit.name.length !== b.hit.name.length) return a.hit.name.length - b.hit.name.length
+        return a.index - b.index
+      })
+    }
+
+    var rows = []
+    var limit = Math.min(scored.length, root.fileResultLimit)
+    for (var j = 0; j < limit; j++) {
+      var hit = scored[j].hit
+      rows.push({
+        itemId: "file." + hit.path,
+        kind: "file",
+        icon: hit.isDir ? root.folderGlyph : root.fileGlyph,
+        iconFont: "",
+        appIcon: "",
+        appId: "",
+        isDir: hit.isDir,
+        label: hit.name,
+        target: hit.path,
+        detail: root.prettyPath(root.dirNameOf(hit.path)),
+        path: "",
+        childCount: 0,
+        action: "",
+        provider: "",
+        score: j,
+        section: ""
+      })
+    }
+
+    return rows
+  }
+
+  function rebuildFileDisplay() {
+    displayModel.clear()
+    root.searchDivider = false
+
+    var rows = root.fileDisplayRows()
+    for (var i = 0; i < rows.length; i++) displayModel.append(rows[i])
+    layoutSerial += 1
+
+    if (displayModel.count === 0) selectedIndex = 0
+    else if (selectedIndex >= displayModel.count) selectedIndex = displayModel.count - 1
+    else if (selectedIndex < 0) selectedIndex = 0
+
+    Qt.callLater(function() {
+      if (displayModel.count > 0) root.revealCursor()
+    })
+  }
+
+  // Tab descends: on a folder it browses into it, on a file it browses the
+  // folder holding it. Enter always opens instead, so neither gesture has to
+  // guess which one was meant.
+  function completeFileSelection() {
+    if (!root.cursorActive || root.selectedIndex < 0 || root.selectedIndex >= displayModel.count) return
+    var row = displayModel.get(root.selectedIndex)
+    if (!row || row.kind !== "file") return
+    var target = String(row.target || "")
+    root.setFilter(" " + root.prettyPath(row.isDir ? target : root.dirNameOf(target)) + "/")
+  }
+
+  function openPath(path) {
+    var target = String(path || "")
+    if (!target) return
+    Util.execArgv(["uwsm-app", "--", "xdg-open", target])
+  }
+
+  Timer {
+    id: fileScanDebounce
+    interval: 110
+    repeat: false
+    onTriggered: root.startFileScan()
+  }
+
+  Process {
+    id: fileScanProc
+    property string collected: ""
+    stdout: SplitParser {
+      onRead: function(data) { fileScanProc.collected += data + "\n" }
+    }
+    onExited: {
+      root.applyFileRows(fileScanProc.collected)
+      if (root.fileScanPending || (root.fileSearchActive && root.fileScanQuery !== root.fileQuery))
+        Qt.callLater(function() { root.startFileScan() })
+    }
+  }
+
   FileView {
     id: fallbackHidesFile
     path: root.fallbackBase() + "/default/omarchy/launcher.hides"
@@ -199,7 +469,12 @@ Item {
   }
   property bool deleteConfirmOpen: false
   property var deleteTarget: null
-  onOpenedChanged: if (!opened) { deleteConfirmOpen = false; deleteTarget = null }
+  onOpenedChanged: if (!opened) {
+    deleteConfirmOpen = false
+    deleteTarget = null
+    fileScanProc.running = false
+    fileRows = []
+  }
   // Bound to the central [menu] section in shell.toml via Color.qml.
   // Each color already includes its alpha companion (composed in the
   // singleton), so consumers can drop them straight into a Rectangle.
@@ -251,7 +526,7 @@ Item {
   property int dividerHeight: Style.space(17)
   property bool searchDivider: false
   property int layoutSerial: 0
-  readonly property bool isAppsGrid: root.activeMenu === "apps" && !root.dmenuActive
+  readonly property bool isAppsGrid: root.activeMenu === "apps" && !root.dmenuActive && !root.fileSearchActive
   property int gridCellMinWidth: Style.space(108)
   readonly property int gridIconSize: Style.space(46)
   readonly property int gridLabelHeight: Math.round(Style.font.bodySmall * 2.7)
@@ -268,10 +543,16 @@ Item {
     var full = rows * root.gridCellHeight + (rows - 1) * root.rowSpacing
     return Math.min(full, root.availableRowsHeight())
   }
+  readonly property string emptyStateText: {
+    if (root.fileSearchActive)
+      return root.fileQuery ? "No files matching “" + root.fileQuery + "”" : "Searching…"
+    return root.filterText ? "No matches for “" + root.filterText + "”" : "Nothing here yet"
+  }
   // Blinking caret. Restarted on every edit so the caret is solid while typing.
   property bool caretOn: true
   readonly property string searchPlaceholder: {
     if (root.dmenuActive) return root.dmenuPrompt
+    if (root.fileSearchActive) return "Search files and folders"
     // The root menu's own label ("Go") reads like a button, not a prompt.
     if (root.activeMenu === "root") return "Search Omarchy"
     var entry = root.item(root.activeMenu)
@@ -723,6 +1004,7 @@ Item {
         iconFont: "",
         appIcon: "",
         appId: "",
+        isDir: false,
         label: label,
         target: "",
         detail: detail,
@@ -749,6 +1031,11 @@ Item {
   function rebuildDisplay() {
     if (root.dmenuActive) {
       root.rebuildDmenuDisplay()
+      return
+    }
+
+    if (root.fileSearchActive) {
+      root.rebuildFileDisplay()
       return
     }
 
@@ -801,6 +1088,7 @@ Item {
           iconFont: "",
           appIcon: "",
             appId: "",
+            isDir: false,
             label: "= " + String(calcResult),
             target: "",
             detail: "Copy result",
@@ -821,6 +1109,7 @@ Item {
           iconFont: "JetBrainsMono Nerd Font",
           appIcon: "",
           appId: "",
+          isDir: false,
           label: "Search " + engine.name,
           target: "",
           detail: "'" + query + "' on " + engineHost,
@@ -916,7 +1205,13 @@ Item {
     root.selectedIndex = 0
     root.cursorActive = root.mode !== "input"
     root.disarmPointer()
-    if (!root.dmenuActive && root.filterText.trim()) root.loadProvidersForSearch()
+    if (root.fileSearchActive) root.requestFileScan()
+    else {
+      // Leaving file mode drops its candidates: they would otherwise be
+      // ranked against the next file query before its own scan lands.
+      if (root.fileRows.length > 0) root.fileRows = []
+      if (!root.dmenuActive && root.filterText.trim()) root.loadProvidersForSearch()
+    }
     root.rebuildDisplay()
   }
 
@@ -974,6 +1269,12 @@ Item {
       if (result) Quickshell.execDetached(["wl-copy", result])
     } else if (row.kind === "menu" || row.kind === "link") {
       root.setActiveMenu(row.target || row.itemId, true, fromPointer)
+    } else if (row.kind === "file") {
+      var path = row.target
+      applySerial = requestSerial
+      opened = false
+      filterText = ""
+      root.openPath(path)
     } else if (row.kind === "app") {
       var appId = row.appId
       var label = row.label
@@ -1356,6 +1657,9 @@ Item {
           } else if ((event.key === Qt.Key_K || event.key === Qt.Key_P) && event.modifiers === Qt.ControlModifier) {
             root.select(root.isAppsGrid ? -root.gridColumns : -1)
             event.accepted = true
+          } else if (event.key === Qt.Key_Tab && root.fileSearchActive) {
+            root.completeFileSelection()
+            event.accepted = true
           } else if (event.key === Qt.Key_Home) {
             if (displayModel.count > 0) {
               root.disarmPointer()
@@ -1447,7 +1751,7 @@ Item {
           Text {
             id: searchGlyph
             textFormat: Text.PlainText
-            text: ""
+            text: root.fileSearchActive ? root.folderGlyph : ""
             color: root.foreground
             opacity: root.filterText ? 0.72 : 0.42
             font.family: root.fontFamily
@@ -1476,8 +1780,10 @@ Item {
             Text {
               id: queryText
               textFormat: Text.PlainText
-              visible: root.filterText.length > 0
-              text: root.filterText
+              // The mode prefix is carried by the glyph, not the query text:
+              // a leading space would otherwise read as a stray indent.
+              visible: root.filterText.trim().length > 0
+              text: root.fileSearchActive ? root.filterText.slice(1) : root.filterText
               // Elide from the left so the tail of a long query — the part
               // still being typed — stays next to the caret.
               width: Math.min(implicitWidth, Math.max(0, queryRow.width - caret.width - queryRow.caretGap))
@@ -1492,7 +1798,7 @@ Item {
             Text {
               id: placeholderText
               textFormat: Text.PlainText
-              visible: root.filterText.length === 0
+              visible: root.filterText.trim().length === 0
               text: root.searchPlaceholder
               width: parent.width
               color: root.foreground
@@ -1514,7 +1820,7 @@ Item {
               // invisible against the card.
               color: root.foreground
               opacity: root.caretOn ? 0.9 : 0
-              x: root.filterText.length > 0
+              x: root.filterText.trim().length > 0
                 ? queryText.width + queryRow.caretGap
                 : -(width + queryRow.caretGap)
               anchors.verticalCenter: parent.verticalCenter
@@ -1586,6 +1892,7 @@ Item {
               required property string iconFont
               required property string appIcon
               required property string appId
+              required property bool isDir
               required property string label
               required property string target
               required property string detail
@@ -1704,9 +2011,9 @@ Item {
 
                 Text {
                   textFormat: Text.PlainText
-                  text: row.kind === "menu" || row.kind === "link" ? "›" : ""
+                  text: row.kind === "menu" || row.kind === "link" || row.isDir ? "›" : ""
                   color: row.hasCursor ? root.selectedText : root.foreground
-                  opacity: row.kind === "menu" || row.kind === "link" ? 0.36 : 0
+                  opacity: row.kind === "menu" || row.kind === "link" || row.isDir ? 0.36 : 0
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.subtitle
                   font.weight: Font.Normal
@@ -1877,7 +2184,7 @@ Item {
 
             Text {
               textFormat: Text.PlainText
-              text: root.filterText ? "No matches for “" + root.filterText + "”" : "Nothing here yet"
+              text: root.emptyStateText
               color: root.foreground
               opacity: 0.6
               font.family: root.fontFamily
