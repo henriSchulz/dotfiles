@@ -16,7 +16,7 @@ run mkdir -p "$dest_root/defaults"
 # "<repo-relative path>  <mode>"
 files=(
   "shell.json      600"
-  "keystroke.json  600"
+  "keystroke.json  644"
   "defaults/agent  644"
 )
 
