@@ -1,0 +1,4 @@
+[spacing]
+# Apple UI breathes a little more than Omarchy's default density.
+scale = 1.08
+scale-with-font = true

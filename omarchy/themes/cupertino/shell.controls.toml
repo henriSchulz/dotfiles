@@ -1,0 +1,31 @@
+[controls]
+# Normal: barely-there fill on a hairline, the way an AppKit control sits.
+normal-color        = "#1d1d1f"
+normal-fill-alpha   = 0.05
+normal-border       = "#000000"
+normal-border-width = 1
+normal-border-alpha = 0.10
+
+# Hover-cursor: the fill deepens, the hairline stays put.
+hover-cursor-color        = "#1d1d1f"
+hover-cursor-fill-alpha   = 0.09
+hover-cursor-border       = "#000000"
+hover-cursor-border-width = 1
+hover-cursor-border-alpha = 0.14
+
+# Focus: the macOS blue focus ring, which is the one state Apple lets shout.
+focus-color        = "#1d1d1f"
+focus-fill-alpha   = 0.09
+focus-border       = "#0071e3"
+focus-border-width = 2
+focus-border-alpha = 0.55
+
+# Selected: tinted with the accent rather than the foreground.
+selected-color        = "#0071e3"
+selected-fill-alpha   = 0.16
+selected-border       = "#0071e3"
+selected-border-width = 0
+selected-border-alpha = 1.0
+
+pressed-fill-alpha   = 0.20
+selection-fill-alpha = 0.30

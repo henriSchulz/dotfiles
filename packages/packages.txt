@@ -1,0 +1,31 @@
+# Packages this setup installs on top of a stock Omarchy install.
+#
+# Deliberately EXCLUDED, because the Omarchy installer already owns them:
+#   - everything in /usr/share/omarchy/install/omarchy-{base,other}.packages
+#   - base system / boot: efibootmgr, intel-ucode, mkinitcpio, sudo
+#   - Omarchy itself: omarchy, omarchy-keyring, omarchy-settings
+#
+# One package per line. Comments and blank lines are ignored.
+
+# Required by this repo
+stow
+
+# Editors / dev
+visual-studio-code-bin
+verilator
+gtkwave
+blueprint-compiler
+gtksourceview5
+
+# CLI / agents
+antigravity-cli
+voxtype-bin
+openbsd-netcat
+
+# Desktop apps
+signal-desktop
+geary
+freerdp
+
+# Fonts
+inter-font

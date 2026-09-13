@@ -1,0 +1,13 @@
+# Omarchy writes timestamped backups next to the files it rewrites, and our
+# install scripts add .pre-dotfiles.* ones. Neither belongs in version control.
+*.bak
+*.bak.*
+*.pre-dotfiles.*
+
+# Personal wallpaper referenced by the cupertino and img-7075 themes. Kept out
+# of this public repo — see install/40-omarchy-themes.sh.
+IMG_7075.png
+
+# Symlink into ~/.local/state/omarchy/, rewritten by `omarchy theme set`.
+# Runtime state, not configuration — tracking it would commit a dangling link.
+stow/nvim/.config/nvim/lua/plugins/theme.lua

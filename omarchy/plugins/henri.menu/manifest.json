@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.menu",
+  "name": "Spotlight menu",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Spotlight-styled Omarchy menu with fuzzy ranking, app grid, calculator and web search",
+  "kinds": [
+    "menu",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "menu": "Menu.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Spotlight menu",
+    "description": "Launches the Spotlight menu",
+    "category": "Compositor",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.menu"
+  }
+}
