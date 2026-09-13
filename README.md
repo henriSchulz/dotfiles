@@ -101,6 +101,7 @@ install/
   30-omarchy-plugins.sh     re-add upstream plugins; sync henri.menu
   40-omarchy-themes.sh      install themes, place wallpaper, apply theme
   50-omarchy-config.sh      copy shell.json & friends into place
+  60-shibumi.sh             install/update the Shibumi shell suite
 packages/packages.txt
 stow/                       symlinked into $HOME
 omarchy/                    copied into ~/.config/omarchy

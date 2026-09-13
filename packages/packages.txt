@@ -29,3 +29,12 @@ freerdp
 
 # Fonts
 inter-font
+
+# Shibumi shell runtime (the rest of its dependency list is already in
+# omarchy-base.packages, or arrives transitively)
+curl
+upower
+xdg-utils
+libnotify
+ttf-material-symbols-variable
+adwaita-fonts
