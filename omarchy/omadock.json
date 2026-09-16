@@ -1,0 +1,34 @@
+{
+  "alignment": "center",
+  "showRemovableDrives": true,
+  "appGroups": [],
+  "autohide": true,
+  "intelligentAutohide": true,
+  "showAppsButton": true,
+  "showTooltips": true,
+  "showMinimizedTiles": true,
+  "hoverEffect": "wave",
+  "launchBounce": true,
+  "advancedTooltips": true,
+  "opacity": 0.65,
+  "shape": "rounded",
+  "bgColor": "theme",
+  "folderColor": "theme",
+  "itemSpacing": 4,
+  "minimizeMode": "active",
+  "clickToMinimize": true,
+  "showUrgentHint": true,
+  "urgentOnNotification": true,
+  "urgentSound": true,
+  "urgentSoundName": "bell",
+  "revealDelay": 160,
+  "tooltipDelay": 450,
+  "pinnedFolders": [
+    {
+      "path": "~",
+      "name": "Home",
+      "icon": "user-home"
+    }
+  ],
+  "iconSize": 44
+}

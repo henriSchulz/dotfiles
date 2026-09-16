@@ -1,73 +1,95 @@
 {
   "bar": {
-    "centerAnchor": "omarchy.clock",
+    "centerAnchor": "hancore.shibumi.center",
+    "id": "hancore.shibumi.bar",
     "layout": {
       "center": [
         {
-          "id": "omarchy.indicators"
+          "id": "hancore.shibumi.center"
         },
         {
-          "format": "dddd HH:mm",
-          "formatAlt": "d MMMM 'W'ww yyyy",
-          "id": "omarchy.clock",
-          "verticalFormat": "HH\n—\nmm"
+          "id": "io.github.twiking.omasettings"
         },
         {
-          "id": "omarchy.keyboard-layout"
+          "id": "omaplug"
         },
         {
-          "id": "omarchy.weather"
-        },
-        {
-          "id": "omarchy.system-update"
+          "id": "stappmus.activity-monitor",
+          "openExpanded": true
         }
       ],
       "left": [
         {
-          "id": "henri.menu"
+          "id": "hancore.shibumi.control-center"
         },
         {
-          "id": "omarchy.workspaces"
+          "id": "hancore.shibumi.workspaces"
+        },
+        {
+          "id": "hancore.shibumi.status"
+        },
+        {
+          "id": "hancore.shibumi.memory"
+        },
+        {
+          "id": "hancore.shibumi.cpu"
+        },
+        {
+          "id": "hancore.shibumi.audio"
+        },
+        {
+          "id": "hancore.shibumi.ai"
+        },
+        {
+          "id": "henri.menu"
         }
       ],
       "right": [
         {
-          "id": "omarchy.tray"
+          "id": "hancore.shibumi.media"
         },
         {
-          "id": "paudelsamir.minimize-pill"
+          "id": "hancore.shibumi.quick-access"
         },
         {
-          "id": "io.github.grootaiinfinity.hwmon"
+          "id": "hancore.shibumi.network"
         },
         {
-          "id": "omarchy.agents"
+          "id": "hancore.shibumi.power-profile"
         },
         {
-          "id": "omarchy.bluetooth"
+          "id": "hancore.shibumi.battery"
         },
         {
-          "id": "omarchy.network"
+          "id": "hancore.shibumi.brightness"
         },
         {
-          "id": "omarchy.audio"
+          "id": "hancore.shibumi.bluetooth"
         },
         {
-          "id": "omarchy.monitor"
+          "id": "hancore.shibumi.temperature"
         },
         {
-          "id": "omarchy.power"
+          "id": "hancore.shibumi.gpu"
+        },
+        {
+          "id": "hancore.shibumi.storage"
         }
       ]
     },
     "position": "top",
+    "style": "shibumi",
     "transparent": false
   },
   "cloneSourceRestores": [
-    "henri.menu"
+    "henri.menu",
+    "io.github.sirjul1337.lock-explorer",
+    "henri.idle"
   ],
   "disabledPlugins": [
-    "omarchy.menu"
+    "omarchy.menu",
+    "omarchy.lock",
+    "omarchy.idle"
   ],
   "idle": {
     "lock": 300,
@@ -79,6 +101,214 @@
     },
     {
       "id": "io.github.maajix.spotlight"
+    },
+    {
+      "id": "omadock"
+    },
+    {
+      "animationStyle": "original",
+      "hotCornerPosition": "top-right",
+      "id": "expose.window-overview"
+    },
+    {
+      "id": "io.github.sirjul1337.lock-explorer",
+      "design": "poster"
+    },
+    {
+      "id": "hancore.shibumi.state",
+      "shibumi": {
+        "identityVersion": 3,
+        "launcher": {
+          "icon": "omarchy",
+          "mode": "text",
+          "text": "shibumi"
+        },
+        "layoutProtection": {
+          "v1": false,
+          "v2": false
+        },
+        "order": {
+          "center": [
+            "G8"
+          ],
+          "left": [
+            "G1",
+            "G2",
+            "G3",
+            "G4",
+            "G5",
+            "G6",
+            "G7"
+          ],
+          "right": [
+            "G9",
+            "G10",
+            "G11",
+            "G14",
+            "G12",
+            "G13",
+            "G15"
+          ]
+        },
+        "picker": {
+          "imageStyle": "omarchy",
+          "mediaStyle": "carousel",
+          "style": "carousel"
+        },
+        "plugins": {
+          "favorites": []
+        },
+        "presentation": {
+          "accent": "color01",
+          "border": true,
+          "frost": false,
+          "panelBorder": true,
+          "radius": "large",
+          "shadow": true,
+          "shellStyle": "shibumi",
+          "v1Border": true,
+          "v2Border": true,
+          "v2ShellStyle": "full"
+        },
+        "reactor": {
+          "mode": 0
+        },
+        "splits": {
+          "boundaries": [
+            false,
+            false
+          ],
+          "left": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+          ],
+          "right": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+          ]
+        },
+        "v1SlotRoles": {
+          "center": [
+            "base"
+          ],
+          "left": [
+            "base",
+            "base",
+            "base",
+            "base",
+            "base",
+            "base",
+            "base"
+          ],
+          "right": [
+            "base",
+            "base",
+            "base",
+            "base",
+            "base",
+            "base",
+            "base"
+          ]
+        },
+        "v2Boundaries": [
+          false,
+          false
+        ],
+        "v2Layout": {
+          "center": [
+            "G8",
+            "G:io.github.twiking.omasettings",
+            "G:omaplug",
+            "G:stappmus.activity-monitor"
+          ],
+          "left": [
+            "G1",
+            "G2",
+            "G3",
+            "G:henri.menu",
+            "G5",
+            "G6",
+            "G4",
+            "G7",
+            "",
+            ""
+          ],
+          "right": [
+            "G9",
+            "G10",
+            "G11",
+            "G14",
+            "G12",
+            "G13",
+            "G16",
+            "G18",
+            "G17",
+            "G15",
+            "",
+            "",
+            ""
+          ]
+        },
+        "version": 1,
+        "widgets": {
+          "G14": {
+            "enabled": false
+          },
+          "G15": {
+            "enabled": false
+          },
+          "G16": {
+            "source": "cpu",
+            "unit": "metric"
+          },
+          "G7": {
+            "enabled": false
+          },
+          "G8": {
+            "omarchy.clock": {
+              "clock12h": false
+            },
+            "omarchy.weather": {
+              "unit": "metric"
+            }
+          },
+          "G3": {
+            "hancore.shibumi.update-center": {
+              "packageBadge": false,
+              "themeBadge": false
+            }
+          }
+        },
+        "workspace": {
+          "mode": "10",
+          "style": "default",
+          "version": 1
+        }
+      },
+      "shibumiStateSchemaVersion": 1
+    },
+    {
+      "id": "hancore.shibumi.reactor"
+    },
+    {
+      "id": "hancore.shibumi.telemetry"
+    },
+    {
+      "id": "hancore.shibumi.power-state"
+    },
+    {
+      "id": "hancore.shibumi.update-center"
+    },
+    {
+      "id": "henri.idle"
     }
   ],
   "version": 1

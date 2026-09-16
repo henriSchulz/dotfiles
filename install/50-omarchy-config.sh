@@ -5,6 +5,13 @@
 # (`omarchy theme set`, bar edits, the shell saving shell.json), and a
 # read-only stow symlink in that path causes write failures. This is the
 # "generate what Omarchy writes, link what only I write" split from README.md.
+#
+# shell.json is NOT here — the Shibumi installer in step 60 rewrites it, so it
+# has to be restored after that, by 70-omarchy-shell.sh.
+#
+# Deliberately excluded: omasettings.json, which pins a monitor profile
+# ("Messeltronik Dresden GmbH MD20461") belonging to one specific machine.
+# OmaSettings regenerates it per machine — see README.md.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -15,8 +22,9 @@ run mkdir -p "$dest_root/defaults"
 
 # "<repo-relative path>  <mode>"
 files=(
-  "shell.json      600"
   "keystroke.json  644"
+  "omadock.json    644"
+  "dock.json       644"
   "defaults/agent  644"
 )
 
@@ -38,5 +46,3 @@ for entry in "${files[@]}"; do
   info "installing $rel"
   run install -m "$mode" "$src" "$dest"
 done
-
-info "shell.json reloads on save; restart the shell or re-login to apply fully"
