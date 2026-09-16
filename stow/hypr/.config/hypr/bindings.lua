@@ -34,10 +34,11 @@
 hl.unbind("SUPER + SHIFT + C")
 o.bind("SUPER + SHIFT + C", "Claude", "omarchy-launch-tui --app-id=org.omarchy.agent claude --permission-mode auto")
 
--- SUPER+SHIFT+G war standardmäßig "Signal" (webapp). Jetzt startet es Gemini
--- im Terminal, nach demselben Muster wie das Claude-Binding oben.
+-- SUPER+SHIFT+G war standardmäßig "Signal" (webapp). Jetzt startet es die
+-- "agy"-CLI (Nachfolger von "gemini", das nicht mehr unterstützt wird) im
+-- Terminal, nach demselben Muster wie das Claude-Binding oben.
 hl.unbind("SUPER + SHIFT + G")
-o.bind("SUPER + SHIFT + G", "Gemini", "omarchy-launch-tui --app-id=org.omarchy.agent gemini --yolo")
+o.bind("SUPER + SHIFT + G", "Agy", "omarchy-launch-tui --app-id=org.omarchy.agent agy --mode accept-edits")
 
 -- Super+Tab wie unter Windows: Super halten + Tab zeigt eine Vorschau aller
 -- Workspaces (Plugin henri.workspace-switcher), jedes weitere Tab wählt den
