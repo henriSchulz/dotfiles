@@ -1,0 +1,1002 @@
+/* =============================================================================
+   Crafted — a clean, native-feeling Obsidian theme
+   Inspired by the visual language of Craft Docs / macOS:
+   soft surfaces, generous whitespace, rounded geometry, almost no chrome.
+   ========================================================================== */
+
+/* @settings
+
+name: Crafted
+id: crafted
+settings:
+    -
+        id: crafted-accent-header
+        title: Colour
+        type: heading
+        level: 2
+        collapsed: false
+    -
+        id: accent
+        title: Accent colour
+        description: Drives links, selection, active states and buttons.
+        type: variable-color
+        format: hsl-split
+        default: '#2f6fed'
+    -
+        id: crafted-layout-header
+        title: Layout & type
+        type: heading
+        level: 2
+        collapsed: false
+    -
+        id: file-line-width
+        title: Content width
+        type: variable-number-slider
+        default: 720
+        min: 560
+        max: 1100
+        step: 10
+        format: px
+    -
+        id: crafted-font-size
+        title: Body text size
+        type: variable-number-slider
+        default: 16
+        min: 13
+        max: 22
+        step: 1
+        format: px
+    -
+        id: crafted-line-height
+        title: Line height
+        type: variable-number-slider
+        default: 1.65
+        min: 1.3
+        max: 2.1
+        step: 0.05
+    -
+        id: crafted-radius
+        title: Corner rounding
+        type: variable-number-slider
+        default: 10
+        min: 0
+        max: 18
+        step: 1
+        format: px
+
+*/
+
+/* -----------------------------------------------------------------------------
+   1. Foundations
+   -------------------------------------------------------------------------- */
+
+.theme-light,
+.theme-dark {
+  /* Type -------------------------------------------------------------------- */
+  --font-text-theme: "Inter Variable", "Inter", "SF Pro Text", -apple-system, "Adwaita Sans",
+    system-ui, "Noto Sans", sans-serif;
+  --font-interface-theme: "Inter Variable", "Inter", "SF Pro Text", -apple-system, "Adwaita Sans",
+    system-ui, "Noto Sans", sans-serif;
+  --font-monospace-theme: "JetBrainsMono Nerd Font", "SF Mono", "Adwaita Mono",
+    ui-monospace, "JetBrains Mono", monospace;
+
+  --crafted-font-size: 16px;
+  --crafted-line-height: 1.65;
+  --font-text-size: var(--crafted-font-size);
+  --line-height-normal: var(--crafted-line-height);
+  --line-height-tight: 1.35;
+
+  --font-ui-smaller: 12px;
+  --font-ui-small: 13px;
+  --font-ui-medium: 14px;
+  --font-ui-large: 16px;
+
+  --bold-weight: 650;
+  --font-weight: 400;
+
+  /* Geometry ---------------------------------------------------------------- */
+  --crafted-radius: 10px;
+  --radius-s: calc(var(--crafted-radius) * 0.6);
+  --radius-m: calc(var(--crafted-radius) * 0.8);
+  --radius-l: var(--crafted-radius);
+  --radius-xl: calc(var(--crafted-radius) * 1.6);
+
+  /* Layout ------------------------------------------------------------------ */
+  --file-line-width: 720px;
+  --file-margins: 40px 44px 40vh 44px;
+  --header-height: 44px;
+  --divider-width: 1px;
+  --divider-width-hover: 3px;
+
+  /* Headings — flat, tight, no colour games (Craft keeps them text-coloured) */
+  --h1-size: 2em;
+  --h2-size: 1.5em;
+  --h3-size: 1.22em;
+  --h4-size: 1.06em;
+  --h5-size: 0.95em;
+  --h6-size: 0.88em;
+  --h1-weight: 700;
+  --h2-weight: 650;
+  --h3-weight: 650;
+  --h4-weight: 650;
+  --h5-weight: 650;
+  --h6-weight: 650;
+  --h1-line-height: 1.2;
+  --h2-line-height: 1.25;
+  --h3-line-height: 1.3;
+  --h1-color: var(--text-normal);
+  --h2-color: var(--text-normal);
+  --h3-color: var(--text-normal);
+  --h4-color: var(--text-normal);
+  --h5-color: var(--text-normal);
+  --h6-color: var(--text-muted);
+  --heading-spacing: 1.6em;
+
+  /* Components -------------------------------------------------------------- */
+  --callout-radius: var(--radius-l);
+  --callout-padding: 14px 16px;
+  --callout-border-width: 0;
+  --callout-border-opacity: 0;
+  --callout-title-size: var(--font-ui-medium);
+
+  --checkbox-radius: 5px;
+  --checkbox-size: 16px;
+  --checkbox-margin-inline-start: -1.6em;
+
+  --code-radius: var(--radius-m);
+  --code-size: 0.875em;
+  --embed-block-shadow-hover: none;
+
+  --tab-radius: var(--radius-m);
+  --tab-radius-active: var(--radius-m);
+  --tab-curve: 0px;
+  --tab-outline-width: 0px;
+  --tab-font-size: var(--font-ui-small);
+  --tab-font-weight: 500;
+  --tab-container-background: var(--background-secondary);
+
+  --nav-item-size: var(--font-ui-small);
+  --nav-item-weight: 450;
+  --nav-item-weight-hover: 450;
+  --nav-item-weight-active: 550;
+  --nav-item-padding: 5px 10px 5px 12px;
+  --nav-indentation-guide-width: 1px;
+  --nav-item-children-padding-left: 14px;
+
+  --input-radius: var(--radius-m);
+  --input-height: 32px;
+  --button-radius: var(--radius-m);
+  --modal-radius: var(--radius-xl);
+  --modal-border-width: 1px;
+  --prompt-width: 640px;
+
+  --table-header-weight: 600;
+  --table-radius: var(--radius-m);
+  --blockquote-border-thickness: 2px;
+
+  --scrollbar-thumb-bg: transparent;
+  --scrollbar-active-thumb-bg: transparent;
+  --scrollbar-bg: transparent;
+
+  --link-decoration: none;
+  --link-decoration-hover: underline;
+  --link-external-decoration: none;
+  --link-external-decoration-hover: underline;
+}
+
+/* Light — paper white content, softly tinted sidebar ------------------------ */
+.theme-light {
+  --accent-h: 220;
+  --accent-s: 84%;
+  --accent-l: 56%;
+
+  --color-base-00: #ffffff;
+  --color-base-05: #fcfcfd;
+  --color-base-10: #f9f9fa;
+  --color-base-20: #f5f5f7;
+  --color-base-25: #efeff1;
+  --color-base-30: #e8e8eb;
+  --color-base-35: #e1e1e5;
+  --color-base-40: #d9d9de;
+  --color-base-50: #c2c2c9;
+  --color-base-60: #9d9da6;
+  --color-base-70: #6e6e76;
+  --color-base-100: #1d1d1f;
+
+  --background-primary: #ffffff;
+  --background-primary-alt: #f8f8f9;
+  --background-secondary: #f6f6f7;
+  --background-secondary-alt: #f1f1f3;
+  --background-modifier-border: #e7e7ea;
+  --background-modifier-border-hover: #dcdce1;
+  --background-modifier-border-focus: hsl(var(--accent-h), 70%, 78%);
+  --background-modifier-hover: rgba(0, 0, 0, 0.035);
+  --background-modifier-active-hover: rgba(0, 0, 0, 0.055);
+  --background-modifier-form-field: #ffffff;
+
+  --text-normal: #1d1d1f;
+  --text-muted: #6e6e76;
+  --text-faint: #a2a2aa;
+  --text-selection: hsla(var(--accent-h), 90%, 62%, 0.18);
+  --text-highlight-bg: rgba(255, 209, 92, 0.4);
+
+  --divider-color: #ebebee;
+  --titlebar-background: var(--background-secondary);
+  --titlebar-background-focused: var(--background-secondary);
+
+  --crafted-shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.04),
+    0 6px 20px rgba(0, 0, 0, 0.06);
+  --crafted-shadow-strong: 0 2px 6px rgba(0, 0, 0, 0.06),
+    0 18px 50px rgba(0, 0, 0, 0.14);
+  --crafted-surface: #f6f6f7;
+  --crafted-surface-border: rgba(0, 0, 0, 0.06);
+  /* Code blocks carry a real hairline, not just a tint edge */
+  --crafted-code-border: rgba(0, 0, 0, 0.11);
+  --crafted-math-border: rgba(0, 0, 0, 0.11);
+}
+
+/* Dark — near-black content, deeper sidebar --------------------------------- */
+.theme-dark {
+  --accent-h: 216;
+  --accent-s: 92%;
+  --accent-l: 62%;
+
+  --color-base-00: #1b1b1d;
+  --color-base-05: #1f1f22;
+  --color-base-10: #232326;
+  --color-base-20: #161618;
+  --color-base-25: #2a2a2e;
+  --color-base-30: #303035;
+  --color-base-35: #38383e;
+  --color-base-40: #45454c;
+  --color-base-50: #5c5c64;
+  --color-base-60: #82828b;
+  --color-base-70: #a8a8b0;
+  --color-base-100: #ececee;
+
+  --background-primary: #1b1b1d;
+  --background-primary-alt: #202023;
+  --background-secondary: #141416;
+  --background-secondary-alt: #101012;
+  --background-modifier-border: #2c2c31;
+  --background-modifier-border-hover: #3a3a40;
+  --background-modifier-border-focus: hsl(var(--accent-h), 60%, 42%);
+  --background-modifier-hover: rgba(255, 255, 255, 0.055);
+  --background-modifier-active-hover: rgba(255, 255, 255, 0.085);
+  --background-modifier-form-field: #202023;
+
+  --text-normal: #ececee;
+  --text-muted: #9b9ba3;
+  --text-faint: #6b6b73;
+  --text-selection: hsla(var(--accent-h), 90%, 55%, 0.28);
+  --text-highlight-bg: rgba(255, 196, 61, 0.28);
+
+  --divider-color: #262629;
+  --titlebar-background: var(--background-secondary);
+  --titlebar-background-focused: var(--background-secondary);
+
+  --crafted-shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3),
+    0 6px 20px rgba(0, 0, 0, 0.35);
+  --crafted-shadow-strong: 0 2px 8px rgba(0, 0, 0, 0.4),
+    0 20px 60px rgba(0, 0, 0, 0.55);
+  --crafted-surface: #232326;
+  --crafted-surface-border: rgba(255, 255, 255, 0.07);
+  --crafted-code-border: rgba(255, 255, 255, 0.14);
+  --crafted-math-border: rgba(255, 255, 255, 0.14);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.006em;
+  /* Inter ships an optical-size axis; letting it run gives headings the wider
+     "Display" cut automatically, the way SF Pro Display works on macOS. */
+  font-optical-sizing: auto;
+}
+
+/* Numbers line up in anything tabular */
+.markdown-rendered table,
+.status-bar,
+.metadata-property-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* -----------------------------------------------------------------------------
+   2. Window chrome — remove as much of it as possible
+   -------------------------------------------------------------------------- */
+
+.workspace-split.mod-root .workspace-tabs,
+.workspace-split.mod-root .workspace-leaf {
+  background-color: var(--background-primary);
+}
+
+/* No hard rules anywhere between panes; use spacing instead */
+.workspace-split.mod-root > .workspace-leaf-resize-handle,
+.workspace-tabs .workspace-leaf-resize-handle {
+  background-color: transparent;
+}
+
+.workspace-ribbon {
+  background-color: var(--background-secondary);
+  border: none;
+}
+.workspace-ribbon.mod-left::before,
+.workspace-ribbon.mod-right::before {
+  display: none;
+}
+.side-dock-ribbon-action {
+  border-radius: var(--radius-m);
+  color: var(--text-faint);
+}
+.side-dock-ribbon-action:hover {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
+}
+
+/* Tab bar — flat, no borders, active tab is a soft rounded chip ------------- */
+.workspace-tab-header-container {
+  background-color: var(--background-primary);
+  border-bottom: none;
+  padding: 4px 6px 0 6px;
+  height: var(--header-height);
+  align-items: center;
+}
+.mod-root .workspace-tab-header-container {
+  background-color: var(--background-primary);
+}
+.workspace-tab-header-container-inner {
+  gap: 2px;
+}
+.workspace-tab-header {
+  border: none !important;
+  border-radius: var(--radius-m);
+  box-shadow: none !important;
+  transition: background-color 120ms ease;
+}
+.workspace-tab-header::before,
+.workspace-tab-header::after {
+  display: none !important;
+}
+.workspace-tab-header-inner {
+  border-radius: var(--radius-m);
+  padding: 4px 8px;
+}
+.workspace-tab-header:hover .workspace-tab-header-inner {
+  background-color: var(--background-modifier-hover);
+}
+.workspace-tab-header.is-active .workspace-tab-header-inner {
+  background-color: var(--background-modifier-hover);
+}
+.workspace-tab-header.is-active .workspace-tab-header-inner-title {
+  color: var(--text-normal);
+  font-weight: 600;
+}
+.workspace-tab-header-inner-icon {
+  color: var(--text-faint);
+}
+
+/* Sidebar panes ------------------------------------------------------------- */
+.workspace-split.mod-left-split,
+.workspace-split.mod-right-split {
+  box-shadow: none;
+  border: none;
+}
+.workspace-split.mod-left-split .workspace-tabs,
+.workspace-split.mod-right-split .workspace-tabs {
+  background-color: var(--background-secondary);
+}
+.workspace-split.mod-left-split .workspace-tab-header-container,
+.workspace-split.mod-right-split .workspace-tab-header-container {
+  background-color: var(--background-secondary);
+  border-bottom: none;
+}
+
+/* View header (the row with the note title / pane controls) */
+.view-header {
+  background-color: transparent;
+  border-bottom: none;
+  height: var(--header-height);
+}
+.view-header-title-container:after {
+  display: none;
+}
+.view-header-title {
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+.view-actions {
+  background-color: transparent;
+}
+.clickable-icon {
+  border-radius: var(--radius-s);
+  color: var(--text-faint);
+}
+.clickable-icon:hover {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
+}
+
+/* Status bar — barely there */
+.status-bar {
+  background-color: transparent;
+  border-top: none;
+  backdrop-filter: blur(8px);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  padding: 0 12px;
+}
+.status-bar-item {
+  color: var(--text-faint);
+}
+
+/* Title bar */
+.titlebar {
+  border-bottom: none;
+}
+
+/* -----------------------------------------------------------------------------
+   3. File explorer & outline — rounded pill rows
+   -------------------------------------------------------------------------- */
+
+.nav-header {
+  padding: 4px 8px 2px 8px;
+}
+.nav-buttons-container {
+  border-bottom: none;
+  justify-content: flex-start;
+  gap: 2px;
+}
+.workspace-leaf-content[data-type="file-explorer"] .nav-files-container {
+  padding: 0 8px 24px 8px;
+}
+.tree-item-self {
+  border-radius: var(--radius-m);
+  transition: background-color 100ms ease;
+  line-height: 1.5;
+}
+.tree-item-self.is-clickable:hover {
+  background-color: var(--background-modifier-hover);
+}
+.tree-item-self.is-active,
+.tree-item-self.has-focus {
+  background-color: var(--background-modifier-active-hover) !important;
+  box-shadow: none !important;
+}
+.nav-file-title-content,
+.nav-folder-title-content {
+  color: var(--text-muted);
+}
+.tree-item-self.is-active .nav-file-title-content {
+  color: var(--text-normal);
+}
+.nav-folder-title-content {
+  font-weight: 550;
+  color: var(--text-normal);
+}
+.tree-item-icon,
+.collapse-icon {
+  color: var(--text-faint);
+}
+/* Indentation guides: whisper-quiet */
+.nav-files-container .tree-item-children {
+  border-inline-start-color: transparent;
+}
+.nav-files-container:hover .tree-item-children {
+  border-inline-start-color: var(--background-modifier-border);
+}
+
+/* Pane titles (Outline, Search, Backlinks headers) */
+.tree-item-self.mod-collapsible.is-clickable .tree-item-inner {
+  font-weight: 600;
+}
+.search-result-file-title {
+  font-weight: 600;
+  border-radius: var(--radius-m);
+}
+.search-result-file-match {
+  border-radius: var(--radius-s);
+}
+.search-input-container input,
+.search-input-container input:focus {
+  border-radius: var(--radius-m);
+  background-color: var(--background-modifier-form-field);
+}
+
+/* -----------------------------------------------------------------------------
+   4. The page — typography and rhythm
+   -------------------------------------------------------------------------- */
+
+.markdown-source-view.mod-cm6 .cm-scroller,
+.markdown-preview-view {
+  padding-top: 8px;
+}
+
+/* Note title, Craft-style: large, tight, quiet placeholder */
+.inline-title {
+  font-size: 2.1em;
+  font-weight: 700;
+  letter-spacing: -0.026em;
+  line-height: 1.15;
+  color: var(--text-normal);
+  margin-bottom: 0.45em;
+}
+.inline-title:empty::before,
+.inline-title[data-placeholder]:empty::before {
+  color: var(--text-faint);
+}
+
+.markdown-rendered h1,
+.markdown-rendered h2,
+.markdown-rendered h3,
+.markdown-rendered h4,
+.HyperMD-header {
+  letter-spacing: -0.02em;
+}
+.markdown-rendered h1,
+.HyperMD-header-1 {
+  letter-spacing: -0.026em;
+}
+
+/* Paragraph rhythm — Craft breathes */
+.markdown-rendered p,
+.markdown-source-view.mod-cm6 .cm-line {
+  margin-block: 0;
+}
+.markdown-preview-view p {
+  margin-block-end: 0.9em;
+}
+
+/* Links */
+.markdown-rendered a,
+.cm-s-obsidian .cm-link,
+.cm-s-obsidian .cm-hmd-internal-link {
+  color: var(--text-accent);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.35);
+}
+
+/* Horizontal rule — a hairline, not a wall */
+.markdown-rendered hr,
+.cm-s-obsidian .cm-hr {
+  border: none;
+  border-top: 1px solid var(--divider-color);
+  margin: 2.2em 0;
+}
+
+/* Lists */
+.markdown-rendered ul,
+.markdown-rendered ol {
+  padding-inline-start: 1.6em;
+}
+.markdown-rendered li {
+  margin-block: 0.15em;
+}
+.markdown-rendered li::marker {
+  color: var(--text-faint);
+}
+
+/* Blockquote */
+.markdown-rendered blockquote,
+.cm-s-obsidian .HyperMD-quote {
+  border-inline-start: 2px solid var(--background-modifier-border-hover);
+  padding-inline-start: 1.1em;
+  color: var(--text-muted);
+  font-style: normal;
+}
+
+/* Images and embeds get the Craft card treatment */
+.markdown-rendered img,
+.markdown-rendered video,
+.internal-embed.image-embed img {
+  border-radius: var(--radius-l);
+}
+.markdown-embed,
+.internal-embed.markdown-embed {
+  border: 1px solid var(--crafted-surface-border);
+  border-radius: var(--radius-l);
+  padding: 4px 18px;
+  background-color: var(--background-primary-alt);
+}
+.markdown-embed-title {
+  font-weight: 650;
+}
+
+/* Properties / frontmatter panel */
+.metadata-container {
+  border: none;
+  border-radius: var(--radius-l);
+  background-color: var(--crafted-surface);
+  padding: 8px 12px;
+  margin-bottom: 1.4em;
+}
+.metadata-property {
+  border: none;
+}
+.metadata-property-key {
+  color: var(--text-muted);
+}
+
+/* -----------------------------------------------------------------------------
+   5. Code
+   -------------------------------------------------------------------------- */
+
+.markdown-rendered code,
+.cm-s-obsidian .cm-inline-code {
+  background-color: var(--crafted-surface);
+  border: 1px solid var(--crafted-surface-border);
+  border-radius: var(--radius-s);
+  padding: 0.1em 0.35em;
+  color: var(--text-normal);
+  font-size: 0.86em;
+}
+.markdown-rendered pre {
+  background-color: var(--crafted-surface);
+  border: 1px solid var(--crafted-code-border);
+  border-radius: var(--radius-l);
+  padding: 14px 16px;
+}
+.markdown-rendered pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.85em;
+  line-height: 1.6;
+}
+.markdown-source-view.mod-cm6 .HyperMD-codeblock {
+  background-color: var(--crafted-surface);
+  border-inline: 1px solid var(--crafted-code-border);
+  font-size: 0.85em;
+}
+.markdown-source-view.mod-cm6 .HyperMD-codeblock-begin {
+  border-top: 1px solid var(--crafted-code-border);
+  border-radius: var(--radius-l) var(--radius-l) 0 0;
+  padding-top: 6px;
+}
+.markdown-source-view.mod-cm6 .HyperMD-codeblock-end {
+  border-bottom: 1px solid var(--crafted-code-border);
+  border-radius: 0 0 var(--radius-l) var(--radius-l);
+  padding-bottom: 6px;
+}
+.code-block-flair,
+.copy-code-button {
+  color: var(--text-faint);
+  background-color: transparent;
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-smaller);
+}
+
+/* -----------------------------------------------------------------------------
+   6. Callouts — soft tinted cards, no left bar
+   -------------------------------------------------------------------------- */
+
+.callout {
+  background-color: rgba(var(--callout-color), 0.075);
+  border: 1px solid rgba(var(--callout-color), 0.16);
+  box-shadow: none;
+  mix-blend-mode: normal;
+}
+.theme-dark .callout {
+  background-color: rgba(var(--callout-color), 0.13);
+  border-color: rgba(var(--callout-color), 0.2);
+}
+.callout-title {
+  padding: 0;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  align-items: center;
+  gap: 8px;
+}
+.callout-icon {
+  color: rgb(var(--callout-color));
+}
+.callout-content {
+  margin-top: 6px;
+}
+.callout-content > :last-child {
+  margin-block-end: 0;
+}
+
+/* -----------------------------------------------------------------------------
+   7. Tables, checkboxes, tags
+   -------------------------------------------------------------------------- */
+
+.markdown-rendered table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+  overflow: hidden;
+  font-size: 0.94em;
+}
+.markdown-rendered th,
+.markdown-rendered td {
+  border: none;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 8px 12px;
+}
+.markdown-rendered thead th {
+  background-color: var(--crafted-surface);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.markdown-rendered tbody tr:last-child td {
+  border-bottom: none;
+}
+
+input[type="checkbox"] {
+  border: 1.5px solid var(--background-modifier-border-hover);
+  box-shadow: none;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+input[type="checkbox"]:checked {
+  border-color: var(--interactive-accent);
+  background-color: var(--interactive-accent);
+}
+.markdown-rendered li.task-list-item.is-checked {
+  color: var(--text-faint);
+  text-decoration-color: var(--text-faint);
+}
+
+.markdown-rendered a.tag,
+.cm-s-obsidian .cm-hashtag {
+  background-color: var(--crafted-surface);
+  border: 1px solid var(--crafted-surface-border);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.82em;
+  font-weight: 500;
+  text-decoration: none;
+}
+.cm-s-obsidian .cm-hashtag-begin {
+  border-radius: 999px 0 0 999px;
+  border-inline-end: none;
+  padding-inline-end: 0;
+}
+.cm-s-obsidian .cm-hashtag-end {
+  border-radius: 0 999px 999px 0;
+  border-inline-start: none;
+  padding-inline-start: 0;
+}
+
+/* -----------------------------------------------------------------------------
+   8. Math (MathJax) — this vault leans on Latex Suite
+   -------------------------------------------------------------------------- */
+
+mjx-container {
+  color: var(--text-normal);
+}
+.cm-s-obsidian .math.math-block {
+  display: block;
+}
+
+/* Display math ($$ … $$) gets the same hairline box as code blocks, but stays
+   unfilled — a tinted slab behind a formula reads as heavy. The border sits on
+   the wrapper while the scroll lives on the inner container, so a wide formula
+   scrolls inside a box that stays put. */
+.markdown-rendered .math-block,
+.markdown-rendered div.math.math-block,
+.markdown-source-view.mod-cm6 .cm-embed-block.math-block,
+.markdown-source-view.mod-cm6 .cm-embed-block.math,
+.markdown-source-view.mod-cm6 .cm-embed-block:has(mjx-container[display="true"]) {
+  border: 1px solid var(--crafted-math-border);
+  border-radius: var(--radius-l);
+  background-color: transparent;
+  padding: 10px 16px;
+  margin: 1.1em 0;
+  box-shadow: none;
+}
+
+/* No hover affordance box on top of our own border */
+.markdown-source-view.mod-cm6 .cm-embed-block:has(mjx-container[display="true"]):hover {
+  box-shadow: none;
+  background-color: var(--background-modifier-hover);
+}
+
+mjx-container[display="true"] {
+  margin: 0;
+  padding: 2px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* -----------------------------------------------------------------------------
+   9. Overlays — modals, menus, popovers, quick switcher
+   -------------------------------------------------------------------------- */
+
+.modal,
+.prompt,
+.suggestion-container,
+.menu,
+.popover.hover-popover {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--crafted-surface-border);
+  box-shadow: var(--crafted-shadow-strong);
+  background-color: var(--background-primary);
+}
+.modal-bg,
+.prompt-bg {
+  backdrop-filter: blur(3px);
+  background-color: rgba(0, 0, 0, 0.25);
+}
+.prompt-input-container {
+  padding: 6px 8px;
+}
+.prompt-input {
+  font-size: var(--font-ui-large);
+  border: none !important;
+  background: transparent;
+  padding: 10px 12px;
+}
+.prompt-results {
+  padding: 0 8px 8px 8px;
+}
+.suggestion-item,
+.menu-item {
+  border-radius: var(--radius-m);
+  padding: 6px 10px;
+}
+.suggestion-item.is-selected,
+.menu-item:hover,
+.menu-item.selected {
+  background-color: var(--background-modifier-hover);
+}
+.menu-separator {
+  border-top: 1px solid var(--divider-color);
+  margin: 4px 8px;
+}
+.menu {
+  padding: 6px;
+}
+.modal-title {
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+.modal-close-button {
+  border-radius: var(--radius-s);
+}
+.popover.hover-popover {
+  padding: 4px 12px;
+}
+
+/* Settings ------------------------------------------------------------------ */
+.modal.mod-settings .vertical-tab-header {
+  background-color: var(--background-secondary);
+  border-inline-end: none;
+  padding: 12px 8px;
+}
+.vertical-tab-nav-item {
+  border-radius: var(--radius-m);
+  border: none;
+  padding: 6px 10px;
+  margin-bottom: 1px;
+}
+.vertical-tab-nav-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+.vertical-tab-nav-item.is-active {
+  background-color: var(--background-modifier-active-hover);
+  font-weight: 600;
+}
+.setting-item {
+  border-top: 1px solid var(--divider-color);
+  padding: 16px 0;
+}
+.setting-item-name {
+  font-weight: 550;
+}
+.setting-item-heading .setting-item-name {
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+/* Controls ------------------------------------------------------------------ */
+button,
+.checkbox-container,
+input[type="text"],
+input[type="search"],
+input[type="number"],
+input[type="password"],
+textarea,
+select,
+.dropdown {
+  border-radius: var(--radius-m);
+  box-shadow: none;
+  transition: background-color 120ms ease, border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+button:not(.mod-cta):not(.clickable-icon) {
+  background-color: var(--crafted-surface);
+  border: 1px solid var(--crafted-surface-border);
+  font-weight: 500;
+}
+button:not(.mod-cta):not(.clickable-icon):hover {
+  background-color: var(--background-modifier-hover);
+}
+button.mod-cta {
+  box-shadow: none;
+  font-weight: 550;
+}
+input:focus,
+textarea:focus,
+select:focus,
+.dropdown:focus {
+  box-shadow: 0 0 0 3px hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.18);
+  border-color: var(--background-modifier-border-focus);
+}
+.checkbox-container {
+  border-radius: 999px;
+}
+.checkbox-container::after {
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* -----------------------------------------------------------------------------
+   10. Scrollbars — macOS style: invisible until you scroll
+   -------------------------------------------------------------------------- */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+*:hover::-webkit-scrollbar-thumb,
+*:focus-within::-webkit-scrollbar-thumb {
+  background-color: var(--color-base-40);
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-base-50) !important;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* -----------------------------------------------------------------------------
+   11. Odds and ends
+   -------------------------------------------------------------------------- */
+
+/* Graph view in the same muted palette */
+.graph-view.color-fill {
+  color: var(--color-base-50);
+}
+.graph-view.color-fill-focused {
+  color: var(--interactive-accent);
+}
+.graph-view.color-line {
+  color: var(--background-modifier-border);
+}
+.graph-view.color-text {
+  color: var(--text-muted);
+}
+
+/* Selection */
+::selection {
+  background-color: var(--text-selection);
+}
+
+/* Vault switcher / workspace name */
+.workspace-drawer-active-tab-header,
+.titlebar-inner {
+  font-weight: 600;
+}
+
+/* Kill the last few hard edges Obsidian draws by default */
+.workspace-leaf-content,
+.markdown-source-view,
+.markdown-reading-view {
+  background-color: var(--background-primary);
+}
+.mod-root .view-content {
+  border-radius: 0;
+}
+.workspace-tabs.mod-stacked .workspace-tab-header-container {
+  border: none;
+}
