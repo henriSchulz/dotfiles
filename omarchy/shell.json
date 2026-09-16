@@ -82,6 +82,9 @@
     },
     {
       "id": "henri.menu"
+    },
+    {
+      "id": "henri.workspace-switcher"
     }
   ],
   "version": 1

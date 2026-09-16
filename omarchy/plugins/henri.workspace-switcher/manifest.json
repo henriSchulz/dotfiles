@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.workspace-switcher",
+  "name": "Workspace Switcher",
+  "version": "1.0.0",
+  "author": "henri",
+  "description": "Windows-style Super+Tab: hold Super to see small live previews of all workspaces, Tab to pick one, release Super to switch.",
+  "kinds": [
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}
