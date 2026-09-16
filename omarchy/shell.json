@@ -6,7 +6,13 @@
     "layout": {
       "left": [
         {
+          "id": "io.github.twiking.omasettings"
+        },
+        {
           "id": "henri.workspaces"
+        },
+        {
+          "id": "henri.active-window"
         }
       ],
       "center": [],

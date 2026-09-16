@@ -1,0 +1,35 @@
+#!/bin/bash
+# Open the settings of an app — what "App name > Settings…" does on macOS.
+#
+# Usage: app-settings [app-id]   (defaults to the focused window's class)
+#
+# Linux has no common "open preferences" call, so known apps get their real
+# settings (a browser's settings page, a terminal's config file) and everything
+# else gets Ctrl+Comma, the de-facto settings shortcut (VS Code, Obsidian,
+# Signal, GNOME apps, ...). Bound to a click on the app name in henri.bar.
+set -uo pipefail
+
+app="${1:-$(hyprctl activewindow -j | jq -r '.class // empty')}"
+
+edit() { exec omarchy-launch-editor "$1"; }
+
+# Down/up as two dispatches, the same way Omarchy's clipboard bindings do it:
+# a single send_shortcut can leave the synthetic key stuck.
+send_ctrl_comma() {
+  hyprctl dispatch 'hl.dsp.send_key_state({ mods = "CTRL", key = "comma", state = "down" })' >/dev/null
+  sleep 0.05
+  hyprctl dispatch 'hl.dsp.send_key_state({ mods = "CTRL", key = "comma", state = "up" })' >/dev/null
+}
+
+case "${app,,}" in
+  chromium)                     exec chromium chrome://settings ;;
+  google-chrome)                exec google-chrome-stable chrome://settings ;;
+  brave-browser)                exec brave chrome://settings ;;
+  firefox)                      exec firefox about:preferences ;;
+  zen)                          exec zen-browser about:preferences ;;
+  foot)                         edit "$HOME/.config/foot/foot.ini" ;;
+  alacritty)                    edit "$HOME/.config/alacritty/alacritty.toml" ;;
+  kitty)                        edit "$HOME/.config/kitty/kitty.conf" ;;
+  com.mitchellh.ghostty)        edit "$HOME/.config/ghostty/config" ;;
+  *)                            send_ctrl_comma ;;
+esac

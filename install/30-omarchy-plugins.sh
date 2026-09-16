@@ -47,6 +47,8 @@ done
 #                 (that script comes from the `bin` stow package, step 20)
 #   henri.bar   — clone of omarchy.bar: translucent macOS-style menu bar
 #   henri.workspaces — clone of omarchy.workspaces, occupied workspaces only
+#   henri.active-window — clone of omarchy.active-window, app name that opens
+#                 the app's settings (app-settings, `bin` stow package)
 for src in "$DOTFILES_ROOT"/omarchy/plugins/*/; do
   [[ -d $src ]] || continue
   id="$(basename "$src")"

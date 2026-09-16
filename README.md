@@ -33,7 +33,7 @@ differences were committed:
 |---|---|
 | `stow/hypr/.config/hypr/input.lua` | +8 lines: German keyboard layout |
 | `stow/hypr/.config/hypr/looknfeel.lua` | +7 lines: `rounding = 12` |
-| `stow/bin/.local/bin/` | `omarchy-{launch-,}screensaver-themed` — the themed screensaver `henri.idle` shells out to. Without these that plugin is inert |
+| `stow/bin/.local/bin/` | `omarchy-{launch-,}screensaver-themed` — the themed screensaver `henri.idle` shells out to. Without these that plugin is inert. `app-settings` — opens the focused app's settings, called by `henri.active-window` |
 | `stow/nvim/.config/nvim/` | own LazyVim config; Omarchy ships none |
 | `stow/git/.config/git/config` | identity + credential helper |
 | `omarchy/shell.json` | bar layout, widget order, idle timers |
@@ -42,6 +42,7 @@ differences were committed:
 | `omarchy/plugins/henri.idle/` | clone of `omarchy.idle` that launches the themed screensaver instead of the stock one |
 | `omarchy/plugins/henri.bar/` | clone of `omarchy.bar`: translucent macOS-style menu bar; `required` props made plain so it loads as a plugin bar |
 | `omarchy/plugins/henri.workspaces/` | clone of `omarchy.workspaces` that shows only occupied workspaces |
+| `omarchy/plugins/henri.active-window/` | clone of `omarchy.active-window`: shows the app name instead of the window title; a click opens that app's settings via `app-settings` |
 | `omarchy/themes/cupertino{,-dark}`, `img-7075` | hand-built, no upstream remote |
 | `obsidian/home/**/.obsidian/` | vault settings, 4 community plugins, the `Crafted` and `Things` themes |
 | `icloud-photos/config.toml` | Apple ID and cache limits; the password is in the keyring, not here |
