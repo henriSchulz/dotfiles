@@ -98,9 +98,11 @@ themselves.
 ## Wallpaper
 
 `cupertino` and `img-7075` both reference `IMG_7075.png`, a 32 MB personal
-photo. It is kept out of this public repo. Put it at `~/Wallpapers/IMG_7075.png`
-(or pass `IMG_7075_PATH=<path>`) and step 40 copies it into both themes; without
-it, those themes fall back to their remaining backgrounds.
+photo. It is kept out of this public repo. Step 40 looks for it at
+`~/Pictures/Wallpaper/`, `~/Pictures/Wallpapers/` and `~/Wallpapers/`, or
+wherever `IMG_7075_PATH=<path>` points, and copies it into both themes; without
+it, those themes fall back to their remaining backgrounds. Copy it across from
+the other machine — nothing in this repo can restore it.
 
 Keeping it out is also what holds the repo at ~4 MB instead of 237 MB.
 

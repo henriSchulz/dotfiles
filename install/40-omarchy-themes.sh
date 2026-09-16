@@ -41,11 +41,22 @@ for src in "$DOTFILES_ROOT"/omarchy/themes/*/; do
   run rsync -a "$src" "$theme_dir/$name/"
 done
 
-# The cupertino and img-7075 themes both reference IMG_7075.png, a personal
-# photo kept out of this public repo. Drop it in ~/Wallpapers/ (or anywhere)
-# and this links it into both themes.
-wallpaper="${IMG_7075_PATH:-$HOME/Wallpapers/IMG_7075.png}"
+# The cupertino and img-7075 themes both reference IMG_7075.png, a 32 MB
+# personal photo kept out of this public repo. Drop it in any of the places
+# below (or pass IMG_7075_PATH) and this links it into both themes.
+wallpaper="${IMG_7075_PATH:-}"
+if [[ -z $wallpaper ]]; then
+  for candidate in \
+    "$HOME/Pictures/Wallpaper/IMG_7075.png" \
+    "$HOME/Pictures/Wallpapers/IMG_7075.png" \
+    "$HOME/Wallpapers/IMG_7075.png"; do
+    [[ -f $candidate ]] && { wallpaper="$candidate"; break; }
+  done
+  wallpaper="${wallpaper:-$HOME/Pictures/Wallpaper/IMG_7075.png}"
+fi
+
 if [[ -f $wallpaper ]]; then
+  info "wallpaper: ${wallpaper/#$HOME/~}"
   for name in cupertino img-7075; do
     dest="$theme_dir/$name/backgrounds/IMG_7075.png"
     if [[ -f $dest ]]; then
