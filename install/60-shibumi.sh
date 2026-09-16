@@ -47,15 +47,15 @@ else
     # This checkout is also where Shibumi gets developed, so never touch a
     # dirty or detached tree — a failed pull would abort the whole run.
     if [[ -n $(git -C "$src" status --porcelain) ]]; then
-      warn "${src/#$HOME/~} has local changes — installing it as-is, no pull"
+      warn "$(tilde "$src") has local changes — installing it as-is, no pull"
     elif ! git -C "$src" rev-parse --abbrev-ref '@{upstream}' &>/dev/null; then
-      warn "${src/#$HOME/~} has no upstream branch — installing it as-is, no pull"
+      warn "$(tilde "$src") has no upstream branch — installing it as-is, no pull"
     else
-      info "updating ${src/#$HOME/~}"
+      info "updating $(tilde "$src")"
       run git -C "$src" pull --ff-only
     fi
   else
-    info "cloning Shibumi into ${src/#$HOME/~}"
+    info "cloning Shibumi into $(tilde "$src")"
     run git clone "$url" "$src"
   fi
   suite=("$src/scripts/shibumi-suite")

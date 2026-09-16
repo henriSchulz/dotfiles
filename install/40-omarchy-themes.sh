@@ -56,7 +56,7 @@ if [[ -z $wallpaper ]]; then
 fi
 
 if [[ -f $wallpaper ]]; then
-  info "wallpaper: ${wallpaper/#$HOME/~}"
+  info "wallpaper: $(tilde "$wallpaper")"
   for name in cupertino img-7075; do
     dest="$theme_dir/$name/backgrounds/IMG_7075.png"
     if [[ -f $dest ]]; then

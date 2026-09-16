@@ -23,6 +23,11 @@ run() {
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# Shorten $HOME to ~ for display. $HOME must be quoted inside the pattern:
+# unquoted, it expands to /home/<user> and bash then reads the pattern as
+# ending at its first slash, so the substitution silently does nothing.
+tilde() { local p="$1"; printf '%s' "${p/#"$HOME"/\~}"; }
+
 # Clear an existing real file so stow can put its symlink there.
 # Identical content is simply removed (nothing to preserve); genuinely
 # different content is kept as a timestamped backup.
@@ -38,7 +43,7 @@ clear_for_stow() {
   fi
 
   local bak="${target}.pre-dotfiles.$(date +%s)"
-  warn "differs from the repo copy: ${target/#$HOME/~}"
+  warn "differs from the repo copy: $(tilde "$target")"
   info "kept as ${bak##*/}"
   run mv "$target" "$bak"
 }
