@@ -3,3 +3,6 @@
 
 -- Close gaps between workspaces when one runs empty.
 o.launch_on_start("hypr-workspace-compact")
+
+-- EasyEffects: speaker preset for the XPS 13 (autoloaded on the speakers).
+o.launch_on_start("easyeffects-service")

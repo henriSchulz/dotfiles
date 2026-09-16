@@ -1,0 +1,13 @@
+#!/bin/bash
+# Run EasyEffects in the background, without RTKit (see
+# ~/.config/pipewire/easyeffects-client.conf for why).
+
+# A killed instance leaves its lock behind and every later start then exits
+# at once, so clear it when its owner is gone.
+lock="${XDG_RUNTIME_DIR:-/run/user/$UID}/easyeffects.lock"
+if [[ -f $lock ]] && ! kill -0 "$(head -n1 "$lock")" 2>/dev/null; then
+  rm -f "$lock"
+fi
+
+export PIPEWIRE_CONFIG_NAME=easyeffects-client.conf
+exec easyeffects --service-mode --hide-window "$@"

@@ -35,6 +35,8 @@ differences were committed:
 | `stow/hypr/.config/hypr/looknfeel.lua` | +7 lines: `rounding = 12` |
 | `stow/bin/.local/bin/` | `omarchy-{launch-,}screensaver-themed` — the themed screensaver `henri.idle` shells out to. Without these that plugin is inert. `app-settings` — opens the focused app's settings, called by `henri.active-window` |
 | `stow/nvim/.config/nvim/` | own LazyVim config; Omarchy ships none |
+| `stow/easyeffects/.local/share/easyeffects/` | `XPS 13 Speakers` preset (EQ, bass enhancer, limiter) and its autoload on the built-in speakers |
+| `stow/pipewire/.config/pipewire/easyeffects-client.conf` | PipeWire client config for EasyEffects without RTKit — with RTKit the kernel SIGKILLs it at startup (RLIMIT_RTTIME). Used by `easyeffects-service` in `stow/bin`, started from `autostart.lua` |
 | `stow/git/.config/git/config` | identity + credential helper |
 | `omarchy/shell.json` | bar layout, widget order, idle timers |
 | `omarchy/keystroke.json`, `omadock.json`, `dock.json`, `defaults/agent` | small real settings |
