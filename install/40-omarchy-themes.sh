@@ -1,8 +1,9 @@
 #!/bin/bash
 # Install Omarchy themes and apply the active one.
 #
-# mac-transparent comes from upstream. cupertino, cupertino-dark and img-7075
-# are local, hand-built themes with no remote, so they ship in this repo.
+# dune, mac-transparent and outpost come from upstream. cupertino,
+# cupertino-dark and img-7075 are local, hand-built themes with no remote, so
+# they ship in this repo.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -10,11 +11,13 @@ log "Omarchy themes"
 
 need_cmd omarchy "run this on a provisioned Omarchy system"
 theme_dir="$HOME/.config/omarchy/themes"
-ACTIVE_THEME="${ACTIVE_THEME:-cupertino}"
+ACTIVE_THEME="${ACTIVE_THEME:-outpost}"
 
 # Upstream themes: "<dir-name> <git-url>"
 upstream=(
+  "dune             https://github.com/OldJobobo/omarchy-dune-theme"
   "mac-transparent  https://github.com/phoscoder/omarchy-mac-transparent-theme"
+  "outpost          https://github.com/simoz/omarchy-outpost-theme.git"
 )
 
 for entry in "${upstream[@]}"; do

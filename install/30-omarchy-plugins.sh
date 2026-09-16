@@ -1,12 +1,14 @@
 #!/bin/bash
 # Install Omarchy shell plugins.
 #
-# Git-backed plugins are re-added from upstream. henri.menu is a heavily
-# modified clone of the built-in omarchy.menu, so it ships as source in this
-# repo and is copied into place instead.
+# Git-backed plugins are re-added from upstream. henri.menu and henri.idle are
+# modified clones of built-in Omarchy plugins, so they ship as source in this
+# repo and are copied into place instead.
+#
+# The Shibumi suite (hancore.shibumi.*) is NOT here — 60-shibumi.sh owns it.
 #
 # Enablement and bar placement are NOT set here — omarchy/shell.json owns that
-# and is restored by 50-omarchy-config.sh, which runs last.
+# and is restored by 70-omarchy-shell.sh, which runs last of all.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -19,10 +21,15 @@ plugin_dir="$HOME/.config/omarchy/plugins"
 upstream=(
   "bibek.menu                            https://github.com/BibekBhusal0/omarchy-better-menu.git"
   "evindor.keystroke                     https://github.com/evindor/keystroke.git"
+  "expose.window-overview                https://github.com/kristofferR/omarchy-expose.git"
+  "henri.keystroke                       https://github.com/henriSchulz/keystroke.git"
   "io.github.andyweiboan.missioncontrol  https://github.com/AndyWeiBoan/omarchy-mission-control.git"
-  "io.github.grootaiinfinity.hwmon       https://github.com/GrootAiInfinity/omarchy-hwmon.git"
   "io.github.maajix.spotlight            https://github.com/maajix/omarchy-spotlight.git"
-  "paudelsamir.minimize-pill             https://github.com/paudelsamir/minimize-pill.git"
+  "io.github.sirjul1337.lock-explorer    https://github.com/SirJul1337/omarchy-lock-explorer.git"
+  "io.github.twiking.omasettings         https://github.com/twiking/omasettings.git"
+  "omadock                               https://github.com/thepathless/omadock.git"
+  "omaplug                               https://github.com/fross100/omaplug.git"
+  "stappmus.activity-monitor             https://github.com/stappmus/omarchy-activity-monitor.git"
 )
 
 for entry in "${upstream[@]}"; do
@@ -35,24 +42,14 @@ for entry in "${upstream[@]}"; do
   fi
 done
 
-# henri.keystroke: a 2-commit fork of evindor.keystroke 1.4.2 that swaps the
-# Codex integration for Claude Code. It has no remote yet — set
-# HENRI_KEYSTROKE_URL once it is pushed somewhere, and it installs like the
-# rest. Until then this step is skipped rather than failing the run.
-if [[ -d "$plugin_dir/henri.keystroke" ]]; then
-  skip "henri.keystroke (already present)"
-elif [[ -n ${HENRI_KEYSTROKE_URL:-} ]]; then
-  info "adding henri.keystroke from $HENRI_KEYSTROKE_URL"
-  run omarchy plugin add "$HENRI_KEYSTROKE_URL" --yes
-else
-  warn "henri.keystroke has no upstream remote — not installed."
-  info "push the fork, then re-run with HENRI_KEYSTROKE_URL=<git-url>"
-fi
-
-# henri.menu ships as source in this repo.
-src="$DOTFILES_ROOT/omarchy/plugins/henri.menu"
-if [[ -d $src ]]; then
-  info "syncing henri.menu from repo"
-  run mkdir -p "$plugin_dir/henri.menu"
-  run rsync -a --delete "$src/" "$plugin_dir/henri.menu/"
-fi
+# Local plugins ship as source in this repo:
+#   henri.menu  — clone of omarchy.menu, a Spotlight-style launcher
+#   henri.idle  — clone of omarchy.idle, drives omarchy-screensaver-themed
+#                 (that script comes from the `bin` stow package, step 20)
+for src in "$DOTFILES_ROOT"/omarchy/plugins/*/; do
+  [[ -d $src ]] || continue
+  id="$(basename "$src")"
+  info "syncing $id from repo"
+  run mkdir -p "$plugin_dir/$id"
+  run rsync -a --delete "$src" "$plugin_dir/$id/"
+done

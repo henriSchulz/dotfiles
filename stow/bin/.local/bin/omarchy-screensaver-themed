@@ -1,0 +1,219 @@
+#!/bin/bash
+# Screensaver that paints the current Omarchy theme background full-screen as a
+# sixel image, with the branding logo overlaid on top.
+#
+# Runs inside the terminal window opened by omarchy-launch-screensaver-themed.
+# Mirrors omarchy-screensaver's exit behaviour: any key, or losing focus, quits.
+
+BACKGROUND="$HOME/.local/state/omarchy/current/background"
+LOGO="$HOME/.config/omarchy/branding/screensaver.txt"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/screensaver"
+
+screensaver_in_focus() {
+  hyprctl activewindow -j | jq -e '.class == "org.omarchy.screensaver"' >/dev/null 2>&1
+}
+
+exit_screensaver() {
+  stty echo 2>/dev/null
+  printf '\033[?25h\033[0m'
+  hyprctl eval 'hl.config({ cursor = { invisible = false } })' &>/dev/null || hyprctl keyword cursor:invisible false &>/dev/null || true
+  pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null
+  exit 0
+}
+
+trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
+
+hyprctl eval 'hl.config({ cursor = { invisible = true } })' &>/dev/null || hyprctl keyword cursor:invisible true &>/dev/null
+
+# Terminals allocate the pty at the default 80x24 and only resize it once the
+# compositor has told the window how big it is. Painting before the resize lands
+# would size the image to a fraction of the window.
+wait_for_terminal_resize() {
+  local deadline=$((SECONDS + 2))
+  while ((SECONDS < deadline)) && [[ $(stty size 2>/dev/null) == "24 80" ]]; do
+    sleep 0.02
+  done
+}
+
+# The window is made fullscreen by Omarchy's window rule for the screensaver
+# class, so its pixel size is its monitor's resolution. Walk up the process tree
+# to find the terminal's own Hyprland client, and fall back to the focused
+# monitor if that lookup comes up empty.
+terminal_pixel_size() {
+  local pid=$PPID monitor size
+
+  for _ in 1 2 3 4 5 6; do
+    [[ $pid =~ ^[0-9]+$ ]] && ((pid > 1)) || break
+
+    monitor=$(hyprctl clients -j | jq -r --argjson p "$pid" 'first(.[] | select(.pid == $p) | .monitor) // empty' 2>/dev/null)
+    if [[ -n $monitor ]]; then
+      size=$(hyprctl monitors -j | jq -r --argjson m "$monitor" 'first(.[] | select(.id == $m) | "\(.width) \(.height)")' 2>/dev/null)
+      [[ -n $size ]] && { echo "$size"; return; }
+      break
+    fi
+
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+  done
+
+  hyprctl monitors -j | jq -r 'first(.[] | select(.focused) | "\(.width) \(.height)")' 2>/dev/null
+}
+
+# chafa sizes its output in character cells and, with no terminal to measure,
+# assumes 10x20px per cell. Ask for the cell count that lands on the pixel size
+# we want, then read back the sixel raster attributes ("1;1;<w>;<h>) and retry
+# once with corrected counts if that assumption ever changes.
+render_sixel() {
+  local image=$1 width=$2 height=$3 out=$4
+  local cols=$((width / 10)) rows=$((height / 20)) raster actual_w actual_h
+
+  ((cols > 0)) || cols=1
+  ((rows > 0)) || rows=1
+
+  for attempt in 1 2; do
+    chafa --format sixels --size "${cols}x${rows}" --stretch --polite on --animate off \
+      "$image" >"$out" 2>/dev/null || return 1
+    [[ -s $out ]] || return 1
+
+    raster=$(head -c 64 "$out" | grep -ao '"1;1;[0-9]*;[0-9]*' | head -1)
+    actual_w=${raster#\"1;1;}
+    actual_h=${actual_w#*;}
+    actual_w=${actual_w%%;*}
+
+    [[ $actual_w =~ ^[0-9]+$ && $actual_h =~ ^[0-9]+$ ]] || return 0
+    ((actual_w == width && actual_h == height)) && return 0
+
+    cols=$((cols * width / actual_w))
+    rows=$((rows * height / actual_h))
+    ((cols > 0)) || cols=1
+    ((rows > 0)) || rows=1
+  done
+
+  return 0
+}
+
+cache_key() {
+  printf '%s %s %s' "$(readlink -f "$1")" "$(stat -c %Y "$1" 2>/dev/null)" "$2" | sha256sum | cut -c1-32
+}
+
+# Average colour of the image's bottom edge. foot pads the window out to a whole
+# number of text rows and nothing can be drawn in that leftover strip, so the
+# terminal background is set to this instead of black and the strip disappears.
+edge_color() {
+  local image=$1 cache
+
+  cache="$CACHE_DIR/$(cache_key "$image" edge).bg"
+
+  if [[ ! -s $cache ]]; then
+    mkdir -p "$CACHE_DIR"
+    magick "$image" -alpha remove -gravity south -crop '100%x4%+0+0' +repage \
+      -resize 1x1! -depth 8 -format '%[hex:p{0,0}]' info: >"$cache.tmp" 2>/dev/null || {
+      rm -f "$cache.tmp"
+      return 1
+    }
+    mv "$cache.tmp" "$cache"
+  fi
+
+  cat "$cache"
+}
+
+# Scale-to-fill the background into WxH as sixel, cached per image and size so
+# the common case is a plain file read.
+sixel_for() {
+  local image=$1 width=$2 height=$3 cache
+
+  cache="$CACHE_DIR/$(cache_key "$image" "${width}x${height}").six"
+
+  if [[ ! -s $cache ]]; then
+    mkdir -p "$CACHE_DIR"
+    if ! render_sixel "$image" "$width" "$height" "$cache.tmp"; then
+      rm -f "$cache.tmp"
+      return 1
+    fi
+    mv "$cache.tmp" "$cache"
+    prune_cache
+  fi
+
+  cat "$cache"
+}
+
+# A full-screen sixel runs to several megabytes, and every theme or background
+# switch adds another one. Keep the few most recent and drop the rest.
+prune_cache() {
+  local keep=4
+
+  find "$CACHE_DIR" -maxdepth 1 -name '*.six' -printf '%T@ %p\0' 2>/dev/null |
+    sort -zrn | tail -zn "+$((keep + 1))" | cut -z -d' ' -f2- | xargs -0r rm -f
+}
+
+# Print the logo centred, writing only non-blank runs so the image stays visible
+# between the glyphs (a written cell hides the sixel underneath it).
+overlay_logo() {
+  local rows=$1 cols=$2
+
+  [[ -r $LOGO ]] || return 0
+
+  awk -v rows="$rows" -v cols="$cols" '
+    { lines[NR] = $0; if (length($0) > widest) widest = length($0) }
+    END {
+      if (NR == 0) exit
+      top = int((rows - NR) / 2)
+      left = int((cols - widest) / 2)
+      if (top < 0) top = 0
+      if (left < 0) left = 0
+
+      for (i = 1; i <= NR; i++) {
+        row = top + i
+        if (row > rows) break
+        n = length(lines[i])
+        col = 0
+        while (col < n) {
+          # Skip blanks, then emit the run of visible characters that follows.
+          while (col < n && substr(lines[i], col + 1, 1) == " ") col++
+          if (col >= n) break
+          start = col
+          while (col < n && substr(lines[i], col + 1, 1) != " ") col++
+          printf "\033[%d;%dH\033[1;97;40m%s\033[0m", row, left + start + 1, substr(lines[i], start + 1, col - start)
+        }
+      }
+    }
+  ' "$LOGO"
+}
+
+paint() {
+  local width height rows cols edge
+
+  read -r width height < <(terminal_pixel_size)
+  read -r rows cols < <(stty size 2>/dev/null)
+  [[ $rows =~ ^[0-9]+$ ]] || rows=24
+  [[ $cols =~ ^[0-9]+$ ]] || cols=80
+
+  if [[ -r $BACKGROUND ]]; then
+    edge=$(edge_color "$BACKGROUND")
+    [[ $edge =~ ^[0-9A-Fa-f]{6}$ ]] && printf '\033]11;#%s\007' "$edge"
+  fi
+
+  printf '\033[2J\033[H\033[?25l'
+
+  if [[ -r $BACKGROUND && $width =~ ^[0-9]+$ && $height =~ ^[0-9]+$ ]]; then
+    sixel_for "$BACKGROUND" "$width" "$height"
+  fi
+
+  overlay_logo "$rows" "$cols"
+}
+
+wait_for_terminal_resize
+stty -echo 2>/dev/null
+
+repaint=true
+trap 'repaint=true' SIGWINCH
+
+while true; do
+  if [[ $repaint == true ]]; then
+    repaint=false
+    paint
+  fi
+
+  if read -rn1 -t 1 || ! screensaver_in_focus; then
+    exit_screensaver
+  fi
+done

@@ -22,6 +22,10 @@ antigravity-cli
 voxtype-bin
 openbsd-netcat
 
+# Themed screensaver (henri.idle -> omarchy-screensaver-themed).
+# imagemagick, socat and jq are already in omarchy-base.packages.
+chafa
+
 # Desktop apps
 signal-desktop
 geary
