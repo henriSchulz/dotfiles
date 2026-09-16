@@ -32,9 +32,10 @@
 -- Workspaces (Plugin henri.workspace-switcher), jedes weitere Tab wählt den
 -- nächsten, Loslassen von Super wechselt. Ersetzt Omarchys "Next/Previous workspace".
 -- SUPER+SHIFT+C war standardmäßig "Calendar" (webapp hey.com/calendar).
--- Jetzt öffnet es die Claude-Webapp.
+-- Jetzt startet es Claude Code im Terminal (fest auf claude, unabhängig vom
+-- via `omarchy default agent` konfigurierten Default-Agent).
 hl.unbind("SUPER + SHIFT + C")
-o.bind("SUPER + SHIFT + C", "Claude", { webapp = "https://claude.ai" })
+o.bind("SUPER + SHIFT + C", "Claude", "omarchy-launch-tui --app-id=org.omarchy.agent claude --permission-mode auto")
 
 hl.unbind("SUPER + TAB")
 hl.unbind("SUPER + SHIFT + TAB")
