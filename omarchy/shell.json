@@ -30,8 +30,9 @@
           "id": "omarchy.monitor"
         },
         {
-          "id": "omarchy.power",
-          "showPercentage": true
+          "id": "io.github.nipsen.dell-power",
+          "showPercentage": true,
+          "chargeLimitStep": 5
         },
         {
           "id": "henri.clock",
