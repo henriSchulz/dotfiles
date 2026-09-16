@@ -26,6 +26,11 @@ openbsd-netcat
 # imagemagick, socat and jq are already in omarchy-base.packages.
 chafa
 
+# iCloud Photos client. gtk4 and python are already in omarchy-base.packages;
+# libheif is what decodes the HEIC originals.
+libadwaita
+libheif
+
 # Desktop apps
 signal-desktop
 geary

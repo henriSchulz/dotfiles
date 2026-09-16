@@ -42,6 +42,7 @@ differences were committed:
 | `omarchy/plugins/henri.idle/` | clone of `omarchy.idle` that launches the themed screensaver instead of the stock one |
 | `omarchy/themes/cupertino{,-dark}`, `img-7075` | hand-built, no upstream remote |
 | `obsidian/home/**/.obsidian/` | vault settings, 4 community plugins, the `Crafted` and `Things` themes |
+| `icloud-photos/config.toml` | Apple ID and cache limits; the password is in the keyring, not here |
 | `packages/packages.txt` | the packages added on top of Omarchy's own lists |
 
 **Not tracked, on purpose:**
@@ -95,6 +96,30 @@ same reason the plugins are. `workspace.json` is not tracked — it is runtime
 state, and it would publish note titles to a public repo. Neither are the notes
 themselves.
 
+## iCloud Photos
+
+The client itself lives in its own repo,
+[henriSchulz/IcloudPhotos](https://github.com/henriSchulz/IcloudPhotos) — a
+GTK4/libadwaita app with a Python `pyicloud` sidecar. Step 90 clones it to
+`~/Projects/IcloudPhotos`, builds the sidecar venv (pyicloud 2.7.0 and `rich`,
+without which importing pyicloud fails) and installs `config.toml`.
+
+Two things it cannot do for you:
+
+- **The password.** It lives in the Secret Service keyring, and putting it
+  there needs the 2FA prompt. Launch the app once and log in.
+- **The catalog and caches.** `~/.local/share/icloud-photos/catalog.sqlite`
+  plus 2.4 GB of thumbnails and full-res files under `~/.cache/`. All derived
+  data, keyed to a session that would not survive the move; the first sync
+  rebuilds it.
+
+The build is opt-in — a release build of a GTK4 app is several hundred crates.
+Run `ICLOUD_PHOTOS_BUILD=1 ./install_all.sh 90`, or just
+`cargo run -p icloud-photos-app` in the checkout.
+
+`config.toml` carries the Apple ID but no password, and uses `~`-relative
+paths so it is machine-independent.
+
 ## Wallpaper
 
 `cupertino` and `img-7075` both reference `IMG_7075.png`, a 32 MB personal
@@ -120,10 +145,12 @@ install/
   60-shibumi.sh             install/update the Shibumi shell suite
   70-omarchy-shell.sh       restore shell.json — after Shibumi, on purpose
   80-obsidian.sh            vault config, plugins, themes, vault registration
+  90-icloud-photos.sh       clone the client, build its venv, seed its config
 packages/packages.txt
 stow/                       symlinked into $HOME
 omarchy/                    copied into ~/.config/omarchy
 obsidian/home/              copied into $HOME, mirroring vault paths
+icloud-photos/              copied into ~/.config/icloud-photos
 ```
 
 `20-stow.sh` clears whatever sits where a symlink needs to go. A file identical
