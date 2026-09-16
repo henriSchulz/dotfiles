@@ -31,6 +31,11 @@
 -- Super+Tab wie unter Windows: Super halten + Tab zeigt eine Vorschau aller
 -- Workspaces (Plugin henri.workspace-switcher), jedes weitere Tab wählt den
 -- nächsten, Loslassen von Super wechselt. Ersetzt Omarchys "Next/Previous workspace".
+-- SUPER+SHIFT+C war standardmäßig "Calendar" (webapp hey.com/calendar).
+-- Jetzt öffnet es die Claude-Webapp.
+hl.unbind("SUPER + SHIFT + C")
+o.bind("SUPER + SHIFT + C", "Claude", { webapp = "https://claude.ai" })
+
 hl.unbind("SUPER + TAB")
 hl.unbind("SUPER + SHIFT + TAB")
 o.bind("SUPER + TAB", "Workspace-Umschalter", "omarchy-shell -q workspace-switcher next")
