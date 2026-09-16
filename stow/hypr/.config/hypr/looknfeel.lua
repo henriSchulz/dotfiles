@@ -56,3 +56,6 @@ hl.config({
 -- Apple-artiger Workspace-Wechsel: weiches Gleiten statt hartem Sprung.
 hl.curve("appleSlide", { type = "bezier", points = { { 0.25, 1 }, { 0.5, 1 } } })
 hl.animation({ leaf = "workspaces", enabled = true, speed = 4, bezier = "appleSlide", style = "slide" })
+
+-- Eigene Menüleiste (henri.bar): Hintergrund weichzeichnen wie bei macOS.
+hl.layer_rule({ match = { namespace = "omarchy-bar" }, blur = true, ignore_alpha = 0.3 })
