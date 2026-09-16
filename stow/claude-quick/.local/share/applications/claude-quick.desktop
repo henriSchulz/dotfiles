@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=Claude
+Comment=Claude Code (Sonnet) im Home-Verzeichnis
+Exec=omarchy-launch-tui --app-id=org.omarchy.claude-quick claude-quick
+Terminal=false
+Type=Application
+Icon=claude-quick
+Categories=Development;
+StartupNotify=true

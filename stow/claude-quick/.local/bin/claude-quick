@@ -1,0 +1,15 @@
+#!/bin/bash
+# Claude Code for quick questions: always in $HOME, latest Sonnet, no trust prompt.
+
+cd "$HOME" || exit 1
+
+# Pre-accept the workspace trust dialog for $HOME in ~/.claude.json
+# (only writes when not yet trusted, so a running session is never clobbered).
+config="$HOME/.claude.json"
+if [[ -f $config ]] && command -v jq >/dev/null &&
+  [[ $(jq -r --arg p "$HOME" '.projects[$p].hasTrustDialogAccepted // false' "$config") != true ]]; then
+  tmp=$(mktemp "$config.XXXXXX")
+  jq --arg p "$HOME" '.projects[$p].hasTrustDialogAccepted = true' "$config" >"$tmp" && mv "$tmp" "$config"
+fi
+
+exec claude --model sonnet "$@"

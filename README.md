@@ -38,6 +38,7 @@ differences were committed:
 | `stow/easyeffects/.local/share/easyeffects/` | `XPS 13 Speakers` preset (compressor, EQ, bass enhancer, limiter; tuned for voices) and its autoload on the built-in speakers |
 | `stow/pipewire/.config/pipewire/easyeffects-client.conf` | PipeWire client config for EasyEffects without RTKit — with RTKit the kernel SIGKILLs it at startup (RLIMIT_RTTIME). Used by `easyeffects-service` in `stow/bin`, started from `autostart.lua` |
 | `stow/git/.config/git/config` | identity + credential helper |
+| `stow/claude-quick/` | `Claude` app-launcher entry (Claude logo): `claude-quick` opens Claude Code in `~` with `--model sonnet` and pre-accepts the trust dialog for `~` |
 | `omarchy/shell.json` | bar layout, widget order, idle timers |
 | `omarchy/keystroke.json`, `omadock.json`, `dock.json`, `defaults/agent` | small real settings |
 | `omarchy/plugins/henri.menu/` | 658-line divergence from built-in `omarchy.menu`, plus its own `FuzzySearch.js` |

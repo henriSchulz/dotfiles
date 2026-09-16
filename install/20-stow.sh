@@ -23,5 +23,8 @@ for pkg in "${packages[@]}"; do
   done < <(cd "$pkg" && find . -type f -printf '%P\n')
 done
 
+# Real dirs so stow does not fold them into this repo (other apps write there).
+run mkdir -p "$HOME/.local/share/icons/hicolor/scalable/apps"
+
 info "stowing: ${packages[*]}"
 run stow --dir "$DOTFILES_ROOT/stow" --target "$HOME" --restow "${packages[@]}"
