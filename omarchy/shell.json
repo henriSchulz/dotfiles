@@ -274,7 +274,7 @@
           },
           "G8": {
             "omarchy.clock": {
-              "clock12h": false
+              "clock12h": true
             },
             "omarchy.weather": {
               "unit": "metric"
