@@ -64,16 +64,24 @@ hl.config({
   },
 })
 
--- 4-Finger-Wisch: Mission Control (hoch = öffnen/umschalten, runter = schließen).
+-- 4-Finger-Wisch hoch/runter: Mission Control (henri.missioncontrol).
+-- Folgt den Fingern: Start/Update/Ende gehen als Custom-Event über Hyprlands
+-- Event-Socket an das Plugin, das die Animation live mitführt und beim
+-- Loslassen je nach Weg und Tempo öffnet oder schließt.
+-- Hinweis: Gesten lassen sich nicht per `hyprctl reload` entfernen – nach
+-- Änderungen ab- und wieder anmelden.
+local function mc_event(phase, value, time_ms)
+  hl.dispatch(hl.dsp.event(string.format("mission-control-gesture:%s:%s:%d",
+    phase, value, math.floor(time_ms or 0))))
+end
 hl.gesture({
   fingers = 4,
-  direction = "up",
-  action = function() hl.dispatch(hl.dsp.exec_cmd("omarchy-shell shell toggle io.github.andyweiboan.missioncontrol '{}'")) end,
-})
-hl.gesture({
-  fingers = 4,
-  direction = "down",
-  action = function() hl.dispatch(hl.dsp.exec_cmd("omarchy-shell shell hide io.github.andyweiboan.missioncontrol")) end,
+  direction = "vertical",
+  action = {
+    start = function(e) mc_event("start", string.format("%.3f", e.delta and e.delta.y or 0), e.time_ms) end,
+    update = function(e) mc_event("update", string.format("%.3f", e.delta and e.delta.y or 0), e.time_ms) end,
+    ["end"] = function(e) mc_event("end", e.cancelled and 1 or 0, e.time_ms) end,
+  },
 })
 
 -- 4-Finger-Wisch zur Seite: Workspace wechseln (folgt den Fingern).

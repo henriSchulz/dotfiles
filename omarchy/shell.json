@@ -60,7 +60,7 @@
   },
   "plugins": [
     {
-      "id": "io.github.andyweiboan.missioncontrol"
+      "id": "henri.missioncontrol"
     },
     {
       "id": "io.github.maajix.spotlight"

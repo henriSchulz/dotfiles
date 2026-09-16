@@ -31,7 +31,7 @@ differences were committed:
 
 | Tracked | Why |
 |---|---|
-| `stow/hypr/.config/hypr/input.lua` | +8 lines: German keyboard layout |
+| `stow/hypr/.config/hypr/input.lua` | German keyboard layout; 4-finger swipes: horizontal switches workspace, vertical drives `henri.missioncontrol` live (callbacks → custom socket events) |
 | `stow/hypr/.config/hypr/looknfeel.lua` | +7 lines: `rounding = 12` |
 | `stow/bin/.local/bin/` | `omarchy-{launch-,}screensaver-themed` — the themed screensaver `henri.idle` shells out to. Without these that plugin is inert. `app-settings` — opens the focused app's settings, called by `henri.active-window` |
 | `stow/nvim/.config/nvim/` | own LazyVim config; Omarchy ships none |
