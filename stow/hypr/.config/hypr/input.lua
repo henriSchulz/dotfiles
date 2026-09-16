@@ -94,6 +94,7 @@ hl.config({
     touchpad = {
       clickfinger_behavior = true, -- 2 Finger drücken = Rechtsklick, 3 Finger = Mittelklick
       tap_to_click = true,         -- Tippen = Klick, 2 Finger tippen = Rechtsklick
+      natural_scroll = true,       -- Scrollrichtung wie am Mac (Inhalt folgt den Fingern)
     },
   },
 })
