@@ -34,9 +34,9 @@
           "showPercentage": true
         },
         {
-          "id": "omarchy.clock",
+          "id": "henri.clock",
           "format": "ddd d. MMM HH:mm",
-          "formatAlt": "d MMMM 'W'ww yyyy",
+          "formatAlt": "d. MMMM 'KW'ww yyyy",
           "verticalFormat": "HH\n—\nmm"
         }
       ]
