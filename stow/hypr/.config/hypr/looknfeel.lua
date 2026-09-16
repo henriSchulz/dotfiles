@@ -59,3 +59,7 @@ hl.animation({ leaf = "workspaces", enabled = true, speed = 4, bezier = "appleSl
 
 -- Eigene Menüleiste (henri.bar): Hintergrund weichzeichnen wie bei macOS.
 hl.layer_rule({ match = { namespace = "omarchy-bar" }, blur = true, ignore_alpha = 0.3 })
+
+-- Mission Control animiert selbst (Fenster schrumpfen, eigener Crossfade).
+-- Hyprlands Layer-Fade darüber lässt es ruckeln und doppelt blenden.
+hl.layer_rule({ match = { namespace = "mission-control" }, no_anim = true, animation = "none" })
