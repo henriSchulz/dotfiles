@@ -15,6 +15,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 log "Omarchy shell plugins"
 
 need_cmd omarchy "run this on a provisioned Omarchy system"
+need_cmd rsync "run install/10-packages.sh first"
 plugin_dir="$HOME/.config/omarchy/plugins"
 
 # Upstream plugins: "<plugin-id> <git-url>"

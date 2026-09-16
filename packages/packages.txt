@@ -7,8 +7,11 @@
 #
 # One package per line. Comments and blank lines are ignored.
 
-# Required by this repo
+# Required by this repo. rsync is on this machine only because
+# kernel-modules-hook happens to depend on it — steps 30, 40 and 80 use it
+# directly, so it gets named here rather than left to chance.
 stow
+rsync
 
 # Editors / dev
 visual-studio-code-bin

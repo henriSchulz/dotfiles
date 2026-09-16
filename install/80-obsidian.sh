@@ -20,6 +20,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 log "Obsidian"
 
+need_cmd rsync "run install/10-packages.sh first"
 have obsidian || warn "obsidian is not installed — restoring its config anyway"
 
 src_root="$DOTFILES_ROOT/obsidian/home"
