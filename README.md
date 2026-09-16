@@ -40,6 +40,8 @@ differences were committed:
 | `omarchy/keystroke.json`, `omadock.json`, `dock.json`, `defaults/agent` | small real settings |
 | `omarchy/plugins/henri.menu/` | 658-line divergence from built-in `omarchy.menu`, plus its own `FuzzySearch.js` |
 | `omarchy/plugins/henri.idle/` | clone of `omarchy.idle` that launches the themed screensaver instead of the stock one |
+| `omarchy/plugins/henri.bar/` | clone of `omarchy.bar`: translucent macOS-style menu bar; `required` props made plain so it loads as a plugin bar |
+| `omarchy/plugins/henri.workspaces/` | clone of `omarchy.workspaces` that shows only occupied workspaces |
 | `omarchy/themes/cupertino{,-dark}`, `img-7075` | hand-built, no upstream remote |
 | `obsidian/home/**/.obsidian/` | vault settings, 4 community plugins, the `Crafted` and `Things` themes |
 | `icloud-photos/config.toml` | Apple ID and cache limits; the password is in the keyring, not here |
@@ -64,22 +66,11 @@ differences were committed:
 - `branding/about.txt`, `branding/screensaver.txt` — copies of the package's
   own `icon.txt` and `logo.txt`.
 - `themes/aether` — empty; `aether` is a pacman package, not a user theme.
-- The Shibumi suite's 25 `hancore.shibumi.*` plugin directories — the suite
-  installer owns them, see step 60.
 - Omarchy's own base packages, plus `efibootmgr`, `intel-ucode`, `mkinitcpio`
   and `sudo`. The Omarchy installer owns those; reinstalling boot packages from
   a dotfiles repo is the wrong layer.
 - No hyprpm step: the hyprpm state store was never initialised on this machine,
   so there are no plugins to restore.
-
-## Ordering: why `shell.json` is restored last
-
-`shibumi-suite install` (step 60) rewrites `~/.config/omarchy/shell.json` to
-the suite's own default layout. Anything written there earlier is lost. So the
-file is restored *after* Shibumi, in step 70 — that is the only reason that
-step is separate from step 50. It carries the slot assignment (`henri.menu` in
-the left group), the widgets switched off, the accent and radius, and the idle
-timers (screensaver 150s, lock 300s).
 
 ## Obsidian
 
@@ -139,11 +130,10 @@ install/
   lib.sh                    logging, DRY_RUN, stow-conflict handling
   10-packages.sh            yay -S --noconfirm --needed
   20-stow.sh                symlink stow/ into $HOME
-  30-omarchy-plugins.sh     re-add upstream plugins; sync henri.menu, henri.idle
+  30-omarchy-plugins.sh     re-add upstream plugins; sync the henri.* plugins
   40-omarchy-themes.sh      install themes, place wallpaper, apply theme
   50-omarchy-config.sh      copy keystroke/dock settings into place
-  60-shibumi.sh             install/update the Shibumi shell suite
-  70-omarchy-shell.sh       restore shell.json — after Shibumi, on purpose
+  70-omarchy-shell.sh       restore shell.json, restart the shell
   80-obsidian.sh            vault config, plugins, themes, vault registration
   90-icloud-photos.sh       clone the client, build its venv, seed its config
 packages/packages.txt

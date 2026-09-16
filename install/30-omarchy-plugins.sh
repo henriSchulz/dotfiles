@@ -1,11 +1,9 @@
 #!/bin/bash
 # Install Omarchy shell plugins.
 #
-# Git-backed plugins are re-added from upstream. henri.menu and henri.idle are
+# Git-backed plugins are re-added from upstream. The henri.* plugins are
 # modified clones of built-in Omarchy plugins, so they ship as source in this
 # repo and are copied into place instead.
-#
-# The Shibumi suite (hancore.shibumi.*) is NOT here — 60-shibumi.sh owns it.
 #
 # Enablement and bar placement are NOT set here — omarchy/shell.json owns that
 # and is restored by 70-omarchy-shell.sh, which runs last of all.
@@ -47,6 +45,8 @@ done
 #   henri.menu  — clone of omarchy.menu, a Spotlight-style launcher
 #   henri.idle  — clone of omarchy.idle, drives omarchy-screensaver-themed
 #                 (that script comes from the `bin` stow package, step 20)
+#   henri.bar   — clone of omarchy.bar: translucent macOS-style menu bar
+#   henri.workspaces — clone of omarchy.workspaces, occupied workspaces only
 for src in "$DOTFILES_ROOT"/omarchy/plugins/*/; do
   [[ -d $src ]] || continue
   id="$(basename "$src")"

@@ -1,14 +1,12 @@
 #!/bin/bash
 # Restore shell.json — the bar layout, plugin enablement and idle timers.
 #
-# This runs LAST, and that ordering is the whole point of the step existing.
-# `shibumi-suite install` (step 60) rewrites shell.json to the suite's own
-# default layout, which would otherwise discard everything this file carries:
+# It carries:
 #
-#   - the v2Layout slot assignment (henri.menu sitting in the left group,
-#     omasettings/omaplug/activity-monitor in the center)
-#   - the widgets that are switched off (G7, G14, G15) and the units on G16
-#   - presentation: accent color01, large radius, borders on, frost off
+#   - henri.bar as the active bar: henri.workspaces on the left, status icons
+#     and the clock (24h, no weather) on the right
+#   - henri.menu enabled as a plugin, not a bar widget — a menu+widget plugin
+#     is only loaded while it is on the bar or listed under `plugins`
 #   - idle timers: screensaver after 150s, lock after 300s
 #   - omarchy.menu / omarchy.lock / omarchy.idle disabled in favour of
 #     henri.menu, lock-explorer and henri.idle

@@ -6,8 +6,8 @@
 # read-only stow symlink in that path causes write failures. This is the
 # "generate what Omarchy writes, link what only I write" split from README.md.
 #
-# shell.json is NOT here — the Shibumi installer in step 60 rewrites it, so it
-# has to be restored after that, by 70-omarchy-shell.sh.
+# shell.json is NOT here — 70-omarchy-shell.sh restores it and restarts the
+# shell, so the bar comes up with the plugins step 30 put in place.
 #
 # Deliberately excluded: omasettings.json, which pins a monitor profile
 # ("Messeltronik Dresden GmbH MD20461") belonging to one specific machine.
