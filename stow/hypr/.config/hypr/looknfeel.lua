@@ -52,3 +52,7 @@ hl.config({
 --     column_width = 0.97,
 --   },
 -- })
+
+-- Apple-artiger Workspace-Wechsel: weiches Gleiten statt hartem Sprung.
+hl.curve("appleSlide", { type = "bezier", points = { { 0.25, 1 }, { 0.5, 1 } } })
+hl.animation({ leaf = "workspaces", enabled = true, speed = 4, bezier = "appleSlide", style = "slide" })

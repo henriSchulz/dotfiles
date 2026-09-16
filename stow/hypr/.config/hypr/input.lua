@@ -63,3 +63,37 @@ hl.config({
     kb_options = "compose:caps,shift:both_capslock_cancel",
   },
 })
+
+-- 4-Finger-Wisch: Mission Control (hoch = öffnen/umschalten, runter = schließen).
+hl.gesture({
+  fingers = 4,
+  direction = "up",
+  action = function() hl.dispatch(hl.dsp.exec_cmd("omarchy-shell shell toggle io.github.andyweiboan.missioncontrol '{}'")) end,
+})
+hl.gesture({
+  fingers = 4,
+  direction = "down",
+  action = function() hl.dispatch(hl.dsp.exec_cmd("omarchy-shell shell hide io.github.andyweiboan.missioncontrol")) end,
+})
+
+-- 4-Finger-Wisch zur Seite: Workspace wechseln (folgt den Fingern).
+hl.gesture({ fingers = 4, direction = "horizontal", action = "workspace" })
+
+-- Wischgeste feiner abstimmen (fühlt sich eher wie macOS an).
+hl.config({
+  gestures = {
+    workspace_swipe_distance = 500,        -- längerer Weg = ruhigeres Mitgleiten
+    workspace_swipe_cancel_ratio = 0.2,    -- schon ab 1/5 des Wegs wird gewechselt
+    workspace_swipe_min_speed_to_force = 15, -- kurzer schneller Wisch reicht
+  },
+})
+
+-- Rechtsklick wie am Mac: mit 2 Fingern klicken oder tippen.
+hl.config({
+  input = {
+    touchpad = {
+      clickfinger_behavior = true, -- 2 Finger drücken = Rechtsklick, 3 Finger = Mittelklick
+      tap_to_click = true,         -- Tippen = Klick, 2 Finger tippen = Rechtsklick
+    },
+  },
+})
