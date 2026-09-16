@@ -36,11 +36,14 @@ else
   run install -m 600 "$src" "$dest"
 fi
 
-# The shell hot-reloads shell.json, but plugins that were only just copied in
-# need a rescan before the bar can reference them.
-if have omarchy-shell; then
-  info "reloading the shell"
-  run omarchy-shell shell rescanPlugins || warn "rescan failed — run 'omarchy restart shell' by hand"
+# A full restart, not `omarchy-shell shell rescanPlugins`. shell.json itself
+# hot-reloads, but step 30 copies QML plugins in, and QML under
+# ~/.config/omarchy/plugins/ does not reload without a restart — neither a
+# rescan nor a setPluginEnabled toggle picks it up, whatever the shell README
+# says. Skipping this leaves the bar running the code it started with.
+if have omarchy-restart-shell; then
+  info "restarting the shell"
+  run omarchy-restart-shell || warn "restart failed (locked session?) — run 'omarchy restart shell' after unlocking"
 else
-  info "no running shell — the bar comes up on next login"
+  info "no shell on PATH — the bar comes up on next login"
 fi
