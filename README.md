@@ -40,6 +40,7 @@ differences were committed:
 | `stow/pipewire/.config/pipewire/easyeffects-client.conf` | PipeWire client config for EasyEffects without RTKit — with RTKit the kernel SIGKILLs it at startup (RLIMIT_RTTIME). Used by `easyeffects-service` in `stow/bin`, started from `autostart.lua` |
 | `stow/git/.config/git/config` | identity + credential helper |
 | `stow/claude-quick/` | `Claude` app-launcher entry (Claude logo): `claude-quick` opens Claude Code in `~` with `--model sonnet` and pre-accepts the trust dialog for `~` |
+| `stow/icons/.local/share/icons/hicolor/scalable/apps/org.gnome.Nautilus.svg` | Files icon override (Yaru-blue folder, PNG wrapped in an SVG). Nautilus ships no icon in the active theme, so lookups fell through to the blue filing cabinet in `/usr/share/icons/hicolor`. The shell's icon index scans `~/.local/share/icons` first and prefers SVG over PNG, so a scalable file here wins |
 | `omarchy/shell.json` | bar layout, widget order, idle timers |
 | `omarchy/keystroke.json`, `omadock.json`, `dock.json`, `defaults/agent` | small real settings |
 | `omarchy/plugins/henri.menu/` | 658-line divergence from built-in `omarchy.menu`, plus its own `FuzzySearch.js` |

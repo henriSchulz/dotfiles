@@ -4,7 +4,7 @@
   "appGroups": [],
   "autohide": true,
   "intelligentAutohide": true,
-  "showAppsButton": true,
+  "showAppsButton": false,
   "showTooltips": true,
   "showMinimizedTiles": true,
   "hoverEffect": "zoom",

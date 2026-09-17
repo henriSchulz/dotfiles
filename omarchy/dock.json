@@ -1,7 +1,10 @@
 {
   "pinned": [
+    "org.gnome.Nautilus",
     "chromium",
+    "org.gnome.Geary",
+    "obsidian",
     "foot",
-    "org.gnome.Nautilus"
+    "eu.betterbird.Betterbird"
   ]
 }
