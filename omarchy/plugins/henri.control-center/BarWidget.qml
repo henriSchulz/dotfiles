@@ -109,7 +109,49 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "󰔡"
+    // The macOS Control Center mark: two stacked toggle capsules, knob left
+    // on the top one and right on the bottom one. No Nerd Font glyph matches
+    // it, so it is drawn.
+    iconComponent: Component {
+      Item {
+        readonly property color ink: button.foreground
+        readonly property real stroke: Math.max(1.2, Style.spaceReal(1.35))
+        readonly property real pillW: Style.spaceReal(15)
+        readonly property real pillH: Style.spaceReal(7)
+        readonly property real pillGap: Style.spaceReal(2)
+
+        Repeater {
+          model: 2
+          Item {
+            id: capsule
+            required property int index
+            x: Math.round((parent.width - parent.pillW) / 2)
+            y: Math.round((parent.height - parent.pillH * 2 - parent.pillGap) / 2 + index * (parent.pillH + parent.pillGap))
+            width: parent.pillW
+            height: parent.pillH
+
+            Rectangle {
+              anchors.fill: parent
+              radius: height / 2
+              color: "transparent"
+              border.width: parent.parent.stroke
+              border.color: parent.parent.ink
+              antialiasing: true
+            }
+            Rectangle {
+              readonly property real inset: 0
+              width: parent.height - inset * 2
+              height: width
+              radius: width / 2
+              y: inset
+              x: capsule.index === 0 ? inset : parent.width - width - inset
+              color: parent.parent.ink
+              antialiasing: true
+            }
+          }
+        }
+      }
+    }
     tooltipText: root.opened ? "" : "Kontrollzentrum"
     onPressed: function(b) { root.togglePanel() }
   }
