@@ -1,9 +1,10 @@
 #!/bin/bash
 # Keep workspaces 1–10 free of gaps: with windows on 1, 3 and 4, the windows on
 # 3 move to 2 and those on 4 move to 3. Runs as a listener on Hyprland's event
-# socket and compacts whenever a window opens, closes or changes workspace.
-# A focused empty workspace is left alone; when the focused workspace's windows
-# move, focus moves with them.
+# socket and compacts whenever a window opens, closes or changes workspace, and
+# whenever the focused workspace changes. The focused workspace keeps its slot
+# while it is empty, so windows from higher workspaces only move down once you
+# leave it; when the focused workspace's windows move, focus moves with them.
 #
 #   hypr-workspace-compact          listen (started from hypr/autostart.lua)
 #   hypr-workspace-compact --once   compact once and exit
@@ -14,7 +15,12 @@ compact() {
   state=$(hyprctl -j clients) || return 0
   focused=$(hyprctl -j activeworkspace | jq -r '.id') || return 0
 
-  for id in $(jq -r '[.[] | .workspace.id | select(. >= 1 and . <= 10)] | unique | .[]' <<<"$state"); do
+  for id in $(jq -r --argjson f "$focused" '[(.[] | .workspace.id), $f | select(. >= 1 and . <= 10)] | unique | .[]' <<<"$state"); do
+    if (( id == focused )) && ! jq -e --argjson ws "$id" 'any(.[]; .workspace.id == $ws)' <<<"$state" >/dev/null; then
+      # Focused and empty: reserve its slot instead of filling it.
+      target=$((id + 1))
+      continue
+    fi
     if (( id != target )); then
       for addr in $(jq -r --argjson ws "$id" '.[] | select(.workspace.id == $ws) | .address' <<<"$state"); do
         lua+="hl.dispatch(hl.dsp.window.move({ workspace = '$target', follow = false, window = 'address:$addr' })); "
@@ -42,7 +48,7 @@ socket="${XDG_RUNTIME_DIR:-/tmp}/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock
 compact
 socat -u "UNIX-CONNECT:$socket" - | while IFS= read -r event; do
   case $event in
-    openwindow\>\>* | closewindow\>\>* | movewindowv2\>\>*)
+    openwindow\>\>* | closewindow\>\>* | movewindowv2\>\>* | workspacev2\>\>* | focusedmonv2\>\>*)
       # Drain the rest of a burst (including our own moves) before compacting.
       while IFS= read -r -t 0.15 _; do :; done
       compact
