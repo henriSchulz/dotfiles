@@ -136,3 +136,22 @@ hl.config({
     },
   },
 })
+
+-- Ziehen ohne Drücken, damit die Wippen-Mechanik des XPS-Trackpads
+-- (oben schwer bis gar nicht klickbar) beim Markieren keine Rolle spielt.
+--   * 3 Finger auflegen und bewegen = gedrückt halten und ziehen
+--     (Text markieren, Screenshot-Bereich aufziehen, Fenster verschieben).
+--     Kurz absetzen und weiterziehen geht; losgelassen wird nach ~0,7 s.
+--   * Doppeltippen und beim zweiten Tipp liegen lassen = ziehen; mit
+--     drag_lock darf der Finger kurz hoch, um nachzusetzen.
+-- Beschleunigungskurve nur fürs Trackpad: langsame Bewegungen werden
+-- gebremst (präzises Markieren), schnelle deutlich beschleunigt – wie am Mac.
+-- Punkte = Ausgabetempo bei Eingabetempo 0, 1, 2 … (Einheiten/ms).
+-- Zu schnell/langsam? Alle Punkte ab dem zweiten gleichmäßig skalieren.
+hl.device({
+  name = "dll0945:00-06cb:cde6-touchpad",
+  drag_3fg = 1,
+  tap_and_drag = true,
+  drag_lock = 1,
+  accel_profile = "custom 1 0 0.7 1.8 3.3 5.2 7.5 10.2",
+})
