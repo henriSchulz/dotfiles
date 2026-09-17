@@ -86,6 +86,35 @@ hl.gesture({
 })
 
 -- 4-Finger-Wisch zur Seite: Workspace wechseln (folgt den Fingern).
+-- Solange Mission Control offen ist, tauscht das Plugin diese Geste über
+-- mission_control_swipe_mode(true) gegen eine Variante, die die Bewegung ans
+-- Plugin schickt – dort gleitet dann die Übersicht zur Seite wie bei macOS.
+-- Beim Schließen kommt mit mission_control_swipe_mode(false) die normale
+-- Workspace-Geste zurück. Ein Reload setzt beides auf den Normalzustand.
+local function mc_hswipe_event(phase, value, time_ms)
+  hl.dispatch(hl.dsp.event(string.format("mission-control-hswipe:%s:%s:%d",
+    phase, value, math.floor(time_ms or 0))))
+end
+local mc_hswipe_active = false
+function mission_control_swipe_mode(open)
+  open = open and true or false
+  if open == mc_hswipe_active then return end
+  mc_hswipe_active = open
+  hl.gesture({ fingers = 4, direction = "horizontal", action = "unset" })
+  if open then
+    hl.gesture({
+      fingers = 4,
+      direction = "horizontal",
+      action = {
+        start = function(e) mc_hswipe_event("start", string.format("%.3f", e.delta and e.delta.x or 0), e.time_ms) end,
+        update = function(e) mc_hswipe_event("update", string.format("%.3f", e.delta and e.delta.x or 0), e.time_ms) end,
+        finish = function(e) mc_hswipe_event("end", e.cancelled and 1 or 0, e.time_ms) end,
+      },
+    })
+  else
+    hl.gesture({ fingers = 4, direction = "horizontal", action = "workspace" })
+  end
+end
 hl.gesture({ fingers = 4, direction = "horizontal", action = "workspace" })
 
 -- Wischgeste feiner abstimmen (fühlt sich eher wie macOS an).
