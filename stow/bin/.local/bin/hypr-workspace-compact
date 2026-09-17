@@ -5,6 +5,9 @@
 # whenever the focused workspace changes. The focused workspace keeps its slot
 # while it is empty, so windows from higher workspaces only move down once you
 # leave it; when the focused workspace's windows move, focus moves with them.
+# After a workspace switch it waits for the slide animation to finish, and it
+# renumbers the focused workspace without animation, since nothing visibly
+# changes and a second slide would cut into the first.
 #
 #   hypr-workspace-compact          listen (started from hypr/autostart.lua)
 #   hypr-workspace-compact --once   compact once and exit
@@ -31,8 +34,22 @@ compact() {
   done
 
   [[ -n $lua ]] || return 0
-  [[ -n $follow ]] && lua+="hl.dispatch(hl.dsp.focus({ workspace = '$follow' }))"
+  [[ -z $follow ]] && { hyprctl eval "$lua" >/dev/null || true; return 0; }
+
+  # Renumber the focused workspace instantly, then restore its animation.
+  local restore
+  restore=$(hyprctl -j animations | jq -r '.[0][] | select(.name == "workspaces" and .overridden and .enabled)
+    | "hl.animation({ leaf = \"workspaces\", enabled = true, speed = \(.speed), bezier = \"\(.bezier)\", style = \"\(.style)\" })"') || restore=""
+  [[ -n $restore ]] && lua="hl.animation({ leaf = 'workspaces', enabled = false }); $lua"
+  lua+="hl.dispatch(hl.dsp.focus({ workspace = '$follow' }))"
   hyprctl eval "$lua" >/dev/null || true
+  [[ -n $restore ]] && { hyprctl eval "$restore" >/dev/null || true; }
+  return 0
+}
+
+# Workspace slide duration (speed is in deciseconds) plus a little margin.
+settle_delay() {
+  hyprctl -j animations | jq -r '[.[0][] | select(.name == "workspaces" and .enabled) | .speed * 0.1 + 0.1] | first // 0.15' 2>/dev/null || echo 0.15
 }
 
 if [[ ${1:-} == --once ]]; then
@@ -46,11 +63,18 @@ flock -n 9 || exit 0
 
 socket="${XDG_RUNTIME_DIR:-/tmp}/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
 compact
+is_switch() { [[ $1 == workspacev2\>\>* || $1 == focusedmonv2\>\>* ]]; }
+
 socat -u "UNIX-CONNECT:$socket" - | while IFS= read -r event; do
   case $event in
     openwindow\>\>* | closewindow\>\>* | movewindowv2\>\>* | workspacev2\>\>* | focusedmonv2\>\>*)
-      # Drain the rest of a burst (including our own moves) before compacting.
-      while IFS= read -r -t 0.15 _; do :; done
+      # Drain the rest of a burst (including our own moves) before compacting;
+      # after a workspace switch, wait until its animation is done.
+      delay=0.15
+      is_switch "$event" && delay=$(settle_delay)
+      while IFS= read -r -t "$delay" event; do
+        is_switch "$event" && delay=$(settle_delay)
+      done
       compact
       ;;
   esac
