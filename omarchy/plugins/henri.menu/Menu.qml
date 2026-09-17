@@ -235,7 +235,7 @@ Item {
           base = root.baseNameOf(expanded)
         }
       }
-      return { mode: "path", dir: dir, pattern: root.escapeRegex(base), rank: base }
+      return { mode: "path", dir: dir, pattern: root.escapeRegex(base), rank: base, showHidden: base.charAt(0) === "." }
     }
 
     var tokens = raw.split(/\s+/).filter(function(token) { return token.length > 0 })
@@ -261,7 +261,9 @@ Item {
   //                    anchored to the home root, "foo" matches at any depth
   //   defaultExcludes  false drops the built-in list above
   //   hidden           false skips dotfiles and dot-directories
-  // Browsing a typed path (" ~/x/") ignores all of this on purpose.
+  // Browsing a folder (the bare " " listing or a typed path) hides the same
+  // excluded entries and dotfiles; typing a "." brings dotfiles back, and
+  // browsing *into* an excluded folder still lists what is inside it.
   property var fileSearchConfig: ({})
 
   function fileSearchRoots() {
@@ -336,8 +338,39 @@ Item {
     fileScanProc.running = true
   }
 
+  function globToRegex(glob) {
+    var body = String(glob).replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")
+    return new RegExp("^" + body + "$")
+  }
+
+  // fd applies the excludes during a name search; a one-level listing runs
+  // without them, so the same rules are checked here per row.
+  function browseFilter() {
+    var home = root.homeDir()
+    var anchored = ({})
+    var names = []
+    var list = root.fileScanExcludeList()
+    for (var i = 0; i < list.length; i++) {
+      var pattern = list[i].replace(/\/+$/, "")
+      if (!pattern) continue
+      if (pattern.charAt(0) === "/") anchored[home + pattern] = true
+      else if (pattern.indexOf("/") < 0) {
+        try { names.push(root.globToRegex(pattern)) } catch (e) {}
+      }
+    }
+    return function(row) {
+      if (anchored[row.path]) return false
+      for (var j = 0; j < names.length; j++) if (names[j].test(row.name)) return false
+      return true
+    }
+  }
+
   function applyFileRows(raw) {
     if (!root.opened || !root.fileSearchActive) return
+
+    var plan = root.fileScanPlan(root.fileScanQuery)
+    var browsing = plan.mode === "path"
+    var keep = browsing ? root.browseFilter() : null
 
     var lines = String(raw || "").split("\n")
     var rows = []
@@ -346,7 +379,10 @@ Item {
       if (tab < 0) continue
       var path = lines[i].slice(tab + 1)
       if (!path) continue
-      rows.push({ isDir: lines[i].slice(0, tab) === "d", path: path, name: root.baseNameOf(path) })
+      var row = { isDir: lines[i].slice(0, tab) === "d", path: path, name: root.baseNameOf(path) }
+      if (browsing && !plan.showHidden && row.name.charAt(0) === ".") continue
+      if (browsing && !keep(row)) continue
+      rows.push(row)
     }
 
     root.fileRows = rows
