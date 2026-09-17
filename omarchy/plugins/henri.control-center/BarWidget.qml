@@ -17,6 +17,11 @@ BarWidget {
 
   function open() { if (panelLoader.item) panelLoader.item.open() }
   function close() { if (panelLoader.item) panelLoader.item.close() }
+  function openDisplay() {
+    if (!panelLoader.item) return
+    panelLoader.item.displayExpanded = true
+    panelLoader.item.open()
+  }
   function togglePanel() { if (panelLoader.item) panelLoader.item.toggle() }
   function closeForPopoutSwitch() { if (panelLoader.item) panelLoader.item.closeForPopoutSwitch() }
 
@@ -27,6 +32,47 @@ BarWidget {
     target.settings = root.settings
     target.anchorItem = button
     target.hostWidget = root
+    injectPluginManager()
+  }
+
+  // ---- Plugin manager (omaplug), reachable only from the Control Center.
+  //      omaplug is a bar widget whose popup anchors to its own bar button;
+  //      it stays off the bar, so its Panel.qml is hosted here instead,
+  //      anchored to the Control Center button. `pluginHost` is its popout
+  //      identity, separate from ours so the bar's one-popup coordinator
+  //      treats the two as different popups.
+  readonly property string pluginManagerSource: Qt.resolvedUrl("../omaplug/Panel.qml")
+
+  function injectPluginManager() {
+    var target = pluginLoader.item
+    if (!target) return
+    target.bar = root.bar
+    target.anchorItem = button
+    target.hostWidget = pluginHost
+  }
+
+  function openPluginManager() {
+    if (pluginLoader.item) pluginLoader.item.open()
+  }
+
+  QtObject {
+    id: pluginHost
+    readonly property bool opened: pluginLoader.item ? pluginLoader.item.opened === true : false
+    readonly property bool popoutSwitchClosing: pluginLoader.item ? pluginLoader.item.popoutSwitchClosing === true : false
+    function open() { if (pluginLoader.item) pluginLoader.item.open() }
+    function close() { if (pluginLoader.item) pluginLoader.item.close() }
+    function closeForPopoutSwitch() { if (pluginLoader.item) pluginLoader.item.closeForPopoutSwitch() }
+  }
+
+  Loader {
+    id: pluginLoader
+    active: true
+    source: root.pluginManagerSource
+    visible: false
+    onLoaded: {
+      root.injectPluginManager()
+      Qt.callLater(root.injectPluginManager)
+    }
   }
 
   implicitWidth: button.implicitWidth
@@ -54,6 +100,9 @@ BarWidget {
     function show(): void { root.open() }
     function hide(): void { root.close() }
     function toggle(): void { root.togglePanel() }
+    // Opens straight onto the expanded display settings.
+    function display(): void { root.openDisplay() }
+    function plugins(): void { root.openPluginManager() }
   }
 
   BarIconButton {

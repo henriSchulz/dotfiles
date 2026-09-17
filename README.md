@@ -46,9 +46,9 @@ differences were committed:
 | `omarchy/plugins/henri.idle/` | clone of `omarchy.idle` that launches the themed screensaver instead of the stock one |
 | `omarchy/plugins/henri.bar/` | clone of `omarchy.bar`: translucent macOS-style menu bar; `required` props made plain so it loads as a plugin bar |
 | `omarchy/plugins/henri.workspaces/` | clone of `omarchy.workspaces` that shows only occupied workspaces |
-| `omarchy/plugins/henri.clock/` | clone of `omarchy.clock` with German day and month names in the bar and the calendar popup |
+| `omarchy/plugins/henri.clock/` | clone of `omarchy.clock` with German day and month names in the bar and the calendar popup, which opens under the clock instead of centred |
 | `omarchy/plugins/henri.active-window/` | clone of `omarchy.active-window`: shows the app name instead of the window title; a click opens that app's settings via `app-settings` |
-| `omarchy/plugins/henri.control-center/` | own plugin: macOS-style Control Center popup in the bar (Wi-Fi, Bluetooth, AirDrop via LocalSend, Focus/DND, Night Shift, Stay Awake, display + sound sliders, Now Playing); round icon toggles, label opens the stock detail panel |
+| `omarchy/plugins/henri.control-center/` | own plugin: macOS-style Control Center popup in the bar (Wi-Fi, Bluetooth, AirDrop via LocalSend, Focus/DND, Night Shift, Stay Awake, display + sound sliders, Now Playing); round icon toggles, label opens the stock detail panel; the display tile expands to text size, scale presets and monitors; hosts `omaplug`'s panel ("Plugins verwalten"), which is deliberately kept off the bar |
 | `omarchy/themes/cupertino{,-dark}`, `img-7075` | hand-built, no upstream remote |
 | `obsidian/home/**/.obsidian/` | vault settings, 4 community plugins, the `Crafted` and `Things` themes |
 | `icloud-photos/config.toml` | Apple ID and cache limits; the password is in the keyring, not here |

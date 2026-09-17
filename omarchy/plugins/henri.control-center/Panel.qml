@@ -6,6 +6,7 @@ import Quickshell.Networking
 import Quickshell.Services.Pipewire
 import qs.Commons
 import qs.Ui
+import "Display.js" as Display
 
 // macOS-style Control Center. Everything here drives the same backends the
 // stock panels use (Quickshell.Networking, Bluetooth, Pipewire, the shell's
@@ -100,6 +101,36 @@ Panel {
   property string internalMonitor: ""
   property int queuedBrightness: -1
 
+  // ---- Display settings (the stock omarchy.monitor panel, folded in):
+  //      text size, scale presets for the focused display, and on/off per
+  //      monitor when more than one is connected.
+  property string focusedMonitor: ""
+  property string monitorScale: ""
+  property var displays: []
+  property bool displayExpanded: false
+  readonly property var focusedDisplay: {
+    for (var i = 0; i < displays.length; i++) if (displays[i] && displays[i].focused) return displays[i]
+    return displays.length ? displays[0] : null
+  }
+  readonly property var scalePresets: focusedDisplay
+    ? Display.availableScales(["1", "1.25", "1.6", "2", "3", "4"], focusedDisplay.width, focusedDisplay.height)
+    : []
+  readonly property int enabledDisplayCount: {
+    var n = 0
+    for (var i = 0; i < displays.length; i++) if (displays[i] && displays[i].enabled) n++
+    return n
+  }
+  // Same notches as the stock panel; the CLI takes any px in 9–20.
+  readonly property var textSizeStops: [9, 10, 11, 12, 14, 16, 20]
+  property int textSizePreviewIndex: -1
+  readonly property int textSizeIndex: {
+    if (textSizePreviewIndex >= 0) return textSizePreviewIndex
+    var best = 0
+    for (var i = 0; i < textSizeStops.length; i++)
+      if (Math.abs(textSizeStops[i] - Style.font.baseSize) < Math.abs(textSizeStops[best] - Style.font.baseSize)) best = i
+    return best
+  }
+
   // ---- AirDrop stand-in: LocalSend
   property bool localsendRunning: false
 
@@ -108,6 +139,18 @@ Panel {
   function openDetail(pluginId) {
     close()
     run("sleep 0.15; omarchy-shell shell toggle " + pluginId)
+  }
+
+  // Hand over to the plugin manager hosted by BarWidget.qml. Wait for our own
+  // popup to finish closing so its focus grab is gone before the next opens.
+  function openPluginManager() {
+    close()
+    pluginManagerDelay.restart()
+  }
+  Timer {
+    id: pluginManagerDelay
+    interval: 180
+    onTriggered: if (root.hostWidget) root.hostWidget.openPluginManager()
   }
 
   function setBrightness(value) {
@@ -124,7 +167,32 @@ Panel {
     if (!localsendProc.running) localsendProc.running = true
   }
 
-  onOpenedChanged: if (opened) refresh()
+  function setScale(scale) {
+    monitorScale = Display.cleanScale(scale, focusedDisplay.width, focusedDisplay.height)
+    actionProc.command = ["omarchy-hyprland-monitor-scaling", String(scale)]
+    if (!actionProc.running) actionProc.running = true
+  }
+
+  function setTextSizeIndex(index) {
+    var i = Math.max(0, Math.min(textSizeStops.length - 1, Math.round(index)))
+    if (i === textSizeIndex) return
+    textSizePreviewIndex = i
+    textSizeProc.command = ["omarchy-display-text-size", String(textSizeStops[i])]
+    if (!textSizeProc.running) textSizeProc.running = true
+  }
+
+  function toggleDisplay(display) {
+    if (!display || !display.name) return
+    if (display.enabled && enabledDisplayCount <= 1) return
+    actionProc.command = ["hyprctl", "keyword", "monitor",
+      display.name + (display.enabled ? ",disable" : ",preferred,auto,auto")]
+    if (!actionProc.running) actionProc.running = true
+  }
+
+  onOpenedChanged: {
+    if (opened) refresh()
+    else displayExpanded = false
+  }
 
   Process {
     id: stateProc
@@ -137,6 +205,9 @@ Panel {
         root.brightnessAvailable = b !== "" && b !== "unavailable"
         if (root.brightnessAvailable) root.brightness = Math.max(0, Math.min(100, parseInt(b, 10)))
         root.internalMonitor = String(lines[1] || "").trim()
+        root.focusedMonitor = String(lines[5] || "").trim()
+        root.monitorScale = Display.normalizeScale(String(lines[6] || "").trim())
+        root.displays = Display.parseDisplays(String(lines[7] || "[]").trim())
       }
     }
   }
@@ -144,6 +215,23 @@ Panel {
   Process {
     id: brightnessProc
     onExited: if (root.queuedBrightness >= 0) root.setBrightness(root.queuedBrightness)
+  }
+
+  Process {
+    id: actionProc
+    onExited: root.refresh()
+  }
+
+  // Style picks the new base size up through its own file watch; drop the
+  // preview once it has landed so the slider follows the live value again.
+  Process {
+    id: textSizeProc
+    onExited: textSizeSettle.restart()
+  }
+  Timer {
+    id: textSizeSettle
+    interval: 600
+    onTriggered: root.textSizePreviewIndex = -1
   }
 
   Process {
@@ -285,69 +373,146 @@ Panel {
   }
 
   // Wide tile with a heading and a slider, like Display / Sound on macOS.
+  // With `expandable`, the heading gets a chevron and toggles `expanded`,
+  // which reveals whatever children are placed inside the tile.
   component SliderTile: Tile {
     id: st
     property string heading: ""
     property string icon: ""
     property real value: 0
+    property bool expandable: false
+    property bool expanded: false
+    default property alias extra: extraColumn.data
     signal moved(real value)
     signal iconClicked()
     signal headingClicked()
     width: root.panelWidth
-    height: Style.space(66)
+    height: stColumn.implicitHeight + Style.space(15)
+    clip: true
+    Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
-    Text {
-      id: stHeading
+    Column {
+      id: stColumn
       anchors.left: parent.left
-      anchors.top: parent.top
-      anchors.leftMargin: Style.space(12)
-      anchors.topMargin: Style.space(9)
-      text: st.heading
-      color: root.fg
-      font.family: Style.font.family
-      font.pixelSize: Style.font.subtitle
-      font.weight: Font.DemiBold
-      MouseArea {
-        anchors.fill: parent
-        cursorShape: Qt.PointingHandCursor
-        onClicked: st.headingClicked()
-      }
-    }
-    Text {
-      id: stIcon
-      anchors.left: parent.left
-      anchors.leftMargin: Style.space(12)
-      anchors.verticalCenter: stSlider.verticalCenter
-      width: Style.space(20)
-      text: st.icon
-      color: root.fg
-      font.family: root.iconFont
-      font.pixelSize: Style.font.iconLarge
-      MouseArea {
-        anchors.fill: parent
-        anchors.margins: -Style.space(4)
-        cursorShape: Qt.PointingHandCursor
-        onClicked: st.iconClicked()
-      }
-    }
-    PanelSlider {
-      id: stSlider
-      anchors.left: stIcon.right
       anchors.right: parent.right
-      anchors.bottom: parent.bottom
-      anchors.leftMargin: Style.space(6)
+      anchors.top: parent.top
+      anchors.topMargin: Style.space(9)
+      anchors.leftMargin: Style.space(12)
       anchors.rightMargin: Style.space(14)
-      anchors.bottomMargin: Style.space(6)
-      bar: root.bar
-      minimum: 0
-      maximum: 1
-      step: 0.05
-      value: st.value
-      fillColor: root.fg
-      knobColor: root.fg
-      trackColor: root.circleOff
-      tickColor: "transparent"
-      onMoved: function(v) { st.moved(v) }
+      spacing: Style.space(4)
+
+      Item {
+        width: parent.width
+        height: stHeading.implicitHeight
+
+        Text {
+          id: stHeading
+          text: st.heading
+          color: root.fg
+          font.family: Style.font.family
+          font.pixelSize: Style.font.subtitle
+          font.weight: Font.DemiBold
+        }
+        Text {
+          visible: st.expandable
+          anchors.right: parent.right
+          anchors.verticalCenter: stHeading.verticalCenter
+          text: "󰅂"
+          rotation: st.expanded ? 90 : 0
+          color: root.dimText
+          font.family: root.iconFont
+          font.pixelSize: Style.font.icon
+          Behavior on rotation { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        }
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          onClicked: st.headingClicked()
+        }
+      }
+
+      Item {
+        width: parent.width
+        height: stSlider.implicitHeight
+
+        Text {
+          id: stIcon
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          width: Style.space(20)
+          text: st.icon
+          color: root.fg
+          font.family: root.iconFont
+          font.pixelSize: Style.font.iconLarge
+          MouseArea {
+            anchors.fill: parent
+            anchors.margins: -Style.space(4)
+            cursorShape: Qt.PointingHandCursor
+            onClicked: st.iconClicked()
+          }
+        }
+        PanelSlider {
+          id: stSlider
+          anchors.left: stIcon.right
+          anchors.right: parent.right
+          anchors.leftMargin: Style.space(6)
+          anchors.verticalCenter: parent.verticalCenter
+          bar: root.bar
+          minimum: 0
+          maximum: 1
+          step: 0.05
+          value: st.value
+          fillColor: root.fg
+          knobColor: root.fg
+          trackColor: root.circleOff
+          tickColor: "transparent"
+          onMoved: function(v) { st.moved(v) }
+        }
+      }
+
+      Column {
+        id: extraColumn
+        width: parent.width
+        visible: st.expanded
+        spacing: Style.space(8)
+        topPadding: Style.space(4)
+      }
+    }
+  }
+
+  // Small caps section label inside an expanded tile.
+  component SectionLabel: Text {
+    color: root.dimText
+    font.family: Style.font.family
+    font.pixelSize: Style.font.caption
+    font.capitalization: Font.AllUppercase
+    font.letterSpacing: 0.6
+  }
+
+  // Pill button used for the scale presets.
+  component Pill: Rectangle {
+    id: pill
+    property string label: ""
+    property bool selected: false
+    signal clicked()
+    height: Style.space(26)
+    radius: height / 2
+    color: selected ? root.circleOn : pillMouse.containsMouse ? root.tileHover : root.circleOff
+    Behavior on color { ColorAnimation { duration: 120 } }
+    Text {
+      anchors.centerIn: parent
+      text: pill.label
+      color: pill.selected ? root.onIcon : root.fg
+      font.family: Style.font.family
+      font.pixelSize: Style.font.bodySmall
+      font.weight: pill.selected ? Font.DemiBold : Font.Normal
+    }
+    MouseArea {
+      id: pillMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: pill.clicked()
     }
   }
 
@@ -473,13 +638,128 @@ Panel {
       }
 
       SliderTile {
-        visible: root.brightnessAvailable
+        visible: root.brightnessAvailable || root.displays.length > 0
         heading: "Bildschirm"
         icon: root.brightness < 40 ? "󰃞" : root.brightness < 75 ? "󰃟" : "󰃠"
         value: root.brightness / 100
+        expandable: true
+        expanded: root.displayExpanded
+        onHeadingClicked: root.displayExpanded = !root.displayExpanded
         onMoved: function(v) { root.setBrightness(v * 100) }
-        onHeadingClicked: root.openDetail("omarchy.monitor")
-        onIconClicked: root.openDetail("omarchy.monitor")
+
+        // ---- Text size
+        SectionLabel { text: "Textgröße · " + root.textSizeStops[root.textSizeIndex] + " px" }
+        Item {
+          width: parent.width
+          height: textSlider.implicitHeight
+          Text {
+            id: smallA
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: Style.space(20)
+            text: "A"
+            color: root.fg
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+          PanelSlider {
+            id: textSlider
+            anchors.left: smallA.right
+            anchors.right: bigA.left
+            anchors.leftMargin: Style.space(6)
+            anchors.rightMargin: Style.space(8)
+            anchors.verticalCenter: parent.verticalCenter
+            bar: root.bar
+            minimum: 0
+            maximum: root.textSizeStops.length - 1
+            step: 1
+            integer: true
+            tickCount: root.textSizeStops.length
+            tickColor: root.tileColor
+            value: root.textSizeIndex
+            fillColor: root.fg
+            knobColor: root.fg
+            trackColor: root.circleOff
+            onReleased: function(v) { root.setTextSizeIndex(v) }
+          }
+          Text {
+            id: bigA
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            text: "A"
+            color: root.fg
+            font.family: Style.font.family
+            font.pixelSize: Style.font.heading
+          }
+        }
+
+        // ---- Scale presets for the focused display
+        SectionLabel {
+          visible: root.focusedDisplay !== null
+          text: "Skalierung" + (root.displays.length > 1 && root.focusedMonitor ? " · " + root.focusedMonitor : "")
+                + (root.focusedDisplay && root.monitorScale
+                   ? " · wirkt wie " + Display.looksLike(root.monitorScale, root.focusedDisplay.width, root.focusedDisplay.height)
+                   : "")
+        }
+        Row {
+          visible: root.focusedDisplay !== null
+          width: parent.width
+          spacing: Style.space(5)
+          Repeater {
+            model: root.scalePresets
+            delegate: Pill {
+              required property string modelData
+              width: Math.floor((parent.width - parent.spacing * (root.scalePresets.length - 1)) / Math.max(1, root.scalePresets.length))
+              label: Display.formatScale(Display.cleanScale(modelData, root.focusedDisplay.width, root.focusedDisplay.height))
+              selected: Display.isActiveScale(modelData, root.monitorScale, root.focusedDisplay.width, root.focusedDisplay.height)
+              onClicked: if (!selected) root.setScale(modelData)
+            }
+          }
+        }
+
+        // ---- Monitors (only with more than one)
+        SectionLabel {
+          visible: root.displays.length > 1
+          text: "Monitore"
+        }
+        Repeater {
+          model: root.displays.length > 1 ? root.displays : []
+          delegate: Item {
+            required property var modelData
+            width: parent.width
+            height: Style.space(30)
+            opacity: modelData.enabled && root.enabledDisplayCount <= 1 ? 0.6 : 1
+            Text {
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              text: (modelData.focused ? "󰍹  " : "󰍺  ") + modelData.name
+                    + (modelData.width ? "   " + modelData.width + " × " + modelData.height : "")
+              color: root.fg
+              font.family: root.iconFont
+              font.pixelSize: Style.font.bodySmall
+            }
+            Pill {
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              width: Style.space(52)
+              label: modelData.enabled ? "An" : "Aus"
+              selected: modelData.enabled
+              onClicked: root.toggleDisplay(modelData)
+            }
+          }
+        }
+
+        Text {
+          text: "Weitere Display-Einstellungen …"
+          color: root.dimText
+          font.family: Style.font.family
+          font.pixelSize: Style.font.bodySmall
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.openDetail("omarchy.monitor")
+          }
+        }
       }
 
       SliderTile {
@@ -594,6 +874,43 @@ Panel {
               }
             }
           }
+        }
+      }
+
+      // Bottom row, like "Edit Controls" on macOS.
+      Tile {
+        width: root.panelWidth
+        height: Style.space(40)
+        hoverable: true
+        onClicked: root.openPluginManager()
+
+        Text {
+          id: pluginsIcon
+          anchors.left: parent.left
+          anchors.leftMargin: Style.space(14)
+          anchors.verticalCenter: parent.verticalCenter
+          text: "󰐱"
+          color: root.fg
+          font.family: root.iconFont
+          font.pixelSize: Style.font.iconLarge
+        }
+        Text {
+          anchors.left: pluginsIcon.right
+          anchors.leftMargin: Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          text: "Plugins verwalten"
+          color: root.fg
+          font.family: Style.font.family
+          font.pixelSize: Style.font.subtitle
+        }
+        Text {
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(14)
+          anchors.verticalCenter: parent.verticalCenter
+          text: "󰅂"
+          color: root.dimText
+          font.family: root.iconFont
+          font.pixelSize: Style.font.icon
         }
       }
     }
