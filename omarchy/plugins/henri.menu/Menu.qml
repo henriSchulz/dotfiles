@@ -488,7 +488,10 @@ Item {
   function openPath(path) {
     var target = String(path || "")
     if (!target) return
-    Util.execArgv(["uwsm-app", "--", "xdg-open", target])
+    // gio, not xdg-open: xdg-open sniffs a .md as text/plain and hands it to
+    // nvim.desktop without a terminal, so nothing ever appears. gio types by
+    // extension and wraps Terminal=true apps in xdg-terminal-exec.
+    Util.execArgv(["uwsm-app", "--", "bash", "-c", 'command -v gio >/dev/null && exec gio open "$1"; exec xdg-open "$1"', "bash", target])
   }
 
   Timer {
