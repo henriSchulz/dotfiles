@@ -70,6 +70,211 @@ Panel {
     return list
   }
 
+  // ---- Detail pages. Like macOS, a tile's label swaps the grid for a list
+  //      inside the same popup ("main" | "wifi" | "bluetooth" | "sound").
+  property string page: "main"
+  function showPage(name) { page = name }
+
+  // Wi-Fi rows are primitive snapshots, never WifiNetwork objects: NM churn
+  // can destroy a network while a delegate still holds it (see the stock
+  // network panel). Actions look the object up by name at click time.
+  readonly property bool wifiScanning: opened && page === "wifi" && wifiOn
+  property var scannerDevice: null
+  onWifiScanningChanged: syncScanner()
+  onWifiDeviceChanged: syncScanner()
+  function syncScanner() {
+    var next = wifiScanning ? wifiDevice : null
+    if (scannerDevice && scannerDevice !== next) scannerDevice.scannerEnabled = false
+    scannerDevice = next
+    if (scannerDevice) scannerDevice.scannerEnabled = true
+  }
+  readonly property var wifiRows: {
+    var rows = []
+    var seen = {}
+    var nets = wifiDevice && wifiDevice.networks ? wifiDevice.networks.values : []
+    for (var i = 0; i < nets.length; i++) {
+      var n = nets[i]
+      if (!n || !n.name || seen[n.name]) continue
+      seen[n.name] = true
+      rows.push({
+        name: n.name,
+        connected: !!n.connected,
+        known: !!n.known,
+        signal: Math.round((n.signalStrength || 0) * 100),
+        secure: n.security !== WifiSecurityType.Open && n.security !== WifiSecurityType.Owe
+      })
+    }
+    rows.sort(function(a, b) {
+      if (a.connected !== b.connected) return a.connected ? -1 : 1
+      if (a.known !== b.known) return a.known ? -1 : 1
+      return b.signal - a.signal
+    })
+    return rows
+  }
+  property string wifiPending: ""
+  property string wifiPasswordFor: ""
+  property string wifiFailed: ""
+
+  function wifiNetwork(name) {
+    var nets = wifiDevice && wifiDevice.networks ? wifiDevice.networks.values : []
+    for (var i = 0; i < nets.length; i++) if (nets[i] && nets[i].name === name) return nets[i]
+    return null
+  }
+  function wifiActivate(row) {
+    var net = wifiNetwork(row.name)
+    if (!net) return
+    wifiFailed = ""
+    if (row.connected) {
+      markWifiPending(row.name)
+      net.disconnect()
+    } else if (row.secure && !row.known) {
+      wifiPasswordFor = wifiPasswordFor === row.name ? "" : row.name
+      return
+    } else {
+      markWifiPending(row.name)
+      net.connect()
+    }
+    wifiPendingTimeout.restart()
+  }
+  function wifiConnectWithPassword(name, password) {
+    var net = wifiNetwork(name)
+    if (!net || password === "") return
+    wifiPasswordFor = ""
+    wifiFailed = ""
+    markWifiPending(name)
+    net.connectWithPsk(password)
+    wifiPendingTimeout.restart()
+  }
+  function wifiIcon(signal) {
+    return signal >= 75 ? "󰤨" : signal >= 50 ? "󰤥" : signal >= 25 ? "󰤢" : "󰤟"
+  }
+  // The pending row settles once its connected state flips.
+  property bool wifiPendingStartedConnected: false
+  onWifiRowsChanged: {
+    if (wifiPending === "") return
+    for (var i = 0; i < wifiRows.length; i++) {
+      if (wifiRows[i].name === wifiPending && wifiRows[i].connected !== wifiPendingStartedConnected) {
+        wifiPending = ""
+        wifiPendingTimeout.stop()
+        return
+      }
+    }
+  }
+  function markWifiPending(name) {
+    var net = wifiNetwork(name)
+    wifiPendingStartedConnected = net ? !!net.connected : false
+    wifiPending = name
+  }
+  Timer {
+    id: wifiPendingTimeout
+    interval: 20000
+    onTriggered: {
+      var net = root.wifiNetwork(root.wifiPending)
+      if (net && !net.connected && !root.wifiPendingStartedConnected) root.wifiFailed = root.wifiPending
+      root.wifiPending = ""
+    }
+  }
+
+  // Bluetooth rows, same primitive-snapshot rule as Wi-Fi.
+  readonly property bool btDiscovering: opened && page === "bluetooth" && btOn
+  onBtDiscoveringChanged: if (btAdapter) btAdapter.discovering = btDiscovering
+  readonly property var btRows: {
+    var rows = []
+    var devices = Bluetooth.devices ? Bluetooth.devices.values : []
+    for (var i = 0; i < devices.length; i++) {
+      var d = devices[i]
+      if (!d || !d.address) continue
+      var name = d.name || d.deviceName || ""
+      // Unnamed discoveries show up as their MAC address; skip them.
+      if (name === "" || name.replace(/-/g, ":") === d.address) continue
+      rows.push({
+        address: d.address,
+        name: name,
+        icon: String(d.icon || ""),
+        connected: !!d.connected,
+        paired: !!(d.paired || d.bonded || d.trusted),
+        battery: d.batteryAvailable ? Math.round((d.battery || 0) * 100) : -1
+      })
+    }
+    rows.sort(function(a, b) {
+      if (a.connected !== b.connected) return a.connected ? -1 : 1
+      if (a.paired !== b.paired) return a.paired ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+    return rows
+  }
+  property var btPending: ({})
+  function btActivate(row) {
+    var action = row.connected ? "disconnect" : row.paired ? "connect" : "pair"
+    var next = Object.assign({}, btPending)
+    next[row.address] = row.connected ? "Trenne …" : "Verbinde …"
+    btPending = next
+    Quickshell.execDetached(["omarchy-bluetooth-device", action, row.address])
+    btPendingClear.restart()
+  }
+  onBtRowsChanged: {
+    var changed = false
+    var next = Object.assign({}, btPending)
+    for (var i = 0; i < btRows.length; i++) {
+      var r = btRows[i]
+      var p = next[r.address]
+      if (p && ((p === "Verbinde …" && r.connected) || (p === "Trenne …" && !r.connected))) {
+        delete next[r.address]
+        changed = true
+      }
+    }
+    if (changed) btPending = next
+  }
+  Timer {
+    id: btPendingClear
+    interval: 20000
+    onTriggered: root.btPending = ({})
+  }
+  function btIcon(icon) {
+    if (icon.indexOf("headset") >= 0 || icon.indexOf("headphone") >= 0) return "󰋋"
+    if (icon.indexOf("audio") >= 0 || icon.indexOf("speaker") >= 0) return "󰓃"
+    if (icon.indexOf("mouse") >= 0) return "󰍽"
+    if (icon.indexOf("keyboard") >= 0) return "󰌌"
+    if (icon.indexOf("phone") >= 0) return "󰏲"
+    if (icon.indexOf("computer") >= 0) return "󰌢"
+    if (icon.indexOf("gaming") >= 0 || icon.indexOf("joystick") >= 0) return "󰊴"
+    return "󰂯"
+  }
+
+  // Sound outputs.
+  readonly property var sinkRows: {
+    var rows = []
+    var nodes = Pipewire.nodes ? Pipewire.nodes.values : []
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i]
+      if (!n || !n.isSink || n.isStream || !n.audio) continue
+      var props = n.properties || {}
+      rows.push({
+        id: n.id,
+        name: n.name || "",
+        label: n.nickname || props["node.nick"] || n.description || n.name || "Ausgabe",
+        active: sink !== null && n.id === sink.id
+      })
+    }
+    return rows
+  }
+  function setSink(row) {
+    var nodes = Pipewire.nodes ? Pipewire.nodes.values : []
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i] && nodes[i].id === row.id) {
+        Pipewire.preferredDefaultAudioSink = nodes[i]
+        Quickshell.execDetached(["omarchy-audio-output-set-default", String(row.id), row.name])
+        return
+      }
+    }
+  }
+  function sinkIcon(label) {
+    var l = String(label).toLowerCase()
+    if (l.indexOf("hdmi") >= 0 || l.indexOf("displayport") >= 0) return "󰍹"
+    if (l.indexOf("head") >= 0 || l.indexOf("kopfh") >= 0) return "󰋋"
+    return "󰓃"
+  }
+
   // ---- Services owned by the shell
   function service(ids) {
     if (!shell) return null
@@ -136,11 +341,6 @@ Panel {
 
   function run(cmd) { Quickshell.execDetached(["bash", "-c", cmd]) }
 
-  function openDetail(pluginId) {
-    close()
-    run("sleep 0.15; omarchy-shell shell toggle " + pluginId)
-  }
-
   // Hand over to the plugin manager hosted by BarWidget.qml. Wait for our own
   // popup to finish closing so its focus grab is gone before the next opens.
   function openPluginManager() {
@@ -191,7 +391,11 @@ Panel {
 
   onOpenedChanged: {
     if (opened) refresh()
-    else displayExpanded = false
+    else {
+      displayExpanded = false
+      page = "main"
+      wifiPasswordFor = ""
+    }
   }
 
   Process {
@@ -516,6 +720,183 @@ Panel {
     }
   }
 
+  // Header of a detail page: back chevron + title, with an optional switch.
+  component PageHeader: Item {
+    id: ph
+    property string title: ""
+    property bool showSwitch: false
+    property bool checked: false
+    signal toggled()
+    width: root.panelWidth
+    height: Style.space(36)
+
+    Row {
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.space(6)
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: "󰅁"
+        color: root.fg
+        font.family: root.iconFont
+        font.pixelSize: Style.font.iconLarge
+      }
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: ph.title
+        color: root.fg
+        font.family: Style.font.family
+        font.pixelSize: Style.font.heading
+        font.weight: Font.DemiBold
+      }
+    }
+    MouseArea {
+      anchors.left: parent.left
+      anchors.top: parent.top
+      anchors.bottom: parent.bottom
+      anchors.right: switchTrack.left
+      cursorShape: Qt.PointingHandCursor
+      onClicked: root.page = "main"
+    }
+
+    // macOS-style switch.
+    Rectangle {
+      id: switchTrack
+      visible: ph.showSwitch
+      anchors.right: parent.right
+      anchors.rightMargin: Style.space(4)
+      anchors.verticalCenter: parent.verticalCenter
+      width: Style.space(36)
+      height: Style.space(20)
+      radius: height / 2
+      color: ph.checked ? root.circleOn : root.circleOff
+      Behavior on color { ColorAnimation { duration: 140 } }
+      Rectangle {
+        width: parent.height - Style.space(4)
+        height: width
+        radius: width / 2
+        y: Style.space(2)
+        x: ph.checked ? parent.width - width - Style.space(2) : Style.space(2)
+        color: ph.checked ? root.onIcon : root.fg
+        Behavior on x { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+      }
+      MouseArea {
+        anchors.fill: parent
+        anchors.margins: -Style.space(4)
+        cursorShape: Qt.PointingHandCursor
+        onClicked: ph.toggled()
+      }
+    }
+  }
+
+  // One entry in a detail list: round icon, name + status, optional trailing text.
+  component ListRow: Rectangle {
+    id: lr
+    property string icon: ""
+    property bool active: false
+    property string title: ""
+    property string subtitle: ""
+    property string trailing: ""
+    signal clicked()
+    width: root.panelWidth
+    height: Style.space(44)
+    radius: Style.space(10)
+    color: lrMouse.containsMouse ? root.tileColor : "transparent"
+
+    Rectangle {
+      id: lrCircle
+      anchors.left: parent.left
+      anchors.leftMargin: Style.space(6)
+      anchors.verticalCenter: parent.verticalCenter
+      width: Style.space(28)
+      height: width
+      radius: width / 2
+      color: lr.active ? root.circleOn : root.circleOff
+      Text {
+        anchors.centerIn: parent
+        text: lr.icon
+        color: lr.active ? root.onIcon : root.fg
+        font.family: root.iconFont
+        font.pixelSize: Style.font.icon
+      }
+    }
+    Column {
+      anchors.left: lrCircle.right
+      anchors.leftMargin: Style.space(10)
+      anchors.right: lrTrailing.left
+      anchors.rightMargin: Style.space(8)
+      anchors.verticalCenter: parent.verticalCenter
+      Text {
+        width: parent.width
+        text: lr.title
+        color: root.fg
+        font.family: Style.font.family
+        font.pixelSize: Style.font.subtitle
+        font.weight: lr.active ? Font.DemiBold : Font.Normal
+        elide: Text.ElideRight
+      }
+      Text {
+        width: parent.width
+        visible: text !== ""
+        text: lr.subtitle
+        color: root.dimText
+        font.family: Style.font.family
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideRight
+      }
+    }
+    Text {
+      id: lrTrailing
+      anchors.right: parent.right
+      anchors.rightMargin: Style.space(10)
+      anchors.verticalCenter: parent.verticalCenter
+      text: lr.trailing
+      color: root.dimText
+      font.family: root.iconFont
+      font.pixelSize: Style.font.bodySmall
+    }
+    MouseArea {
+      id: lrMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: lr.clicked()
+    }
+  }
+
+  component ListLabel: Text {
+    leftPadding: Style.space(6)
+    topPadding: Style.space(4)
+    color: root.dimText
+    font.family: Style.font.family
+    font.pixelSize: Style.font.caption
+    font.capitalization: Font.AllUppercase
+    font.letterSpacing: 0.6
+  }
+
+  component Separator: Rectangle {
+    width: root.panelWidth
+    height: 1
+    color: root.circleOff
+  }
+
+  // Footer link at the bottom of a detail page.
+  component FooterLink: Text {
+    id: fl
+    signal clicked()
+    leftPadding: Style.space(6)
+    color: flMouse.containsMouse ? root.fg : root.dimText
+    font.family: Style.font.family
+    font.pixelSize: Style.font.bodySmall
+    MouseArea {
+      id: flMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: fl.clicked()
+    }
+  }
+
   // ============================================================== layout
 
   KeyboardPanel {
@@ -527,12 +908,15 @@ Panel {
     focusTarget: keyCatcher
     padding: root.gap
     contentWidth: root.panelWidth + root.gap * 2
-    contentHeight: panel.fittedContentHeight(content.implicitHeight)
+    contentHeight: panel.fittedContentHeight(root.page === "main" ? content.implicitHeight : detail.implicitHeight)
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      onCloseRequested: root.close()
+      onCloseRequested: {
+        if (root.page !== "main") root.page = "main"
+        else root.close()
+      }
       onTabRequested: function(direction) { root.switchPanel(direction) }
     }
 
@@ -540,6 +924,7 @@ Panel {
       id: content
       width: root.panelWidth
       spacing: root.gap
+      visible: root.page === "main"
 
       // Top block: connectivity on the left, Focus + small toggles on the right.
       Row {
@@ -562,7 +947,7 @@ Panel {
               title: "WLAN"
               subtitle: !root.wifiOn ? "Aus" : (root.wifiName !== "" ? root.wifiName : "Nicht verbunden")
               onToggled: Networking.wifiEnabled = !Networking.wifiEnabled
-              onDetails: root.openDetail("omarchy.network")
+              onDetails: root.showPage("wifi")
             }
             ToggleRow {
               width: parent.width
@@ -575,7 +960,7 @@ Panel {
                 : "Ein"
               // omarchy-bluetooth-power persists the state (see the stock panel).
               onToggled: Quickshell.execDetached(["omarchy-bluetooth-power", root.btOn ? "off" : "on"])
-              onDetails: root.openDetail("omarchy.bluetooth")
+              onDetails: root.showPage("bluetooth")
             }
             ToggleRow {
               width: parent.width
@@ -749,22 +1134,12 @@ Panel {
           }
         }
 
-        Text {
-          text: "Weitere Display-Einstellungen …"
-          color: root.dimText
-          font.family: Style.font.family
-          font.pixelSize: Style.font.bodySmall
-          MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.openDetail("omarchy.monitor")
-          }
-        }
       }
 
       SliderTile {
         visible: root.sink !== null
         heading: "Ton"
+        expandable: true
         icon: root.muted || root.volume === 0 ? "󰝟" : root.volume < 0.34 ? "󰕿" : root.volume < 0.67 ? "󰖀" : "󰕾"
         value: root.muted ? 0 : Math.min(1, root.volume)
         onMoved: function(v) {
@@ -773,7 +1148,7 @@ Panel {
           if (root.muted && v > 0) root.sink.audio.muted = false
         }
         onIconClicked: if (root.sink && root.sink.audio) root.sink.audio.muted = !root.muted
-        onHeadingClicked: root.openDetail("omarchy.audio")
+        onHeadingClicked: root.showPage("sound")
       }
 
       // Now Playing — only while an MPRIS player has a track.
@@ -911,6 +1286,225 @@ Panel {
           color: root.dimText
           font.family: root.iconFont
           font.pixelSize: Style.font.icon
+        }
+      }
+    }
+
+    // ---- Detail pages
+    Column {
+      id: detail
+      width: root.panelWidth
+      spacing: Style.space(4)
+      visible: root.page !== "main"
+
+      // Wi-Fi
+      PageHeader {
+        visible: root.page === "wifi"
+        title: "WLAN"
+        showSwitch: true
+        checked: root.wifiOn
+        onToggled: Networking.wifiEnabled = !Networking.wifiEnabled
+      }
+      Separator { visible: root.page === "wifi" }
+      ListLabel {
+        visible: root.page === "wifi" && root.wifiOn
+        text: root.wifiRows.length ? "Netzwerke" : "Suche nach Netzwerken …"
+      }
+      Flickable {
+        visible: root.page === "wifi" && root.wifiOn
+        width: root.panelWidth
+        height: Math.min(wifiList.implicitHeight, Style.space(44) * 8)
+        contentHeight: wifiList.implicitHeight
+        clip: true
+        interactive: contentHeight > height
+        boundsBehavior: Flickable.StopAtBounds
+
+        Column {
+          id: wifiList
+          width: parent.width
+          Repeater {
+            model: root.page === "wifi" ? root.wifiRows : []
+            delegate: Column {
+              required property var modelData
+              width: root.panelWidth
+
+              ListRow {
+                icon: root.wifiIcon(modelData.signal)
+                active: modelData.connected
+                title: modelData.name
+                subtitle: root.wifiPending === modelData.name ? (modelData.connected ? "Trenne …" : "Verbinde …")
+                  : root.wifiFailed === modelData.name ? "Verbindung fehlgeschlagen"
+                  : modelData.connected ? "Verbunden"
+                  : modelData.known ? "Bekannt" : ""
+                trailing: modelData.secure ? "󰌾" : ""
+                onClicked: root.wifiActivate(modelData)
+              }
+
+              // Inline password entry for a new secured network.
+              Rectangle {
+                visible: root.wifiPasswordFor === modelData.name
+                x: Style.space(44)
+                width: root.panelWidth - Style.space(50)
+                height: visible ? Style.space(32) : 0
+                radius: Style.space(8)
+                color: root.tileColor
+                border.width: 1
+                border.color: passwordInput.activeFocus ? root.circleOn : root.circleOff
+
+                onVisibleChanged: if (visible) { passwordInput.text = ""; passwordInput.forceActiveFocus() }
+
+                TextInput {
+                  id: passwordInput
+                  anchors.fill: parent
+                  anchors.leftMargin: Style.space(10)
+                  anchors.rightMargin: Style.space(34)
+                  verticalAlignment: TextInput.AlignVCenter
+                  echoMode: TextInput.Password
+                  color: root.fg
+                  selectionColor: root.circleOn
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.body
+                  clip: true
+                  Keys.onReturnPressed: root.wifiConnectWithPassword(modelData.name, text)
+                  Keys.onEnterPressed: root.wifiConnectWithPassword(modelData.name, text)
+                  Keys.onEscapePressed: root.wifiPasswordFor = ""
+
+                  Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: parent.text === ""
+                    text: "Passwort"
+                    color: root.dimText
+                    font: parent.font
+                  }
+                }
+                Text {
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(10)
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: "󰁔"
+                  color: passwordInput.text === "" ? root.dimText : root.fg
+                  font.family: root.iconFont
+                  font.pixelSize: Style.font.icon
+                  MouseArea {
+                    anchors.fill: parent
+                    anchors.margins: -Style.space(6)
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.wifiConnectWithPassword(modelData.name, passwordInput.text)
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Bluetooth
+      PageHeader {
+        visible: root.page === "bluetooth"
+        title: "Bluetooth"
+        showSwitch: true
+        checked: root.btOn
+        onToggled: Quickshell.execDetached(["omarchy-bluetooth-power", root.btOn ? "off" : "on"])
+      }
+      Separator { visible: root.page === "bluetooth" }
+      ListLabel {
+        visible: root.page === "bluetooth" && root.btOn
+        text: root.btRows.length ? "Geräte" : "Suche nach Geräten …"
+      }
+      ListLabel {
+        visible: root.page === "bluetooth" && !root.btOn
+        text: "Bluetooth ist aus"
+      }
+      Flickable {
+        visible: root.page === "bluetooth" && root.btOn
+        width: root.panelWidth
+        height: Math.min(btList.implicitHeight, Style.space(44) * 8)
+        contentHeight: btList.implicitHeight
+        clip: true
+        interactive: contentHeight > height
+        boundsBehavior: Flickable.StopAtBounds
+
+        Column {
+          id: btList
+          width: parent.width
+          Repeater {
+            model: root.page === "bluetooth" ? root.btRows : []
+            delegate: ListRow {
+              required property var modelData
+              icon: root.btIcon(modelData.icon)
+              active: modelData.connected
+              title: modelData.name
+              subtitle: root.btPending[modelData.address]
+                || (modelData.connected ? "Verbunden" : modelData.paired ? "Gekoppelt" : "Nicht gekoppelt")
+              trailing: modelData.battery >= 0 ? modelData.battery + " %" : ""
+              onClicked: root.btActivate(modelData)
+            }
+          }
+        }
+      }
+
+      // Sound
+      PageHeader {
+        visible: root.page === "sound"
+        title: "Ton"
+      }
+      Separator { visible: root.page === "sound" }
+      Item {
+        visible: root.page === "sound" && root.sink !== null
+        width: root.panelWidth
+        height: Style.space(40)
+        Text {
+          id: soundIcon
+          anchors.left: parent.left
+          anchors.leftMargin: Style.space(12)
+          anchors.verticalCenter: parent.verticalCenter
+          width: Style.space(20)
+          text: root.muted || root.volume === 0 ? "󰝟" : "󰕾"
+          color: root.fg
+          font.family: root.iconFont
+          font.pixelSize: Style.font.iconLarge
+          MouseArea {
+            anchors.fill: parent
+            anchors.margins: -Style.space(4)
+            cursorShape: Qt.PointingHandCursor
+            onClicked: if (root.sink && root.sink.audio) root.sink.audio.muted = !root.muted
+          }
+        }
+        PanelSlider {
+          anchors.left: soundIcon.right
+          anchors.right: parent.right
+          anchors.leftMargin: Style.space(6)
+          anchors.rightMargin: Style.space(14)
+          anchors.verticalCenter: parent.verticalCenter
+          bar: root.bar
+          minimum: 0
+          maximum: 1
+          step: 0.05
+          value: root.muted ? 0 : Math.min(1, root.volume)
+          fillColor: root.fg
+          knobColor: root.fg
+          trackColor: root.circleOff
+          tickColor: "transparent"
+          onMoved: function(v) {
+            if (!root.sink || !root.sink.audio) return
+            root.sink.audio.volume = v
+            if (root.muted && v > 0) root.sink.audio.muted = false
+          }
+        }
+      }
+      ListLabel {
+        visible: root.page === "sound"
+        text: "Ausgabe"
+      }
+      Repeater {
+        model: root.page === "sound" ? root.sinkRows : []
+        delegate: ListRow {
+          required property var modelData
+          icon: root.sinkIcon(modelData.label)
+          active: modelData.active
+          title: modelData.label
+          trailing: modelData.active ? "󰄬" : ""
+          onClicked: if (!modelData.active) root.setSink(modelData)
         }
       }
     }

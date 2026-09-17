@@ -103,6 +103,12 @@ BarWidget {
     // Opens straight onto the expanded display settings.
     function display(): void { root.openDisplay() }
     function plugins(): void { root.openPluginManager() }
+    // Opens straight onto a detail page: wifi, bluetooth or sound.
+    function page(name: string): void {
+      if (!panelLoader.item) return
+      panelLoader.item.page = name
+      panelLoader.item.open()
+    }
   }
 
   BarIconButton {
