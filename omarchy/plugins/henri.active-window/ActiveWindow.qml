@@ -71,7 +71,7 @@ BarWidget {
         Util.execArgv([Quickshell.env("HOME") + "/.local/bin/app-settings", root.toplevel.appId || ""])
       }
     }
-    onEntered: if (root.bar) root.bar.showTooltip(root, root.title + "\nKlicken: Einstellungen")
+    onEntered: if (root.bar) root.bar.showTooltip(root, root.title + "\nClick: Settings")
     onExited: if (root.bar) root.bar.hideTooltip(root)
   }
 }
