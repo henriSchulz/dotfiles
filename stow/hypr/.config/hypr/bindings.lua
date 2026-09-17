@@ -49,3 +49,15 @@ o.bind("SUPER + TAB", "Workspace-Umschalter", "omarchy-shell -q workspace-switch
 o.bind("SUPER + SHIFT + TAB", "Workspace-Umschalter zurück", "omarchy-shell -q workspace-switcher prev")
 o.bind("SUPER + SUPER_L", nil, "omarchy-shell -q workspace-switcher commit", { release = true })
 o.bind("SUPER + SHIFT + SUPER_L", nil, "omarchy-shell -q workspace-switcher commit", { release = true })
+
+-- Audio, Bluetooth, Display und WLAN sind nicht mehr in der Leiste, sondern
+-- im Kontrollzentrum (henri.control-center). Omarchys Kürzel öffnen daher
+-- jetzt die passende Seite dort; nochmal drücken schließt.
+hl.unbind("SUPER + CTRL + A")
+hl.unbind("SUPER + CTRL + B")
+hl.unbind("SUPER + CTRL + D")
+hl.unbind("SUPER + CTRL + W")
+o.bind("SUPER + CTRL + A", "Ton", "omarchy-shell henri.control-center togglePage sound")
+o.bind("SUPER + CTRL + B", "Bluetooth", "omarchy-shell henri.control-center togglePage bluetooth")
+o.bind("SUPER + CTRL + D", "Bildschirm", "omarchy-shell henri.control-center togglePage display")
+o.bind("SUPER + CTRL + W", "WLAN", "omarchy-shell henri.control-center togglePage wifi")

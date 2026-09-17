@@ -18,18 +18,6 @@
       "center": [],
       "right": [
         {
-          "id": "omarchy.bluetooth"
-        },
-        {
-          "id": "omarchy.network"
-        },
-        {
-          "id": "omarchy.audio"
-        },
-        {
-          "id": "omarchy.monitor"
-        },
-        {
           "id": "io.github.nipsen.dell-power",
           "showPercentage": true,
           "chargeLimitStep": 5
