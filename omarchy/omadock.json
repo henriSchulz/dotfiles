@@ -7,7 +7,7 @@
   "showAppsButton": true,
   "showTooltips": true,
   "showMinimizedTiles": true,
-  "hoverEffect": "wave",
+  "hoverEffect": "zoom",
   "launchBounce": true,
   "advancedTooltips": true,
   "opacity": 0.65,
