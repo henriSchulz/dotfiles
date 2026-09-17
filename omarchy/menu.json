@@ -1,0 +1,23 @@
+{
+  "fileSearch": {
+    "roots": ["~"],
+    "defaultExcludes": true,
+    "hidden": true,
+    "exclude": [
+      "~/.claude",
+      "~/.codex",
+      "~/.gemini",
+      "~/.pi",
+      "~/.agents",
+      "~/.vscode",
+      "~/.windows",
+      "~/.gnupg",
+      "~/.pki",
+      "~/.local/share",
+      "~/.local/state",
+      ".next",
+      "target",
+      "dist"
+    ]
+  }
+}

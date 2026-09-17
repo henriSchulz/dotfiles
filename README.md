@@ -42,6 +42,7 @@ differences were committed:
 | `omarchy/shell.json` | bar layout, widget order, idle timers |
 | `omarchy/keystroke.json`, `omadock.json`, `dock.json`, `defaults/agent` | small real settings |
 | `omarchy/plugins/henri.menu/` | 658-line divergence from built-in `omarchy.menu`, plus its own `FuzzySearch.js` |
+| `omarchy/menu.json` | `henri.menu` settings: `fileSearch.roots`, `exclude` (globs; `~/x` anchored to home), `defaultExcludes`, `hidden` — keeps tool and system folders out of the space-prefixed file search |
 | `omarchy/plugins/henri.idle/` | clone of `omarchy.idle` that launches the themed screensaver instead of the stock one |
 | `omarchy/plugins/henri.bar/` | clone of `omarchy.bar`: translucent macOS-style menu bar; `required` props made plain so it loads as a plugin bar |
 | `omarchy/plugins/henri.workspaces/` | clone of `omarchy.workspaces` that shows only occupied workspaces |

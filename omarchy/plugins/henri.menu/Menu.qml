@@ -243,7 +243,7 @@ Item {
     for (var i = 0; i < tokens.length; i++) escaped.push(root.escapeRegex(tokens[i]))
     return {
       mode: tokens.length > 1 ? "full" : "name",
-      dir: root.homeDir(),
+      dir: root.fileSearchRoots().join("\n"),
       pattern: escaped.join(".*"),
       rank: raw
     }
@@ -251,22 +251,64 @@ Item {
 
   // A home's worth of dotfiles is mostly caches and vendored trees; excluding
   // them is what keeps a name search answering with the user's own files.
-  readonly property string fileScanExcludes: "--exclude .git --exclude node_modules --exclude .cache"
-    + " --exclude .npm --exclude .cargo --exclude .rustup --exclude .venv --exclude __pycache__"
-    + " --exclude .mozilla --exclude .thunderbird --exclude .steam --exclude .var --exclude Trash"
+  readonly property var defaultFileScanExcludes: [".git", "node_modules", ".cache",
+    ".npm", ".cargo", ".rustup", ".venv", "__pycache__",
+    ".mozilla", ".thunderbird", ".steam", ".var", "Trash"]
+
+  // User settings from the "fileSearch" section of ~/.config/omarchy/menu.json:
+  //   roots            folders a name search covers (default ["~"])
+  //   exclude          extra fd/gitignore-style globs to skip; "~/foo" is
+  //                    anchored to the home root, "foo" matches at any depth
+  //   defaultExcludes  false drops the built-in list above
+  //   hidden           false skips dotfiles and dot-directories
+  // Browsing a typed path (" ~/x/") ignores all of this on purpose.
+  property var fileSearchConfig: ({})
+
+  function fileSearchRoots() {
+    var configured = root.fileSearchConfig.roots
+    var roots = []
+    if (Array.isArray(configured)) {
+      for (var i = 0; i < configured.length; i++) {
+        var value = root.expandHome(String(configured[i] || "").trim())
+        if (value.length > 1 && value.slice(-1) === "/") value = value.slice(0, -1)
+        if (value.charAt(0) === "/") roots.push(value)
+      }
+    }
+    return roots.length > 0 ? roots : [root.homeDir()]
+  }
+
+  function fileScanExcludeList() {
+    var list = root.fileSearchConfig.defaultExcludes === false ? [] : root.defaultFileScanExcludes.slice()
+    var extra = root.fileSearchConfig.exclude
+    if (!Array.isArray(extra)) return list
+    var home = root.homeDir()
+    for (var i = 0; i < extra.length; i++) {
+      var pattern = String(extra[i] || "").trim()
+      if (!pattern) continue
+      if (pattern === "~" || pattern === home) continue
+      if (pattern.indexOf("~/") === 0) pattern = pattern.slice(1)
+      else if (home && pattern.indexOf(home + "/") === 0) pattern = pattern.slice(home.length)
+      list.push(pattern)
+    }
+    return list
+  }
+
   // Emits `<d|f>\t<absolute path>` per line. fd marks a directory with a
   // trailing slash, which would leave the row with an empty name, so it comes
-  // back off. The query never reaches the shell as text: mode, root and
-  // pattern arrive as positional parameters.
-  readonly property string fileScanScript: "mode=$1; dir=$2; pat=$3\n"
-    + "[[ -d $dir ]] || exit 0\n"
+  // back off. The query never reaches the shell as text: mode, roots (one per
+  // line), pattern, hidden flag and excludes arrive as positional parameters.
+  readonly property string fileScanScript: "mode=$1; pat=$3; hidden=$4\n"
+    + "mapfile -t dirs <<<\"$2\"\n"
+    + "shift 4\n"
+    + "roots=(); for d in \"${dirs[@]}\"; do [[ -d $d ]] && roots+=(\"$d\"); done\n"
+    + "(( ${#roots[@]} )) || exit 0\n"
+    + "ex=(); for e in \"$@\"; do ex+=(--exclude \"$e\"); done\n"
+    + "hid=(); [[ $hidden == 1 ]] && hid=(--hidden)\n"
     + "case $mode in\n"
-    + "  path) fd --hidden --no-ignore --max-depth 1 --max-results 500 --color never --absolute-path --regex -- \"$pat\" \"$dir\" ;;\n"
-    + "  full) fd --hidden --full-path --max-results 500 --color never --absolute-path --regex "
-    + root.fileScanExcludes + " -- \"$pat\" \"$dir\" ;;\n"
-    + "  *) fd --hidden --max-results 500 --color never --absolute-path --regex "
-    + root.fileScanExcludes + " -- \"$pat\" \"$dir\" ;;\n"
-    + "esac 2>/dev/null | while IFS= read -r p; do\n"
+    + "  path) fd --hidden --no-ignore --max-depth 1 --max-results 500 --color never --absolute-path --regex -- \"$pat\" \"${roots[@]}\" ;;\n"
+    + "  full) fd \"${hid[@]}\" --full-path --max-results 500 --color never --absolute-path --regex \"${ex[@]}\" -- \"$pat\" \"${roots[@]}\" ;;\n"
+    + "  *) fd \"${hid[@]}\" --max-results 500 --color never --absolute-path --regex \"${ex[@]}\" -- \"$pat\" \"${roots[@]}\" ;;\n"
+    + "esac 2>/dev/null | awk '!seen[$0]++' | while IFS= read -r p; do\n"
     + "  [[ -z $p ]] && continue\n"
     + "  if [[ -d $p ]]; then printf 'd\\t%s\\n' \"${p%/}\"; else printf 'f\\t%s\\n' \"$p\"; fi\n"
     + "done\n"
@@ -288,7 +330,9 @@ Item {
     root.fileScanQuery = root.fileQuery
     var plan = root.fileScanPlan(root.fileScanQuery)
     fileScanProc.collected = ""
-    fileScanProc.command = ["bash", "-c", root.fileScanScript, "bash", plan.mode, plan.dir, plan.pattern]
+    var hidden = root.fileSearchConfig.hidden === false ? "0" : "1"
+    fileScanProc.command = ["bash", "-c", root.fileScanScript, "bash", plan.mode, plan.dir, plan.pattern, hidden]
+      .concat(root.fileScanExcludeList())
     fileScanProc.running = true
   }
 
@@ -457,15 +501,18 @@ Item {
     printErrors: false
     onLoaded: root.loadEngineConfig(text())
     onFileChanged: searchEngineFile.reload()
-    onLoadFailed: root.searchEngineRaw = ""
+    onLoadFailed: { root.searchEngineRaw = ""; root.fileSearchConfig = ({}) }
   }
   function loadEngineConfig(rawText) {
     var value = ""
+    var fileSearch = ({})
     try {
       var parsed = JSON.parse(String(rawText || ""))
       if (parsed && typeof parsed.searchEngine === "string") value = parsed.searchEngine.trim()
+      fileSearch = parsed && typeof parsed.fileSearch === "object" && parsed.fileSearch ? parsed.fileSearch : ({})
     } catch (e) {}
     root.searchEngineRaw = value
+    root.fileSearchConfig = fileSearch
   }
   property bool deleteConfirmOpen: false
   property var deleteTarget: null

@@ -25,6 +25,7 @@ files=(
   "keystroke.json  644"
   "omadock.json    644"
   "dock.json       644"
+  "menu.json       644"
   "defaults/agent  644"
 )
 
