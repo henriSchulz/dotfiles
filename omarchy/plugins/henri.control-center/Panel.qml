@@ -367,7 +367,7 @@ Panel {
   function btActivate(row) {
     var action = row.connected ? "disconnect" : row.paired ? "connect" : "pair"
     var next = Object.assign({}, btPending)
-    next[row.address] = row.connected ? "Trenne …" : "Verbinde …"
+    next[row.address] = row.connected ? "Disconnecting …" : "Connecting …"
     btPending = next
     Quickshell.execDetached(["omarchy-bluetooth-device", action, row.address])
     btPendingClear.restart()
@@ -378,7 +378,7 @@ Panel {
     for (var i = 0; i < btRows.length; i++) {
       var r = btRows[i]
       var p = next[r.address]
-      if (p && ((p === "Verbinde …" && r.connected) || (p === "Trenne …" && !r.connected))) {
+      if (p && ((p === "Connecting …" && r.connected) || (p === "Disconnecting …" && !r.connected))) {
         delete next[r.address]
         changed = true
       }
@@ -412,7 +412,7 @@ Panel {
       rows.push({
         id: n.id,
         name: n.name || "",
-        label: n.nickname || props["node.nick"] || n.description || n.name || "Ausgabe",
+        label: n.nickname || props["node.nick"] || n.description || n.name || "Output",
         active: sink !== null && n.id === sink.id
       })
     }
@@ -1345,8 +1345,8 @@ Panel {
               width: parent.width
               icon: root.wifiOn ? "󰖩" : "󰖪"
               on: root.wifiOn
-              title: "WLAN"
-              subtitle: !root.wifiOn ? "Aus" : (root.wifiName !== "" ? root.wifiName : "Nicht verbunden")
+              title: "Wi-Fi"
+              subtitle: !root.wifiOn ? "Off" : (root.wifiName !== "" ? root.wifiName : "Not connected")
               onToggled: Networking.wifiEnabled = !Networking.wifiEnabled
               onDetails: root.showPage("wifi")
             }
@@ -1355,10 +1355,10 @@ Panel {
               icon: root.btOn ? "󰂯" : "󰂲"
               on: root.btOn
               title: "Bluetooth"
-              subtitle: !root.btOn ? "Aus"
-                : root.btConnected.length === 1 ? (root.btConnected[0].name || "1 Gerät")
-                : root.btConnected.length > 1 ? root.btConnected.length + " Geräte"
-                : "Ein"
+              subtitle: !root.btOn ? "Off"
+                : root.btConnected.length === 1 ? (root.btConnected[0].name || "1 device")
+                : root.btConnected.length > 1 ? root.btConnected.length + " devices"
+                : "On"
               // omarchy-bluetooth-power persists the state (see the stock panel).
               onToggled: Quickshell.execDetached(["omarchy-bluetooth-power", root.btOn ? "off" : "on"])
               onDetails: root.showPage("bluetooth")
@@ -1368,7 +1368,7 @@ Panel {
               icon: "󰜡"
               on: root.localsendRunning
               title: "AirDrop"
-              subtitle: root.localsendRunning ? "LocalSend aktiv" : "LocalSend"
+              subtitle: root.localsendRunning ? "LocalSend active" : "LocalSend"
               onToggled: {
                 if (root.localsendRunning) {
                   root.run("pkill -x localsend")
@@ -1399,8 +1399,8 @@ Panel {
               anchors.rightMargin: Style.space(6)
               icon: "󰽥"
               on: root.dnd
-              title: "Fokus"
-              subtitle: root.dnd ? "Nicht stören" : ""
+              title: "Focus"
+              subtitle: root.dnd ? "Do Not Disturb" : ""
               onToggled: if (root.notifications) root.notifications.setDoNotDisturb(!root.dnd)
               onDetails: if (root.notifications) root.notifications.setDoNotDisturb(!root.dnd)
             }
@@ -1419,7 +1419,7 @@ Panel {
               revealIndex: 3
               icon: "󰅶"
               on: root.stayAwake
-              title: "Wach bleiben"
+              title: "Stay Awake"
               onClicked: if (root.idle) root.idle.setIdleEnabled(root.stayAwake)
             }
           }
@@ -1429,7 +1429,7 @@ Panel {
       SliderTile {
         revealIndex: 4
         visible: root.brightnessAvailable || root.displays.length > 0
-        heading: "Bildschirm"
+        heading: "Display"
         icon: root.brightness < 40 ? "󰃞" : root.brightness < 75 ? "󰃟" : "󰃠"
         value: root.brightness / 100
         expandable: true
@@ -1438,7 +1438,7 @@ Panel {
         onMoved: function(v) { root.setBrightness(v * 100) }
 
         // ---- Text size
-        SectionLabel { text: "Textgröße · " + root.textSizeStops[root.textSizeIndex] + " px" }
+        SectionLabel { text: "Text size · " + root.textSizeStops[root.textSizeIndex] + " px" }
         Item {
           width: parent.width
           height: textSlider.implicitHeight
@@ -1486,9 +1486,9 @@ Panel {
         // ---- Scale presets for the focused display
         SectionLabel {
           visible: root.focusedDisplay !== null
-          text: "Skalierung" + (root.displays.length > 1 && root.focusedMonitor ? " · " + root.focusedMonitor : "")
+          text: "Scale" + (root.displays.length > 1 && root.focusedMonitor ? " · " + root.focusedMonitor : "")
                 + (root.focusedDisplay && root.monitorScale
-                   ? " · wirkt wie " + Display.looksLike(root.monitorScale, root.focusedDisplay.width, root.focusedDisplay.height)
+                   ? " · looks like " + Display.looksLike(root.monitorScale, root.focusedDisplay.width, root.focusedDisplay.height)
                    : "")
         }
         Row {
@@ -1510,7 +1510,7 @@ Panel {
         // ---- Monitors (only with more than one)
         SectionLabel {
           visible: root.displays.length > 1
-          text: "Monitore"
+          text: "Monitors"
         }
         Repeater {
           model: root.displays.length > 1 ? root.displays : []
@@ -1532,7 +1532,7 @@ Panel {
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
               width: Style.space(52)
-              label: modelData.enabled ? "An" : "Aus"
+              label: modelData.enabled ? "On" : "Off"
               selected: modelData.enabled
               onClicked: root.toggleDisplay(modelData)
             }
@@ -1544,7 +1544,7 @@ Panel {
       SliderTile {
         revealIndex: 5
         visible: root.sink !== null
-        heading: "Ton"
+        heading: "Sound"
         expandable: true
         icon: root.muted || root.volume === 0 ? "󰝟" : root.volume < 0.34 ? "󰕿" : root.volume < 0.67 ? "󰖀" : "󰕾"
         value: root.muted ? 0 : Math.min(1, root.volume)
@@ -1577,7 +1577,7 @@ Panel {
           spacing: Style.space(8)
 
           Text {
-            text: "Fenster"
+            text: "Windows"
             color: root.fg
             font.family: Style.font.family
             font.pixelSize: Style.font.subtitle
@@ -1589,7 +1589,7 @@ Panel {
             spacing: Style.space(5)
             readonly property var modes: [
               { id: "tiling", label: "Tiling" },
-              { id: "macos", label: "Freie Fenster" }
+              { id: "macos", label: "Floating" }
             ]
             Repeater {
               model: modeRow.modes
@@ -1620,7 +1620,7 @@ Panel {
               anchors.margins: Style.space(8)
               spacing: Style.space(6)
 
-              SectionLabel { text: "Tiling-Layout · dieser Workspace" }
+              SectionLabel { text: "Tiling layout · this workspace" }
               Row {
                 id: tilingRow
                 width: parent.width
@@ -1769,7 +1769,7 @@ Panel {
           anchors.left: pluginsIcon.right
           anchors.leftMargin: Style.space(10)
           anchors.verticalCenter: parent.verticalCenter
-          text: "Plugins verwalten"
+          text: "Manage Plugins"
           color: root.fg
           font.family: Style.font.family
           font.pixelSize: Style.font.subtitle
@@ -1801,7 +1801,7 @@ Panel {
       // Wi-Fi
       PageHeader {
         visible: root.detailPage === "wifi"
-        title: "WLAN"
+        title: "Wi-Fi"
         showSwitch: true
         checked: root.wifiOn
         onToggled: Networking.wifiEnabled = !Networking.wifiEnabled
@@ -1809,7 +1809,7 @@ Panel {
       Separator { visible: root.detailPage === "wifi" }
       ListLabel {
         visible: root.detailPage === "wifi" && root.wifiOn
-        text: root.wifiRows.length ? "Netzwerke" : "Suche nach Netzwerken …"
+        text: root.wifiRows.length ? "Networks" : "Searching for networks …"
       }
       Flickable {
         visible: root.detailPage === "wifi" && root.wifiOn
@@ -1837,10 +1837,10 @@ Panel {
                 icon: root.wifiIcon(modelData.signal)
                 active: modelData.connected
                 title: modelData.name
-                subtitle: root.wifiPending === modelData.name ? (modelData.connected ? "Trenne …" : "Verbinde …")
-                  : root.wifiFailed === modelData.name ? "Verbindung fehlgeschlagen"
-                  : modelData.connected ? "Verbunden"
-                  : modelData.known ? "Bekannt" : ""
+                subtitle: root.wifiPending === modelData.name ? (modelData.connected ? "Disconnecting …" : "Connecting …")
+                  : root.wifiFailed === modelData.name ? "Connection failed"
+                  : modelData.connected ? "Connected"
+                  : modelData.known ? "Known" : ""
                 trailing: modelData.secure ? "󰌾" : ""
                 onClicked: root.wifiActivate(modelData)
               }
@@ -1883,7 +1883,7 @@ Panel {
                   Text {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: parent.text === ""
-                    text: "Passwort"
+                    text: "Password"
                     color: root.dimText
                     font: parent.font
                   }
@@ -1931,7 +1931,7 @@ Panel {
               anchors.left: parent.left
               anchors.leftMargin: Style.space(10)
               anchors.verticalCenter: parent.verticalCenter
-              text: "Erweiterte Optionen"
+              text: "Advanced Options"
               color: advMouse.containsMouse ? root.fg : root.dimText
               font.family: Style.font.family
               font.pixelSize: Style.font.body
@@ -1981,7 +1981,7 @@ Panel {
                 anchors.verticalCenter: parent.verticalCenter
                 Text {
                   width: parent.width
-                  text: root.netConnected ? (root.netInfo.ssid || root.wifiName || root.netInfo.iface) : "Nicht verbunden"
+                  text: root.netConnected ? (root.netInfo.ssid || root.wifiName || root.netInfo.iface) : "Not connected"
                   color: root.fg
                   font.family: Style.font.family
                   font.pixelSize: Style.font.subtitle
@@ -2027,21 +2027,21 @@ Panel {
               rowSpacing: Style.space(2)
               readonly property bool hasPings: root.internetPings.length > 0
               Stat { label: "Ping"; value: Net.formatPing(Net.averageLatency(root.internetPings, 5)) }
-              Stat { label: "Paketverlust"; value: parent.hasPings ? Net.packetLoss(root.internetPings) + " %" : "--" }
-              Stat { label: "Empfangen"; value: Net.formatRate(root.netDownRate) }
-              Stat { label: "Senden"; value: Net.formatRate(root.netUpRate) }
-              Stat { label: "Geladen"; value: Net.formatBytes(root.netInfo.rx_bytes) }
-              Stat { label: "Hochgeladen"; value: Net.formatBytes(root.netInfo.tx_bytes) }
+              Stat { label: "Packet loss"; value: parent.hasPings ? Net.packetLoss(root.internetPings) + " %" : "--" }
+              Stat { label: "Download"; value: Net.formatRate(root.netDownRate) }
+              Stat { label: "Upload"; value: Net.formatRate(root.netUpRate) }
+              Stat { label: "Received"; value: Net.formatBytes(root.netInfo.rx_bytes) }
+              Stat { label: "Sent"; value: Net.formatBytes(root.netInfo.tx_bytes) }
               Stat { label: "IP"; value: root.netInfo.ip || "--" }
               Stat { label: "Gateway"; value: root.netInfo.gateway || "--" }
               Stat { label: "Router-Ping"; value: Net.formatPing(Net.averageLatency(root.routerPings, 5)) }
-              Stat { label: "Schnittstelle"; value: root.netInfo.iface || "--" }
+              Stat { label: "Interface"; value: root.netInfo.iface || "--" }
             }
 
             // Band pinning (only when the card offers a choice)
             SectionLabel {
               visible: root.bandInfo.available.length > 0 && root.netInfo.type === "wifi"
-              text: "WLAN-Band" + (root.bandInfo.band ? " · aktuell " + Net.bandLabel(root.bandInfo.band) : "")
+              text: "Wi-Fi band" + (root.bandInfo.band ? " · current " + Net.bandLabel(root.bandInfo.band) : "")
             }
             Row {
               visible: root.bandInfo.available.length > 0 && root.netInfo.type === "wifi"
@@ -2059,7 +2059,7 @@ Panel {
               }
             }
 
-            SectionLabel { text: "DNS-Anbieter" }
+            SectionLabel { text: "DNS provider" }
             Row {
               spacing: Style.space(5)
               Repeater {
@@ -2067,7 +2067,7 @@ Panel {
                   { id: "DHCP", label: "DHCP" },
                   { id: "Cloudflare", label: "Cloudflare" },
                   { id: "Google", label: "Google" },
-                  { id: "Custom", label: "Eigene" }
+                  { id: "Custom", label: "Custom" }
                 ]
                 delegate: Pill {
                   required property var modelData
@@ -2093,11 +2093,11 @@ Panel {
       Separator { visible: root.detailPage === "bluetooth" }
       ListLabel {
         visible: root.detailPage === "bluetooth" && root.btOn
-        text: root.btRows.length ? "Geräte" : "Suche nach Geräten …"
+        text: root.btRows.length ? "Devices" : "Searching for devices …"
       }
       ListLabel {
         visible: root.detailPage === "bluetooth" && !root.btOn
-        text: "Bluetooth ist aus"
+        text: "Bluetooth is off"
       }
       Flickable {
         visible: root.detailPage === "bluetooth" && root.btOn
@@ -2122,7 +2122,7 @@ Panel {
               active: modelData.connected
               title: modelData.name
               subtitle: root.btPending[modelData.address]
-                || (modelData.connected ? "Verbunden" : modelData.paired ? "Gekoppelt" : "Nicht gekoppelt")
+                || (modelData.connected ? "Connected" : modelData.paired ? "Paired" : "Not paired")
               trailing: modelData.battery >= 0 ? modelData.battery + " %" : ""
               onClicked: root.btActivate(modelData)
             }
@@ -2133,7 +2133,7 @@ Panel {
       // Sound
       PageHeader {
         visible: root.detailPage === "sound"
-        title: "Ton"
+        title: "Sound"
       }
       Separator { visible: root.detailPage === "sound" }
       Item {
@@ -2181,7 +2181,7 @@ Panel {
       }
       ListLabel {
         visible: root.detailPage === "sound"
-        text: "Ausgabe"
+        text: "Output"
       }
       Repeater {
         model: root.detailPage === "sound" ? root.sinkRows : []

@@ -175,7 +175,7 @@ BarWidget {
         }
       }
     }
-    tooltipText: root.opened ? "" : "Kontrollzentrum"
+    tooltipText: root.opened ? "" : "Control Center"
     onPressed: function(b) { root.togglePanel() }
   }
 }

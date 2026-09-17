@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "henri.control-center",
-  "name": "Kontrollzentrum",
+  "name": "Control Center",
   "version": "1.0.0",
   "author": "henri",
   "description": "macOS-style Control Center: Wi-Fi, Bluetooth, AirDrop (LocalSend), Focus, Night Shift, Stay Awake, display and sound sliders, and Now Playing in one popup",
@@ -12,7 +12,7 @@
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
-    "displayName": "Kontrollzentrum",
+    "displayName": "Control Center",
     "description": "macOS-style Control Center popup",
     "category": "System",
     "allowMultiple": false

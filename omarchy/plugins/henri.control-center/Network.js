@@ -83,7 +83,7 @@ function formatPing(ms) {
 function formatFreq(mhz) {
   var v = parseFloat(mhz)
   if (!v) return ""
-  if (v >= 2400 && v < 2500) return "2,4 GHz"
+  if (v >= 2400 && v < 2500) return "2.4 GHz"
   if (v >= 4900 && v < 5925) return "5 GHz"
   if (v >= 5925 && v < 7125) return "6 GHz"
   return (v / 1000).toFixed(1).replace(".", ",") + " GHz"
