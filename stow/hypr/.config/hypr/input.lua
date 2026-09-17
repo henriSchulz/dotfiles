@@ -120,7 +120,7 @@ hl.gesture({ fingers = 4, direction = "horizontal", action = "workspace" })
 -- Wischgeste feiner abstimmen (fühlt sich eher wie macOS an).
 hl.config({
   gestures = {
-    workspace_swipe_distance = 500,        -- längerer Weg = ruhigeres Mitgleiten
+    workspace_swipe_distance = 850,        -- längerer Weg = ruhigeres Mitgleiten; schnelle Wische springen pro Frame weniger (60 Hz)
     workspace_swipe_cancel_ratio = 0.2,    -- schon ab 1/5 des Wegs wird gewechselt
     workspace_swipe_min_speed_to_force = 15, -- kurzer schneller Wisch reicht
   },
