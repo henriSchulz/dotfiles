@@ -496,6 +496,20 @@ Panel {
     return best
   }
 
+  // ---- Tiling layout of the active workspace (dwindle / scrolling)
+  property string tilingLayout: ""
+
+  // Omarchy's toggle flips dwindle <-> scrolling and persists it per
+  // workspace, so only call it when the target isn't already active.
+  function setTilingLayout(layout) {
+    if (layout === tilingLayout) return
+    tilingLayout = layout
+    actionProc.command = ["bash", "-c",
+      "[ \"$(hyprctl activeworkspace -j | jq -r .tiledLayout)\" = \"$1\" ] || omarchy-hyprland-workspace-layout-toggle",
+      "_", layout]
+    if (!actionProc.running) actionProc.running = true
+  }
+
   // ---- AirDrop stand-in: LocalSend
   property bool localsendRunning: false
 
@@ -525,6 +539,7 @@ Panel {
   function refresh() {
     if (!stateProc.running) stateProc.running = true
     if (!localsendProc.running) localsendProc.running = true
+    if (!tilingProc.running) tilingProc.running = true
   }
 
   function setScale(scale) {
@@ -622,6 +637,17 @@ Panel {
     id: localsendProc
     command: ["pgrep", "-x", "localsend"]
     onExited: function(code) { root.localsendRunning = code === 0 }
+  }
+
+  Process {
+    id: tilingProc
+    command: ["hyprctl", "activeworkspace", "-j"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try { root.tilingLayout = JSON.parse(text).tiledLayout || "" } catch (e) {}
+      }
+    }
   }
 
   // ======================================================== components
@@ -1518,9 +1544,54 @@ Panel {
         onHeadingClicked: root.showPage("sound")
       }
 
-      // Now Playing — only while an MPRIS player has a track.
+      // Tiling layout for the active workspace.
       Tile {
         revealIndex: 6
+        width: root.panelWidth
+        height: tilingColumn.implicitHeight + Style.space(20)
+
+        Column {
+          id: tilingColumn
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: parent.top
+          anchors.topMargin: Style.space(9)
+          anchors.leftMargin: Style.space(12)
+          anchors.rightMargin: Style.space(14)
+          spacing: Style.space(8)
+
+          Text {
+            text: "Tiling"
+            color: root.fg
+            font.family: Style.font.family
+            font.pixelSize: Style.font.subtitle
+            font.weight: Font.DemiBold
+          }
+          Row {
+            id: tilingRow
+            width: parent.width
+            spacing: Style.space(5)
+            readonly property var layouts: [
+              { id: "dwindle", label: "Dwindle" },
+              { id: "scrolling", label: "Scrolling" }
+            ]
+            Repeater {
+              model: tilingRow.layouts
+              delegate: Pill {
+                required property var modelData
+                width: Math.floor((tilingRow.width - tilingRow.spacing * (tilingRow.layouts.length - 1)) / tilingRow.layouts.length)
+                label: modelData.label
+                selected: root.tilingLayout === modelData.id
+                onClicked: root.setTilingLayout(modelData.id)
+              }
+            }
+          }
+        }
+      }
+
+      // Now Playing — only while an MPRIS player has a track.
+      Tile {
+        revealIndex: 7
         id: nowPlaying
         readonly property bool playing: root.media && root.media.activePlayer ? root.media.activePlayer.isPlaying === true : false
         visible: root.media ? root.media.hasMedia === true : false
@@ -1622,7 +1693,7 @@ Panel {
 
       // Bottom row, like "Edit Controls" on macOS.
       Tile {
-        revealIndex: 7
+        revealIndex: 8
         width: root.panelWidth
         height: Style.space(40)
         hoverable: true
