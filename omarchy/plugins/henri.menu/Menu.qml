@@ -725,6 +725,7 @@ Item {
     var totals = []
     var total = 0
     var previousSection = ""
+    var available = availableRowsHeight()
 
     for (var i = 0; i < displayModel.count; i++) {
       var row = displayModel.get(i)
@@ -733,9 +734,11 @@ Item {
       total += root.rowHeightForDetail(row.detail)
       previousSection = row.section
       totals.push(total)
+      // Rows past the first one that overflows cannot change the fold.
+      if (total > available) break
     }
 
-    return foldedListHeight(totals, availableRowsHeight())
+    return foldedListHeight(totals, available)
   }
 
   function dmenuRowListHeight(_serial, _count, _filter) {
@@ -751,6 +754,7 @@ Item {
       if (i > 0) total += root.rowSpacing
       total += root.rowHeightForDetail(displayModel.get(i).detail)
       totals.push(total)
+      if (total > available) break
     }
 
     return foldedListHeight(totals, available)
@@ -864,7 +868,7 @@ Item {
     var merged = MenuModel.mergeAppRows(root.items, root.itemOrder, appRows)
     root.items = merged.items
     root.itemOrder = merged.itemOrder
-    if (root.opened) root.rebuildDisplay()
+    if (root.opened) root.scheduleRebuild()
   }
 
   function startProviderForMenu(id) {
@@ -928,7 +932,7 @@ Item {
     var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, menuId, providerRows)
     root.items = merged.items
     root.itemOrder = merged.itemOrder
-    if (root.opened) root.rebuildDisplay()
+    if (root.opened) root.scheduleRebuild()
   }
 
   function startNextProvider() {
@@ -1058,8 +1062,8 @@ Item {
     return -fuzzy * 1000 + MenuModel.depthFor(root.items, entry.id) * 25 + entry.order
   }
 
-  function displayRow(entry, detail, score, section) {
-    return MenuModel.displayRow(root.items, root.itemOrder, root.checkedResults, entry, detail, score, section)
+  function displayRow(entry, detail, score, section, index) {
+    return MenuModel.displayRow(root.items, root.itemOrder, root.checkedResults, entry, detail, score, section, index)
   }
 
   function rebuildDmenuDisplay() {
@@ -1114,7 +1118,32 @@ Item {
     })
   }
 
+  // Typing and async provider/guard results schedule a rebuild instead of
+  // running one each: keystrokes that queue up while a pass runs then
+  // collapse into a single pass. Anything that reads displayModel for the
+  // selection flushes first, so it never acts on stale rows.
+  property bool displayDirty: false
+
+  Timer {
+    id: rebuildTimer
+    interval: 0
+    onTriggered: root.flushRebuild()
+  }
+
+  function scheduleRebuild() {
+    root.displayDirty = true
+    if (!rebuildTimer.running) rebuildTimer.start()
+  }
+
+  function flushRebuild() {
+    rebuildTimer.stop()
+    if (!root.displayDirty) return
+    root.rebuildDisplay()
+  }
+
   function rebuildDisplay() {
+    root.displayDirty = false
+    rebuildTimer.stop()
     if (root.dmenuActive) {
       root.rebuildDmenuDisplay()
       return
@@ -1138,15 +1167,22 @@ Item {
     if (query) {
       var currentRows = []
       var drilldownRows = []
+      // One pass per keystroke: children and visibility are indexed once,
+      // and each row is fuzzy-scored once rather than to match and again
+      // to rank.
+      var index = MenuModel.childIndex(root.items, root.itemOrder)
+      var visibleMemo = ({})
 
       for (var i = 0; i < root.itemOrder.length; i++) {
         var entry = root.item(root.itemOrder[i])
         if (!entry || entry.id === "root") continue
         if (!root.isDescendantOf(entry.id, active)) continue
-        if (!root.matchesQuery(entry, query)) continue
+        var fuzzy = root.fuzzyScore(entry, query)
+        if (fuzzy < 0) continue
+        if (!MenuModel.isVisibleIndexed(index, root.whenResults, entry, visibleMemo)) continue
 
         var detail = root.parentPathFor(entry.id)
-        var row = root.displayRow(entry, detail, root.searchScore(entry, query))
+        var row = root.displayRow(entry, detail, -fuzzy * 1000 + MenuModel.depthFor(root.items, entry.id) * 25 + entry.order, "", index)
         if (entry.parent === active) currentRows.push(row)
         else drilldownRows.push(row)
       }
@@ -1298,7 +1334,7 @@ Item {
       if (root.fileRows.length > 0) root.fileRows = []
       if (!root.dmenuActive && root.filterText.trim()) root.loadProvidersForSearch()
     }
-    root.rebuildDisplay()
+    root.scheduleRebuild()
   }
 
   function setActiveMenu(id, pushHistory, fromPointer) {
@@ -1333,6 +1369,7 @@ Item {
 
   function activateIndex(index, fromPointer) {
     if (root.deleteConfirmOpen) return
+    if (!fromPointer) root.flushRebuild()
     if (root.dmenuActive) {
       if (root.mode === "input") {
         root.applyDmenuSelection(root.filterText)
@@ -1653,7 +1690,7 @@ Item {
       }
       root.whenResults = nextWhen
       root.checkedResults = nextChecked
-      if (root.opened) root.rebuildDisplay()
+      if (root.opened) root.scheduleRebuild()
       // Run the evaluation that had to stand aside. Deferred by a turn so the
       // process is settled before its command is set again.
       if (root.guardsPending) Qt.callLater(function() { root.evaluateGuards() })
@@ -1725,6 +1762,13 @@ Item {
 
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
+          // Only typing may leave a rebuild pending; every other key acts on
+          // the rows, so bring them up to date first.
+          var typing = Util.editsFilter(event, root.filterText)
+            || (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127
+                && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier))
+          if (!typing) root.flushRebuild()
+
           if (root.deleteConfirmOpen) {
             if (deleteConfirm.handleKey(event)) event.accepted = true
             return

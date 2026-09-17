@@ -351,8 +351,46 @@ function searchScore(items, entry, query) {
   return score * 1000 + depthFor(items, entry.id) * 25 + entry.order
 }
 
-function displayRow(items, itemOrder, checkedResults, entry, detail, score, section) {
+// Children grouped by parent id. A search pass asks for visibility and child
+// counts of many menus, and scanning itemOrder for each one made every
+// keystroke quadratic in the number of rows.
+function childIndex(items, itemOrder) {
+  var index = ({})
+  var order = Array.isArray(itemOrder) ? itemOrder : []
+  for (var i = 0; i < order.length; i++) {
+    var entry = item(items, order[i])
+    if (!entry) continue
+    var list = index[entry.parent]
+    if (list) list.push(entry)
+    else index[entry.parent] = [entry]
+  }
+  return index
+}
+
+// isVisible over a childIndex, memoized per pass in `memo` (id → bool).
+function isVisibleIndexed(index, whenResults, entry, memo, depth) {
+  if (!entry) return false
+  if (entry.when && whenResults && whenResults[entry.id] === false) return false
+  if (entry.kind !== "menu" && entry.kind !== "link") return true
+  if (entry.provider) return true
+
+  var guard = depth || 0
+  if (guard >= 32) return false
+  if (memo && memo[entry.id] !== undefined) return memo[entry.id]
+
   var target = entry.kind === "link" ? entry.target : entry.id
+  var children = index[target] || []
+  var visible = false
+  for (var i = 0; i < children.length; i++) {
+    if (isVisibleIndexed(index, whenResults, children[i], memo, guard + 1)) { visible = true; break }
+  }
+  if (memo) memo[entry.id] = visible
+  return visible
+}
+
+function displayRow(items, itemOrder, checkedResults, entry, detail, score, section, index) {
+  var target = entry.kind === "link" ? entry.target : entry.id
+  var isMenu = entry.kind === "menu" || entry.kind === "link"
   return {
     itemId: entry.id,
     kind: entry.kind,
@@ -365,7 +403,7 @@ function displayRow(items, itemOrder, checkedResults, entry, detail, score, sect
     target: target,
     detail: detail || "",
     path: pathFor(items, entry.id),
-    childCount: (entry.kind === "menu" || entry.kind === "link") ? childCount(items, itemOrder, target) : 0,
+    childCount: isMenu ? (index ? (index[target] || []).length : childCount(items, itemOrder, target)) : 0,
     action: entry.action || "",
     provider: entry.provider || "",
     score: score || 0,
