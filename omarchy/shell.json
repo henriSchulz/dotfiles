@@ -35,6 +35,9 @@
           "chargeLimitStep": 5
         },
         {
+          "id": "henri.control-center"
+        },
+        {
           "id": "henri.clock",
           "format": "ddd d. MMM HH:mm",
           "formatAlt": "d. MMMM 'KW'ww yyyy",

@@ -48,6 +48,7 @@ differences were committed:
 | `omarchy/plugins/henri.workspaces/` | clone of `omarchy.workspaces` that shows only occupied workspaces |
 | `omarchy/plugins/henri.clock/` | clone of `omarchy.clock` with German day and month names in the bar and the calendar popup |
 | `omarchy/plugins/henri.active-window/` | clone of `omarchy.active-window`: shows the app name instead of the window title; a click opens that app's settings via `app-settings` |
+| `omarchy/plugins/henri.control-center/` | own plugin: macOS-style Control Center popup in the bar (Wi-Fi, Bluetooth, AirDrop via LocalSend, Focus/DND, Night Shift, Stay Awake, display + sound sliders, Now Playing); round icon toggles, label opens the stock detail panel |
 | `omarchy/themes/cupertino{,-dark}`, `img-7075` | hand-built, no upstream remote |
 | `obsidian/home/**/.obsidian/` | vault settings, 4 community plugins, the `Crafted` and `Things` themes |
 | `icloud-photos/config.toml` | Apple ID and cache limits; the password is in the keyring, not here |
