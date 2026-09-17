@@ -115,10 +115,10 @@ BarWidget {
     iconComponent: Component {
       Item {
         readonly property color ink: button.foreground
-        readonly property real stroke: Math.max(1.2, Style.spaceReal(1.35))
-        readonly property real pillW: Style.spaceReal(15)
-        readonly property real pillH: Style.spaceReal(7)
-        readonly property real pillGap: Style.spaceReal(2)
+        readonly property real stroke: Math.max(1.1, Style.spaceReal(1.2))
+        readonly property real pillW: Style.spaceReal(13)
+        readonly property real pillH: Style.spaceReal(6)
+        readonly property real pillGap: Style.spaceReal(1.8)
 
         Repeater {
           model: 2
