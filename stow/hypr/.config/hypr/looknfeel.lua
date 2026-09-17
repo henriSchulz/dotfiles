@@ -63,3 +63,7 @@ hl.layer_rule({ match = { namespace = "omarchy-bar" }, blur = true, ignore_alpha
 -- Mission Control animiert selbst (Fenster schrumpfen, eigener Crossfade).
 -- Hyprlands Layer-Fade darüber lässt es ruckeln und doppelt blenden.
 hl.layer_rule({ match = { namespace = "mission-control" }, no_anim = true, animation = "none" })
+
+-- Fenstermodus: Omarchy-Tiling oder freie Fenster wie unter macOS (global,
+-- umschaltbar im Kontrollzentrum). Details in window-mode.lua.
+require("hypr.window-mode")

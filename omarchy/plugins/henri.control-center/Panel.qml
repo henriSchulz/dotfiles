@@ -496,8 +496,17 @@ Panel {
     return best
   }
 
-  // ---- Tiling layout of the active workspace (dwindle / scrolling)
+  // ---- Window mode (global: "tiling" or "macos", see ~/.config/hypr/window-mode.lua)
+  //      and, while tiling, the layout of the active workspace (dwindle / scrolling)
+  property string windowMode: "tiling"
   property string tilingLayout: ""
+
+  function setWindowMode(mode) {
+    if (mode === windowMode) return
+    windowMode = mode
+    actionProc.command = ["hyprctl", "eval", "henri_wm.set(\"" + mode + "\")"]
+    if (!actionProc.running) actionProc.running = true
+  }
 
   // Omarchy's toggle flips dwindle <-> scrolling and persists it per
   // workspace, so only call it when the target isn't already active.
@@ -641,11 +650,15 @@ Panel {
 
   Process {
     id: tilingProc
-    command: ["hyprctl", "activeworkspace", "-j"]
+    // Line 1: active workspace JSON, line 2: persisted window mode.
+    command: ["bash", "-c",
+      "hyprctl activeworkspace -j | jq -c .; cat \"${XDG_STATE_HOME:-$HOME/.local/state}/henri/window-mode\" 2>/dev/null"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        try { root.tilingLayout = JSON.parse(text).tiledLayout || "" } catch (e) {}
+        var lines = String(text || "").split("\n")
+        try { root.tilingLayout = JSON.parse(lines[0]).tiledLayout || "" } catch (e) {}
+        root.windowMode = String(lines[1] || "").trim() === "macos" ? "macos" : "tiling"
       }
     }
   }
@@ -1568,7 +1581,28 @@ Panel {
             font.weight: Font.DemiBold
           }
           Row {
+            id: modeRow
+            width: parent.width
+            spacing: Style.space(5)
+            readonly property var modes: [
+              { id: "tiling", label: "Tiling" },
+              { id: "macos", label: "macOS" }
+            ]
+            Repeater {
+              model: modeRow.modes
+              delegate: Pill {
+                required property var modelData
+                width: Math.floor((modeRow.width - modeRow.spacing * (modeRow.modes.length - 1)) / modeRow.modes.length)
+                label: modelData.label
+                selected: root.windowMode === modelData.id
+                onClicked: root.setWindowMode(modelData.id)
+              }
+            }
+          }
+          // Layout choice only matters while windows tile.
+          Row {
             id: tilingRow
+            visible: root.windowMode === "tiling"
             width: parent.width
             spacing: Style.space(5)
             readonly property var layouts: [
