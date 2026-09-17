@@ -103,11 +103,13 @@ BarWidget {
     // Opens straight onto the expanded display settings.
     function display(): void { root.openDisplay() }
     function plugins(): void { root.openPluginManager() }
-    // Opens straight onto a detail page: wifi, bluetooth or sound.
+    // Opens straight onto a detail page: wifi, wifi-advanced, bluetooth or sound.
     function page(name: string): void {
       if (!panelLoader.item) return
-      panelLoader.item.page = name
+      // "wifi-advanced" opens the Wi-Fi page with its advanced options expanded.
+      panelLoader.item.page = name === "wifi-advanced" ? "wifi" : name
       panelLoader.item.open()
+      if (name === "wifi-advanced") panelLoader.item.wifiAdvanced = true
     }
   }
 
@@ -150,9 +152,11 @@ BarWidget {
               height: width
               radius: width / 2
               y: inset
-              x: capsule.index === 0 ? inset : parent.width - width - inset
+              // The knobs trade sides while the Control Center is open.
+              x: (capsule.index === 0) !== root.opened ? inset : parent.width - width - inset
               color: parent.parent.ink
               antialiasing: true
+              Behavior on x { NumberAnimation { duration: 320; easing.type: Easing.OutBack; easing.overshoot: 1.3 } }
             }
           }
         }

@@ -7,6 +7,7 @@ import Quickshell.Services.Pipewire
 import qs.Commons
 import qs.Ui
 import "Display.js" as Display
+import "Network.js" as Net
 
 // macOS-style Control Center. Everything here drives the same backends the
 // stock panels use (Quickshell.Networking, Bluetooth, Pipewire, the shell's
@@ -75,6 +76,24 @@ Panel {
   property string page: "main"
   function showPage(name) { page = name }
 
+  // ---- Motion. `detailPage` keeps the last detail page mounted while it
+  //      slides out, `revealed` drives the staggered tile entrance on open,
+  //      and `pageShownAt` lets list rows animate in only right after a page
+  //      change (not on every scan update that rebuilds the list).
+  property string detailPage: "wifi"
+  property double pageShownAt: 0
+  property bool revealed: false
+  property bool heightAnimated: false
+  readonly property int motionFast: 140
+  readonly property int motion: 240
+  onPageChanged: {
+    if (page !== "main") detailPage = page
+    pageShownAt = Date.now()
+  }
+  function rowDelay(index) {
+    return Date.now() - pageShownAt < 400 ? Math.min(index, 10) * 28 : -1
+  }
+
   // Wi-Fi rows are primitive snapshots, never WifiNetwork objects: NM churn
   // can destroy a network while a delegate still holds it (see the stock
   // network panel). Actions look the object up by name at click time.
@@ -113,6 +132,9 @@ Panel {
   }
   property string wifiPending: ""
   property string wifiPasswordFor: ""
+  property var wifiRowsFrozen: []
+  onWifiPasswordForChanged: if (wifiPasswordFor !== "") wifiRowsFrozen = wifiRows
+  readonly property var wifiRowsShown: wifiPasswordFor !== "" ? wifiRowsFrozen : wifiRows
   property string wifiFailed: ""
 
   function wifiNetwork(name) {
@@ -172,6 +194,144 @@ Panel {
       var net = root.wifiNetwork(root.wifiPending)
       if (net && !net.connected && !root.wifiPendingStartedConnected) root.wifiFailed = root.wifiPending
       root.wifiPending = ""
+    }
+  }
+
+  // ---- Wi-Fi advanced options: live link stats, band and DNS, polled only
+  //      while that section is expanded (the status script pings twice).
+  property bool wifiAdvanced: false
+  readonly property bool netPolling: opened && page === "wifi" && wifiAdvanced
+  property var netInfo: ({})
+  property real netPrevRx: 0
+  property real netPrevTx: 0
+  property real netPrevTime: 0
+  property string netPrevIface: ""
+  property real netDownRate: 0
+  property real netUpRate: 0
+  property var routerPings: []
+  property var internetPings: []
+  property string dnsProvider: ""
+  property string dnsPending: ""
+  property var bandInfo: ({ band: "", selected: "auto", available: [] })
+  property string bandPending: ""
+  readonly property bool netConnected: !!netInfo.iface
+
+  onNetPollingChanged: if (netPolling) {
+    netPrevTime = 0
+    routerPings = []
+    internetPings = []
+    pollNetwork(true)
+  }
+
+  function pollNetwork(all) {
+    if (!netDetailsProc.running) netDetailsProc.running = true
+    if (all && !dnsProc.running) dnsProc.running = true
+    if (all && !bandProc.running) bandProc.running = true
+  }
+
+  function updateNetDetails(raw) {
+    var next = Net.parseKeyValue(raw)
+    // A band switch drops the link for a moment; keep the last good sample.
+    if (bandPending !== "" && !next.iface) return
+    var now = Date.now() / 1000
+    var rx = parseFloat(next.rx_bytes || "0")
+    var tx = parseFloat(next.tx_bytes || "0")
+    if ((next.iface || "") !== netPrevIface || netPrevTime === 0) {
+      netDownRate = 0
+      netUpRate = 0
+      routerPings = []
+      internetPings = []
+    } else if (now > netPrevTime) {
+      netDownRate = Math.max(0, (rx - netPrevRx) / (now - netPrevTime))
+      netUpRate = Math.max(0, (tx - netPrevTx) / (now - netPrevTime))
+    }
+    netPrevIface = next.iface || ""
+    netPrevRx = rx
+    netPrevTx = tx
+    netPrevTime = now
+    if (next.router_ping_ms !== undefined) routerPings = Net.appendSample(routerPings, next.router_ping_ms, 24)
+    if (next.internet_ping_ms !== undefined) internetPings = Net.appendSample(internetPings, next.internet_ping_ms, 24)
+    netInfo = next
+  }
+
+  function setDns(provider) {
+    if (provider === dnsProvider && provider !== "Custom") return
+    if (provider === "Custom") {
+      // Custom servers are typed in a terminal prompt.
+      close()
+      Quickshell.execDetached(["omarchy-launch-floating-terminal-with-presentation", "omarchy-dns Custom"])
+      return
+    }
+    dnsPending = provider
+    netActionProc.command = ["omarchy-dns", provider]
+    netActionProc.running = true
+  }
+
+  function setBand(band) {
+    if (band === bandInfo.selected || netActionProc.running) return
+    bandPending = band
+    netActionProc.command = ["omarchy-network-band", band]
+    netActionProc.running = true
+  }
+
+  function summonOverlay(pluginId, payload) {
+    close()
+    overlayDelay.pluginId = pluginId
+    overlayDelay.payload = JSON.stringify(payload)
+    overlayDelay.restart()
+  }
+  Timer {
+    id: overlayDelay
+    property string pluginId: ""
+    property string payload: "{}"
+    interval: 180
+    onTriggered: if (root.shell) root.shell.summon(pluginId, payload)
+  }
+
+  Timer {
+    interval: 1500
+    repeat: true
+    running: root.netPolling
+    onTriggered: root.pollNetwork(false)
+  }
+  Process {
+    id: netDetailsProc
+    command: ["omarchy-network-status", "--verbose"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateNetDetails(text)
+    }
+  }
+  Process {
+    id: dnsProc
+    command: ["omarchy-dns"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.dnsProvider = String(text || "").trim() || "DHCP"
+        root.dnsPending = ""
+      }
+    }
+  }
+  Process {
+    id: bandProc
+    command: ["omarchy-network-band"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var kv = Net.parseKeyValue(text)
+        var available = String(kv.available || "").split(" ").filter(function(t) { return t !== "" })
+        if (root.bandPending !== "" && available.length === 0) return
+        root.bandInfo = { band: kv.band || "", selected: kv.selected || "auto", available: available }
+      }
+    }
+  }
+  Process {
+    id: netActionProc
+    onExited: {
+      root.bandPending = ""
+      if (!dnsProc.running) dnsProc.running = true
+      if (!bandProc.running) bandProc.running = true
     }
   }
 
@@ -390,11 +550,17 @@ Panel {
   }
 
   onOpenedChanged: {
-    if (opened) refresh()
-    else {
+    if (opened) {
+      refresh()
+      revealTimer.restart()
+    } else {
+      revealed = false
+      heightAnimated = false
+      revealTimer.stop()
       displayExpanded = false
       page = "main"
       wifiPasswordFor = ""
+      wifiAdvanced = false
     }
   }
 
@@ -438,6 +604,20 @@ Panel {
     onTriggered: root.textSizePreviewIndex = -1
   }
 
+  Timer {
+    id: revealTimer
+    interval: 16
+    onTriggered: {
+      root.revealed = true
+      heightReadyTimer.restart()
+    }
+  }
+  Timer {
+    id: heightReadyTimer
+    interval: 60
+    onTriggered: root.heightAnimated = true
+  }
+
   Process {
     id: localsendProc
     command: ["pgrep", "-x", "localsend"]
@@ -456,20 +636,48 @@ Panel {
     height: width
     radius: width / 2
     color: on ? root.circleOn : root.circleOff
-    scale: circleMouse.pressed ? 0.92 : 1
-    Behavior on color { ColorAnimation { duration: 140 } }
-    Behavior on scale { NumberAnimation { duration: 90 } }
+    scale: circleMouse.pressed ? 0.88 : circleMouse.containsMouse ? 1.06 : 1
+    Behavior on color { ColorAnimation { duration: 220; easing.type: Easing.OutCubic } }
+    Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
+
+    // Spring when the state flips, independent of the press scale above.
+    transform: Scale {
+      id: bounce
+      origin.x: circle.width / 2
+      origin.y: circle.height / 2
+    }
+    onOnChanged: if (root.revealed) bounceAnim.restart()
+    SequentialAnimation {
+      id: bounceAnim
+      ParallelAnimation {
+        NumberAnimation { target: bounce; property: "xScale"; to: 1.14; duration: 110; easing.type: Easing.OutQuad }
+        NumberAnimation { target: bounce; property: "yScale"; to: 1.14; duration: 110; easing.type: Easing.OutQuad }
+      }
+      ParallelAnimation {
+        NumberAnimation { target: bounce; property: "xScale"; to: 1; duration: 320; easing.type: Easing.OutElastic; easing.amplitude: 1.2; easing.period: 0.5 }
+        NumberAnimation { target: bounce; property: "yScale"; to: 1; duration: 320; easing.type: Easing.OutElastic; easing.amplitude: 1.2; easing.period: 0.5 }
+      }
+    }
+    onIconChanged: if (root.revealed) iconPop.restart()
 
     Text {
+      id: circleIcon
       anchors.centerIn: parent
       text: circle.icon
       font.family: root.iconFont
       font.pixelSize: Style.font.iconLarge
       color: circle.on ? root.onIcon : root.fg
+      Behavior on color { ColorAnimation { duration: 220 } }
+      SequentialAnimation {
+        id: iconPop
+        NumberAnimation { target: circleIcon; property: "opacity"; to: 0.2; duration: 70 }
+        NumberAnimation { target: circleIcon; property: "opacity"; to: 1; duration: 160; easing.type: Easing.OutCubic }
+      }
     }
     MouseArea {
       id: circleMouse
       anchors.fill: parent
+      hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onClicked: circle.clicked()
     }
@@ -478,10 +686,38 @@ Panel {
   component Tile: Rectangle {
     id: tile
     property bool hoverable: false
+    // Position in the entrance cascade; -1 opts out.
+    property int revealIndex: -1
     signal clicked()
     radius: root.tileRadius
     color: hoverable && tileMouse.containsMouse ? root.tileHover : root.tileColor
-    Behavior on color { ColorAnimation { duration: 100 } }
+    Behavior on color { ColorAnimation { duration: 160 } }
+
+    readonly property bool shown: revealIndex < 0 || root.revealed
+    opacity: shown ? 1 : 0
+    scale: (shown ? 1 : 0.94) * (hoverable && tileMouse.pressed ? 0.97 : 1)
+    transform: Translate {
+      id: tileShift
+      y: tile.shown ? 0 : -Style.space(10)
+      Behavior on y {
+        SequentialAnimation {
+          PauseAnimation { duration: tile.shown ? Math.max(0, tile.revealIndex) * 32 : 0 }
+          NumberAnimation { duration: tile.shown ? 380 : 0; easing.type: Easing.OutCubic }
+        }
+      }
+    }
+    Behavior on opacity {
+      SequentialAnimation {
+        PauseAnimation { duration: tile.shown ? Math.max(0, tile.revealIndex) * 32 : 0 }
+        NumberAnimation { duration: tile.shown ? 260 : 0; easing.type: Easing.OutCubic }
+      }
+    }
+    Behavior on scale {
+      SequentialAnimation {
+        PauseAnimation { duration: tile.shown && !tileMouse.pressed ? Math.max(0, tile.revealIndex) * 32 : 0 }
+        NumberAnimation { duration: tileMouse.pressed ? 90 : tile.shown ? 380 : 0; easing.type: Easing.OutBack; easing.overshoot: 1.6 }
+      }
+    }
     MouseArea {
       id: tileMouse
       anchors.fill: parent
@@ -593,7 +829,7 @@ Panel {
     width: root.panelWidth
     height: stColumn.implicitHeight + Style.space(15)
     clip: true
-    Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+    Behavior on height { enabled: root.heightAnimated; NumberAnimation { duration: 300; easing.type: Easing.OutQuint } }
 
     Column {
       id: stColumn
@@ -678,6 +914,12 @@ Panel {
         id: extraColumn
         width: parent.width
         visible: st.expanded
+        opacity: st.expanded ? 1 : 0
+        transform: Translate {
+          y: st.expanded ? 0 : -Style.space(8)
+          Behavior on y { NumberAnimation { duration: 300; easing.type: Easing.OutQuint } }
+        }
+        Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
         spacing: Style.space(8)
         topPadding: Style.space(4)
       }
@@ -702,7 +944,9 @@ Panel {
     height: Style.space(26)
     radius: height / 2
     color: selected ? root.circleOn : pillMouse.containsMouse ? root.tileHover : root.circleOff
-    Behavior on color { ColorAnimation { duration: 120 } }
+    scale: pillMouse.pressed ? 0.92 : 1
+    Behavior on color { ColorAnimation { duration: 200; easing.type: Easing.OutCubic } }
+    Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
     Text {
       anchors.centerIn: parent
       text: pill.label
@@ -737,6 +981,10 @@ Panel {
       Text {
         anchors.verticalCenter: parent.verticalCenter
         text: "󰅁"
+        transform: Translate {
+          x: backMouse.containsMouse ? -Style.space(3) : 0
+          Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
+        }
         color: root.fg
         font.family: root.iconFont
         font.pixelSize: Style.font.iconLarge
@@ -755,6 +1003,8 @@ Panel {
       anchors.top: parent.top
       anchors.bottom: parent.bottom
       anchors.right: switchTrack.left
+      id: backMouse
+      hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onClicked: root.page = "main"
     }
@@ -770,7 +1020,7 @@ Panel {
       height: Style.space(20)
       radius: height / 2
       color: ph.checked ? root.circleOn : root.circleOff
-      Behavior on color { ColorAnimation { duration: 140 } }
+      Behavior on color { ColorAnimation { duration: 240; easing.type: Easing.OutCubic } }
       Rectangle {
         width: parent.height - Style.space(4)
         height: width
@@ -778,7 +1028,8 @@ Panel {
         y: Style.space(2)
         x: ph.checked ? parent.width - width - Style.space(2) : Style.space(2)
         color: ph.checked ? root.onIcon : root.fg
-        Behavior on x { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        Behavior on x { NumberAnimation { duration: 280; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
+        Behavior on color { ColorAnimation { duration: 200 } }
       }
       MouseArea {
         anchors.fill: parent
@@ -797,11 +1048,36 @@ Panel {
     property string title: ""
     property string subtitle: ""
     property string trailing: ""
+    property bool busy: false
+    property int rowIndex: 0
     signal clicked()
     width: root.panelWidth
     height: Style.space(44)
     radius: Style.space(10)
     color: lrMouse.containsMouse ? root.tileColor : "transparent"
+    Behavior on color { ColorAnimation { duration: 140 } }
+    scale: lrMouse.pressed ? 0.98 : 1
+    Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+
+    // Rows built right after a page change slide in one after another.
+    opacity: 1
+    transform: Translate { id: lrShift }
+    Component.onCompleted: {
+      var delay = root.rowDelay(rowIndex)
+      if (delay < 0) return
+      opacity = 0
+      lrShift.x = Style.space(18)
+      lrEnterPause.duration = delay
+      lrEnter.start()
+    }
+    SequentialAnimation {
+      id: lrEnter
+      PauseAnimation { id: lrEnterPause; duration: 0 }
+      ParallelAnimation {
+        NumberAnimation { target: lr; property: "opacity"; to: 1; duration: 220; easing.type: Easing.OutCubic }
+        NumberAnimation { target: lrShift; property: "x"; to: 0; duration: 320; easing.type: Easing.OutQuint }
+      }
+    }
 
     Rectangle {
       id: lrCircle
@@ -812,10 +1088,14 @@ Panel {
       height: width
       radius: width / 2
       color: lr.active ? root.circleOn : root.circleOff
+      Behavior on color { ColorAnimation { duration: 220; easing.type: Easing.OutCubic } }
+      scale: lr.active ? 1 : 0.94
+      Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutBack; easing.overshoot: 2.5 } }
       Text {
         anchors.centerIn: parent
         text: lr.icon
         color: lr.active ? root.onIcon : root.fg
+        Behavior on color { ColorAnimation { duration: 220 } }
         font.family: root.iconFont
         font.pixelSize: Style.font.icon
       }
@@ -843,6 +1123,14 @@ Panel {
         font.family: Style.font.family
         font.pixelSize: Style.font.caption
         elide: Text.ElideRight
+        // Breathe while connecting / disconnecting.
+        SequentialAnimation on opacity {
+          running: lr.busy
+          loops: Animation.Infinite
+          onRunningChanged: if (!running) parent.opacity = 1
+          NumberAnimation { to: 0.35; duration: 550; easing.type: Easing.InOutSine }
+          NumberAnimation { to: 1; duration: 550; easing.type: Easing.InOutSine }
+        }
       }
     }
     Text {
@@ -861,6 +1149,61 @@ Panel {
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onClicked: lr.clicked()
+    }
+  }
+
+  // Label/value pair in the advanced stats grid.
+  component Stat: Item {
+    property string label: ""
+    property string value: ""
+    width: Math.floor((root.panelWidth - Style.space(24)) / 2)
+    height: Style.space(20)
+    Text {
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      text: parent.label
+      color: root.dimText
+      font.family: Style.font.family
+      font.pixelSize: Style.font.bodySmall
+    }
+    Text {
+      anchors.right: parent.right
+      anchors.rightMargin: Style.space(8)
+      anchors.verticalCenter: parent.verticalCenter
+      text: parent.value
+      color: root.fg
+      font.family: Style.font.family
+      font.pixelSize: Style.font.bodySmall
+      Behavior on text { enabled: false }
+    }
+  }
+
+  // Small round action button (QR share, speed test).
+  component IconButton: Rectangle {
+    id: ib
+    property string icon: ""
+    property string tip: ""
+    signal clicked()
+    width: Style.space(30)
+    height: width
+    radius: width / 2
+    color: ibMouse.containsMouse ? root.circleOff : root.tileColor
+    scale: ibMouse.pressed ? 0.88 : 1
+    Behavior on color { ColorAnimation { duration: 140 } }
+    Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
+    Text {
+      anchors.centerIn: parent
+      text: ib.icon
+      color: root.fg
+      font.family: root.iconFont
+      font.pixelSize: Style.font.icon
+    }
+    MouseArea {
+      id: ibMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: ib.clicked()
     }
   }
 
@@ -908,7 +1251,10 @@ Panel {
     focusTarget: keyCatcher
     padding: root.gap
     contentWidth: root.panelWidth + root.gap * 2
-    contentHeight: panel.fittedContentHeight(root.page === "main" ? content.implicitHeight : detail.implicitHeight)
+    // Height follows the visible page and animates once the popup is up.
+    property real shownHeight: panel.fittedContentHeight(root.page === "main" ? content.implicitHeight : detail.implicitHeight)
+    Behavior on shownHeight { enabled: root.heightAnimated; NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
+    contentHeight: Math.round(shownHeight)
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -920,17 +1266,33 @@ Panel {
       onTabRequested: function(direction) { root.switchPanel(direction) }
     }
 
+    Item {
+      id: pages
+      anchors.fill: parent
+      clip: true
+
+    // Main grid slides a little to the left and fades as a detail page comes
+    // in from the right; back reverses it.
     Column {
       id: content
       width: root.panelWidth
       spacing: root.gap
-      visible: root.page === "main"
+      readonly property bool current: root.page === "main"
+      visible: opacity > 0.01
+      opacity: current ? 1 : 0
+      x: current ? 0 : -root.panelWidth * 0.3
+      scale: current ? 1 : 0.96
+      transformOrigin: Item.Left
+      Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+      Behavior on x { enabled: root.heightAnimated; NumberAnimation { duration: 340; easing.type: Easing.OutQuint } }
+      Behavior on scale { enabled: root.heightAnimated; NumberAnimation { duration: 340; easing.type: Easing.OutQuint } }
 
       // Top block: connectivity on the left, Focus + small toggles on the right.
       Row {
         spacing: root.gap
 
         Tile {
+          revealIndex: 0
           width: root.colWidth
           height: connectivity.implicitHeight + Style.space(20)
 
@@ -986,6 +1348,7 @@ Panel {
           spacing: root.gap
 
           Tile {
+            revealIndex: 1
             width: root.colWidth
             height: Style.space(52)
             hoverable: true
@@ -1007,12 +1370,14 @@ Panel {
           Row {
             spacing: root.gap
             SmallTile {
+              revealIndex: 2
               icon: "󰖔"
               on: root.nightOn
               title: "Night Shift"
               onClicked: if (root.nightlight) root.nightlight.setNightlight(!root.nightOn)
             }
             SmallTile {
+              revealIndex: 3
               icon: "󰅶"
               on: root.stayAwake
               title: "Wach bleiben"
@@ -1023,6 +1388,7 @@ Panel {
       }
 
       SliderTile {
+        revealIndex: 4
         visible: root.brightnessAvailable || root.displays.length > 0
         heading: "Bildschirm"
         icon: root.brightness < 40 ? "󰃞" : root.brightness < 75 ? "󰃟" : "󰃠"
@@ -1137,6 +1503,7 @@ Panel {
       }
 
       SliderTile {
+        revealIndex: 5
         visible: root.sink !== null
         heading: "Ton"
         expandable: true
@@ -1153,6 +1520,7 @@ Panel {
 
       // Now Playing — only while an MPRIS player has a track.
       Tile {
+        revealIndex: 6
         id: nowPlaying
         readonly property bool playing: root.media && root.media.activePlayer ? root.media.activePlayer.isPlaying === true : false
         visible: root.media ? root.media.hasMedia === true : false
@@ -1254,6 +1622,7 @@ Panel {
 
       // Bottom row, like "Edit Controls" on macOS.
       Tile {
+        revealIndex: 7
         width: root.panelWidth
         height: Style.space(40)
         hoverable: true
@@ -1295,25 +1664,31 @@ Panel {
       id: detail
       width: root.panelWidth
       spacing: Style.space(4)
-      visible: root.page !== "main"
+      readonly property bool current: root.page !== "main"
+      visible: opacity > 0.01
+      opacity: current ? 1 : 0
+      x: current ? 0 : root.panelWidth * 0.5
+      Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+      Behavior on x { enabled: root.heightAnimated; NumberAnimation { duration: 340; easing.type: Easing.OutQuint } }
 
       // Wi-Fi
       PageHeader {
-        visible: root.page === "wifi"
+        visible: root.detailPage === "wifi"
         title: "WLAN"
         showSwitch: true
         checked: root.wifiOn
         onToggled: Networking.wifiEnabled = !Networking.wifiEnabled
       }
-      Separator { visible: root.page === "wifi" }
+      Separator { visible: root.detailPage === "wifi" }
       ListLabel {
-        visible: root.page === "wifi" && root.wifiOn
+        visible: root.detailPage === "wifi" && root.wifiOn
         text: root.wifiRows.length ? "Netzwerke" : "Suche nach Netzwerken …"
       }
       Flickable {
-        visible: root.page === "wifi" && root.wifiOn
+        visible: root.detailPage === "wifi" && root.wifiOn
         width: root.panelWidth
-        height: Math.min(wifiList.implicitHeight, Style.space(44) * 8)
+        height: Math.min(wifiList.implicitHeight, Style.space(44) * (root.wifiAdvanced ? 4 : 8))
+        Behavior on height { enabled: root.heightAnimated; NumberAnimation { duration: 300; easing.type: Easing.OutQuint } }
         contentHeight: wifiList.implicitHeight
         clip: true
         interactive: contentHeight > height
@@ -1323,12 +1698,15 @@ Panel {
           id: wifiList
           width: parent.width
           Repeater {
-            model: root.page === "wifi" ? root.wifiRows : []
+            model: root.detailPage === "wifi" ? root.wifiRowsShown : []
             delegate: Column {
               required property var modelData
+              required property int index
               width: root.panelWidth
 
               ListRow {
+                rowIndex: index
+                busy: root.wifiPending === modelData.name
                 icon: root.wifiIcon(modelData.signal)
                 active: modelData.connected
                 title: modelData.name
@@ -1342,16 +1720,22 @@ Panel {
 
               // Inline password entry for a new secured network.
               Rectangle {
-                visible: root.wifiPasswordFor === modelData.name
+                readonly property bool wanted: root.wifiPasswordFor === modelData.name
+                visible: height > 0.5
                 x: Style.space(44)
                 width: root.panelWidth - Style.space(50)
-                height: visible ? Style.space(32) : 0
+                height: wanted ? Style.space(32) : 0
+                opacity: wanted ? 1 : 0
+                clip: true
+                Behavior on height { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
+                Behavior on opacity { NumberAnimation { duration: 200 } }
+                Behavior on border.color { ColorAnimation { duration: 160 } }
                 radius: Style.space(8)
                 color: root.tileColor
                 border.width: 1
                 border.color: passwordInput.activeFocus ? root.circleOn : root.circleOff
 
-                onVisibleChanged: if (visible) { passwordInput.text = ""; passwordInput.forceActiveFocus() }
+                onWantedChanged: if (wanted) { passwordInput.text = ""; passwordInput.forceActiveFocus() }
 
                 TextInput {
                   id: passwordInput
@@ -1398,25 +1782,198 @@ Panel {
         }
       }
 
+      // ---- Advanced options (everything the stock network panel shows)
+      Rectangle {
+        visible: root.detailPage === "wifi" && root.wifiOn
+        width: root.panelWidth
+        height: advancedColumn.implicitHeight
+        radius: root.tileRadius
+        color: root.wifiAdvanced ? root.tileColor : "transparent"
+        clip: true
+        Behavior on color { ColorAnimation { duration: 200 } }
+        Behavior on height { enabled: root.heightAnimated; NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
+
+        Column {
+          id: advancedColumn
+          width: parent.width
+
+          Item {
+            width: parent.width
+            height: Style.space(36)
+            Text {
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Erweiterte Optionen"
+              color: advMouse.containsMouse ? root.fg : root.dimText
+              font.family: Style.font.family
+              font.pixelSize: Style.font.body
+              Behavior on color { ColorAnimation { duration: 140 } }
+            }
+            Text {
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(12)
+              anchors.verticalCenter: parent.verticalCenter
+              text: "󰅂"
+              rotation: root.wifiAdvanced ? 90 : 0
+              color: root.dimText
+              font.family: root.iconFont
+              font.pixelSize: Style.font.icon
+              Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
+            }
+            MouseArea {
+              id: advMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.wifiAdvanced = !root.wifiAdvanced
+            }
+          }
+
+          Column {
+            width: parent.width
+            visible: root.wifiAdvanced
+            opacity: root.wifiAdvanced ? 1 : 0
+            leftPadding: Style.space(12)
+            rightPadding: Style.space(12)
+            bottomPadding: Style.space(12)
+            spacing: Style.space(8)
+            transform: Translate {
+              y: root.wifiAdvanced ? 0 : -Style.space(10)
+              Behavior on y { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
+            }
+            Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+
+            // Connection summary + share / speed test
+            Item {
+              width: root.panelWidth - Style.space(24)
+              height: Style.space(34)
+              Column {
+                anchors.left: parent.left
+                anchors.right: advButtons.left
+                anchors.verticalCenter: parent.verticalCenter
+                Text {
+                  width: parent.width
+                  text: root.netConnected ? (root.netInfo.ssid || root.wifiName || root.netInfo.iface) : "Nicht verbunden"
+                  color: root.fg
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.subtitle
+                  font.weight: Font.DemiBold
+                  elide: Text.ElideRight
+                }
+                Text {
+                  width: parent.width
+                  visible: text !== ""
+                  text: [Net.formatFreq(root.netInfo.freq), root.netInfo.bitrate || "",
+                         root.netInfo.signal_dbm ? root.netInfo.signal_dbm + " dBm" : ""]
+                        .filter(function(t) { return t !== "" }).join(" · ")
+                  color: root.dimText
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                  elide: Text.ElideRight
+                }
+              }
+              Row {
+                id: advButtons
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.space(6)
+                IconButton {
+                  visible: root.netInfo.type === "wifi"
+                  icon: "󰐲"
+                  onClicked: root.summonOverlay("omarchy.wifiqr",
+                    root.netInfo.iface ? { iface: root.netInfo.iface, ssid: root.netInfo.ssid || "" } : {})
+                }
+                IconButton {
+                  icon: "󰓅"
+                  onClicked: root.summonOverlay("omarchy.speedtest",
+                    root.netInfo.type === "wifi" ? { connection: root.netInfo.ssid || "Wi-Fi" } : {})
+                }
+              }
+            }
+
+            Separator { width: root.panelWidth - Style.space(24) }
+
+            Grid {
+              columns: 2
+              columnSpacing: 0
+              rowSpacing: Style.space(2)
+              readonly property bool hasPings: root.internetPings.length > 0
+              Stat { label: "Ping"; value: Net.formatPing(Net.averageLatency(root.internetPings, 5)) }
+              Stat { label: "Paketverlust"; value: parent.hasPings ? Net.packetLoss(root.internetPings) + " %" : "--" }
+              Stat { label: "Empfangen"; value: Net.formatRate(root.netDownRate) }
+              Stat { label: "Senden"; value: Net.formatRate(root.netUpRate) }
+              Stat { label: "Geladen"; value: Net.formatBytes(root.netInfo.rx_bytes) }
+              Stat { label: "Hochgeladen"; value: Net.formatBytes(root.netInfo.tx_bytes) }
+              Stat { label: "IP"; value: root.netInfo.ip || "--" }
+              Stat { label: "Gateway"; value: root.netInfo.gateway || "--" }
+              Stat { label: "Router-Ping"; value: Net.formatPing(Net.averageLatency(root.routerPings, 5)) }
+              Stat { label: "Schnittstelle"; value: root.netInfo.iface || "--" }
+            }
+
+            // Band pinning (only when the card offers a choice)
+            SectionLabel {
+              visible: root.bandInfo.available.length > 0 && root.netInfo.type === "wifi"
+              text: "WLAN-Band" + (root.bandInfo.band ? " · aktuell " + Net.bandLabel(root.bandInfo.band) : "")
+            }
+            Row {
+              visible: root.bandInfo.available.length > 0 && root.netInfo.type === "wifi"
+              spacing: Style.space(5)
+              readonly property var options: ["auto"].concat(root.bandInfo.available)
+              Repeater {
+                model: parent.options
+                delegate: Pill {
+                  required property string modelData
+                  width: Math.floor((root.panelWidth - Style.space(24) - Style.space(5) * 3) / 4)
+                  label: root.bandPending === modelData ? "…" : Net.bandLabel(modelData)
+                  selected: root.bandInfo.selected === modelData
+                  onClicked: root.setBand(modelData)
+                }
+              }
+            }
+
+            SectionLabel { text: "DNS-Anbieter" }
+            Row {
+              spacing: Style.space(5)
+              Repeater {
+                model: [
+                  { id: "DHCP", label: "DHCP" },
+                  { id: "Cloudflare", label: "Cloudflare" },
+                  { id: "Google", label: "Google" },
+                  { id: "Custom", label: "Eigene" }
+                ]
+                delegate: Pill {
+                  required property var modelData
+                  width: Math.floor((root.panelWidth - Style.space(24) - Style.space(5) * 3) / 4)
+                  label: root.dnsPending === modelData.id ? "…" : modelData.label
+                  selected: (root.dnsPending || root.dnsProvider) === modelData.id
+                  onClicked: root.setDns(modelData.id)
+                }
+              }
+            }
+          }
+        }
+      }
+
       // Bluetooth
       PageHeader {
-        visible: root.page === "bluetooth"
+        visible: root.detailPage === "bluetooth"
         title: "Bluetooth"
         showSwitch: true
         checked: root.btOn
         onToggled: Quickshell.execDetached(["omarchy-bluetooth-power", root.btOn ? "off" : "on"])
       }
-      Separator { visible: root.page === "bluetooth" }
+      Separator { visible: root.detailPage === "bluetooth" }
       ListLabel {
-        visible: root.page === "bluetooth" && root.btOn
+        visible: root.detailPage === "bluetooth" && root.btOn
         text: root.btRows.length ? "Geräte" : "Suche nach Geräten …"
       }
       ListLabel {
-        visible: root.page === "bluetooth" && !root.btOn
+        visible: root.detailPage === "bluetooth" && !root.btOn
         text: "Bluetooth ist aus"
       }
       Flickable {
-        visible: root.page === "bluetooth" && root.btOn
+        visible: root.detailPage === "bluetooth" && root.btOn
         width: root.panelWidth
         height: Math.min(btList.implicitHeight, Style.space(44) * 8)
         contentHeight: btList.implicitHeight
@@ -1428,9 +1985,12 @@ Panel {
           id: btList
           width: parent.width
           Repeater {
-            model: root.page === "bluetooth" ? root.btRows : []
+            model: root.detailPage === "bluetooth" ? root.btRows : []
             delegate: ListRow {
               required property var modelData
+              required property int index
+              rowIndex: index
+              busy: !!root.btPending[modelData.address]
               icon: root.btIcon(modelData.icon)
               active: modelData.connected
               title: modelData.name
@@ -1445,12 +2005,12 @@ Panel {
 
       // Sound
       PageHeader {
-        visible: root.page === "sound"
+        visible: root.detailPage === "sound"
         title: "Ton"
       }
-      Separator { visible: root.page === "sound" }
+      Separator { visible: root.detailPage === "sound" }
       Item {
-        visible: root.page === "sound" && root.sink !== null
+        visible: root.detailPage === "sound" && root.sink !== null
         width: root.panelWidth
         height: Style.space(40)
         Text {
@@ -1493,20 +2053,23 @@ Panel {
         }
       }
       ListLabel {
-        visible: root.page === "sound"
+        visible: root.detailPage === "sound"
         text: "Ausgabe"
       }
       Repeater {
-        model: root.page === "sound" ? root.sinkRows : []
+        model: root.detailPage === "sound" ? root.sinkRows : []
         delegate: ListRow {
           required property var modelData
+          required property int index
+          rowIndex: index
           icon: root.sinkIcon(modelData.label)
           active: modelData.active
           title: modelData.label
-          trailing: modelData.active ? "󰄬" : ""
+          trailing: modelData.active ? "󰄬" : " "
           onClicked: if (!modelData.active) root.setSink(modelData)
         }
       }
+    }
     }
   }
 }
