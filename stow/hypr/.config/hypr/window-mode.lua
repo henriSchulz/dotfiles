@@ -344,7 +344,7 @@ hl.bind("mouse:272", function() M.drag_released() end,
   { release = true, ignore_mods = true, non_consuming = true, transparent = true })
 
 hl.unbind(MOD .. " + ALT + F")
-hl.bind(MOD .. " + ALT + F", function() M.zoom() end, { description = "Zoom window (macOS) / full width" })
+hl.bind(MOD .. " + ALT + F", function() M.zoom() end, { description = "Zoom window (free windows) / full width" })
 
 hl.bind(MOD .. " + M", hl.dsp.exec_cmd("qs -p /usr/share/omarchy/shell ipc call omadock minimizeActive"),
   { description = "Minimize window to dock" })

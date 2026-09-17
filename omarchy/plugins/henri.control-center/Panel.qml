@@ -1557,11 +1557,14 @@ Panel {
         onHeadingClicked: root.showPage("sound")
       }
 
-      // Tiling layout for the active workspace.
+      // Window mode (Tiling / free-floating windows) and, while tiling, the
+      // active workspace's layout as a sub-option.
       Tile {
         revealIndex: 6
         width: root.panelWidth
         height: tilingColumn.implicitHeight + Style.space(20)
+        clip: true
+        Behavior on height { enabled: root.heightAnimated; NumberAnimation { duration: 300; easing.type: Easing.OutQuint } }
 
         Column {
           id: tilingColumn
@@ -1574,7 +1577,7 @@ Panel {
           spacing: Style.space(8)
 
           Text {
-            text: "Tiling"
+            text: "Fenster"
             color: root.fg
             font.family: Style.font.family
             font.pixelSize: Style.font.subtitle
@@ -1586,7 +1589,7 @@ Panel {
             spacing: Style.space(5)
             readonly property var modes: [
               { id: "tiling", label: "Tiling" },
-              { id: "macos", label: "macOS" }
+              { id: "macos", label: "Freie Fenster" }
             ]
             Repeater {
               model: modeRow.modes
@@ -1599,24 +1602,43 @@ Panel {
               }
             }
           }
-          // Layout choice only matters while windows tile.
-          Row {
-            id: tilingRow
+
+          // Tiling options, inset under the mode choice; gone in free mode.
+          Rectangle {
+            id: tilingOptions
             visible: root.windowMode === "tiling"
             width: parent.width
-            spacing: Style.space(5)
-            readonly property var layouts: [
-              { id: "dwindle", label: "Dwindle" },
-              { id: "scrolling", label: "Scrolling" }
-            ]
-            Repeater {
-              model: tilingRow.layouts
-              delegate: Pill {
-                required property var modelData
-                width: Math.floor((tilingRow.width - tilingRow.spacing * (tilingRow.layouts.length - 1)) / tilingRow.layouts.length)
-                label: modelData.label
-                selected: root.tilingLayout === modelData.id
-                onClicked: root.setTilingLayout(modelData.id)
+            height: tilingOptionsColumn.implicitHeight + Style.space(16)
+            radius: Math.max(Style.space(8), root.tileRadius - Style.space(4))
+            color: root.tileColor
+
+            Column {
+              id: tilingOptionsColumn
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.margins: Style.space(8)
+              spacing: Style.space(6)
+
+              SectionLabel { text: "Tiling-Layout · dieser Workspace" }
+              Row {
+                id: tilingRow
+                width: parent.width
+                spacing: Style.space(5)
+                readonly property var layouts: [
+                  { id: "dwindle", label: "Dwindle" },
+                  { id: "scrolling", label: "Scrolling" }
+                ]
+                Repeater {
+                  model: tilingRow.layouts
+                  delegate: Pill {
+                    required property var modelData
+                    width: Math.floor((tilingRow.width - tilingRow.spacing * (tilingRow.layouts.length - 1)) / tilingRow.layouts.length)
+                    label: modelData.label
+                    selected: root.tilingLayout === modelData.id
+                    onClicked: root.setTilingLayout(modelData.id)
+                  }
+                }
               }
             }
           }
