@@ -42,7 +42,6 @@ die Methode aus dem Guide angepasst werden muss.
 | `evindor.keystroke` | 28 MB | github.com/evindor/keystroke |
 | `henri.keystroke` | 22 MB | Git-Clone **ohne Remote** — offene Frage |
 | `io.github.andyweiboan.missioncontrol` | 2,5 MB | github.com/AndyWeiBoan/omarchy-mission-control |
-| `io.github.maajix.spotlight` | 1,6 MB | github.com/maajix/omarchy-spotlight |
 | `bibek.menu` | 1,3 MB | github.com/BibekBhusal0/omarchy-better-menu |
 | `paudelsamir.minimize-pill` | 636 KB | github.com/paudelsamir/minimize-pill |
 | `io.github.grootaiinfinity.hwmon` | 504 KB | github.com/GrootAiInfinity/omarchy-hwmon |
