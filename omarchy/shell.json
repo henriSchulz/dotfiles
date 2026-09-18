@@ -6,7 +6,7 @@
     "layout": {
       "left": [
         {
-          "id": "io.github.twiking.omasettings"
+          "id": "henri.system-menu"
         },
         {
           "id": "henri.workspaces"
@@ -55,11 +55,6 @@
     },
     {
       "id": "omadock"
-    },
-    {
-      "animationStyle": "original",
-      "hotCornerPosition": "top-right",
-      "id": "expose.window-overview"
     },
     {
       "id": "io.github.sirjul1337.lock-explorer",

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.system-menu",
+  "name": "System Menu",
+  "version": "1.0.0",
+  "author": "henri",
+  "description": "macOS-style Apple menu: the Omarchy logo in the bar's corner opens About This Computer, settings, Force Quit, sleep, restart, shut down, lock and log out",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "System Menu",
+    "description": "macOS-style Apple menu behind the Omarchy logo",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "left"
+  }
+}

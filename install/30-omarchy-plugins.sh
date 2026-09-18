@@ -24,7 +24,6 @@ upstream=(
   "henri.keystroke                       https://github.com/henriSchulz/keystroke.git"
   "henri.missioncontrol                  https://github.com/henriSchulz/omarchy-mission-control.git"
   "io.github.sirjul1337.lock-explorer    https://github.com/SirJul1337/omarchy-lock-explorer.git"
-  "io.github.twiking.omasettings         https://github.com/twiking/omasettings.git"
   "omadock                               https://github.com/thepathless/omadock.git"
   "omaplug                               https://github.com/fross100/omaplug.git"
   "stappmus.activity-monitor             https://github.com/stappmus/omarchy-activity-monitor.git"
@@ -47,6 +46,8 @@ done
 #   henri.bar   — clone of omarchy.bar: translucent macOS-style menu bar
 #   henri.workspaces — clone of omarchy.workspaces, occupied workspaces only
 #   henri.clock — clone of omarchy.clock, German day and month names
+#   henri.system-menu — own plugin, macOS-style Apple menu behind the
+#                 Omarchy logo in the bar's left corner
 #   henri.active-window — clone of omarchy.active-window, app name that opens
 #                 the app's settings (app-settings, `bin` stow package)
 for src in "$DOTFILES_ROOT"/omarchy/plugins/*/; do
