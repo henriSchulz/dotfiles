@@ -55,7 +55,7 @@ Eingabe-Test (echte Tasten-/Maus-Events: Esc, Pfeile, Drill-in-Zurück, Klick in
 | `HUi.Highlight` | Auswahl-Form für eine Gruppe | `target: <Item>`, `glide` (true = gleitet: Tabs/Segmente/Sidebar; false = springt: Menüs/Hover-Listen) — selber Koordinatenraum wie die Targets |
 | `HUi.Toggle` | Schalter | `checked`, `toggled(bool)` |
 | `HUi.CrossfadeText` | Text/Zahl, die sich ändert | `text`, `color`, `fontSize`, `fontWeight`, `fontFamily` |
-| `HUi.Collapse` | Aufklappen / Höhe gleitet mit Inhalt | `expanded` (true lassen = Höhe folgt jeder Inhaltsänderung) |
+| `HUi.Collapse` | Aufklappen / Höhe gleitet mit Inhalt | `expanded` (true lassen = Höhe folgt jeder Inhaltsänderung), `snap()` (ohne Animation auf den Zustand springen — z. B. Abschnitt zurücksetzen, während das Popup unsichtbar ist) |
 | `HUi.PageStack` | Drill-in-Seiten mit Parallax | StackView: `initialItem`, `push()`, `pop()`, Höhe gleitet, Esc/← = zurück |
 | `HUi.StaggerIn` | Gestaffeltes Erscheinen | `active`, `index` |
 | `HUi.SpringValue` | Eigene Spring-Animation | `to`, `value`, `preset`, `epsilon`, `snap(v)` |

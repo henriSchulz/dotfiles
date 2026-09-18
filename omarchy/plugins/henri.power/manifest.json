@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.power",
+  "name": "Power",
+  "version": "1.0.0",
+  "author": "henri",
+  "description": "macOS-style battery menu: charge, battery size, time left, cycles and power draw up front; power profile, Dell thermal modes, fans, power flow, charge mode and USB under Advanced",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Power",
+    "description": "Battery overview with an Advanced section for Dell power controls",
+    "category": "System",
+    "allowMultiple": false,
+    "defaults": {
+      "showPercentage": false,
+      "chargeLimitStep": 5
+    },
+    "schema": [
+      {
+        "key": "showPercentage",
+        "type": "boolean",
+        "label": "Show battery percentage in the bar"
+      },
+      {
+        "key": "chargeLimitStep",
+        "type": "integer",
+        "label": "Charge limit step"
+      }
+    ]
+  },
+  "omarchy": {
+    "derivedFrom": "io.github.nipsen.dell-power"
+  }
+}

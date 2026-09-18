@@ -20,7 +20,11 @@ Item {
   visible: expanded || hs.value > 0.5
 
   SpringValue { id: hs; epsilon: 0.3; to: root.expanded ? root.contentHeight : 0 }
-  Component.onCompleted: hs.snap(expanded ? contentHeight : 0)
+  Component.onCompleted: snap()
+
+  // Jump to the current state without animating — e.g. resetting a section
+  // while its popup is hidden, so it does not animate on the next open.
+  function snap() { hs.snap(expanded ? contentHeight : 0) }
 
   Item {
     id: inner
