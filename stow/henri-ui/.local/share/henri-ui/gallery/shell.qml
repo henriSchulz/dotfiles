@@ -31,6 +31,18 @@ ShellRoot {
 
       Text { text: "Henri UI"; color: Color.foreground; font.family: Style.font.family; font.pixelSize: Style.font.display; font.weight: Font.DemiBold }
 
+      // Menu-bar glyphs: battery (normal · charging · plugged · low)
+      Row {
+        id: batteries
+        spacing: 18
+        HUi.BatteryGlyph { height: 12; level: 0.82 }
+        HUi.BatteryGlyph { height: 12; level: 0.55; charging: true }
+        HUi.BatteryGlyph { height: 12; level: 0.8; plugged: true }
+        HUi.BatteryGlyph { height: 12; level: 0.12 }
+        HUi.BatteryGlyph { height: 36; level: 0.55; charging: true }
+        HUi.BatteryGlyph { height: 36; level: 0.8; plugged: true }
+      }
+
       // Buttons
       Row {
         spacing: 10

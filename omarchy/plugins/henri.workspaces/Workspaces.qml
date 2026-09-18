@@ -3,6 +3,8 @@ import QtQuick.Layouts
 import Quickshell.Hyprland
 import qs.Commons
 import qs.Ui
+import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
+import "file:///home/henri/.local/share/henri-ui" as HUi
 
 BarWidget {
   id: root
@@ -44,6 +46,31 @@ BarWidget {
   implicitWidth: grid.implicitWidth + trailingGap
   implicitHeight: grid.implicitHeight
 
+  readonly property var focusedButton: {
+    var fid = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
+    for (var i = 0; i < wsRepeater.count; i++) {
+      var b = wsRepeater.itemAt(i)
+      if (b && b.modelData === fid) return b
+    }
+    return null
+  }
+
+  // Focused workspace: one soft rounded pill that GLIDES to the newly focused
+  // workspace (segmented-control behaviour), instead of blinking per button.
+  HUi.Highlight {
+    target: root.focusedButton
+    glide: true
+    color: "transparent"
+    z: -1
+    Rectangle {
+      anchors.centerIn: parent
+      width: Style.space(18)
+      height: Style.space(18)
+      radius: Style.space(Motion.radiusChip)
+      color: Util.alpha(root.bar ? root.bar.barForeground : Color.foreground, 0.18)
+    }
+  }
+
   GridLayout {
     id: grid
     anchors.fill: parent
@@ -53,6 +80,7 @@ BarWidget {
     rowSpacing: root.vertical ? Style.space(2) : 0
 
     Repeater {
+      id: wsRepeater
       model: root.workspaceIds()
 
       WidgetButton {
@@ -64,21 +92,9 @@ BarWidget {
 
         bar: root.bar
         text: String(modelData)
-        opacity: focused ? 1 : 0.6
+        opacity: focused ? 1 : Motion.secondaryTextAlpha
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
         useActiveColor: false
-
-        // Focused workspace: soft rounded highlight, like a selected macOS menu item.
-        Rectangle {
-          z: -1
-          anchors.centerIn: parent
-          width: Style.space(18)
-          height: Style.space(18)
-          radius: Style.space(5)
-          color: Qt.rgba(root.bar ? root.bar.barForeground.r : 1,
-            root.bar ? root.bar.barForeground.g : 1,
-            root.bar ? root.bar.barForeground.b : 1, 0.18)
-          visible: parent.focused
-        }
         horizontalMargin: 6
         verticalPadding: 6
         fixedWidth: root.vertical ? root.barSize : Style.space(20)

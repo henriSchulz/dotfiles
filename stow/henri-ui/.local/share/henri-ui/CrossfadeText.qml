@@ -15,6 +15,7 @@ Item {
   property int fontSize: Style.font.body
   property int fontWeight: Font.Normal
   property int horizontalAlignment: Text.AlignLeft
+  property int elide: Text.ElideNone
 
   property bool _aFront: true
   readonly property Text front: _aFront ? a : b
@@ -32,6 +33,8 @@ Item {
   component Layer: Text {
     width: root.width
     horizontalAlignment: root.horizontalAlignment
+    elide: root.elide
+    textFormat: Text.PlainText
     color: root.color
     font.family: root.fontFamily
     font.pixelSize: root.fontSize

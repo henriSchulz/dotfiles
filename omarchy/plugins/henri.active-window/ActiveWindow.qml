@@ -3,6 +3,8 @@ import Quickshell
 import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
+import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
+import "file:///home/henri/.local/share/henri-ui" as HUi
 
 BarWidget {
   id: root
@@ -25,11 +27,14 @@ BarWidget {
   readonly property int maxLabelWidth: Number(setting("maxWidth", 280))
 
   visible: appName !== "" && !vertical
-  implicitWidth: visible ? Math.min(maxLabelWidth, labelText.implicitWidth) + Style.spacing.controlPaddingX * 2 : 0
   implicitHeight: barSize
 
-  Behavior on implicitWidth {
-    NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+  // Width follows the new name on the smooth spring; the name itself crossfades.
+  implicitWidth: widthSpring.value
+  HUi.SpringValue {
+    id: widthSpring
+    epsilon: 0.3
+    to: root.visible ? Math.min(root.maxLabelWidth, labelText.implicitWidth) + Style.spacing.controlPaddingX * 2 : 0
   }
 
   Item {
@@ -38,18 +43,17 @@ BarWidget {
     anchors.rightMargin: Style.space(8)
     clip: true
 
-    Text {
+    HUi.CrossfadeText {
       id: labelText
-      textFormat: Text.PlainText
       anchors.verticalCenter: parent.verticalCenter
       anchors.left: parent.left
       width: parent.width
       text: root.appName
       color: root.bar ? root.bar.barForeground : Color.foreground
-      font.family: root.bar ? root.bar.fontFamily : Style.font.family
-      font.pixelSize: Style.font.body
+      fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+      fontSize: Style.font.body
+      fontWeight: Font.DemiBold
       elide: Text.ElideRight
-      font.weight: Font.DemiBold
     }
   }
 

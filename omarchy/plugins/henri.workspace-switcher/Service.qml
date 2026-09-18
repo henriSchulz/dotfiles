@@ -17,6 +17,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import qs.Commons
+import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
 
 Item {
   id: root
@@ -125,13 +126,14 @@ Item {
       readonly property bool onFocusedMonitor:
           !Hyprland.focusedMonitor || !hyprMonitor || Hyprland.focusedMonitor.id === hyprMonitor.id
 
-      visible: root.shown && onFocusedMonitor
+      // Stays mapped while the card fades out.
+      visible: (root.shown || card.opacity > 0) && onFocusedMonitor
       color: "transparent"
       anchors { top: true; bottom: true; left: true; right: true }
       exclusionMode: ExclusionMode.Ignore
       WlrLayershell.namespace: "workspace-switcher"
       WlrLayershell.layer: WlrLayer.Overlay
-      WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+      WlrLayershell.keyboardFocus: root.shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
       readonly property real tileW: {
         const n = Math.max(1, root.ids.length);
@@ -140,7 +142,7 @@ Item {
       }
 
       // Click outside the card closes without switching.
-      TapHandler { onTapped: root.cancel() }
+      TapHandler { enabled: root.shown; onTapped: root.cancel() }
 
       Item {
         anchors.fill: parent
@@ -166,8 +168,18 @@ Item {
         anchors.centerIn: parent
         width: row.width + padding * 2
         height: row.height + padding * 2
-        radius: 14
+        radius: Style.space(Motion.radiusPanel)
         color: Qt.rgba(Color.background.r, Color.background.g, Color.background.b, 0.88)
+        // Like Cmd+Tab: the selection jumps instantly (frequent interaction),
+        // only the switcher itself fades in and out — quickly, never in the way.
+        opacity: root.shown ? 1 : 0
+        Behavior on opacity {
+          NumberAnimation {
+            duration: root.shown ? Motion.fast : Motion.exit(Motion.fast)
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: root.shown ? Motion.easeOut : Motion.easeExit
+          }
+        }
         border.width: 1
         border.color: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.12)
 
@@ -245,8 +257,8 @@ Item {
                       width: size[0] * k
                       height: size[1] * k
                       // Capture only while visible; the service stays loaded.
-                      captureSource: root.shown ? modelData.wayland : null
-                      live: root.shown
+                      captureSource: panel.visible ? modelData.wayland : null
+                      live: panel.visible
                       paintCursor: false
                     }
                   }
@@ -257,13 +269,13 @@ Item {
                   anchors.fill: parent
                   layer.enabled: true
                   visible: false
-                  Rectangle { anchors.fill: parent; radius: 8; color: "black" }
+                  Rectangle { anchors.fill: parent; radius: Style.space(Motion.radiusControl); color: "black" }
                 }
 
                 Rectangle {
                   anchors.fill: parent
                   anchors.margins: -4
-                  radius: 11
+                  radius: Style.space(Motion.radiusControl) + 4
                   color: "transparent"
                   border.width: cell.isSelected ? 3 : 1
                   border.color: cell.isSelected ? Color.accent
@@ -284,10 +296,10 @@ Item {
                 textFormat: Text.PlainText
                 text: String(cell.ws && cell.ws.name ? cell.ws.name : cell.modelData)
                 font.family: Style.font.menuFamily
-                font.pixelSize: 14
+                font.pixelSize: Style.font.title
                 font.bold: cell.isActive
                 color: cell.isSelected ? Color.foreground
-                     : Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.6)
+                     : Util.alpha(Color.foreground, Motion.secondaryTextAlpha)
               }
             }
           }
