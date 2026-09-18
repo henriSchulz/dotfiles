@@ -61,3 +61,9 @@ o.bind("SUPER + CTRL + A", "Sound", "omarchy-shell henri.control-center togglePa
 o.bind("SUPER + CTRL + B", "Bluetooth", "omarchy-shell henri.control-center togglePage bluetooth")
 o.bind("SUPER + CTRL + D", "Display", "omarchy-shell henri.control-center togglePage display")
 o.bind("SUPER + CTRL + W", "Wi-Fi", "omarchy-shell henri.control-center togglePage wifi")
+
+-- SUPER+CTRL+SPACE war Omarchys Hintergrund-Switcher (nur Bilder des Themes).
+-- Jetzt öffnet es den globalen Wallpaper-Picker (Plugin henri.wallpaper,
+-- Ordner ~/Pictures/Wallpaper, Auswahl bleibt über Theme-Wechsel erhalten).
+hl.unbind("SUPER + CTRL + SPACE")
+o.bind("SUPER + CTRL + SPACE", "Wallpaper", "omarchy-shell -q wallpaper toggle")

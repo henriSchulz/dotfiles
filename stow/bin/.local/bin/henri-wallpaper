@@ -1,0 +1,71 @@
+#!/bin/bash
+# Global wallpaper for Omarchy, independent of the theme.
+#
+#   henri-wallpaper set <image>   use <image> for every theme (UI: henri.wallpaper)
+#   henri-wallpaper theme         back to the theme's own backgrounds
+#   henri-wallpaper reapply       re-point the background link (theme-set hook)
+#   henri-wallpaper current       print the global wallpaper, empty in theme mode
+#   henri-wallpaper list          print <image>\t<thumbnail> for the folder
+#   henri-wallpaper dir           print the wallpaper folder
+#
+# ~/.config/omarchy/global-wallpaper holds the image path; henri.background
+# reads it and skips the theme's background on a theme change.
+
+set -euo pipefail
+
+PIN_FILE="$HOME/.config/omarchy/global-wallpaper"
+WALLPAPER_DIR="${HENRI_WALLPAPER_DIR:-$HOME/Pictures/Wallpaper}"
+CURRENT_LINK="$HOME/.local/state/omarchy/current/background"
+
+pinned() {
+  [[ -f $PIN_FILE ]] && head -n1 "$PIN_FILE" || true
+}
+
+case "${1:-}" in
+  set)
+    image=$(realpath -- "${2:?Usage: henri-wallpaper set <image>}")
+    [[ -f $image ]] || { echo "File does not exist: $image" >&2; exit 1; }
+    printf '%s\n' "$image" >"$PIN_FILE.tmp"
+    mv "$PIN_FILE.tmp" "$PIN_FILE"
+    omarchy-theme-bg-set "$image"
+    ;;
+  theme)
+    rm -f "$PIN_FILE"
+    omarchy-theme-bg-next
+    ;;
+  reapply)
+    image=$(pinned)
+    [[ -n $image && -f $image ]] || exit 0
+    ln -nsf "$image" "$CURRENT_LINK"
+    omarchy-shell -q background setInstant "$image" || true
+    ;;
+  current)
+    pinned
+    ;;
+  list)
+    # <image>\t<thumbnail> per line; thumbnails are 16:10 crops, cached by
+    # path + size + mtime so replaced files get a new one.
+    cache="${XDG_CACHE_HOME:-$HOME/.cache}/henri-wallpaper"
+    mkdir -p "$WALLPAPER_DIR" "$cache"
+    find -L "$WALLPAPER_DIR" -maxdepth 1 -type f \
+      \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.bmp' -o -iname '*.gif' \) \
+      -print0 | sort -z | while IFS= read -r -d '' image; do
+        hash=$(printf '%s\t%s' "$image" "$(stat -Lc '%s:%Y' "$image")" | md5sum | cut -d' ' -f1)
+        thumb="$cache/$hash.jpg"
+        if [[ ! -f $thumb ]]; then
+          vipsthumbnail "$image" -s 640x400 -m centre -o "$thumb[Q=85]" 2>/dev/null ||
+            magick "$image[0]" -thumbnail 640x400^ -gravity center -extent 640x400 "$thumb" 2>/dev/null ||
+            thumb="$image"
+        fi
+        printf '%s\t%s\n' "$image" "$thumb"
+      done
+    ;;
+  dir)
+    mkdir -p "$WALLPAPER_DIR"
+    echo "$WALLPAPER_DIR"
+    ;;
+  *)
+    sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+    exit 1
+    ;;
+esac

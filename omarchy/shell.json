@@ -38,12 +38,14 @@
   "cloneSourceRestores": [
     "henri.menu",
     "io.github.sirjul1337.lock-explorer",
-    "henri.idle"
+    "henri.idle",
+    "henri.background"
   ],
   "disabledPlugins": [
     "omarchy.menu",
     "omarchy.lock",
-    "omarchy.idle"
+    "omarchy.idle",
+    "omarchy.background"
   ],
   "idle": {
     "lock": 300,
@@ -68,6 +70,12 @@
     },
     {
       "id": "henri.workspace-switcher"
+    },
+    {
+      "id": "henri.background"
+    },
+    {
+      "id": "henri.wallpaper"
     }
   ],
   "version": 1

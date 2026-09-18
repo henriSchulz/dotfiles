@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.background",
+  "name": "Background (global wallpaper)",
+  "version": "1.0.0",
+  "author": "henri",
+  "description": "Omarchy background renderer; keeps the global wallpaper from henri.wallpaper across theme changes",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Background.qml"
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.background"
+  }
+}

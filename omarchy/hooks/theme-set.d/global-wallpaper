@@ -1,0 +1,4 @@
+#!/bin/bash
+# omarchy-theme-set points the background link at the new theme's image; keep
+# the global wallpaper from henri-wallpaper instead (no-op in theme mode).
+"$HOME/.local/bin/henri-wallpaper" reapply
