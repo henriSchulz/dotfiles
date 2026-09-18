@@ -25,6 +25,11 @@ import "file:///home/henri/.local/share/henri-ui" as HUi
 `QT_QPA_PLATFORM=offscreen HUI_AUTOTEST=1 HUI_SHOT=/tmp/hui quickshell -p ~/.local/share/henri-ui/gallery/shell.qml`
 → keine `WARN scene`/`TypeError`-Zeilen, endet mit `HUI done`; Screenshots
 `/tmp/hui-*.png` ansehen.
+**Compile-Check** (vor jedem Live-Deploy — die Shell lädt Plugins bei jedem
+Datei-Schreiben sofort neu, ein Fehler wäre direkt in der Bar):
+`~/.local/share/henri-ui/gallery/compilecheck.sh <plugin-dir-oder-dateien>` → nur
+`COMPILE RESULT 0 failed` ist ok. Braucht die laufende Wayland-Session (erzeugt keine Fenster).
+
 Eingabe-Test (echte Tasten-/Maus-Events: Esc, Pfeile, Drill-in-Zurück, Klick ins Leere):
 `QT_QPA_PLATFORM=offscreen quickshell -p ~/.local/share/henri-ui/gallery/keytest.qml`
 → muss mit `RESULT ALL PASS` enden.
@@ -33,6 +38,7 @@ Eingabe-Test (echte Tasten-/Maus-Events: Esc, Pfeile, Drill-in-Zurück, Klick in
 
 | Komponente | Wofür | Wichtigste API |
 |------------|-------|----------------|
+| `HUi.PopupPanel` | **Bar-Popup** (Drop-in für Shell-`KeyboardPanel`, gleiche API) | `kind: popover\|panel` + alles von KeyboardPanel (`anchorItem`, `owner`, `bar`, `open`, `focusTarget`, `contentWidth/Height`, `fittedContent*()`); Esc/Klick daneben/Bar-Wechsel eingebaut |
 | `HUi.Reveal` | Ein-/Ausblenden jeder Fläche + Esc | `open`, `kind: menu\|popover\|panel\|toast`, `origin`, `fromX/fromY`, `settled`, `shown`, `closed()`, **`dismissRequested()`** (Esc + Klick ins Leere), `closeOnEscape`, `closeOnOutsideClick`, `insideWindows` |
 | `HUi.Surface` | Material (Theme-Hintergrund, Haarlinie, Radius) | `role: popups\|menu\|tooltip\|notifications`, `kind: panel\|popover\|menu\|chip`, `padding`, `contentLeftInset`… (BorderSurface) |
 | `HUi.Pressable` | Basis alles Klickbaren | `clicked()`, `secondaryClicked()`, `tint`, `prominent`, `selected`, `showFill`, `pressScaleEnabled`, `contentColor`, `radius` |
@@ -53,6 +59,28 @@ inneren Container — `parent.xyz` zeigt dorthin. Die Komponente per `id` anspre
 Fehlt ein Baustein und wird er in ≥ 2 Plugins gebraucht → als neue `HUi.*`-Datei in
 `~/.local/share/henri-ui/` anlegen, in die Galerie + Selbsttest aufnehmen, hier in der
 Tabelle ergänzen.
+
+## Bestehende Plugins migrieren (Rezept)
+
+1. In einer Kopie arbeiten (Scratchpad), nie direkt in `~/.config/omarchy/plugins`.
+2. Imports ergänzen (Motion + HUi, siehe oben).
+3. `KeyboardPanel {` → `HUi.PopupPanel {` + `kind: "popover"` (Kalender, Menüs) bzw.
+   `"panel"` (Control Center, große Flächen). Sonst nichts an der Popup-Logik ändern.
+4. Alle festen Dauern/Kurven → Tokens. `OutBack`/`OutElastic`/Bounce-Sequenzen
+   entfernen: Press-/Pop-Effekte → `HUi.SpringValue { preset: Motion.snappy }`,
+   Rest → `Motion.easeOut`. Stagger-Delays → `Motion.stagger(index)`.
+5. Sekundärtext per `Qt.darker/lighter(fg, x)` → `Util.alpha(fg, Motion.secondaryTextAlpha)`;
+   deaktiviert/außerhalb → `Util.alpha(fg, Motion.disabledOpacity)`. (`Qt.darker` macht in
+   hellen Themes dunklen Text noch dunkler.)
+6. Hover-/Zustandsfarben ohne Übergang → `Behavior on color` (rein `instant`, raus
+   `fast`); `"transparent"` als Ziel → `Util.alpha(farbe, 0)`.
+7. Komponenten-Radien `Style.cornerRadius` → `Style.space(Motion.radius…)`.
+8. Wechselnde Texte/Zahlen → `HUi.CrossfadeText`, wo es passt.
+9. Funktion, Layout und Verhalten sonst **unverändert** lassen — Migration ist kein Redesign.
+10. `compilecheck.sh` auf die Kopie → erst bei 0 Fehlern live kopieren (rsync), Shell-Log
+    prüfen (`quickshell log -p /usr/share/omarchy/shell/shell.qml -t 50`), live öffnen
+    (`omarchy-shell <ipc-target> open`) + `grim`-Screenshot ansehen, dann nach
+    `~/Projects/dotfiles/omarchy/plugins/` syncen, committen, pushen.
 
 ## Abläufe als Code
 
