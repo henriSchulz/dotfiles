@@ -218,7 +218,7 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
 
 - **Referenz-Theme: das aktuell aktive Omarchy-Theme — derzeit `cupertino`**
   (hell, macOS Light: Hintergrund `#f5f5f7`, Text `#1d1d1f`, Akzent Apple-Blau `#0071e3`,
-  Menü-Auswahl blau mit weißem Text, Flächen α 0.85–0.90, Haarlinie schwarz α 0.12).
+  Menü-Auswahl blau mit weißem Text, Menüs α 0.97 (fast deckend — Inhalt dahinter darf nicht durchscheinen), Popover α 0.85, Haarlinie schwarz α 0.12).
   Henri: „wir arbeiten erstmal standardmäßig auf meinem aktuellen Theme“ → dagegen
   gestalten, Screenshots/Selbsttest darin ansehen, Kontrast darin prüfen. Aktuelles Theme
   nachsehen: `cat ~/.local/state/omarchy/current/theme.name`.
@@ -235,7 +235,7 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   Weiß/Schwarz nach Kontrast (Blau `#0071e3` → Weiß 4.7 : 1).
 - **Radien:** Fenster/Panels 14, Popover/Menüs 10, Buttons/Felder 8, Menü-Einträge 6,
   kleine Chips 5. Konzentrisch: innerer Radius = äußerer − Innenabstand.
-- **Material:** Panels/Menüs leicht transparent (Hintergrund-Alpha ~0.85) + Blur hinter
+- **Material:** Panels leicht transparent (Hintergrund-Alpha ~0.85), Menüs fast deckend (~0.97, Henri: durchscheinender Inhalt „sieht komisch aus“) + Blur hinter
   der Fläche (Hyprland-`layerrule blur` bzw. Compositor), dünne Haarlinie
   1 px `foreground` @ α 0.10, weicher Schatten (y 8, blur 24, α 0.18–0.25).
 - **Zustände (Fill-Alpha auf foreground):** normal 0, hover 0.08, pressed 0.14,
