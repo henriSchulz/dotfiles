@@ -3,15 +3,18 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
+import "file:///home/henri/.local/share/henri-ui" as HUi
 
 // macOS-style Apple menu. The Omarchy logo sits in the bar's left corner and
 // opens a plain menu list; "Über diesen Computer" swaps the list for an About
 // card, and restart / shut down / log out ask first on a confirm page, like
 // the "…" items on macOS.
 //
-// Motion: rows cascade in on open, one highlight glides between rows, a
-// chosen command blinks before it runs (as macOS does), pages cross-slide
-// while the popup resizes, and the About logo springs in.
+// Motion (henri-ui tokens): rows cascade in on open, the row highlight jumps
+// instantly like NSMenu, a chosen command blinks once before it runs (as
+// macOS does), pages cross-slide while the popup resizes, and the About logo
+// springs in.
 Panel {
   id: root
   moduleName: "henri.system-menu"
@@ -19,17 +22,21 @@ Panel {
   manageIpc: false
 
   readonly property color fg: Color.popups.text
-  readonly property color dimText: Qt.rgba(fg.r, fg.g, fg.b, 0.55)
-  readonly property color separatorColor: Qt.rgba(fg.r, fg.g, fg.b, 0.12)
-  readonly property color softFill: Qt.rgba(fg.r, fg.g, fg.b, 0.09)
-  readonly property color softHover: Qt.rgba(fg.r, fg.g, fg.b, 0.16)
-  readonly property color highlight: Color.accent
-  readonly property color highlightText: Color.popups.background
+  readonly property color dimText: Util.alpha(fg, Motion.secondaryTextAlpha)
+  readonly property color separatorColor: Util.alpha(fg, Motion.hairlineAlpha)
+  readonly property color softFill: Util.alpha(fg, Motion.hoverAlpha)
+  readonly property color softHover: Util.alpha(fg, Motion.pressedAlpha)
+  // Menu selection is theme-authored (cupertino: blue + white text).
+  readonly property color highlight: Color.menu.selectedBackground
+  readonly property color highlightText: Color.menu.selectedText
+  // Primary button on the confirm page.
+  readonly property color accent: Color.accent
+  readonly property color accentText: Motion.onColor(Color.accent)
   readonly property string textFont: Style.font.family
   readonly property string logo: ""
   readonly property int menuWidth: Style.space(250)
   readonly property int aboutWidth: Style.space(290)
-  readonly property int rowHeight: Style.space(26)
+  readonly property int rowHeight: Style.space(Motion.menuItemHeight)
   readonly property string userName: Quickshell.env("USER") || ""
 
   // "menu" | "about" | "confirm"
@@ -43,6 +50,10 @@ Panel {
   property bool sizeAnimated: false
   // While a chosen item blinks, input is ignored.
   property bool blinking: false
+  // Blink phase: highlight momentarily off.
+  property bool blinkOff: false
+  // Bar logo press-squeeze on open (released by logoPulse).
+  property bool logoSqueezed: false
 
   readonly property var items: [
     { label: "Über diesen Computer", page: "about" },
@@ -114,7 +125,9 @@ Panel {
       if (page !== "about") page = "menu"
       selected = -1
       blinking = false
+      blinkOff = false
       revealTimer.restart()
+      logoSqueezed = true
       logoPulse.restart()
       if (!infoProc.running) infoProc.running = true
     } else {
@@ -127,7 +140,7 @@ Panel {
   // Back to the menu once the popup has faded, not while it still shows.
   Timer {
     id: resetPage
-    interval: 250
+    interval: Motion.exit(Motion.slow)
     onTriggered: if (!root.opened) { root.page = "menu"; root.pending = null }
   }
   Timer {
@@ -139,15 +152,15 @@ Panel {
     }
   }
 
-  // The macOS menu blinks the chosen item before acting on it.
+  // The macOS menu blinks the chosen item before acting on it (NSMenu:
+  // highlight off, on, then fire).
   SequentialAnimation {
     id: blink
     property var item: null
-    NumberAnimation { target: highlightBar; property: "blinkOpacity"; to: 0; duration: 55 }
-    NumberAnimation { target: highlightBar; property: "blinkOpacity"; to: 1; duration: 55 }
-    NumberAnimation { target: highlightBar; property: "blinkOpacity"; to: 0; duration: 55 }
-    NumberAnimation { target: highlightBar; property: "blinkOpacity"; to: 1; duration: 55 }
-    PauseAnimation { duration: 40 }
+    ScriptAction { script: root.blinkOff = true }
+    PauseAnimation { duration: Motion.flashDuration }
+    ScriptAction { script: root.blinkOff = false }
+    PauseAnimation { duration: Motion.flashDuration }
     ScriptAction {
       script: {
         root.blinking = false
@@ -183,17 +196,21 @@ Panel {
     fontFamily: "omarchy"
     tooltipText: ""
     onPressed: function(b) { root.toggle() }
+    scale: logoScale.value
   }
 
-  // Squeeze-and-spring on the bar logo whenever the menu opens.
-  SequentialAnimation {
+  // Press feedback on the bar logo whenever the menu opens: squeeze
+  // (instant), then spring back (snappy).
+  HUi.SpringValue { id: logoScale; preset: Motion.snappy; to: root.logoSqueezed ? Motion.pressScale : 1 }
+  Timer {
     id: logoPulse
-    NumberAnimation { target: button; property: "scale"; to: 0.78; duration: 90; easing.type: Easing.OutQuad }
-    NumberAnimation { target: button; property: "scale"; to: 1; duration: 380; easing.type: Easing.OutBack; easing.overshoot: 2.6 }
+    interval: Motion.instant
+    onTriggered: root.logoSqueezed = false
   }
 
-  KeyboardPanel {
+  HUi.PopupPanel {
     id: panel
+    kind: "popover"
     anchorItem: button
     owner: root
     bar: root.bar
@@ -207,8 +224,8 @@ Panel {
       : confirmColumn.implicitHeight
     property real shownWidth: targetWidth
     property real shownHeight: targetHeight
-    Behavior on shownWidth { enabled: root.sizeAnimated; NumberAnimation { duration: 340; easing.type: Easing.OutQuint } }
-    Behavior on shownHeight { enabled: root.sizeAnimated; NumberAnimation { duration: 340; easing.type: Easing.OutQuint } }
+    Behavior on shownWidth { enabled: root.sizeAnimated; NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
+    Behavior on shownHeight { enabled: root.sizeAnimated; NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
     contentWidth: Math.round(shownWidth)
     contentHeight: panel.fittedContentHeight(Math.round(shownHeight))
 
@@ -237,27 +254,17 @@ Panel {
           visible: opacity > 0.01
           opacity: current ? 1 : 0
           x: current ? 0 : -Style.space(36)
-          Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-          Behavior on x { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
+          Behavior on opacity { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+          Behavior on x { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
-          // One highlight for all rows: it glides to the hovered row and
-          // fades away when the pointer leaves the list.
-          Rectangle {
+          // One highlight for all rows: it jumps to the hovered row and
+          // vanishes when the pointer leaves the list — instantly, like NSMenu.
+          HUi.Highlight {
             id: highlightBar
-            property real blinkOpacity: 1
-            readonly property Item target: rows.count > 0 && root.selected >= 0 ? rows.itemAt(root.selected) : null
-            property real lastY: 0
-            onTargetChanged: if (target) lastY = target.y
-            width: parent.width
-            height: root.rowHeight
-            y: target ? target.y : lastY
-            radius: Style.space(5)
+            glide: false
             color: root.highlight
-            opacity: (target ? 1 : 0) * blinkOpacity
-            scale: target ? 1 : 0.97
-            Behavior on y { enabled: highlightBar.opacity > 0.05; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-            Behavior on opacity { enabled: !root.blinking; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-            Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
+            suppressed: root.blinkOff
+            target: rows.count > 0 && root.selected >= 0 ? rows.itemAt(root.selected) : null
           }
 
           Column {
@@ -271,7 +278,7 @@ Panel {
                 id: row
                 required property var modelData
                 required property int index
-                readonly property bool isSelected: root.selected === index
+                readonly property bool isSelected: root.selected === index && !root.blinkOff
                 width: menuColumn.width
                 height: modelData.separator ? Style.space(9) : root.rowHeight
 
@@ -281,15 +288,15 @@ Panel {
                   y: root.revealed ? 0 : -Style.space(8)
                   Behavior on y {
                     SequentialAnimation {
-                      PauseAnimation { duration: root.revealed ? row.index * 22 : 0 }
-                      NumberAnimation { duration: 300; easing.type: Easing.OutBack; easing.overshoot: 1.4 }
+                      PauseAnimation { duration: root.revealed ? Motion.stagger(row.index) : 0 }
+                      NumberAnimation { duration: root.revealed ? Motion.base : Motion.exit(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: root.revealed ? Motion.easeOut : Motion.easeExit }
                     }
                   }
                 }
                 Behavior on opacity {
                   SequentialAnimation {
-                    PauseAnimation { duration: root.revealed ? row.index * 22 : 0 }
-                    NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+                    PauseAnimation { duration: root.revealed ? Motion.stagger(row.index) : 0 }
+                    NumberAnimation { duration: root.revealed ? Motion.base : Motion.exit(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: root.revealed ? Motion.easeOut : Motion.easeExit }
                   }
                 }
 
@@ -305,14 +312,13 @@ Panel {
                 Text {
                   visible: !row.modelData.separator
                   anchors.left: parent.left
-                  anchors.leftMargin: Style.space(10) + (row.isSelected ? Style.space(2) : 0)
+                  anchors.leftMargin: Style.space(10)
                   anchors.verticalCenter: parent.verticalCenter
                   text: row.modelData.label || ""
+                  // Switches with the highlight, no fade (NSMenu).
                   color: row.isSelected ? root.highlightText : root.fg
                   font.family: root.textFont
                   font.pixelSize: Style.font.subtitle
-                  Behavior on color { ColorAnimation { duration: 120 } }
-                  Behavior on anchors.leftMargin { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
                 }
 
                 MouseArea {
@@ -339,8 +345,8 @@ Panel {
           visible: opacity > 0.01
           opacity: current ? 1 : 0
           x: current ? 0 : Style.space(36)
-          Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-          Behavior on x { NumberAnimation { duration: 340; easing.type: Easing.OutQuint } }
+          Behavior on opacity { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+          Behavior on x { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
           Text {
             id: aboutLogo
@@ -349,10 +355,8 @@ Panel {
             font.family: "omarchy"
             font.pixelSize: Style.space(64)
             color: root.fg
-            scale: aboutColumn.current ? 1 : 0.4
-            rotation: aboutColumn.current ? 0 : -25
-            Behavior on scale { NumberAnimation { duration: 560; easing.type: Easing.OutBack; easing.overshoot: 2.2 } }
-            Behavior on rotation { NumberAnimation { duration: 620; easing.type: Easing.OutBack; easing.overshoot: 1.6 } }
+            scale: aboutLogoScale.value
+            HUi.SpringValue { id: aboutLogoScale; preset: Motion.snappy; to: aboutColumn.current ? 1 : Motion.popoverFromScale }
           }
           Item { width: 1; height: Style.space(10) }
           Text {
@@ -394,15 +398,15 @@ Panel {
                 y: aboutColumn.current ? 0 : Style.space(10)
                 Behavior on y {
                   SequentialAnimation {
-                    PauseAnimation { duration: aboutColumn.current ? 140 + fact.index * 40 : 0 }
-                    NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
+                    PauseAnimation { duration: aboutColumn.current ? Motion.fast + Motion.stagger(fact.index) : 0 }
+                    NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
                   }
                 }
               }
               Behavior on opacity {
                 SequentialAnimation {
-                  PauseAnimation { duration: aboutColumn.current ? 140 + fact.index * 40 : 0 }
-                  NumberAnimation { duration: 260; easing.type: Easing.OutCubic }
+                  PauseAnimation { duration: aboutColumn.current ? Motion.fast + Motion.stagger(fact.index) : 0 }
+                  NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
                 }
               }
               Text {
@@ -432,9 +436,9 @@ Panel {
             height: Style.space(24)
             radius: height / 2
             color: moreArea.containsMouse ? root.softHover : root.softFill
-            scale: moreArea.pressed ? 0.94 : 1
-            Behavior on color { ColorAnimation { duration: 140 } }
-            Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
+            scale: moreScale.value
+            HUi.SpringValue { id: moreScale; preset: Motion.snappy; to: moreArea.pressed ? Motion.pressScale : 1 }
+            Behavior on color { ColorAnimation { duration: moreArea.containsMouse ? Motion.instant : Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
             Text {
               id: moreLabel
               anchors.centerIn: parent
@@ -464,8 +468,8 @@ Panel {
           visible: opacity > 0.01
           opacity: current ? 1 : 0
           x: current ? 0 : Style.space(36)
-          Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-          Behavior on x { NumberAnimation { duration: 340; easing.type: Easing.OutQuint } }
+          Behavior on opacity { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+          Behavior on x { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
           Text {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -473,8 +477,8 @@ Panel {
             font.family: "omarchy"
             font.pixelSize: Style.space(40)
             color: root.fg
-            scale: confirmColumn.current ? 1 : 0.5
-            Behavior on scale { NumberAnimation { duration: 480; easing.type: Easing.OutBack; easing.overshoot: 2.4 } }
+            scale: confirmLogoScale.value
+            HUi.SpringValue { id: confirmLogoScale; preset: Motion.snappy; to: confirmColumn.current ? 1 : Motion.popoverFromScale }
           }
           Text {
             width: parent.width - Style.space(20)
@@ -502,27 +506,27 @@ Panel {
                 required property int index
                 width: Style.space(118)
                 height: Style.space(28)
-                radius: Style.space(7)
-                color: modelData.primary ? root.highlight : (choiceArea.containsMouse ? root.softHover : root.softFill)
+                radius: Style.space(Motion.radiusControl)
+                color: modelData.primary ? root.accent : (choiceArea.containsMouse ? root.softHover : root.softFill)
                 opacity: modelData.primary && choiceArea.containsMouse ? 0.85 : 1
-                scale: choiceArea.pressed ? 0.94 : 1
-                Behavior on color { ColorAnimation { duration: 140 } }
-                Behavior on opacity { NumberAnimation { duration: 140 } }
-                Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
+                scale: choiceScale.value
+                HUi.SpringValue { id: choiceScale; preset: Motion.snappy; to: choiceArea.pressed ? Motion.pressScale : 1 }
+                Behavior on color { ColorAnimation { duration: choiceArea.containsMouse ? Motion.instant : Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+                Behavior on opacity { NumberAnimation { duration: choiceArea.containsMouse ? Motion.instant : Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
                 // Buttons rise in after the question.
                 transform: Translate {
                   y: confirmColumn.current ? 0 : Style.space(12)
                   Behavior on y {
                     SequentialAnimation {
-                      PauseAnimation { duration: confirmColumn.current ? 120 + choice.index * 60 : 0 }
-                      NumberAnimation { duration: 360; easing.type: Easing.OutBack; easing.overshoot: 1.6 }
+                      PauseAnimation { duration: confirmColumn.current ? Motion.fast + Motion.stagger(choice.index) : 0 }
+                      NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
                     }
                   }
                 }
                 Text {
                   anchors.centerIn: parent
                   text: choice.modelData.label
-                  color: choice.modelData.primary ? root.highlightText : root.fg
+                  color: choice.modelData.primary ? root.accentText : root.fg
                   font.family: root.textFont
                   font.pixelSize: Style.font.body
                 }
