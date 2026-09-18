@@ -205,8 +205,10 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   räumlich wie die Anordnung im Streifen. Hyprlands eigene Layer-Animation für
   solche Overlays aus (`no_anim`), sonst läuft alles doppelt.
 - Latenz ist Teil der Animation: Tasten als Hyprland-Ereignis (`hl.dsp.event`,
-  `Hyprland.onRawEvent`) statt Prozess pro Taste; Overlay vorab gemappt (leere
-  `Region` als Maske im Ruhezustand), kein Tastaturfokus, Wechsel sofort dispatchen.
+  `Hyprland.onRawEvent`) statt Prozess pro Taste; Overlay schon beim Tastendruck
+  mappen (parallel zur Verzögerung), kein Tastaturfokus, Wechsel sofort dispatchen.
+  Nie ein Vollbild-Overlay dauerhaft (click-through) gemappt lassen — das bricht das
+  Schließen anderer Popups per Klick daneben (Hyprland-Focus-Grab).
 
 ## 3b. Abläufe (Choreografie — immer gleich, in jedem Plugin)
 

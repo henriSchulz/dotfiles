@@ -182,13 +182,12 @@ Item {
       readonly property bool onFocusedMonitor:
           !Hyprland.focusedMonitor || !hyprMonitor || Hyprland.focusedMonitor.id === hyprMonitor.id
 
-      // Mapped ahead of time (henri-ui §5): mapping on Super+Tab cost ~150 ms
-      // before the first frame. While idle it draws nothing and lets every
-      // click through.
-      visible: onFocusedMonitor
+      // Mapped only while needed: a permanently mapped, click-through overlay
+      // broke the click-outside close of other popups (Hyprland focus grab).
+      // Mapping starts with the gesture (armed), so it runs in parallel with
+      // Motion.switcherDelay instead of after it.
+      visible: (root.armed || reveal.visible) && onFocusedMonitor
       readonly property bool active: root.shown || reveal.visible
-      mask: active ? null : clickThrough
-      Region { id: clickThrough }
       color: "transparent"
       anchors { top: true; bottom: true; left: true; right: true }
       exclusionMode: ExclusionMode.Ignore
