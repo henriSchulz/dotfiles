@@ -25,12 +25,15 @@ import "file:///home/henri/.local/share/henri-ui" as HUi
 `QT_QPA_PLATFORM=offscreen HUI_AUTOTEST=1 HUI_SHOT=/tmp/hui quickshell -p ~/.local/share/henri-ui/gallery/shell.qml`
 → keine `WARN scene`/`TypeError`-Zeilen, endet mit `HUI done`; Screenshots
 `/tmp/hui-*.png` ansehen.
+Tastatur-Test (echte Key-Events: Esc, Pfeile, Drill-in-Zurück):
+`QT_QPA_PLATFORM=offscreen quickshell -p ~/.local/share/henri-ui/gallery/keytest.qml`
+→ muss mit `RESULT ALL PASS` enden.
 
 ## Komponenten (erst diese benutzen, dann selbst bauen)
 
 | Komponente | Wofür | Wichtigste API |
 |------------|-------|----------------|
-| `HUi.Reveal` | Ein-/Ausblenden jeder Fläche | `open`, `kind: menu\|popover\|panel\|toast`, `origin`, `fromX/fromY`, `settled`, `shown`, `closed()` |
+| `HUi.Reveal` | Ein-/Ausblenden jeder Fläche + Esc | `open`, `kind: menu\|popover\|panel\|toast`, `origin`, `fromX/fromY`, `settled`, `shown`, `closed()`, **`dismissRequested()`** (Esc), `closeOnEscape` |
 | `HUi.Surface` | Material (Theme-Hintergrund, Haarlinie, Radius) | `role: popups\|menu\|tooltip\|notifications`, `kind: panel\|popover\|menu\|chip`, `padding`, `contentLeftInset`… (BorderSurface) |
 | `HUi.Pressable` | Basis alles Klickbaren | `clicked()`, `secondaryClicked()`, `tint`, `prominent`, `selected`, `showFill`, `pressScaleEnabled`, `contentColor`, `radius` |
 | `HUi.Button` | Standard-Button | `text`, `icon` (Glyph), `prominent`, + alles von Pressable |
@@ -39,7 +42,7 @@ import "file:///home/henri/.local/share/henri-ui" as HUi
 | `HUi.Toggle` | Schalter | `checked`, `toggled(bool)` |
 | `HUi.CrossfadeText` | Text/Zahl, die sich ändert | `text`, `color`, `fontSize`, `fontWeight`, `fontFamily` |
 | `HUi.Collapse` | Aufklappen / Höhe gleitet mit Inhalt | `expanded` (true lassen = Höhe folgt jeder Inhaltsänderung) |
-| `HUi.PageStack` | Drill-in-Seiten mit Parallax | StackView: `initialItem`, `push()`, `pop()`, Höhe gleitet |
+| `HUi.PageStack` | Drill-in-Seiten mit Parallax | StackView: `initialItem`, `push()`, `pop()`, Höhe gleitet, Esc/← = zurück |
 | `HUi.StaggerIn` | Gestaffeltes Erscheinen | `active`, `index` |
 | `HUi.SpringValue` | Eigene Spring-Animation | `to`, `value`, `preset`, `epsilon`, `snap(v)` |
 
@@ -61,6 +64,7 @@ HUi.Reveal {
   kind: "menu"
   origin: Item.Top                         // Bar unten → Item.Bottom + fromY: 4
   open: root.opened
+  onDismissRequested: root.close()          // Esc — PFLICHT bei jeder Reveal
   width: surface.implicitWidth; height: surface.implicitHeight
 
   HUi.Surface {
@@ -81,6 +85,14 @@ HUi.Reveal {
   }
 }
 ```
+
+**Esc:** Reveal holt sich beim Öffnen den Tastaturfokus und meldet Esc als
+`dismissRequested()`. Es setzt `open` nie selbst (würde das Binding `open: root.opened`
+brechen und den Panel-Zustand desynchronisieren) → immer
+`onDismissRequested: root.close()` bzw. `open = false` bei imperativer Steuerung.
+Damit Tasten überhaupt ankommen, braucht das Fenster Tastaturfokus:
+`PanelWindow` → `WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand` (bzw.
+`Exclusive` für Launcher), `PopupWindow` mit `HyprlandFocusGrab` wie in der Shell-`PopupCard`.
 
 Im `PopupWindow`/`PanelWindow`: Fenster `visible: menu.shown`, damit es erst nach dem
 Ausblenden verschwindet. Keine zusätzliche Opacity-Animation auf der Karte (die
@@ -162,8 +174,9 @@ displaced: Transition {
 
 ## Theme & Stil
 
-- Farben: `Color.foreground/background/accent/muted/urgent`, Flächen `Color.popups.*`,
-  `Color.menu.*`. Schrift: `Style.font.*`, Abstände `Style.spacing.*` / `Style.space(px)`.
+- Farben: `Color.foreground/background/accent/urgent`, Flächen `Color.popups.*`,
+  `Color.menu.*`. Sekundärtext `Util.alpha(Color.foreground, Motion.secondaryTextAlpha)`
+  (nicht `Color.muted`), Text auf Akzent `Motion.onColor(Color.accent)`. Schrift: `Style.font.*`, Abstände `Style.spacing.*` / `Style.space(px)`.
 - Alle px-Tokens aus `Motion.js` durch `Style.space()` schicken (skaliert mit der Schrift).
 - Blur hinter Layer-Surfaces: Hyprland `layerrule = blur, <namespace>` + `ignorealpha`.
 

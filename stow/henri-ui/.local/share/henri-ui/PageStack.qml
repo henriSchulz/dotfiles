@@ -4,7 +4,7 @@ import "Motion.js" as Motion
 
 // Drill-in navigation (Control Center style): the new page slides in from the
 // right, the old one moves 30 % left and fades (parallax); back mirrors it.
-// Height glides to each page's implicitHeight.
+// Height glides to each page's implicitHeight. Esc/← = back.
 //
 //   HUi.PageStack { id: pages; width: parent.width; initialItem: mainPage }
 //   pages.push(wifiPage) … pages.pop()
@@ -16,6 +16,15 @@ StackView {
 
   clip: true
   implicitHeight: hs.value
+
+  // Esc / ← go back one page; on the first page Esc falls through to the
+  // surrounding HUi.Reveal, which closes the surface.
+  Keys.onPressed: function(e) {
+    if ((e.key === Qt.Key_Escape || e.key === Qt.Key_Left || e.key === Qt.Key_Back) && root.depth > 1) {
+      root.pop()
+      e.accepted = true
+    }
+  }
   SpringValue { id: hs; epsilon: 0.3; to: root.currentItem ? root.currentItem.implicitHeight : 0 }
 
   component Move: NumberAnimation {

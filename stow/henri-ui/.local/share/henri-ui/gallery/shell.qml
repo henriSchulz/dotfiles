@@ -93,6 +93,7 @@ ShellRoot {
     HUi.Reveal {
       id: menuReveal
       kind: "menu"
+      onDismissRequested: open = false
       origin: Item.Top
       function place() { var p = menuBtn.mapToItem(canvas, 0, 0); x = p.x; y = p.y + menuBtn.height + 4 }
       width: menuSurface.implicitWidth; height: menuSurface.implicitHeight
@@ -125,6 +126,7 @@ ShellRoot {
     HUi.Reveal {
       id: popReveal
       kind: "popover"
+      onDismissRequested: open = false
       origin: Item.Top
       function place() { var p = popBtn.mapToItem(canvas, 0, 0); x = p.x; y = p.y + popBtn.height + 6 }
       width: 300; height: popSurface.implicitHeight
@@ -167,7 +169,7 @@ ShellRoot {
         spacing: 8
         HUi.Button { text: "‹ Zurück"; onClicked: pages.pop() }
         Text { text: title; color: Color.foreground; font.pixelSize: Style.font.heading; font.weight: Font.DemiBold }
-        Repeater { model: 5; Text { text: title + " Option " + (index + 1); color: Color.muted; font.pixelSize: Style.font.body } }
+        Repeater { model: 5; Text { text: title + " Option " + (index + 1); color: Util.alpha(Color.foreground, Motion.secondaryTextAlpha); font.pixelSize: Style.font.body } }
       }
     }
 

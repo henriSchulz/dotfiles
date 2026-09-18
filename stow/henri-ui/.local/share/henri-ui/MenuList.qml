@@ -2,10 +2,11 @@ import QtQuick
 import qs.Commons
 import "Motion.js" as Motion
 
-// macOS menu body: instant highlight (like NSMenu, no glide), pointer + keyboard (↑ ↓ Home End ⏎),
-// separators, shortcuts, disabled/destructive entries, and the NSMenu blink
-// on activation before `activated` fires. Put it in HUi.Surface inside
-// HUi.Reveal and close the Reveal in onActivated.
+// macOS menu body: instant highlight (like NSMenu, no glide), pointer +
+// keyboard (↑ ↓ Home End ⏎), separators, shortcuts, disabled/destructive
+// entries, and the NSMenu blink on activation before `activated` fires.
+// Put it in HUi.Surface inside HUi.Reveal and close the Reveal in onActivated;
+// Esc is not handled here — it bubbles up to HUi.Reveal (dismissRequested).
 //
 //   HUi.MenuList {
 //     model: [ { text: "Neu", icon: "󰐕", shortcut: "⌘N" }, { separator: true },
@@ -78,6 +79,7 @@ FocusScope {
   Highlight {
     id: hl
     glide: false
+    color: Color.menu.selectedBackground     // theme-authored (cupertino: blue)
     target: root.currentIndex >= 0 ? rep.itemAt(root.currentIndex) : null
   }
 
@@ -101,7 +103,7 @@ FocusScope {
         required property var modelData
         readonly property bool isSeparator: modelData.separator === true
         readonly property bool isCurrent: root.currentIndex === index && !hl.suppressed
-        readonly property color textColor: isCurrent ? Color.background
+        readonly property color textColor: isCurrent ? Color.menu.selectedText
           : modelData.danger ? Color.urgent : Color.menu.text
 
         width: col.width
@@ -150,7 +152,7 @@ FocusScope {
           anchors.rightMargin: Style.spacing.xl
           anchors.verticalCenter: parent.verticalCenter
           text: row.modelData.shortcut || ""
-          color: row.isCurrent ? Color.background : Color.muted
+          color: row.isCurrent ? Color.menu.selectedText : Util.alpha(Color.menu.text, Motion.secondaryTextAlpha)
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
         }

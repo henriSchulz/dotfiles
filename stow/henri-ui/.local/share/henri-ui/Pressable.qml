@@ -21,7 +21,7 @@ Item {
   readonly property bool hovered: hover.hovered
   readonly property bool pressed: tap.pressed || keyPressed
   property bool keyPressed: false
-  readonly property color contentColor: (prominent || selected) ? Color.background : tint
+  readonly property color contentColor: (prominent || selected) ? Motion.onColor(Color.accent) : tint
 
   signal clicked()
   signal secondaryClicked()

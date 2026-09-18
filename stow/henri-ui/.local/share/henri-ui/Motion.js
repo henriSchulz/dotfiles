@@ -54,6 +54,17 @@ function stagger(index) { return Math.min(Math.max(0, index), staggerMax) * stag
 var hoverAlpha = 0.08
 var pressedAlpha = 0.14
 var disabledOpacity = 0.4
+// Secondary text (shortcuts, captions, subtitles) = foreground at this alpha.
+// Not Color.muted: in cupertino muted is 2.4:1 on the background; 0.65 gives 5.0:1.
+var secondaryTextAlpha = 0.65
+
+// Text/glyph color on a filled color (accent buttons, selection): white or
+// black, whichever has more contrast (WCAG). Pass a QML color.
+function onColor(c) {
+  function lin(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
+  var l = 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+  return (1.05 / (l + 0.05)) >= ((l + 0.05) / 0.05) ? "#ffffff" : "#000000"
+}
 
 // ── Shape (px, before Style.space scaling) ─────────────────────────────────
 var radiusPanel = 14

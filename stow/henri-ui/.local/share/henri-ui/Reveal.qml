@@ -8,12 +8,19 @@ import "Motion.js" as Motion
 //     open: root.opened
 //     kind: "menu"                  // menu | popover | panel | toast
 //     origin: Item.Top              // side of the anchor it grows out of
+//     onDismissRequested: root.close()      // Esc — REQUIRED, see below
 //     onClosed: popupWindow.visible = false   // optional: after the exit finished
 //     HUi.Surface { … }
 //   }
 //
 // Interrupting (close while opening, reopen while closing) reverses smoothly.
-Item {
+//
+// Esc: while open the Reveal holds keyboard focus (FocusScope) and turns Esc
+// into dismissRequested(). It never sets `open` itself — that would break the
+// caller's binding (e.g. open: root.opened) and desync the panel state — so the
+// caller closes it the way it opened it. Inner handlers get Esc first
+// (HUi.PageStack goes back a page before the surface closes).
+FocusScope {
   id: root
 
   property bool open: false
@@ -29,6 +36,8 @@ Item {
   // true once fully in — start expensive work (models, polling) here, not at open
   readonly property bool settled: open && opacity >= 1
   signal closed()
+  signal dismissRequested()
+  property bool closeOnEscape: true
 
   default property alias content: holder.data
 
@@ -61,9 +70,15 @@ Item {
   SpringValue { id: offX; preset: root.preset; epsilon: 0.1; to: root.open ? 0 : root.fromX }
   SpringValue { id: offY; preset: root.preset; epsilon: 0.1; to: root.open ? 0 : root.fromY }
 
+  Keys.onEscapePressed: function(e) {
+    if (root.closeOnEscape && root.open) { root.dismissRequested(); e.accepted = true }
+    else e.accepted = false
+  }
+
   // Only a fully closed surface starts from the small/offset pose; a surface
   // reopened mid-exit just turns around.
   onOpenChanged: {
+    if (open) forceActiveFocus()
     if (open && opacity < 0.01) {
       scaleS.snap(fromScale)
       offX.snap(fromX)

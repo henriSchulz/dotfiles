@@ -198,8 +198,10 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
    Aktion auslösen + Menü schließt (Exit, 0.7×).
 3. **Drill-in** (Detailseite): neue Seite von rechts, alte 30 % nach links + Fade,
    `slow` easeInOut, Höhe gleitet mit. Zurück: Button „‹“, Esc oder ← — gespiegelt.
-4. **Schließen:** Esc, Klick daneben oder erneuter Klick auf den Auslöser → Exit ohne
-   Stagger, alles gemeinsam, schneller als der Eintritt. Fokus zurück zum Auslöser.
+4. **Schließen:** **Esc** (immer, bei jedem Menü/Popover/Panel), Klick daneben oder
+   erneuter Klick auf den Auslöser → Exit ohne Stagger, alles gemeinsam, schneller als
+   der Eintritt. Fokus zurück zum Auslöser. Auf einer Drill-in-Unterseite geht Esc
+   erst eine Seite zurück, erst auf der Hauptseite schließt es.
 5. **Wechsel zwischen Popups** (Maus gleitet in der Bar zum Nachbarn): altes schließt,
    neues öffnet **gleichzeitig** — nie auf das Ende der Exit-Animation warten.
 6. **Wert ändert sich:** Text/Zahl crossfadet, Schalter gleitet, Fortschritt animiert
@@ -214,9 +216,23 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
 
 ## 4. Visueller Stil (macOS-nah)
 
-- **Farben immer aus dem Omarchy-Theme**, nie hart codiert
+- **Referenz-Theme: das aktuell aktive Omarchy-Theme — derzeit `cupertino`**
+  (hell, macOS Light: Hintergrund `#f5f5f7`, Text `#1d1d1f`, Akzent Apple-Blau `#0071e3`,
+  Menü-Auswahl blau mit weißem Text, Flächen α 0.85–0.90, Haarlinie schwarz α 0.12).
+  Henri: „wir arbeiten erstmal standardmäßig auf meinem aktuellen Theme“ → dagegen
+  gestalten, Screenshots/Selbsttest darin ansehen, Kontrast darin prüfen. Aktuelles Theme
+  nachsehen: `cat ~/.local/state/omarchy/current/theme.name`.
+- **Farben trotzdem immer über die Theme-Tokens**, nie hart codiert
   (QML: `Color.*`/`Style.*` aus `qs.Commons`; sonst `~/.local/state/omarchy/current/theme/colors.toml`).
-  So passen alle Apps zueinander und wechseln mit dem Theme.
+  So bleibt jeder Theme-Wechsel automatisch korrekt.
+- **Themes legen Details selbst fest** — nutzen statt überschreiben: Menü-Auswahl
+  `Color.menu.selectedBackground/selectedText`, Flächen `Color.popups.*`/`Color.menu.*`
+  (inkl. Transparenz), Rahmen über `Border.surfaceSpec`.
+- **Sekundärtext** (Kürzel, Untertitel, Hinweise) = `foreground` mit
+  `Motion.secondaryTextAlpha` (0.65 → 5.0 : 1 in cupertino). **Nicht `Color.muted`** —
+  das hat in cupertino nur 2.4 : 1 und ist nur für Deaktiviertes/Deko.
+- **Text auf Farbflächen** (Primär-Button, Auswahl): `Motion.onColor(fläche)` wählt
+  Weiß/Schwarz nach Kontrast (Blau `#0071e3` → Weiß 4.7 : 1).
 - **Radien:** Fenster/Panels 14, Popover/Menüs 10, Buttons/Felder 8, Menü-Einträge 6,
   kleine Chips 5. Konzentrisch: innerer Radius = äußerer − Innenabstand.
 - **Material:** Panels/Menüs leicht transparent (Hintergrund-Alpha ~0.85) + Blur hinter
