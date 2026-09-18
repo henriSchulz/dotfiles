@@ -49,8 +49,10 @@ hl.unbind("SUPER + TAB")
 hl.unbind("SUPER + SHIFT + TAB")
 o.bind("SUPER + TAB", "Workspace switcher", hl.dsp.event("workspace-switcher next"))
 o.bind("SUPER + SHIFT + TAB", "Workspace switcher (previous)", hl.dsp.event("workspace-switcher prev"))
-o.bind("SUPER + SUPER_L", nil, hl.dsp.event("workspace-switcher commit"), { release = true })
-o.bind("SUPER + SHIFT + SUPER_L", nil, hl.dsp.event("workspace-switcher commit"), { release = true })
+-- transparent: Nach Super+Tab sperrt ("shadowt") Hyprland alle Bindings auf der
+-- noch gedrückten Super-Taste — ohne das Flag feuert das Loslassen nie.
+o.bind("SUPER + SUPER_L", nil, hl.dsp.event("workspace-switcher commit"), { release = true, transparent = true })
+o.bind("SUPER + SHIFT + SUPER_L", nil, hl.dsp.event("workspace-switcher commit"), { release = true, transparent = true })
 
 -- Audio, Bluetooth, Display und WLAN sind nicht mehr in der Leiste, sondern
 -- im Kontrollzentrum (henri.control-center). Omarchys Kürzel öffnen daher
