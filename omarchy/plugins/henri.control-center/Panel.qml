@@ -206,6 +206,8 @@ Panel {
   // ---- Wi-Fi advanced options: live link stats, band and DNS, polled only
   //      while that section is expanded (the status script pings twice).
   property bool wifiAdvanced: false
+  // Main page: Tiling, Hardware and Plugins live in a folded "Advanced" section.
+  property bool advancedOpen: false
   readonly property bool netPolling: opened && page === "wifi" && wifiAdvanced
   property var netInfo: ({})
   property real netPrevRx: 0
@@ -1784,56 +1786,9 @@ Panel {
         onHeadingClicked: root.showPage("sound")
       }
 
-      // Tiling layout for the active workspace.
-      Tile {
-        revealIndex: 6
-        width: root.panelWidth
-        height: tilingColumn.implicitHeight + Style.space(20)
-
-        Column {
-          id: tilingColumn
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.top: parent.top
-          anchors.topMargin: Style.space(9)
-          anchors.leftMargin: Style.space(12)
-          anchors.rightMargin: Style.space(14)
-          spacing: Style.space(8)
-
-          Text {
-            text: "Tiling"
-            color: root.fg
-            font.family: Style.font.family
-            font.pixelSize: Style.font.subtitle
-            font.weight: Font.DemiBold
-          }
-          Row {
-            id: tilingRow
-            width: parent.width
-            spacing: Style.space(5)
-            readonly property var layouts: [
-              // SF Symbols: square split recursively / rectangle.split.3x1.
-              { id: "dwindle", label: "Dwindle", symbol: String.fromCodePoint(0x100BEB) },
-              { id: "scrolling", label: "Scrolling", symbol: String.fromCodePoint(0x1003DF) }
-            ]
-            Repeater {
-              model: tilingRow.layouts
-              delegate: Pill {
-                required property var modelData
-                width: Math.floor((tilingRow.width - tilingRow.spacing * (tilingRow.layouts.length - 1)) / tilingRow.layouts.length)
-                label: modelData.label
-                symbol: modelData.symbol
-                selected: root.tilingLayout === modelData.id
-                onClicked: root.setTilingLayout(modelData.id)
-              }
-            }
-          }
-        }
-      }
-
       // Now Playing — only while an MPRIS player has a track.
       Tile {
-        revealIndex: 7
+        revealIndex: 6
         id: nowPlaying
         readonly property bool playing: root.media && root.media.activePlayer ? root.media.activePlayer.isPlaying === true : false
         visible: root.media ? root.media.hasMedia === true : false
@@ -1939,92 +1894,193 @@ Panel {
         }
       }
 
-      // Hardware: CPU load, memory and temperature at a glance.
-      Tile {
-        revealIndex: 8
+      // Advanced: rarely used controls, folded away like macOS disclosure sections.
+      Item {
+        id: advancedHeader
         width: root.panelWidth
-        height: Style.space(52)
-        hoverable: true
-        onClicked: root.showPage("hardware")
-
-        Circle {
-          id: hwCircle
+        height: Style.space(28)
+        opacity: root.revealed ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        Text {
           anchors.left: parent.left
-          anchors.leftMargin: Style.space(10)
+          anchors.leftMargin: Style.space(12)
           anchors.verticalCenter: parent.verticalCenter
-          icon: root.sf(0x1009D3)
-          onClicked: root.showPage("hardware")
-        }
-        Column {
-          anchors.left: hwCircle.right
-          anchors.leftMargin: Style.space(8)
-          anchors.right: hwChevron.left
-          anchors.verticalCenter: parent.verticalCenter
-          Text {
-            width: parent.width
-            text: "Hardware"
-            color: root.fg
-            font.family: Style.font.family
-            font.pixelSize: Style.font.subtitle
-            font.weight: Font.DemiBold
-          }
-          Text {
-            width: parent.width
-            visible: text !== ""
-            text: root.hwSummary
-            color: root.hw.temp >= 80 ? root.tempColor(root.hw.temp) : root.dimText
-            font.family: Style.font.family
-            font.pixelSize: Style.font.bodySmall
-            elide: Text.ElideRight
+          text: "Advanced"
+          color: advancedMouse.containsMouse ? root.fg : root.dimText
+          font.family: Style.font.family
+          font.pixelSize: Style.font.body
+          font.weight: Font.DemiBold
+          Behavior on color {
+            ColorAnimation {
+              duration: advancedMouse.containsMouse ? Motion.instant : Motion.fast
+              easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+            }
           }
         }
         Text {
-          id: hwChevron
           anchors.right: parent.right
           anchors.rightMargin: Style.space(14)
           anchors.verticalCenter: parent.verticalCenter
           text: root.sf(0x10018A)
+          rotation: root.advancedOpen ? 90 : 0
           color: root.dimText
           font.family: root.symbolFont
           font.pixelSize: Style.font.icon
+          Behavior on rotation { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        }
+        MouseArea {
+          id: advancedMouse
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.advancedOpen = !root.advancedOpen
         }
       }
 
-      // Bottom row, like "Edit Controls" on macOS.
-      Tile {
-        revealIndex: 9
+      HUi.Collapse {
+        id: advancedSection
         width: root.panelWidth
-        height: Style.space(40)
-        hoverable: true
-        onClicked: root.openPluginManager()
+        expanded: root.advancedOpen
 
-        Text {
-          id: pluginsIcon
-          anchors.left: parent.left
-          anchors.leftMargin: Style.space(14)
-          anchors.verticalCenter: parent.verticalCenter
-          text: root.sf(0x10096E)
-          color: root.fg
-          font.family: root.symbolFont
-          font.pixelSize: Style.font.iconLarge
-        }
-        Text {
-          anchors.left: pluginsIcon.right
-          anchors.leftMargin: Style.space(10)
-          anchors.verticalCenter: parent.verticalCenter
-          text: "Manage Plugins"
-          color: root.fg
-          font.family: Style.font.family
-          font.pixelSize: Style.font.subtitle
-        }
-        Text {
-          anchors.right: parent.right
-          anchors.rightMargin: Style.space(14)
-          anchors.verticalCenter: parent.verticalCenter
-          text: root.sf(0x10018A)
-          color: root.dimText
-          font.family: root.symbolFont
-          font.pixelSize: Style.font.icon
+        Column {
+          width: root.panelWidth
+          spacing: root.gap
+
+          // Tiling layout for the active workspace.
+          Tile {
+            revealIndex: 8
+            width: root.panelWidth
+            height: tilingColumn.implicitHeight + Style.space(20)
+
+            Column {
+              id: tilingColumn
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.topMargin: Style.space(9)
+              anchors.leftMargin: Style.space(12)
+              anchors.rightMargin: Style.space(14)
+              spacing: Style.space(8)
+
+              Text {
+                text: "Tiling"
+                color: root.fg
+                font.family: Style.font.family
+                font.pixelSize: Style.font.subtitle
+                font.weight: Font.DemiBold
+              }
+              Row {
+                id: tilingRow
+                width: parent.width
+                spacing: Style.space(5)
+                readonly property var layouts: [
+                  // SF Symbols: square split recursively / rectangle.split.3x1.
+                  { id: "dwindle", label: "Dwindle", symbol: String.fromCodePoint(0x100BEB) },
+                  { id: "scrolling", label: "Scrolling", symbol: String.fromCodePoint(0x1003DF) }
+                ]
+                Repeater {
+                  model: tilingRow.layouts
+                  delegate: Pill {
+                    required property var modelData
+                    width: Math.floor((tilingRow.width - tilingRow.spacing * (tilingRow.layouts.length - 1)) / tilingRow.layouts.length)
+                    label: modelData.label
+                    symbol: modelData.symbol
+                    selected: root.tilingLayout === modelData.id
+                    onClicked: root.setTilingLayout(modelData.id)
+                  }
+                }
+              }
+            }
+          }
+
+          // Hardware: CPU load, memory and temperature at a glance.
+          Tile {
+            revealIndex: 9
+            width: root.panelWidth
+            height: Style.space(52)
+            hoverable: true
+            onClicked: root.showPage("hardware")
+
+            Circle {
+              id: hwCircle
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              icon: root.sf(0x1009D3)
+              onClicked: root.showPage("hardware")
+            }
+            Column {
+              anchors.left: hwCircle.right
+              anchors.leftMargin: Style.space(8)
+              anchors.right: hwChevron.left
+              anchors.verticalCenter: parent.verticalCenter
+              Text {
+                width: parent.width
+                text: "Hardware"
+                color: root.fg
+                font.family: Style.font.family
+                font.pixelSize: Style.font.subtitle
+                font.weight: Font.DemiBold
+              }
+              Text {
+                width: parent.width
+                visible: text !== ""
+                text: root.hwSummary
+                color: root.hw.temp >= 80 ? root.tempColor(root.hw.temp) : root.dimText
+                font.family: Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                elide: Text.ElideRight
+              }
+            }
+            Text {
+              id: hwChevron
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(14)
+              anchors.verticalCenter: parent.verticalCenter
+              text: root.sf(0x10018A)
+              color: root.dimText
+              font.family: root.symbolFont
+              font.pixelSize: Style.font.icon
+            }
+          }
+
+          // Bottom row, like "Edit Controls" on macOS.
+          Tile {
+            revealIndex: 10
+            width: root.panelWidth
+            height: Style.space(40)
+            hoverable: true
+            onClicked: root.openPluginManager()
+
+            Text {
+              id: pluginsIcon
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(14)
+              anchors.verticalCenter: parent.verticalCenter
+              text: root.sf(0x10096E)
+              color: root.fg
+              font.family: root.symbolFont
+              font.pixelSize: Style.font.iconLarge
+            }
+            Text {
+              anchors.left: pluginsIcon.right
+              anchors.leftMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Manage Plugins"
+              color: root.fg
+              font.family: Style.font.family
+              font.pixelSize: Style.font.subtitle
+            }
+            Text {
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(14)
+              anchors.verticalCenter: parent.verticalCenter
+              text: root.sf(0x10018A)
+              color: root.dimText
+              font.family: root.symbolFont
+              font.pixelSize: Style.font.icon
+            }
+          }
         }
       }
     }
