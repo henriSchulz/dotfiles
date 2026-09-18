@@ -9,18 +9,20 @@
           "id": "henri.system-menu"
         },
         {
-          "id": "henri.workspaces"
-        },
-        {
           "id": "henri.active-window"
         }
       ],
-      "center": [],
+      "center": [
+        {
+          "id": "henri.workspaces"
+        }
+      ],
       "right": [
         {
           "id": "henri.power",
+          "chargeLimitStep": 5,
           "showPercentage": true,
-          "chargeLimitStep": 5
+          "historyHours": "6"
         },
         {
           "id": "henri.control-center"
@@ -29,7 +31,7 @@
           "id": "henri.clock",
           "format": "ddd d. MMM HH:mm",
           "formatAlt": "d. MMMM 'KW'ww yyyy",
-          "verticalFormat": "HH\n\u2014\nmm"
+          "verticalFormat": "HH\n—\nmm"
         }
       ]
     },
@@ -54,9 +56,6 @@
   "plugins": [
     {
       "id": "henri.missioncontrol"
-    },
-    {
-      "id": "omadock"
     },
     {
       "id": "io.github.sirjul1337.lock-explorer",
