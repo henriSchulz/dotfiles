@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
+import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
 
 BarWidget {
   id: root
@@ -18,7 +19,7 @@ BarWidget {
   implicitHeight: barSize
 
   Behavior on implicitWidth {
-    NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+    NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
   }
 
   Item {

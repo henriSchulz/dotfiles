@@ -7,6 +7,7 @@ import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
 import "BarModel.js" as BarModel
+import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
 
 Item {
   id: root
@@ -81,15 +82,21 @@ Item {
   property color background: Qt.rgba(Color.bar.background.r, Color.bar.background.g, Color.bar.background.b, backgroundOpacity)
   property color urgent: Color.bar.active
 
-  Behavior on barForeground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
-  Behavior on background { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
-  Behavior on urgent { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  // Theme / wallpaper-driven recolouring of the whole bar: a calm, slow crossfade.
+  Behavior on barForeground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
+  Behavior on background { ColorAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
+  Behavior on urgent { ColorAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
   property var tooltipTarget: null
   property var pendingTooltipTarget: null
   property string tooltipText: ""
   property string pendingTooltipText: ""
   property bool tooltipShown: false
   property int tooltipRequest: 0
+  // henri-ui tooltip rule: first tooltip after Motion.tooltipDelay and fades in
+  // (Motion.fast); follow-ups within Motion.tooltipGrace of the last visible
+  // tooltip appear instantly without a fade (pointer gliding along the bar).
+  property real tooltipLastVisibleAt: 0
+  property bool tooltipFadeIn: true
   property var activePopout: null
   property var barDragSource: null
   property var barDragTarget: null
@@ -185,6 +192,7 @@ Item {
   }
 
   function clearTooltip() {
+    if (tooltipShown) tooltipLastVisibleAt = Date.now()
     tooltipTimer.stop()
     pendingTooltipTarget = null
     pendingTooltipText = ""
@@ -915,7 +923,13 @@ Item {
       tooltipText = pendingTooltipText
       pendingTooltipTarget = null
       pendingTooltipText = ""
-      tooltipTimer.restart()
+      if (Date.now() - tooltipLastVisibleAt < Motion.tooltipGrace) {
+        tooltipFadeIn = false
+        tooltipShown = true
+      } else {
+        tooltipFadeIn = true
+        tooltipTimer.restart()
+      }
     })
   }
 
@@ -928,7 +942,7 @@ Item {
 
   Timer {
     id: tooltipTimer
-    interval: 400
+    interval: Motion.tooltipDelay
     onTriggered: {
       if (root.targetTooltipHovered(root.tooltipTarget)) root.tooltipShown = true
       else root.clearTooltip()
@@ -1066,6 +1080,25 @@ Item {
     PopupWindow {
       id: tooltipWindow
 
+      // Fade in on a fresh show; follow-ups within the grace window (and
+      // reduce-motion) appear at full opacity straight away.
+      onVisibleChanged: {
+        tooltipFade.stop()
+        if (visible && root.tooltipFadeIn && !Motion.reduceMotion) tooltipFade.start()
+        else tooltipBubble.opacity = 1
+      }
+
+      NumberAnimation {
+        id: tooltipFade
+        target: tooltipBubble
+        property: "opacity"
+        from: 0
+        to: 1
+        duration: Motion.fast
+        easing.type: Easing.BezierSpline
+        easing.bezierCurve: Motion.easeOut
+      }
+
       visible: root.tooltipShown && root.tooltipTarget !== null && root.tooltipText !== "" && root.targetBelongsToWindow(root.tooltipTarget, barWindow)
       color: "transparent"
       implicitWidth: Math.ceil(tooltipBubble.implicitWidth)
@@ -1111,7 +1144,7 @@ Item {
         implicitHeight: tooltipLabel.implicitHeight + 14
         color: Color.tooltip.background
         borderSpec: Border.surfaceSpec("tooltip", "border", Color.tooltip.border, 1)
-        radius: Style.cornerRadius
+        radius: Style.space(Motion.radiusChip)
 
         Text {
           id: tooltipLabel
@@ -1289,7 +1322,11 @@ Item {
         opacity: root.barMoveCandidate === modelData ? (root.transparent ? 0.45 : 0.7) : 0
 
         Behavior on opacity {
-          NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+          NumberAnimation {
+            duration: Motion.fast
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Motion.easeOut
+          }
         }
       }
     }
@@ -1672,7 +1709,11 @@ Item {
       z: 50
 
       Behavior on opacity {
-        NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+        NumberAnimation {
+          duration: Motion.fast
+          easing.type: Easing.BezierSpline
+          easing.bezierCurve: Motion.easeOut
+        }
       }
     }
 

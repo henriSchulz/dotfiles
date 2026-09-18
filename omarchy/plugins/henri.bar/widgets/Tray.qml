@@ -6,6 +6,8 @@ import Quickshell.Services.SystemTray
 import qs.Commons
 import qs.Ui
 import "TrayModel.js" as TrayModel
+import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
+import "file:///home/henri/.local/share/henri-ui" as HUi
 
 BarWidget {
   id: root
@@ -28,8 +30,6 @@ BarWidget {
   readonly property int trayItemGap: 0
   readonly property int trayJoinGap: 0
   readonly property int drawerExtent: drawerCount > 0 ? drawerCount * trayItemExtent + (drawerCount - 1) * trayItemGap : 0
-  // Match Waybar's group/tray-expander drawer transition-duration.
-  readonly property int animationDuration: 600
   property real revealProgress: expanded ? 1 : 0
   readonly property real revealExtent: drawerExtent * revealProgress
 
@@ -215,8 +215,16 @@ BarWidget {
   implicitWidth: root.vertical ? root.barSize : trayContent.implicitWidth
   implicitHeight: root.vertical ? trayContent.implicitHeight : root.barSize
 
+  // henri-ui: the drawer slides open like a panel (slow), closes faster.
+  // Keyed on the Behavior's own targetValue so the timing is already right
+  // when the animation starts (no binding-order race with `expanded`).
   Behavior on revealProgress {
-    NumberAnimation { duration: root.animationDuration; easing.type: Easing.OutCubic }
+    id: revealBehavior
+    NumberAnimation {
+      duration: revealBehavior.targetValue > 0.5 ? Motion.slow : Motion.exit(Motion.slow)
+      easing.type: Easing.BezierSpline
+      easing.bezierCurve: revealBehavior.targetValue > 0.5 ? Motion.easeOut : Motion.easeInOut
+    }
   }
 
   Loader {
@@ -395,8 +403,9 @@ BarWidget {
     }
   }
 
-  PopupCard {
+  HUi.PopupCard {
     id: managePopup
+    kind: "popover"
     anchorItem: root
     owner: root
     bar: root.bar
@@ -419,7 +428,7 @@ BarWidget {
 
       Text {
         text: "Pinned icons stay visible. Hidden icons never show."
-        color: Qt.darker(root.foreground, 1.4)
+        color: Util.alpha(root.foreground, Motion.secondaryTextAlpha)
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
         wrapMode: Text.WordWrap
@@ -429,7 +438,7 @@ BarWidget {
       Text {
         visible: root.allItems.length === 0
         text: "No tray items reporting."
-        color: Qt.darker(root.foreground, 1.5)
+        color: Util.alpha(root.foreground, Motion.secondaryTextAlpha)
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
         font.italic: true
@@ -518,14 +527,15 @@ BarWidget {
     menu: root.activeTrayItem ? root.activeTrayItem.menu : null
   }
 
-  PopupCard {
+  HUi.PopupCard {
     id: trayMenuPopup
+    kind: "menu"
     anchorItem: root.activeTrayAnchor || root
     owner: root
     bar: root.bar
     open: root.trayMenuOpen
-    // The card fades out over 140ms (visible stays true for that whole time --
-    // see PopupCard's own visible: open || card.opacity > 0), so resetting on
+    // The card animates out (visible stays true for that whole time --
+    // see HUi.PopupCard's own visible: open || reveal.visible), so resetting on
     // "open" would swap a live submenu for the root menu mid-fade: a visible
     // flash, and a resize/reposition if the two have different geometry. Wait
     // for the fade to actually finish. Switching to a different tray item
@@ -560,10 +570,11 @@ BarWidget {
           width: menuHeader.width
           implicitHeight: Style.space(30)
 
+          // Menu highlight: switches instantly, no glide/fade (NSMenu).
           Rectangle {
             anchors.fill: parent
-            radius: Math.max(2, Style.cornerRadius)
-            color: backMouse.containsMouse ? Style.hoverFillFor(root.foreground, root.foreground) : "transparent"
+            radius: Style.space(Motion.radiusRow)
+            color: backMouse.containsMouse ? Color.menu.selectedBackground : Util.alpha(Color.menu.selectedBackground, 0)
           }
 
           Text {
@@ -572,7 +583,7 @@ BarWidget {
             width: Style.space(22)
             horizontalAlignment: Text.AlignHCenter
             text: "\u2039"
-            color: root.foreground
+            color: backMouse.containsMouse ? Color.menu.selectedText : root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
           }
@@ -585,7 +596,7 @@ BarWidget {
             anchors.right: parent.right
             anchors.rightMargin: Style.space(10)
             text: root.currentTitle
-            color: root.foreground
+            color: backMouse.containsMouse ? Color.menu.selectedText : root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
             elide: Text.ElideRight
@@ -661,7 +672,9 @@ BarWidget {
               visible: !hiddenRow
               width: trayMenuColumn.width
               implicitHeight: hiddenRow ? 0 : (modelData.isSeparator ? Style.space(11) : Style.space(30))
-              opacity: modelData.enabled ? 1.0 : 0.45
+              opacity: modelData.enabled ? 1.0 : Motion.disabledOpacity
+              readonly property bool highlighted: rowMouse.containsMouse && modelData.enabled && !modelData.isSeparator
+              readonly property color rowForeground: highlighted ? Color.menu.selectedText : root.foreground
 
               Rectangle {
                 visible: menuRow.modelData.isSeparator
@@ -678,8 +691,9 @@ BarWidget {
               Rectangle {
                 visible: !menuRow.modelData.isSeparator
                 anchors.fill: parent
-                radius: Math.max(2, Style.cornerRadius)
-                color: rowMouse.containsMouse && menuRow.modelData.enabled ? Style.hoverFillFor(root.foreground, root.foreground) : "transparent"
+                radius: Style.space(Motion.radiusRow)
+                // Menu highlight: switches instantly, no glide/fade (NSMenu).
+                color: menuRow.highlighted ? Color.menu.selectedBackground : Util.alpha(Color.menu.selectedBackground, 0)
               }
 
               Text {
@@ -690,7 +704,7 @@ BarWidget {
                 width: Style.space(22)
                 horizontalAlignment: Text.AlignHCenter
                 text: menuRow.modelData.checkState === Qt.Checked ? "\uf00c" : ""
-                color: root.foreground
+                color: menuRow.rowForeground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
               }
@@ -720,7 +734,7 @@ BarWidget {
                 anchors.right: submenuGlyph.left
                 anchors.rightMargin: Style.space(8)
                 text: menuRow.rowText
-                color: root.foreground
+                color: menuRow.rowForeground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 elide: Text.ElideRight
@@ -733,7 +747,7 @@ BarWidget {
                 anchors.right: parent.right
                 anchors.rightMargin: Style.space(10)
                 text: "\u203a"
-                color: root.foreground
+                color: menuRow.rowForeground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
               }
