@@ -55,6 +55,7 @@ differences were committed:
 | `obsidian/home/**/.obsidian/` | vault settings, 4 community plugins, the `Crafted` and `Things` themes |
 | `icloud-photos/config.toml` | Apple ID and cache limits; the password is in the keyring, not here |
 | `packages/packages.txt` | the packages added on top of Omarchy's own lists |
+| `packages/libinput-3fg-drag/` | libinput with a one-line patch: three-finger drag starts immediately, even on a fast start (upstream turns that into a 3-finger swipe). Rebuild with `build.sh` after every libinput update; a pacman hook reminds you |
 
 **Not tracked, on purpose:**
 

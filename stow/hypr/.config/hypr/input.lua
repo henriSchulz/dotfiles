@@ -140,6 +140,8 @@ hl.config({
 -- Ziehen ohne Drücken, damit die Wippen-Mechanik des XPS-Trackpads
 -- (oben schwer bis gar nicht klickbar) beim Markieren keine Rolle spielt.
 --   * 3 Finger auflegen und bewegen = gedrückt halten und ziehen
+--     (greift dank gepatchtem libinput auch bei schnellem Losziehen,
+--     siehe ~/Projects/dotfiles/packages/libinput-3fg-drag)
 --     (Text markieren, Screenshot-Bereich aufziehen, Fenster verschieben).
 --     Kurz absetzen und weiterziehen geht; losgelassen wird nach ~0,7 s.
 --   * Doppeltippen und beim zweiten Tipp liegen lassen = ziehen; mit

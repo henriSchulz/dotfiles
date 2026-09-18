@@ -1,0 +1,9 @@
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = libinput
+
+[Action]
+Description = Hinweis: libinput-Patch für 3-Finger-Ziehen neu bauen
+When = PostTransaction
+Exec = /usr/bin/sh -c 'pacman -Qi libinput | grep -q "3fg drag" || echo "==> libinput wurde aktualisiert: ~/Projects/dotfiles/packages/libinput-3fg-drag/build.sh ausführen, sonst ist das sofortige 3-Finger-Ziehen weg."'

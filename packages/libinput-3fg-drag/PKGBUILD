@@ -1,0 +1,39 @@
+# libinput mit lokalem Patch: 3-Finger-Ziehen startet sofort, auch bei
+# schnellem Losziehen (sonst wertet libinput das als 3-Finger-Wischgeste).
+# Neu bauen nach jedem libinput-Update: ./build.sh
+
+pkgname=libinput
+pkgver=1.31.3
+pkgrel=1.1
+pkgdesc="Input device management and event handling library (3fg drag always drags)"
+url="https://wayland.freedesktop.org/libinput/doc/latest/"
+arch=(x86_64)
+license=(MIT)
+depends=(glibc libevdev libgcc libwacom lua54 mtdev systemd-libs)
+makedepends=(git meson)
+provides=(libinput.so)
+source=(
+  "git+https://gitlab.freedesktop.org/libinput/libinput.git#tag=$pkgver"
+  3fg-always-drag.patch
+)
+b2sums=('SKIP' 'SKIP')
+
+prepare() {
+  cd libinput
+  patch -Np1 -i ../3fg-always-drag.patch
+}
+
+build() {
+  arch-meson libinput build \
+    -D documentation=false \
+    -D debug-gui=false \
+    -D tests=false
+  meson compile -C build
+}
+
+package() {
+  meson install -C build --destdir "$pkgdir"
+  # Wie im Arch-Paket: CLI-Tools gehören zu libinput-tools.
+  rm -rf "$pkgdir"/usr/bin "$pkgdir"/usr/lib/libinput "$pkgdir"/usr/share/man "$pkgdir"/usr/share/zsh
+  install -Dm644 libinput/COPYING -t "$pkgdir/usr/share/licenses/$pkgname"
+}

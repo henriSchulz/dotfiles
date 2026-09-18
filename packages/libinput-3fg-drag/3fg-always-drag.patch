@@ -1,0 +1,23 @@
+diff --git a/src/evdev-mt-touchpad-gestures.c b/src/evdev-mt-touchpad-gestures.c
+index 03a081c..11a7b26 100644
+--- a/src/evdev-mt-touchpad-gestures.c
++++ b/src/evdev-mt-touchpad-gestures.c
+@@ -1908,15 +1908,9 @@ tp_gesture_handle_state_3fg_drag_or_swipe(struct tp_dispatch *tp, usec_t time)
+ static void
+ tp_gesture_handle_state_3fg_drag_or_swipe_start(struct tp_dispatch *tp, usec_t time)
+ {
+-	const struct normalized_coords zero = { 0.0, 0.0 };
+-	gesture_notify_swipe(&tp->device->base,
+-			     time,
+-			     LIBINPUT_EVENT_GESTURE_SWIPE_BEGIN,
+-			     tp->gesture.finger_count,
+-			     &zero,
+-			     &zero);
+-	tp->gesture.state = GESTURE_STATE_3FG_DRAG_OR_SWIPE;
+-	tp_gesture_set_3fg_drag_3fg_or_swipe_timer(tp, time);
++	/* Local patch: never treat a fast 3fg movement as a swipe, always
++	 * start dragging right away so the start of the drag is not lost. */
++	tp_gesture_handle_state_3fg_drag_start(tp, time);
+ }
+ 
+ static void
