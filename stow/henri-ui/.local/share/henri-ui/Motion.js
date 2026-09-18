@@ -48,7 +48,7 @@ var firstFrameTimeout = 400
 var tooltipDelay = 500
 // Super+Tab switcher: the strip only appears once Super+Tab is held this long,
 // a quick tap switches without flashing it (Cmd+Tab / Alt+Tab behaviour).
-var switcherDelay = 100
+var switcherDelay = 50
 // On commit the strip drifts this far in the direction the workspaces slide,
 // so the overlay and the desktop read as one movement.
 var carryOffset = 24

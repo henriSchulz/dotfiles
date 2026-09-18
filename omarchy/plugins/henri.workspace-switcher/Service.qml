@@ -5,16 +5,13 @@
 // selection. Letting go of Super switches to the selected workspace. A quick
 // tap switches straight to the next workspace without flashing the strip.
 //
-// Event order. Hyprland owns the keys (bindings.lua): SUPER+TAB sends
-// `next <seq>`, the SUPER_L release sends `commit <seq>`. Every call is its own
-// process, so a quick tap can deliver the release *before* the Tab -- which
-// used to leave the strip open or switch nothing. The bindings number every
-// event without gaps, so a commit knows how many Tabs came before it: if some
-// are still on their way it waits for them (at most overtakenWait), then
-// switches. A Tab that shows up with a pending commit never opens the strip.
-// The strip also takes keyboard focus and sees the Super release itself; that
-// only counts if Hyprland's release never arrives. Esc or a click outside
-// cancels, a click on a preview switches.
+// Keys. Hyprland owns them (bindings.lua): SUPER+TAB, SUPER+SHIFT+TAB and the
+// SUPER_L release send `custom>>workspace-switcher <next|prev|commit>` on
+// Hyprland's event socket -- no process per key, so there is no latency and
+// the events arrive in the order they happened. The strip never takes the
+// keyboard: with Super held, Hyprland's binds win anyway, and holding the
+// focus made Hyprland refocus the old workspace when the strip let go of it.
+// A click outside cancels, a click on a preview switches.
 //
 // Motion (henri-ui): the strip reveals like a menu from the centre. On commit
 // it drifts in the direction the desktop slides (target right of the current
@@ -78,11 +75,6 @@ Item {
     return out;
   }
 
-  function parseSeq(seq) {
-    const n = Number(seq);
-    return isFinite(n) && n > 0 ? n : 0;
-  }
-
   function begin(reveal) {
     Hyprland.refreshWorkspaces();
     Hyprland.refreshToplevels();
@@ -91,7 +83,6 @@ Item {
     root.selected = root.origin;
     root.travel = 0;
     root.armed = true;
-    verifyTimer.stop();
     if (reveal) {
       wallpaperProbe.running = true;
       revealTimer.restart();
@@ -106,7 +97,6 @@ Item {
 
   function finish(doSwitch) {
     revealTimer.stop();
-    keyReleaseFallback.stop();
     if (!root.armed)
       return "idle";
     const id = root.ids[root.selected];
@@ -114,114 +104,24 @@ Item {
                       && /^[0-9]{1,6}$/.test(String(id));
     // Same rule Hyprland uses for its slide: a higher id lies to the right.
     root.travel = switching ? (id > root.activeId() ? 1 : -1) : 0;
-    const hadFocus = root.shown;
     root.armed = false;
     root.shown = false;
-    if (switching) {
-      root.switchTo = id;
-      // While the strip holds the keyboard, Hyprland answers its release by
-      // refocusing the last window -- on the old workspace, which undid the
-      // switch. Hand the keyboard back first, then switch.
-      if (hadFocus)
-        switchTimer.restart();
-      else
-        root.dispatchSwitch();
-    }
+    if (switching)
+      Hyprland.dispatch(Hyprland.usingLua
+        ? "hl.dsp.focus({ workspace = \"" + id + "\" })"
+        : "workspace " + id);
     return "ok";
   }
 
-  property int switchTo: -1
-
-  function dispatchSwitch() {
-    switchTimer.stop();
-    const id = root.switchTo;
-    root.switchTo = -1;
-    if (!/^[0-9]{1,6}$/.test(String(id)))
-      return;
-    Hyprland.dispatch(Hyprland.usingLua
-      ? "hl.dsp.focus({ workspace = \"" + id + "\" })"
-      : "workspace " + id);
-    root.verifyId = id;
-    verifyTimer.restart();
-  }
-
-  // Safety net: if the old workspace still took the focus back, switch once more.
-  property int verifyId: -1
-  Timer {
-    id: verifyTimer
-    interval: 250
-    onTriggered: {
-      if (!root.armed && root.verifyId > 0 && root.activeId() !== root.verifyId) {
-        root.switchTo = root.verifyId;
-        root.verifyId = -1;
-        root.dispatchSwitch();
-        verifyTimer.stop();
-      }
-      root.verifyId = -1;
-    }
-  }
-
-  Timer {
-    id: switchTimer
-    interval: 60
-    onTriggered: root.dispatchSwitch()
-  }
-
-  // Every sequenced event since the last commit, so a commit can tell whether
-  // Tabs it overtook are still on their way.
-  property var seen: ({})
-  property real lastCommitSeq: 0
-  property real pendingCommit: 0
-
-  function note(seq) {
-    if (seq)
-      root.seen[seq] = true;
-  }
-
-  function settle() {
-    if (!root.pendingCommit)
-      return;
-    let missing = 0;
-    for (let s = root.lastCommitSeq + 1; s < root.pendingCommit; s++)
-      if (!root.seen[s])
-        missing++;
-    // A large gap is not lost Tabs but a restart (shell or Hyprland config).
-    if (missing === 0 || missing > 20)
-      root.applyCommit();
-    else if (!overtakenWait.running)
-      overtakenWait.restart();
-  }
-
-  function applyCommit() {
-    overtakenWait.stop();
-    root.lastCommitSeq = root.pendingCommit;
-    root.pendingCommit = 0;
-    root.seen = ({});
-    root.finish(true);
-  }
-
-  function step(dir, seqArg) {
-    const seq = root.parseSeq(seqArg);
-    if (seq && seq <= root.lastCommitSeq)
-      return "stale";   // arrived after its gesture had already given up waiting
-    root.note(seq);
+  function step(dir) {
     if (!root.armed)
-      root.begin(!root.pendingCommit);   // overtaken by the release: no strip
+      root.begin(true);
     root.move(dir);
-    root.settle();
     return "ok";
   }
 
-  function commit(seqArg) {
-    const seq = root.parseSeq(seqArg);
-    if (!seq)
-      return root.finish(true);
-    if (seq <= root.lastCommitSeq)
-      return "stale";
-    root.note(seq);
-    root.pendingCommit = Math.max(root.pendingCommit, seq);
-    root.settle();
-    return "ok";
+  function commit() {
+    return root.finish(true);
   }
 
   function cancel() {
@@ -232,33 +132,31 @@ Item {
   Timer {
     id: revealTimer
     interval: Motion.switcherDelay
-    onTriggered: if (root.armed && !root.pendingCommit) root.shown = true
+    onTriggered: if (root.armed) root.shown = true
   }
-  // Longest a commit waits for Tabs it overtook (each is a separate process).
-  Timer {
-    id: overtakenWait
-    interval: 300
-    onTriggered: root.applyCommit()
-  }
-  // The strip saw Super go up itself. Hyprland's release event is the one that
-  // counts (it knows the order); this only catches a release that got lost.
-  Timer {
-    id: keyReleaseFallback
-    interval: 300
-    onTriggered: if (root.armed && !root.pendingCommit) root.finish(true)
+
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event.name !== "custom")
+        return;
+      const d = String(event.data);
+      if (d === "workspace-switcher next") root.step(1);
+      else if (d === "workspace-switcher prev") root.step(-1);
+      else if (d === "workspace-switcher commit") root.commit();
+    }
   }
 
   IpcHandler {
     target: "workspace-switcher"
 
-    function next(seq: string): string { return root.step(1, seq) }
-    function prev(seq: string): string { return root.step(-1, seq) }
-    function commit(seq: string): string { return root.commit(seq) }
+    function next(): string { return root.step(1) }
+    function prev(): string { return root.step(-1) }
+    function commit(): string { return root.commit() }
     function cancel(): string { return root.cancel() }
     function status(): string {
       return JSON.stringify({ armed: root.armed, shown: root.shown, ids: root.ids,
-                              selected: root.selected, lastCommitSeq: root.lastCommitSeq,
-                              pendingCommit: root.pendingCommit });
+                              selected: root.selected });
     }
   }
 
@@ -284,14 +182,19 @@ Item {
       readonly property bool onFocusedMonitor:
           !Hyprland.focusedMonitor || !hyprMonitor || Hyprland.focusedMonitor.id === hyprMonitor.id
 
-      // Stays mapped while the strip animates out.
-      visible: (root.shown || reveal.visible) && onFocusedMonitor
+      // Mapped ahead of time (henri-ui §5): mapping on Super+Tab cost ~150 ms
+      // before the first frame. While idle it draws nothing and lets every
+      // click through.
+      visible: onFocusedMonitor
+      readonly property bool active: root.shown || reveal.visible
+      mask: active ? null : clickThrough
+      Region { id: clickThrough }
       color: "transparent"
       anchors { top: true; bottom: true; left: true; right: true }
       exclusionMode: ExclusionMode.Ignore
       WlrLayershell.namespace: "workspace-switcher"
       WlrLayershell.layer: WlrLayer.Overlay
-      WlrLayershell.keyboardFocus: root.shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+      WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
       readonly property real tileW: {
         const n = Math.max(1, root.ids.length);
@@ -314,40 +217,10 @@ Item {
         // Enter: straight out of the centre. Exit after a switch: drift along
         // with the workspace slide (the desktop moves opposite to the travel).
         fromX: -root.travel * Motion.carryOffset
-        // Reveal's focus grab clears the moment the overlay maps (the keyboard
-        // grab below and it fight), so outside clicks are caught by the panel.
+        // No focus grab (the strip never takes the keyboard); outside clicks
+        // are caught by the panel.
         closeOnOutsideClick: false
-        onDismissRequested: root.cancel()
-
-        Item {
-          anchors.fill: parent
-          focus: true
-          Keys.onPressed: event => {
-            if (event.key === Qt.Key_Escape) {
-              root.cancel();
-            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-              root.finish(true);
-            } else if (event.key === Qt.Key_Left) {
-              root.move(-1);
-            } else if (event.key === Qt.Key_Right) {
-              root.move(1);
-            } else if (!(event.modifiers & Qt.MetaModifier)
-                       && event.key !== Qt.Key_Super_L && event.key !== Qt.Key_Super_R
-                       && event.key !== Qt.Key_Meta) {
-              // Super is no longer held but its release got lost somewhere.
-              keyReleaseFallback.restart();
-            } else {
-              return;
-            }
-            event.accepted = true;
-          }
-          Keys.onReleased: event => {
-            if (event.key === Qt.Key_Super_L || event.key === Qt.Key_Super_R || event.key === Qt.Key_Meta) {
-              keyReleaseFallback.restart();
-              event.accepted = true;
-            }
-          }
-        }
+        closeOnEscape: false
 
         Rectangle {
           id: card
@@ -433,8 +306,8 @@ Item {
                         width: size[0] * k
                         height: size[1] * k
                         // Capture only while visible; the service stays loaded.
-                        captureSource: panel.visible ? modelData.wayland : null
-                        live: panel.visible
+                        captureSource: panel.active ? modelData.wayland : null
+                        live: panel.active
                         paintCursor: false
                       }
                     }
