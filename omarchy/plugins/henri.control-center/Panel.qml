@@ -35,10 +35,12 @@ Panel {
   readonly property color tileHover: Qt.rgba(fg.r, fg.g, fg.b, 0.11)
   readonly property color circleOff: Qt.rgba(fg.r, fg.g, fg.b, 0.14)
   readonly property color circleOn: Color.accent
-  readonly property color onIcon: Color.popups.background
-  readonly property color dimText: Qt.rgba(fg.r, fg.g, fg.b, 0.6)
+  // Glyphs/text on the accent fill: white or black by contrast (henri-ui).
+  readonly property color onIcon: Motion.onColor(circleOn)
+  // Secondary text: foreground at the henri-ui secondary alpha (not a darkened fg / muted).
+  readonly property color dimText: Util.alpha(fg, Motion.secondaryTextAlpha)
   readonly property string iconFont: bar ? bar.fontFamily : Style.font.family
-  readonly property int tileRadius: Math.max(Style.space(12), Style.cornerRadius)
+  readonly property int tileRadius: Style.space(Motion.radiusPopover)
   readonly property int gap: Style.space(10)
   readonly property int panelWidth: Style.space(340)
   readonly property int colWidth: Math.floor((panelWidth - gap) / 2)
@@ -86,14 +88,13 @@ Panel {
   property double pageShownAt: 0
   property bool revealed: false
   property bool heightAnimated: false
-  readonly property int motionFast: 140
-  readonly property int motion: 240
   onPageChanged: {
     if (page !== "main") detailPage = page
     pageShownAt = Date.now()
   }
   function rowDelay(index) {
-    return Date.now() - pageShownAt < 400 ? Math.min(index, 10) * 28 : -1
+    // Only rows built while the drill-in transition runs cascade in.
+    return Date.now() - pageShownAt < Motion.slow ? Motion.stagger(index) : -1
   }
 
   // Wi-Fi rows are primitive snapshots, never WifiNetwork objects: NM churn
@@ -722,43 +723,50 @@ Panel {
     height: width
     radius: width / 2
     color: on ? root.circleOn : root.circleOff
-    scale: circleMouse.pressed ? 0.88 : circleMouse.containsMouse ? 1.06 : 1
-    Behavior on color { ColorAnimation { duration: 220; easing.type: Easing.OutCubic } }
-    Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
+    Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
 
-    // Spring when the state flips, independent of the press scale above.
+    // Press feedback: scale to Motion.pressScale, released with the snappy spring.
+    scale: circlePress.value
+    HUi.SpringValue {
+      id: circlePress
+      preset: Motion.snappy
+      to: circleMouse.pressed && !Motion.reduceMotion ? Motion.pressScale : 1
+    }
+
+    // Subtle pop when the state flips: snap slightly in, snappy spring back
+    // to 1 (snappy: under 1 % past the target). Independent of the press scale above.
     transform: Scale {
-      id: bounce
       origin.x: circle.width / 2
       origin.y: circle.height / 2
+      xScale: circlePop.value
+      yScale: circlePop.value
     }
-    onOnChanged: if (root.revealed) bounceAnim.restart()
-    SequentialAnimation {
-      id: bounceAnim
-      ParallelAnimation {
-        NumberAnimation { target: bounce; property: "xScale"; to: 1.14; duration: 110; easing.type: Easing.OutQuad }
-        NumberAnimation { target: bounce; property: "yScale"; to: 1.14; duration: 110; easing.type: Easing.OutQuad }
-      }
-      ParallelAnimation {
-        NumberAnimation { target: bounce; property: "xScale"; to: 1; duration: 320; easing.type: Easing.OutElastic; easing.amplitude: 1.2; easing.period: 0.5 }
-        NumberAnimation { target: bounce; property: "yScale"; to: 1; duration: 320; easing.type: Easing.OutElastic; easing.amplitude: 1.2; easing.period: 0.5 }
-      }
-    }
-    onIconChanged: if (root.revealed) iconPop.restart()
+    HUi.SpringValue { id: circlePop; preset: Motion.snappy; to: 1 }
+    onOnChanged: if (root.revealed) circlePop.snap(Motion.pressScale)
 
-    Text {
+    // Hover/press wash over the fill (replaces the old hover grow).
+    Rectangle {
+      anchors.fill: parent
+      radius: parent.radius
+      color: Util.alpha(root.fg, circleMouse.pressed ? Motion.pressedAlpha : circleMouse.containsMouse ? Motion.hoverAlpha : 0)
+      Behavior on color {
+        ColorAnimation {
+          duration: circleMouse.containsMouse || circleMouse.pressed ? Motion.instant : Motion.fast
+          easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+        }
+      }
+    }
+
+    // Icon swaps crossfade.
+    HUi.CrossfadeText {
       id: circleIcon
       anchors.centerIn: parent
+      horizontalAlignment: Text.AlignHCenter
       text: circle.icon
-      font.family: root.iconFont
-      font.pixelSize: Style.font.iconLarge
+      fontFamily: root.iconFont
+      fontSize: Style.font.iconLarge
       color: circle.on ? root.onIcon : root.fg
-      Behavior on color { ColorAnimation { duration: 220 } }
-      SequentialAnimation {
-        id: iconPop
-        NumberAnimation { target: circleIcon; property: "opacity"; to: 0.2; duration: 70 }
-        NumberAnimation { target: circleIcon; property: "opacity"; to: 1; duration: 160; easing.type: Easing.OutCubic }
-      }
+      Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
     }
     MouseArea {
       id: circleMouse
@@ -777,32 +785,47 @@ Panel {
     signal clicked()
     radius: root.tileRadius
     color: hoverable && tileMouse.containsMouse ? root.tileHover : root.tileColor
-    Behavior on color { ColorAnimation { duration: 160 } }
+    Behavior on color {
+      ColorAnimation {
+        duration: tile.hoverable && tileMouse.containsMouse ? Motion.instant : Motion.fast
+        easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+      }
+    }
 
+    // Entrance cascade on open (Motion.stagger: 15 ms steps, max 10); the
+    // exit is immediate because the whole popup fades out together.
     readonly property bool shown: revealIndex < 0 || root.revealed
+    readonly property int revealDelay: Motion.stagger(revealIndex)
+    property real enterScale: shown || Motion.reduceMotion ? 1 : Motion.popoverFromScale
     opacity: shown ? 1 : 0
-    scale: (shown ? 1 : 0.94) * (hoverable && tileMouse.pressed ? 0.97 : 1)
+    scale: enterScale * tilePress.value
     transform: Translate {
       id: tileShift
-      y: tile.shown ? 0 : -Style.space(10)
+      y: tile.shown || Motion.reduceMotion ? 0 : -Style.space(10)
       Behavior on y {
         SequentialAnimation {
-          PauseAnimation { duration: tile.shown ? Math.max(0, tile.revealIndex) * 32 : 0 }
-          NumberAnimation { duration: tile.shown ? 380 : 0; easing.type: Easing.OutCubic }
+          PauseAnimation { duration: tile.shown ? tile.revealDelay : 0 }
+          NumberAnimation { duration: tile.shown ? Motion.slow : 0; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
         }
       }
     }
     Behavior on opacity {
       SequentialAnimation {
-        PauseAnimation { duration: tile.shown ? Math.max(0, tile.revealIndex) * 32 : 0 }
-        NumberAnimation { duration: tile.shown ? 260 : 0; easing.type: Easing.OutCubic }
+        PauseAnimation { duration: tile.shown ? tile.revealDelay : 0 }
+        NumberAnimation { duration: tile.shown ? Motion.base : 0; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
       }
     }
-    Behavior on scale {
+    Behavior on enterScale {
       SequentialAnimation {
-        PauseAnimation { duration: tile.shown && !tileMouse.pressed ? Math.max(0, tile.revealIndex) * 32 : 0 }
-        NumberAnimation { duration: tileMouse.pressed ? 90 : tile.shown ? 380 : 0; easing.type: Easing.OutBack; easing.overshoot: 1.6 }
+        PauseAnimation { duration: tile.shown ? tile.revealDelay : 0 }
+        NumberAnimation { duration: tile.shown ? Motion.slow : 0; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
       }
+    }
+    // Press feedback (hoverable tiles only), released with the snappy spring.
+    HUi.SpringValue {
+      id: tilePress
+      preset: Motion.snappy
+      to: tile.hoverable && tileMouse.pressed && !Motion.reduceMotion ? Motion.pressScale : 1
     }
     MouseArea {
       id: tileMouse
@@ -915,7 +938,10 @@ Panel {
     width: root.panelWidth
     height: stColumn.implicitHeight + Style.space(15)
     clip: true
-    Behavior on height { enabled: root.heightAnimated; NumberAnimation { duration: 300; easing.type: Easing.OutQuint } }
+    Behavior on height {
+      enabled: root.heightAnimated
+      NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+    }
 
     Column {
       id: stColumn
@@ -948,7 +974,7 @@ Panel {
           color: root.dimText
           font.family: root.iconFont
           font.pixelSize: Style.font.icon
-          Behavior on rotation { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+          Behavior on rotation { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
         }
         MouseArea {
           anchors.fill: parent
@@ -961,15 +987,15 @@ Panel {
         width: parent.width
         height: stSlider.implicitHeight
 
-        Text {
+        HUi.CrossfadeText {
           id: stIcon
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
           width: Style.space(20)
           text: st.icon
           color: root.fg
-          font.family: root.iconFont
-          font.pixelSize: Style.font.iconLarge
+          fontFamily: root.iconFont
+          fontSize: Style.font.iconLarge
           MouseArea {
             anchors.fill: parent
             anchors.margins: -Style.space(4)
@@ -1002,10 +1028,16 @@ Panel {
         visible: st.expanded
         opacity: st.expanded ? 1 : 0
         transform: Translate {
-          y: st.expanded ? 0 : -Style.space(8)
-          Behavior on y { NumberAnimation { duration: 300; easing.type: Easing.OutQuint } }
+          y: st.expanded || Motion.reduceMotion ? 0 : -Style.space(8)
+          Behavior on y { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
         }
-        Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+        Behavior on opacity {
+          NumberAnimation {
+            duration: st.expanded ? Motion.base : Motion.exit(Motion.fast)
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: st.expanded ? Motion.easeOut : Motion.easeExit
+          }
+        }
         spacing: Style.space(8)
         topPadding: Style.space(4)
       }
@@ -1030,13 +1062,23 @@ Panel {
     height: Style.space(26)
     radius: height / 2
     color: selected ? root.circleOn : pillMouse.containsMouse ? root.tileHover : root.circleOff
-    scale: pillMouse.pressed ? 0.92 : 1
-    Behavior on color { ColorAnimation { duration: 200; easing.type: Easing.OutCubic } }
-    Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
+    Behavior on color {
+      ColorAnimation {
+        duration: pillMouse.containsMouse ? Motion.instant : Motion.fast
+        easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+      }
+    }
+    scale: pillPress.value
+    HUi.SpringValue {
+      id: pillPress
+      preset: Motion.snappy
+      to: pillMouse.pressed && !Motion.reduceMotion ? Motion.pressScale : 1
+    }
     Text {
       anchors.centerIn: parent
       text: pill.label
       color: pill.selected ? root.onIcon : root.fg
+      Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
       font.family: Style.font.family
       font.pixelSize: Style.font.bodySmall
       font.weight: pill.selected ? Font.DemiBold : Font.Normal
@@ -1068,8 +1110,13 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         text: "󰅁"
         transform: Translate {
-          x: backMouse.containsMouse ? -Style.space(3) : 0
-          Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
+          x: backMouse.containsMouse && !Motion.reduceMotion ? -Style.space(3) : 0
+          Behavior on x {
+            NumberAnimation {
+              duration: backMouse.containsMouse ? Motion.instant : Motion.fast
+              easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+            }
+          }
         }
         color: root.fg
         font.family: root.iconFont
@@ -1106,16 +1153,18 @@ Panel {
       height: Style.space(20)
       radius: height / 2
       color: ph.checked ? root.circleOn : root.circleOff
-      Behavior on color { ColorAnimation { duration: 240; easing.type: Easing.OutCubic } }
+      // henri-ui switch spec: track color crossfades (fast), knob glides with
+      // the snappy spring. The knob follows the backend state (no optimistic flip).
+      Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
       Rectangle {
         width: parent.height - Style.space(4)
         height: width
         radius: width / 2
         y: Style.space(2)
-        x: ph.checked ? parent.width - width - Style.space(2) : Style.space(2)
+        x: Style.space(2) + knobSpring.value * (parent.width - width - Style.space(4))
         color: ph.checked ? root.onIcon : root.fg
-        Behavior on x { NumberAnimation { duration: 280; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
-        Behavior on color { ColorAnimation { duration: 200 } }
+        Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        HUi.SpringValue { id: knobSpring; preset: Motion.snappy; to: ph.checked ? 1 : 0 }
       }
       MouseArea {
         anchors.fill: parent
@@ -1139,11 +1188,20 @@ Panel {
     signal clicked()
     width: root.panelWidth
     height: Style.space(44)
-    radius: Style.space(10)
-    color: lrMouse.containsMouse ? root.tileColor : "transparent"
-    Behavior on color { ColorAnimation { duration: 140 } }
-    scale: lrMouse.pressed ? 0.98 : 1
-    Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+    radius: Style.space(Motion.radiusRow)
+    color: lrMouse.containsMouse ? root.tileColor : Util.alpha(root.tileColor, 0)
+    Behavior on color {
+      ColorAnimation {
+        duration: lrMouse.containsMouse ? Motion.instant : Motion.fast
+        easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+      }
+    }
+    scale: lrPress.value
+    HUi.SpringValue {
+      id: lrPress
+      preset: Motion.snappy
+      to: lrMouse.pressed && !Motion.reduceMotion ? Motion.pressScale : 1
+    }
 
     // Rows built right after a page change slide in one after another.
     opacity: 1
@@ -1152,7 +1210,7 @@ Panel {
       var delay = root.rowDelay(rowIndex)
       if (delay < 0) return
       opacity = 0
-      lrShift.x = Style.space(18)
+      lrShift.x = Motion.reduceMotion ? 0 : Style.space(18)
       lrEnterPause.duration = delay
       lrEnter.start()
     }
@@ -1160,8 +1218,8 @@ Panel {
       id: lrEnter
       PauseAnimation { id: lrEnterPause; duration: 0 }
       ParallelAnimation {
-        NumberAnimation { target: lr; property: "opacity"; to: 1; duration: 220; easing.type: Easing.OutCubic }
-        NumberAnimation { target: lrShift; property: "x"; to: 0; duration: 320; easing.type: Easing.OutQuint }
+        NumberAnimation { target: lr; property: "opacity"; to: 1; duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+        NumberAnimation { target: lrShift; property: "x"; to: 0; duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
       }
     }
 
@@ -1174,14 +1232,14 @@ Panel {
       height: width
       radius: width / 2
       color: lr.active ? root.circleOn : root.circleOff
-      Behavior on color { ColorAnimation { duration: 220; easing.type: Easing.OutCubic } }
-      scale: lr.active ? 1 : 0.94
-      Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutBack; easing.overshoot: 2.5 } }
+      Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+      scale: lrActiveScale.value
+      HUi.SpringValue { id: lrActiveScale; preset: Motion.snappy; to: lr.active || Motion.reduceMotion ? 1 : 0.94 }
       Text {
         anchors.centerIn: parent
         text: lr.icon
         color: lr.active ? root.onIcon : root.fg
-        Behavior on color { ColorAnimation { duration: 220 } }
+        Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
         font.family: root.iconFont
         font.pixelSize: Style.font.icon
       }
@@ -1214,20 +1272,21 @@ Panel {
           running: lr.busy
           loops: Animation.Infinite
           onRunningChanged: if (!running) parent.opacity = 1
-          NumberAnimation { to: 0.35; duration: 550; easing.type: Easing.InOutSine }
-          NumberAnimation { to: 1; duration: 550; easing.type: Easing.InOutSine }
+          NumberAnimation { to: Motion.disabledOpacity; duration: Motion.slower; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
+          NumberAnimation { to: 1; duration: Motion.slower; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
         }
       }
     }
-    Text {
+    HUi.CrossfadeText {
       id: lrTrailing
       anchors.right: parent.right
       anchors.rightMargin: Style.space(10)
       anchors.verticalCenter: parent.verticalCenter
+      horizontalAlignment: Text.AlignRight
       text: lr.trailing
       color: root.dimText
-      font.family: root.iconFont
-      font.pixelSize: Style.font.bodySmall
+      fontFamily: root.iconFont
+      fontSize: Style.font.bodySmall
     }
     MouseArea {
       id: lrMouse
@@ -1343,9 +1402,18 @@ Panel {
     height: width
     radius: width / 2
     color: ibMouse.containsMouse ? root.circleOff : root.tileColor
-    scale: ibMouse.pressed ? 0.88 : 1
-    Behavior on color { ColorAnimation { duration: 140 } }
-    Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
+    Behavior on color {
+      ColorAnimation {
+        duration: ibMouse.containsMouse ? Motion.instant : Motion.fast
+        easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+      }
+    }
+    scale: ibPress.value
+    HUi.SpringValue {
+      id: ibPress
+      preset: Motion.snappy
+      to: ibMouse.pressed && !Motion.reduceMotion ? Motion.pressScale : 1
+    }
     Text {
       anchors.centerIn: parent
       text: ib.icon
@@ -1384,6 +1452,12 @@ Panel {
     signal clicked()
     leftPadding: Style.space(6)
     color: flMouse.containsMouse ? root.fg : root.dimText
+    Behavior on color {
+      ColorAnimation {
+        duration: flMouse.containsMouse ? Motion.instant : Motion.fast
+        easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+      }
+    }
     font.family: Style.font.family
     font.pixelSize: Style.font.bodySmall
     MouseArea {
@@ -1397,8 +1471,9 @@ Panel {
 
   // ============================================================== layout
 
-  KeyboardPanel {
+  HUi.PopupPanel {
     id: panel
+    kind: "panel"
     anchorItem: root.anchorItem
     owner: root.barIdentity
     bar: root.bar
@@ -1406,10 +1481,10 @@ Panel {
     focusTarget: keyCatcher
     padding: root.gap
     contentWidth: root.panelWidth + root.gap * 2
-    // Height follows the visible page and animates once the popup is up.
+    // Height follows the visible page and glides (smooth spring) once the
+    // popup is up; before that it snaps (heightSpring lives in `pages`).
     property real shownHeight: panel.fittedContentHeight(root.page === "main" ? content.implicitHeight : detail.implicitHeight)
-    Behavior on shownHeight { enabled: root.heightAnimated; NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
-    contentHeight: Math.round(shownHeight)
+    contentHeight: Math.round(heightSpring.value)
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -1419,6 +1494,8 @@ Panel {
         else root.close()
       }
       onTabRequested: function(direction) { root.switchPanel(direction) }
+      // ← (or h) goes back from a detail page, like Esc (drill-in flow).
+      onMoveRequested: function(dx, dy) { if (dx < 0 && root.page !== "main") root.page = "main" }
     }
 
     Item {
@@ -1426,8 +1503,16 @@ Panel {
       anchors.fill: parent
       clip: true
 
-    // Main grid slides a little to the left and fades as a detail page comes
-    // in from the right; back reverses it.
+      HUi.SpringValue {
+        id: heightSpring
+        preset: Motion.smooth
+        epsilon: 0.3
+        to: panel.shownHeight
+        onToChanged: if (!root.heightAnimated) snap(to)
+      }
+
+    // Drill-in (henri-ui): the detail page comes in from the right, the main
+    // grid moves 30 % left and fades; back mirrors it. Motion.slow, easeInOut.
     Column {
       id: content
       width: root.panelWidth
@@ -1435,12 +1520,9 @@ Panel {
       readonly property bool current: root.page === "main"
       visible: opacity > 0.01
       opacity: current ? 1 : 0
-      x: current ? 0 : -root.panelWidth * 0.3
-      scale: current ? 1 : 0.96
-      transformOrigin: Item.Left
-      Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-      Behavior on x { enabled: root.heightAnimated; NumberAnimation { duration: 340; easing.type: Easing.OutQuint } }
-      Behavior on scale { enabled: root.heightAnimated; NumberAnimation { duration: 340; easing.type: Easing.OutQuint } }
+      x: current || Motion.reduceMotion ? 0 : -root.panelWidth * Motion.pageParallax
+      Behavior on opacity { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
+      Behavior on x { enabled: root.heightAnimated; NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
       // Top block: connectivity on the left, Focus + small toggles on the right.
       Row {
@@ -1734,7 +1816,7 @@ Panel {
           anchors.verticalCenter: parent.verticalCenter
           width: Style.space(44)
           height: width
-          radius: Style.space(8)
+          radius: Style.space(Motion.radiusControl)
           color: root.circleOff
           clip: true
 
@@ -1800,7 +1882,13 @@ Panel {
               width: Style.space(30)
               height: width
               radius: width / 2
-              color: controlMouse.containsMouse ? root.circleOff : "transparent"
+              color: controlMouse.containsMouse ? root.circleOff : Util.alpha(root.circleOff, 0)
+              Behavior on color {
+                ColorAnimation {
+                  duration: controlMouse.containsMouse ? Motion.instant : Motion.fast
+                  easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+                }
+              }
               Text {
                 anchors.centerIn: parent
                 text: modelData.icon
@@ -1918,9 +2006,9 @@ Panel {
       readonly property bool current: root.page !== "main"
       visible: opacity > 0.01
       opacity: current ? 1 : 0
-      x: current ? 0 : root.panelWidth * 0.5
-      Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-      Behavior on x { enabled: root.heightAnimated; NumberAnimation { duration: 340; easing.type: Easing.OutQuint } }
+      x: current || Motion.reduceMotion ? 0 : root.panelWidth
+      Behavior on opacity { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
+      Behavior on x { enabled: root.heightAnimated; NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
       // Wi-Fi
       PageHeader {
@@ -1939,11 +2027,13 @@ Panel {
         visible: root.detailPage === "wifi" && root.wifiOn
         width: root.panelWidth
         height: Math.min(wifiList.implicitHeight, Style.space(44) * (root.wifiAdvanced ? 4 : 8))
-        Behavior on height { enabled: root.heightAnimated; NumberAnimation { duration: 300; easing.type: Easing.OutQuint } }
+        Behavior on height { enabled: root.heightAnimated; NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
         contentHeight: wifiList.implicitHeight
         clip: true
         interactive: contentHeight > height
         boundsBehavior: Flickable.StopAtBounds
+        flickDeceleration: Motion.flickDeceleration
+        maximumFlickVelocity: Motion.maximumFlickVelocity
 
         Column {
           id: wifiList
@@ -1971,6 +2061,7 @@ Panel {
 
               // Inline password entry for a new secured network.
               Rectangle {
+                id: pwBox
                 readonly property bool wanted: root.wifiPasswordFor === modelData.name
                 visible: height > 0.5
                 x: Style.space(44)
@@ -1978,10 +2069,16 @@ Panel {
                 height: wanted ? Style.space(32) : 0
                 opacity: wanted ? 1 : 0
                 clip: true
-                Behavior on height { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
-                Behavior on opacity { NumberAnimation { duration: 200 } }
-                Behavior on border.color { ColorAnimation { duration: 160 } }
-                radius: Style.space(8)
+                Behavior on height { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+                Behavior on opacity {
+                  NumberAnimation {
+                    duration: pwBox.wanted ? Motion.base : Motion.exit(Motion.fast)
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: pwBox.wanted ? Motion.easeOut : Motion.easeExit
+                  }
+                }
+                Behavior on border.color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+                radius: Style.space(Motion.radiusControl)
                 color: root.tileColor
                 border.width: 1
                 border.color: passwordInput.activeFocus ? root.circleOn : root.circleOff
@@ -2039,10 +2136,10 @@ Panel {
         width: root.panelWidth
         height: advancedColumn.implicitHeight
         radius: root.tileRadius
-        color: root.wifiAdvanced ? root.tileColor : "transparent"
+        color: root.wifiAdvanced ? root.tileColor : Util.alpha(root.tileColor, 0)
         clip: true
-        Behavior on color { ColorAnimation { duration: 200 } }
-        Behavior on height { enabled: root.heightAnimated; NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
+        Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        Behavior on height { enabled: root.heightAnimated; NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
 
         Column {
           id: advancedColumn
@@ -2059,7 +2156,12 @@ Panel {
               color: advMouse.containsMouse ? root.fg : root.dimText
               font.family: Style.font.family
               font.pixelSize: Style.font.body
-              Behavior on color { ColorAnimation { duration: 140 } }
+              Behavior on color {
+                ColorAnimation {
+                  duration: advMouse.containsMouse ? Motion.instant : Motion.fast
+                  easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+                }
+              }
             }
             Text {
               anchors.right: parent.right
@@ -2070,7 +2172,7 @@ Panel {
               color: root.dimText
               font.family: root.iconFont
               font.pixelSize: Style.font.icon
-              Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
+              Behavior on rotation { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
             }
             MouseArea {
               id: advMouse
@@ -2090,10 +2192,16 @@ Panel {
             bottomPadding: Style.space(12)
             spacing: Style.space(8)
             transform: Translate {
-              y: root.wifiAdvanced ? 0 : -Style.space(10)
-              Behavior on y { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
+              y: root.wifiAdvanced || Motion.reduceMotion ? 0 : -Style.space(10)
+              Behavior on y { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
             }
-            Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+            Behavior on opacity {
+              NumberAnimation {
+                duration: root.wifiAdvanced ? Motion.base : Motion.exit(Motion.fast)
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: root.wifiAdvanced ? Motion.easeOut : Motion.easeExit
+              }
+            }
 
             // Connection summary + share / speed test
             Item {
@@ -2231,6 +2339,8 @@ Panel {
         clip: true
         interactive: contentHeight > height
         boundsBehavior: Flickable.StopAtBounds
+        flickDeceleration: Motion.flickDeceleration
+        maximumFlickVelocity: Motion.maximumFlickVelocity
 
         Column {
           id: btList
@@ -2264,7 +2374,7 @@ Panel {
         visible: root.detailPage === "sound" && root.sink !== null
         width: root.panelWidth
         height: Style.space(40)
-        Text {
+        HUi.CrossfadeText {
           id: soundIcon
           anchors.left: parent.left
           anchors.leftMargin: Style.space(12)
@@ -2272,8 +2382,8 @@ Panel {
           width: Style.space(20)
           text: root.muted || root.volume === 0 ? "󰝟" : "󰕾"
           color: root.fg
-          font.family: root.iconFont
-          font.pixelSize: Style.font.iconLarge
+          fontFamily: root.iconFont
+          fontSize: Style.font.iconLarge
           MouseArea {
             anchors.fill: parent
             anchors.margins: -Style.space(4)
