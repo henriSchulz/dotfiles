@@ -8,6 +8,8 @@ import qs.Commons
 import qs.Ui
 import "Display.js" as Display
 import "Network.js" as Net
+import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
+import "file:///home/henri/.local/share/henri-ui" as HUi
 
 // macOS-style Control Center. Everything here drives the same backends the
 // stock panels use (Quickshell.Networking, Bluetooth, Pipewire, the shell's
@@ -435,104 +437,55 @@ Panel {
     return "󰓃"
   }
 
-  // ---- Hardware: thermal mode, turbo and CPU limits through system/henri-hwctl.
-  //      `status` is unprivileged, so it runs from the plugin copy; writes go
-  //      through the root-owned install via sudo -n (system/install.sh).
-  readonly property string hwStatusPath: String(Qt.resolvedUrl("system/henri-hwctl")).replace(/^file:\/\//, "")
-  readonly property string hwHelperPath: "/usr/local/bin/henri-hwctl"
-  property var hw: ({ fans: [], thermal: "", thermalChoices: [], cpuTemp: -1, turbo: true, maxPerf: 100, helper: false })
-  property string powerProfile: ""
-  property string hwPending: ""
-  property string hwError: ""
-  property int maxPerfPreview: -1
-  // Dell firmware thermal modes; they set the fan curve (the EC ignores
-  // direct fan commands on this XPS). Power profiles map onto quiet /
-  // balanced / performance, so only "cool" is unique to this row.
-  readonly property var thermalLabels: ({ cool: "Cool", quiet: "Quiet", balanced: "Balanced", performance: "Perform." })
-  readonly property var powerProfiles: [
-    { id: "power-saver", label: "Saver" },
-    { id: "balanced", label: "Balanced" },
-    { id: "performance", label: "Performance" }
-  ]
+  // ---- Hardware: read-only live readings from system/henri-hwstat (CPU load,
+  //      clock, temperature, fans, memory, disk). Load is the idle delta
+  //      between two consecutive samples.
+  readonly property string hwStatPath: String(Qt.resolvedUrl("system/henri-hwstat")).replace(/^file:\/\//, "")
+  property var hw: ({ temp: -1, fans: [], freqAvg: 0, freqPeak: 0, freqMax: 0, threads: 0, cores: 0, model: "",
+                      load1: 0, memTotal: 0, memAvail: 0, swapTotal: 0, swapFree: 0, diskTotal: 0, diskUsed: 0, uptime: 0 })
+  property var hwPrev: null
+  property int cpuLoad: -1
+  readonly property real memUsedFrac: hw.memTotal > 0 ? 1 - hw.memAvail / hw.memTotal : 0
+  readonly property real swapUsedFrac: hw.swapTotal > 0 ? 1 - hw.swapFree / hw.swapTotal : 0
+  readonly property real diskUsedFrac: hw.diskTotal > 0 ? hw.diskUsed / hw.diskTotal : 0
   readonly property string hwSummary: {
     var parts = []
-    if (hw.cpuTemp >= 0) parts.push(hw.cpuTemp + " °C")
-    var rpm = 0
-    for (var i = 0; i < hw.fans.length; i++) rpm = Math.max(rpm, hw.fans[i].rpm)
-    if (hw.fans.length) parts.push(rpm > 0 ? rpm + " rpm" : "Fans idle")
-    if (powerProfile) parts.push(profileLabel(powerProfile))
+    if (cpuLoad >= 0) parts.push("CPU " + cpuLoad + " %")
+    if (hw.memTotal > 0) parts.push("RAM " + formatGiB(hw.memTotal - hw.memAvail, 1) + " / " + formatGiB(hw.memTotal, 0) + " GB")
+    if (hw.temp >= 0) parts.push(hw.temp + " °C")
     return parts.join(" · ")
   }
-  function profileLabel(id) {
-    for (var i = 0; i < powerProfiles.length; i++) if (powerProfiles[i].id === id) return powerProfiles[i].label
-    return id
+  function formatGiB(kib, digits) { return (kib / 1048576).toFixed(digits) }
+  function formatBytesGB(bytes) { return Math.round(bytes / 1e9) + " GB" }
+  function formatGHz(mhz) { return mhz > 0 ? (mhz / 1000).toFixed(2) + " GHz" : "--" }
+  function formatUptime(s) {
+    var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60)
+    return d > 0 ? d + " d " + h + " h" : h > 0 ? h + " h " + m + " min" : m + " min"
   }
   function tempColor(t) {
     return t >= 80 ? Color.urgent : root.fg
   }
   function refreshHardware() {
-    if (!hwStatusProc.running) hwStatusProc.running = true
+    if (!hwStatProc.running) hwStatProc.running = true
   }
-  function applyHwStatus(raw) {
-    var lines = String(raw || "").trim().split("\n")
-    try { hw = JSON.parse(lines[0]) } catch (e) { return }
-    if (lines.length > 1) powerProfile = lines[lines.length - 1].trim()
-  }
-  function hwRun(key, args) {
-    if (hwActionProc.running) return
-    if (!hw.helper) { hwError = "Helper missing or outdated — run system/install.sh"; return }
-    hwError = ""
-    hwPending = key
-    hwActionProc.command = ["/usr/bin/timeout", "-k", "5", "20", "/usr/bin/sudo", "-n", hwHelperPath].concat(args)
-    hwActionProc.running = true
-  }
-  function setThermal(id) { if (id !== hw.thermal) hwRun("thermal:" + id, ["thermal", id]) }
-  function setTurbo(on) { hwRun("turbo", ["turbo", on ? "on" : "off"]) }
-  function setMaxPerf(pct) {
-    var p = Math.max(20, Math.min(100, Math.round(pct / 5) * 5))
-    maxPerfPreview = p
-    if (p !== hw.maxPerf) hwRun("maxperf", ["max-perf", String(p)])
-    else maxPerfPreview = -1
-  }
-  function setPowerProfile(id) {
-    if (id === powerProfile || profileProc.running) return
-    powerProfile = id
-    profileProc.command = ["omarchy-powerprofiles-set", "autodetect", id]
-    profileProc.running = true
+  function applyHwStat(raw) {
+    var s
+    try { s = JSON.parse(String(raw || "").trim()) } catch (e) { return }
+    if (hwPrev && s.cpuTotal > hwPrev.cpuTotal) {
+      var dt = s.cpuTotal - hwPrev.cpuTotal
+      cpuLoad = Math.max(0, Math.min(100, Math.round(100 * (1 - (s.cpuIdle - hwPrev.cpuIdle) / dt))))
+    }
+    hwPrev = { cpuTotal: s.cpuTotal, cpuIdle: s.cpuIdle }
+    hw = s
   }
 
   Process {
-    id: hwStatusProc
-    command: ["bash", "-c", "\"$1\" status; powerprofilesctl get 2>/dev/null", "_", root.hwStatusPath]
+    id: hwStatProc
+    command: [root.hwStatPath]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.applyHwStatus(text)
+      onStreamFinished: root.applyHwStat(text)
     }
-  }
-  Process {
-    id: hwActionProc
-    stdout: StdioCollector {
-      id: hwActionOut
-      waitForEnd: true
-    }
-    stderr: StdioCollector {
-      id: hwActionErr
-      waitForEnd: true
-    }
-    onExited: function(code) {
-      if (code !== 0) {
-        var err = String(hwActionErr.text || "").trim()
-        root.hwError = err.indexOf("password") >= 0 || err.indexOf("sudo") >= 0
-          ? "No permission — run system/install.sh" : (err.replace(/^henri-hwctl: /, "") || "Action failed")
-      }
-      root.hwPending = ""
-      root.maxPerfPreview = -1
-      root.refreshHardware()
-    }
-  }
-  Process {
-    id: profileProc
-    onExited: root.refreshHardware()
   }
   Timer {
     interval: 2000
@@ -683,7 +636,6 @@ Panel {
       page = "main"
       wifiPasswordFor = ""
       wifiAdvanced = false
-      hwError = ""
     }
   }
 
@@ -1300,15 +1252,84 @@ Panel {
       font.family: Style.font.family
       font.pixelSize: Style.font.bodySmall
     }
-    Text {
+    HUi.CrossfadeText {
+      anchors.left: parent.left
       anchors.right: parent.right
       anchors.rightMargin: Style.space(8)
       anchors.verticalCenter: parent.verticalCenter
+      horizontalAlignment: Text.AlignRight
       text: parent.value
       color: root.fg
+      fontSize: Style.font.bodySmall
+    }
+  }
+
+  // Usage bar for the Hardware page. The fill slides (transform only) inside
+  // a clipped track; a round cap keeps the left end rounded like the track.
+  component Meter: Item {
+    id: meter
+    property real fraction: 0
+    property color fillColor: Color.accent
+    readonly property real clamped: Math.max(0, Math.min(1, fraction))
+    height: Style.space(6)
+    Rectangle {
+      anchors.fill: parent
+      radius: height / 2
+      color: root.circleOff
+    }
+    Rectangle {
+      width: parent.height
+      height: parent.height
+      radius: height / 2
+      color: meter.fillColor
+      opacity: meter.clamped > 0 ? 1 : 0
+      Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+      Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+    }
+    Item {
+      x: meter.height / 2
+      width: parent.width - x
+      height: parent.height
+      clip: true
+      Rectangle {
+        width: meter.width
+        height: meter.height
+        radius: height / 2
+        color: meter.fillColor
+        x: fillSpring.value - meter.width + meter.height / 2
+        Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+      }
+    }
+    HUi.SpringValue {
+      id: fillSpring
+      to: meter.clamped * (meter.width - meter.height / 2)
+      epsilon: 0.5
+    }
+  }
+
+  // Title + current value above a Meter ("CPU ........ 23 %").
+  component UsageHeader: Item {
+    property string title: ""
+    property string value: ""
+    property color valueColor: root.fg
+    height: Style.space(24)
+    Text {
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      text: parent.title
+      color: root.fg
       font.family: Style.font.family
-      font.pixelSize: Style.font.bodySmall
-      Behavior on text { enabled: false }
+      font.pixelSize: Style.font.body
+      font.weight: Font.DemiBold
+    }
+    HUi.CrossfadeText {
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      horizontalAlignment: Text.AlignRight
+      text: parent.value
+      color: parent.valueColor
+      fontSize: Style.font.body
     }
   }
 
@@ -1799,7 +1820,7 @@ Panel {
         }
       }
 
-      // Hardware: temperature, fans and power profile at a glance.
+      // Hardware: CPU load, memory and temperature at a glance.
       Tile {
         revealIndex: 8
         width: root.panelWidth
@@ -1812,8 +1833,7 @@ Panel {
           anchors.left: parent.left
           anchors.leftMargin: Style.space(10)
           anchors.verticalCenter: parent.verticalCenter
-          icon: "󰈐"
-          on: root.hw.thermal === "cool"
+          icon: "󰻠"
           onClicked: root.showPage("hardware")
         }
         Column {
@@ -1832,8 +1852,8 @@ Panel {
           Text {
             width: parent.width
             visible: text !== ""
-            text: root.hwSummary + (root.hw.thermal === "cool" ? " · Cool" : "")
-            color: root.hw.cpuTemp >= 80 ? root.tempColor(root.hw.cpuTemp) : root.dimText
+            text: root.hwSummary
+            color: root.hw.temp >= 80 ? root.tempColor(root.hw.temp) : root.dimText
             font.family: Style.font.family
             font.pixelSize: Style.font.bodySmall
             elide: Text.ElideRight
@@ -2301,148 +2321,126 @@ Panel {
         }
       }
 
-      // Hardware
+      // Hardware — read-only live readings, refreshed every 2 s.
       PageHeader {
         visible: root.detailPage === "hardware"
         title: "Hardware"
       }
       Separator { visible: root.detailPage === "hardware" }
       Column {
+        id: hwPage
         visible: root.detailPage === "hardware"
         width: root.panelWidth
         leftPadding: Style.space(6)
         rightPadding: Style.space(6)
         topPadding: Style.space(4)
         bottomPadding: Style.space(6)
-        spacing: Style.space(8)
+        spacing: Style.space(6)
         readonly property int innerWidth: root.panelWidth - Style.space(12)
+        readonly property int cellWidth: Math.floor((innerWidth - Style.space(16)) / 2)
+        function meterColor(f) { return f >= 0.9 ? Color.urgent : Color.accent }
 
-        // Live readings
+        Text {
+          visible: text !== ""
+          width: hwPage.innerWidth
+          text: root.hw.model + (root.hw.cores > 0 ? " · " + root.hw.cores + " cores / " + root.hw.threads + " threads" : "")
+          color: root.dimText
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+          elide: Text.ElideRight
+        }
+
+        // Processor
+        UsageHeader {
+          width: hwPage.innerWidth
+          title: "CPU"
+          value: root.cpuLoad >= 0 ? root.cpuLoad + " %" : "--"
+        }
+        Meter {
+          width: hwPage.innerWidth
+          fraction: root.cpuLoad / 100
+          fillColor: hwPage.meterColor(root.cpuLoad / 100)
+        }
         Grid {
-          id: hwStats
           columns: 2
           columnSpacing: Style.space(16)
           rowSpacing: Style.space(2)
-          readonly property int cellWidth: Math.floor((root.panelWidth - Style.space(12) - columnSpacing) / 2)
+          topPadding: Style.space(2)
+          Stat { width: hwPage.cellWidth; label: "Clock"; value: root.formatGHz(root.hw.freqAvg) }
+          Stat { width: hwPage.cellWidth; label: "Fastest core"; value: root.formatGHz(root.hw.freqPeak) }
+          Stat { width: hwPage.cellWidth; label: "Max clock"; value: root.formatGHz(root.hw.freqMax) }
+          Stat { width: hwPage.cellWidth; label: "Load (1 min)"; value: Number(root.hw.load1).toFixed(2) }
           Stat {
-            width: hwStats.cellWidth
-            label: "CPU"
-            value: root.hw.cpuTemp >= 0 ? root.hw.cpuTemp + " °C" : "--"
+            width: hwPage.cellWidth
+            label: "Temperature"
+            value: root.hw.temp >= 0 ? root.hw.temp + " °C" : "--"
           }
           Repeater {
             model: root.hw.fans
             delegate: Stat {
               required property var modelData
-              width: hwStats.cellWidth
+              width: hwPage.cellWidth
               label: modelData.label
               value: modelData.rpm > 0 ? modelData.rpm + " rpm" : "Idle"
             }
           }
         }
 
-        // Thermal mode (fan curve)
-        SectionLabel {
-          visible: root.hw.thermalChoices.length > 0
-          text: "Fans & thermals"
-        }
-        Row {
-          visible: root.hw.thermalChoices.length > 0
-          spacing: Style.space(5)
-          Repeater {
-            model: root.hw.thermalChoices
-            delegate: Pill {
-              required property string modelData
-              width: Math.floor((root.panelWidth - Style.space(12) - Style.space(5) * (root.hw.thermalChoices.length - 1)) / Math.max(1, root.hw.thermalChoices.length))
-              label: root.hwPending === "thermal:" + modelData ? "…" : (root.thermalLabels[modelData] || modelData)
-              selected: root.hw.thermal === modelData
-              onClicked: root.setThermal(modelData)
-            }
-          }
-        }
-        Text {
-          visible: root.hw.thermalChoices.length > 0
-          width: parent.innerWidth
-          text: root.hw.thermal === "cool" ? "Cool keeps the chassis cooler — fans start earlier."
-            : root.hw.thermal === "quiet" ? "Quiet keeps fans low and slows the CPU sooner."
-            : "Changing the power profile also sets this."
-          color: root.dimText
-          font.family: Style.font.family
-          font.pixelSize: Style.font.caption
-          wrapMode: Text.WordWrap
-        }
+        Separator { width: hwPage.innerWidth }
 
-        // Power profile (remembered per AC / battery by Omarchy)
-        SectionLabel { text: "Power profile" }
-        Row {
-          spacing: Style.space(5)
-          Repeater {
-            model: root.powerProfiles
-            delegate: Pill {
-              required property var modelData
-              width: Math.floor((root.panelWidth - Style.space(12) - Style.space(5) * 2) / 3)
-              label: modelData.label
-              selected: root.powerProfile === modelData.id
-              onClicked: root.setPowerProfile(modelData.id)
-            }
+        // Memory
+        UsageHeader {
+          width: hwPage.innerWidth
+          title: "Memory"
+          value: root.hw.memTotal > 0
+            ? root.formatGiB(root.hw.memTotal - root.hw.memAvail, 1) + " of " + root.formatGiB(root.hw.memTotal, 1) + " GB"
+            : "--"
+        }
+        Meter {
+          width: hwPage.innerWidth
+          fraction: root.memUsedFrac
+          fillColor: hwPage.meterColor(root.memUsedFrac)
+        }
+        Grid {
+          columns: 2
+          columnSpacing: Style.space(16)
+          rowSpacing: Style.space(2)
+          topPadding: Style.space(2)
+          Stat { width: hwPage.cellWidth; label: "Used"; value: Math.round(root.memUsedFrac * 100) + " %" }
+          Stat { width: hwPage.cellWidth; label: "Available"; value: root.formatGiB(root.hw.memAvail, 1) + " GB" }
+          Stat {
+            width: hwPage.cellWidth
+            label: "Swap"
+            value: root.hw.swapTotal > 0 ? root.formatGiB(root.hw.swapTotal - root.hw.swapFree, 1) + " GB" : "Off"
+          }
+          Stat {
+            width: hwPage.cellWidth
+            label: "Swap size"
+            value: root.hw.swapTotal > 0 ? root.formatGiB(root.hw.swapTotal, 0) + " GB" : "--"
           }
         }
 
-        // Turbo Boost
-        Item {
-          width: parent.innerWidth
-          height: Style.space(28)
-          SectionLabel {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            text: "Turbo Boost"
-          }
-          Row {
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(5)
-            Pill {
-              width: Style.space(52)
-              label: root.hwPending === "turbo" && !root.hw.turbo ? "…" : "On"
-              selected: root.hw.turbo
-              onClicked: if (!root.hw.turbo) root.setTurbo(true)
-            }
-            Pill {
-              width: Style.space(52)
-              label: root.hwPending === "turbo" && root.hw.turbo ? "…" : "Off"
-              selected: !root.hw.turbo
-              onClicked: if (root.hw.turbo) root.setTurbo(false)
-            }
-          }
-        }
+        Separator { width: hwPage.innerWidth }
 
-        // Max CPU performance (intel_pstate)
-        SectionLabel {
-          text: "Max CPU speed · " + (root.maxPerfPreview >= 0 ? root.maxPerfPreview : root.hw.maxPerf) + " %"
+        // Storage
+        UsageHeader {
+          width: hwPage.innerWidth
+          title: "Disk"
+          value: root.hw.diskTotal > 0
+            ? root.formatBytesGB(root.hw.diskUsed) + " of " + root.formatBytesGB(root.hw.diskTotal)
+            : "--"
         }
-        PanelSlider {
-          width: parent.innerWidth
-          bar: root.bar
-          minimum: 20
-          maximum: 100
-          step: 5
-          integer: true
-          value: root.maxPerfPreview >= 0 ? root.maxPerfPreview : root.hw.maxPerf
-          fillColor: root.fg
-          knobColor: root.fg
-          trackColor: root.circleOff
-          tickColor: "transparent"
-          onMoved: function(v) { root.maxPerfPreview = Math.round(v / 5) * 5 }
-          onReleased: function(v) { root.setMaxPerf(v) }
+        Meter {
+          width: hwPage.innerWidth
+          fraction: root.diskUsedFrac
+          fillColor: hwPage.meterColor(root.diskUsedFrac)
         }
-
-        Text {
-          visible: root.hwError !== "" || !root.hw.helper
-          width: parent.innerWidth
-          text: root.hwError !== "" ? root.hwError : "Helper missing or outdated — run system/install.sh"
-          color: Color.urgent
-          font.family: Style.font.family
-          font.pixelSize: Style.font.caption
-          wrapMode: Text.WordWrap
+        Grid {
+          columns: 2
+          columnSpacing: Style.space(16)
+          topPadding: Style.space(2)
+          Stat { width: hwPage.cellWidth; label: "Free"; value: root.formatBytesGB(root.hw.diskTotal - root.hw.diskUsed) }
+          Stat { width: hwPage.cellWidth; label: "Uptime"; value: root.hw.uptime > 0 ? root.formatUptime(root.hw.uptime) : "--" }
         }
       }
     }
