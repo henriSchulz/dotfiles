@@ -51,6 +51,7 @@ Eingabe-Test (echte Tasten-/Maus-Events: Esc, Pfeile, Drill-in-Zurück, Klick in
 | `HUi.PageStack` | Drill-in-Seiten mit Parallax | StackView: `initialItem`, `push()`, `pop()`, Höhe gleitet, Esc/← = zurück |
 | `HUi.StaggerIn` | Gestaffeltes Erscheinen | `active`, `index` |
 | `HUi.SpringValue` | Eigene Spring-Animation | `to`, `value`, `preset`, `epsilon`, `snap(v)` |
+| `HUi.BatteryGlyph` | macOS-Menüleisten-Batterie (SF `battery`-Nachbau, Vektor) | `level` 0…1, `charging` (Blitz), `plugged` (Stecker), `ink`, `height` (12 ≈ Bar) — Füllung ≤ 20 % rot |
 
 Stolperfalle: Kinder von `Pressable`/`Reveal`/`Collapse`/`StaggerIn` landen in einem
 inneren Container — `parent.xyz` zeigt dorthin. Die Komponente per `id` ansprechen

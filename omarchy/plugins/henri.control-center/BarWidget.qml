@@ -2,6 +2,9 @@ import QtQuick
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import QtQuick.Shapes
+import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
+import "file:///home/henri/.local/share/henri-ui" as HUi
 
 // Bar button for the Control Center. Like henri.clock, the widget in the bar
 // slot is the popout identity; Panel.qml is loaded beside it and anchored to
@@ -130,47 +133,58 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    // The macOS Control Center mark: two stacked toggle capsules, knob left
-    // on the top one and right on the bottom one. No Nerd Font glyph matches
-    // it, so it is drawn.
+    // The macOS Control Center mark (SF Symbol `switch.2`), redrawn as vectors:
+    // top a filled capsule with a hollow knob on the left, bottom an outlined
+    // capsule with a solid knob on the right. The knobs trade sides while the
+    // Control Center is open.
     iconComponent: Component {
       Item {
+        id: mark
         readonly property color ink: button.foreground
-        readonly property real stroke: Math.max(1.1, Style.spaceReal(1.2))
-        readonly property real pillW: Style.spaceReal(13)
-        readonly property real pillH: Style.spaceReal(6)
-        readonly property real pillGap: Style.spaceReal(1.8)
+        readonly property real stroke: Math.max(1, Style.spaceReal(1.0))
+        readonly property real pillW: Style.spaceReal(14)
+        readonly property real pillH: Style.spaceReal(5.5)
+        readonly property real pillGap: Style.spaceReal(1.6)
+        readonly property real left0: Math.round((width - pillW) / 2)
+        readonly property real top0: Math.round((height - pillH * 2 - pillGap) / 2)
+        readonly property real travel: pillW - pillH
 
-        Repeater {
-          model: 2
-          Item {
-            id: capsule
-            required property int index
-            x: Math.round((parent.width - parent.pillW) / 2)
-            y: Math.round((parent.height - parent.pillH * 2 - parent.pillGap) / 2 + index * (parent.pillH + parent.pillGap))
-            width: parent.pillW
-            height: parent.pillH
+        // 0 = closed (top knob left, bottom knob right), 1 = open (mirrored)
+        HUi.SpringValue { id: flip; to: root.opened ? 1 : 0; preset: Motion.snappy }
 
-            Rectangle {
-              anchors.fill: parent
-              radius: height / 2
-              color: "transparent"
-              border.width: parent.parent.stroke
-              border.color: parent.parent.ink
-              antialiasing: true
+        Shape {
+          x: mark.left0; y: mark.top0
+          width: mark.pillW; height: mark.pillH
+          preferredRendererType: Shape.CurveRenderer
+          ShapePath {
+            fillColor: mark.ink
+            strokeColor: "transparent"
+            fillRule: ShapePath.OddEvenFill
+            PathRectangle { width: mark.pillW; height: mark.pillH; radius: mark.pillH / 2 }
+            PathAngleArc {
+              centerX: mark.pillH / 2 + flip.value * mark.travel
+              centerY: mark.pillH / 2
+              radiusX: mark.pillH / 2 - mark.stroke; radiusY: radiusX
+              startAngle: 0; sweepAngle: 360
+              moveToStart: true
             }
-            Rectangle {
-              readonly property real inset: 0
-              width: parent.height - inset * 2
-              height: width
-              radius: width / 2
-              y: inset
-              // The knobs trade sides while the Control Center is open.
-              x: (capsule.index === 0) !== root.opened ? inset : parent.width - width - inset
-              color: parent.parent.ink
-              antialiasing: true
-              Behavior on x { NumberAnimation { duration: 320; easing.type: Easing.OutBack; easing.overshoot: 1.3 } }
-            }
+          }
+        }
+
+        Rectangle {
+          x: mark.left0; y: mark.top0 + mark.pillH + mark.pillGap
+          width: mark.pillW; height: mark.pillH
+          radius: height / 2
+          color: "transparent"
+          border.width: mark.stroke
+          border.color: mark.ink
+          antialiasing: true
+          Rectangle {
+            width: parent.height; height: width
+            radius: width / 2
+            x: (1 - flip.value) * mark.travel
+            color: mark.ink
+            antialiasing: true
           }
         }
       }
