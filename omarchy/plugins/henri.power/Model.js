@@ -494,6 +494,38 @@ function historyStats(points) {
   }
 }
 
+// The window cut into `count` equal slots for the bar chart. Each slot holds
+// the charge at its last sample (the level it ended on, like macOS), whether
+// it was spent mostly on battery or plugged in, and the mean power; a slot
+// without samples (sleep, laptop off) is null.
+function historyBuckets(points, now, hours, count) {
+  var span = hours * 3600 * 1000
+  var from = now - span
+  var slot = span / count
+  var acc = []
+  for (var i = 0; i < count; i++) acc.push(null)
+  for (var j = 0; j < points.length; j++) {
+    var p = points[j]
+    if (p.gap || p.t < from || p.t > now) continue
+    var k = Math.min(count - 1, Math.floor((p.t - from) / slot))
+    var a = acc[k] || (acc[k] = { n: 0, battery: 0, wSum: 0, wN: 0, pct: 0, t: 0 })
+    a.n++
+    if (p.status === "Discharging") a.battery++
+    if (p.w !== null) { a.wSum += p.w; a.wN++ }
+    if (p.t >= a.t) { a.t = p.t; a.pct = p.pct }
+  }
+  return acc.map(function (a, idx) {
+    if (!a) return null
+    return {
+      t0: from + idx * slot,
+      t1: from + (idx + 1) * slot,
+      pct: a.pct,
+      battery: a.battery * 2 > a.n,
+      w: a.wN > 0 ? a.wSum / a.wN : null
+    }
+  })
+}
+
 function durationText(hours) {
   if (hours === null || !isFinite(hours)) return "—"
   var mins = Math.round(hours * 60)
@@ -509,6 +541,7 @@ if (typeof module !== "undefined") {
     parseHistoryCsv: parseHistoryCsv,
     historyWindow: historyWindow,
     historyStats: historyStats,
+    historyBuckets: historyBuckets,
     durationText: durationText,
     clampIndex: clampIndex,
     selectProfileIndex: selectProfileIndex,

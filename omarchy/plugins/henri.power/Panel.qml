@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as QQC
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.UPower
@@ -41,9 +42,12 @@ Panel {
   property var powerChain: null
   // Battery history from the akku-aufzeichnung logger (one CSV per day).
   // Kept across opens, so the section never starts empty after the first load.
-  property bool historyOpen: false
+  // True while the History drill-in page is shown (HUi.PageStack depth 2).
+  readonly property bool historyShown: pages.depth > 1
   property var historyPoints: []
   property var historyStats: null
+  property var historyBars: []
+  readonly property int historyBarCount: 72   // 20-minute bars over 24 h
   property real historyNow: 0
   property string historyTodayText: ""
   property string historyYesterdayText: ""
@@ -112,6 +116,9 @@ Panel {
   readonly property string iconFont: bar ? bar.fontFamily : Style.font.family
   readonly property int panelWidth: Style.space(340)
   readonly property int blockGap: Style.space(14)
+  // The page stack clips; it reaches this far past the content on each side
+  // so the rows' hover fills (which overhang the text) are not cut off.
+  readonly property int pageInset: Style.space(8)
 
   function upowerStates() {
     return {
@@ -122,12 +129,17 @@ Panel {
     }
   }
 
-  // History and Advanced fold like an accordion: one open at a time keeps
-  // the popup inside a laptop screen.
-  function openSection(name) {
-    historyOpen = name === "history"
-    advancedOpen = name === "advanced"
-    if (historyOpen && historyStats === null) refreshHistory()
+  // History is a drill-in page: it slides in from the right over the
+  // overview, so the popup keeps the overview's height instead of growing.
+  function showHistoryPage() {
+    if (!showHistory || historyShown) return
+    cursorActive = false
+    if (historyStats === null) refreshHistory()
+    pages.push(historyPage)
+  }
+
+  function closeHistoryPage() {
+    if (historyShown) pages.pop()
   }
 
   function selectProfileByDelta(delta) {
@@ -510,6 +522,7 @@ Panel {
     historyNow = now.getTime()
     historyPoints = Model.historyWindow(samples, historyNow, historyHours)
     historyStats = Model.historyStats(historyPoints)
+    historyBars = Model.historyBuckets(historyPoints, historyNow, historyHours, historyBarCount)
   }
 
   function historyWatt(w) {
@@ -534,7 +547,7 @@ Panel {
     var st = root.historyStats
     if (!st || !st.samples) return ""
     var parts = []
-    if (st.chargingH > 0) parts.push("Charging (shaded): " + root.historyWh(st.chargedWh) + " in " + Model.durationText(st.chargingH))
+    if (st.chargingH > 0) parts.push("Charged " + root.historyWh(st.chargedWh) + " in " + Model.durationText(st.chargingH))
     return parts.join(" · ")
   }
 
@@ -548,7 +561,7 @@ Panel {
     function toggle() { root.toggle() }
     function togglePercentage() { root.togglePercentage() }
     // Opens the popup straight on the History section.
-    function history() { root.open(); root.openSection("history") }
+    function history() { root.open(); root.showHistoryPage() }
   }
 
   onOpenedChanged: {
@@ -796,7 +809,8 @@ Panel {
     padding: Style.space(14)
     contentWidth: panel.fittedContentWidth(root.panelWidth + padding * 2)
     // Follows the column, whose Collapse sections glide with the smooth spring.
-    contentHeight: panel.fittedContentHeight(column.implicitHeight)
+    // Follows the page stack, whose height glides between the two pages.
+    contentHeight: panel.fittedContentHeight(pages.implicitHeight)
 
     // Every open starts on the overview: fold "Advanced" back once the popup
     // is fully gone, without animating it.
@@ -804,8 +818,7 @@ Panel {
       if (visible) return
       root.advancedOpen = false
       advancedCollapse.snap()
-      root.historyOpen = false
-      historyCollapse.snap()
+      pages.pop(null, QQC.StackView.Immediate)
     }
 
     PanelKeyCatcher {
@@ -815,7 +828,12 @@ Panel {
       // ⏎ applies the one under the cursor, ↑ folds the section again.
       onMoveRequested: function(dx, dy) {
         if (!root.advancedOpen) {
-          if (dy > 0) root.openSection("advanced")
+          if (root.historyShown) {
+            if (dx < 0) root.closeHistoryPage()
+            return
+          }
+          if (dx > 0 && root.showHistory) root.showHistoryPage()
+          else if (dy > 0) root.advancedOpen = true
           return
         }
         if (dx !== 0) {
@@ -827,18 +845,31 @@ Panel {
         }
       }
       onActivateRequested: {
-        if (!root.advancedOpen) root.openSection("advanced")
+        if (root.historyShown) return
+        if (!root.advancedOpen) root.advancedOpen = true
         else if (root.cursorActive) root.activateSelectedProfile()
         else root.advancedOpen = false
       }
-      onCloseRequested: root.close()
+      // On the History page Esc goes back first, then closes (drill-in flow).
+      onCloseRequested: root.historyShown ? root.closeHistoryPage() : root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
+
+      HUi.PageStack {
+        id: pages
+        x: -root.pageInset
+        width: parent.width + root.pageInset * 2
+        initialItem: mainPage
+      }
+
+      // ---------- Page 1: overview ----------
+      Item {
+        id: mainPage
+        implicitHeight: column.implicitHeight
 
       Column {
         id: column
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
+        x: root.pageInset
+        width: parent.width - root.pageInset * 2
         spacing: 0
 
         // ---------- Header: glyph · title/status · percentage ----------
@@ -942,80 +973,12 @@ Panel {
         Rectangle { width: parent.width; height: 1; color: root.hairline }
         Item { width: 1; height: Style.space(6) }
 
-        // ---------- History disclosure (battery logger) ----------
+        // ---------- History: drill-in to its own page ----------
         DisclosureRow {
           visible: root.showHistory
           text: "History"
-          expanded: root.historyOpen
-          onToggled: root.openSection(root.historyOpen ? "" : "history")
-        }
-
-        HUi.Collapse {
-          id: historyCollapse
-          width: parent.width
-          visible: root.showHistory
-          expanded: root.historyOpen
-
-          Column {
-            width: parent.width
-            topPadding: Style.space(6)
-            bottomPadding: Style.space(10)
-            spacing: Style.space(8)
-
-            Item {
-              width: parent.width
-              height: Math.max(historyTitle.implicitHeight, historyReadout.implicitHeight)
-              SectionLabel {
-                id: historyTitle
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Charge · last " + root.historyHours + " h"
-              }
-              HUi.CrossfadeText {
-                id: historyReadout
-                anchors.right: parent.right
-                anchors.left: historyTitle.right
-                anchors.leftMargin: Style.space(8)
-                anchors.verticalCenter: parent.verticalCenter
-                horizontalAlignment: Text.AlignRight
-                elide: Text.ElideLeft
-                text: historyGraph.readout
-                color: root.fg
-                fontSize: Style.font.caption
-                fontWeight: Font.Medium
-              }
-            }
-
-            HistoryGraph {
-              id: historyGraph
-              width: parent.width
-            }
-
-            Grid {
-              id: historyGrid
-              width: parent.width
-              columns: 2
-              spacing: Style.space(8)
-              visible: root.historyStats !== null && root.historyStats.samples
-              readonly property real cellWidth: (width - spacing) / 2
-
-              StatTile { width: historyGrid.cellWidth; label: "Time on battery"; value: root.historyStats ? Model.durationText(root.historyStats.onBatteryH) : "—" }
-              StatTile { width: historyGrid.cellWidth; label: "Used on battery"; value: root.historyStats ? root.historyWh(root.historyStats.usedWh) : "—" }
-              StatTile { width: historyGrid.cellWidth; label: "Average draw"; value: root.historyStats ? root.historyWatt(root.historyStats.avgDrawW) : "—" }
-              StatTile {
-                width: historyGrid.cellWidth
-                label: "A full charge lasts"
-                value: root.historyStats && root.historyStats.runtimeH !== null ? "≈ " + Model.durationText(root.historyStats.runtimeH) : "—"
-              }
-            }
-
-            Caption {
-              visible: text !== ""
-              text: root.historyStats === null ? ""
-                : (root.historyStats.samples ? root.historyDischargeText : "No samples in " + root.historyDir)
-            }
-            Caption { visible: text !== ""; text: root.historyChargeText }
-          }
+          drill: true
+          onToggled: root.showHistoryPage()
         }
 
         // ---------- Advanced disclosure ----------
@@ -1024,7 +987,7 @@ Panel {
           expanded: root.advancedOpen
           onToggled: {
             root.cursorActive = false
-            root.openSection(root.advancedOpen ? "" : "advanced")
+            root.advancedOpen = !root.advancedOpen
           }
         }
 
@@ -1353,6 +1316,93 @@ Panel {
           }
         }
       }
+      }
+
+      // ---------- Page 2: battery history (drill-in) ----------
+      Item {
+        id: historyPage
+        visible: false
+        implicitHeight: historyHeader.implicitHeight + historyBody.implicitHeight
+
+        HUi.PageHeader {
+          id: historyHeader
+          x: root.pageInset
+          width: parent.width - root.pageInset * 2
+          title: "Battery History"
+          ink: root.fg
+          iconFont: root.iconFont
+          onBack: root.closeHistoryPage()
+        }
+
+        Item {
+          id: historyBody
+          x: root.pageInset
+          y: historyHeader.height
+          width: parent.width - root.pageInset * 2
+          implicitHeight: historyCol.implicitHeight
+          Column {
+            id: historyCol
+            width: parent.width
+            topPadding: Style.space(6)
+            bottomPadding: Style.space(4)
+            spacing: Style.space(8)
+
+            Item {
+              width: parent.width
+              height: Math.max(historyTitle.implicitHeight, historyReadout.implicitHeight)
+              SectionLabel {
+                id: historyTitle
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Charge · last " + root.historyHours + " h"
+              }
+              HUi.CrossfadeText {
+                id: historyReadout
+                anchors.right: parent.right
+                anchors.left: historyTitle.right
+                anchors.leftMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+                horizontalAlignment: Text.AlignRight
+                elide: Text.ElideLeft
+                text: historyGraph.readout
+                color: root.fg
+                fontSize: Style.font.caption
+                fontWeight: Font.Medium
+              }
+            }
+
+            HistoryGraph {
+              id: historyGraph
+              width: parent.width
+            }
+
+            Grid {
+              id: historyGrid
+              width: parent.width
+              columns: 2
+              spacing: Style.space(8)
+              visible: root.historyStats !== null && root.historyStats.samples
+              readonly property real cellWidth: (width - spacing) / 2
+
+              StatTile { width: historyGrid.cellWidth; label: "Time on battery"; value: root.historyStats ? Model.durationText(root.historyStats.onBatteryH) : "—" }
+              StatTile { width: historyGrid.cellWidth; label: "Used on battery"; value: root.historyStats ? root.historyWh(root.historyStats.usedWh) : "—" }
+              StatTile { width: historyGrid.cellWidth; label: "Average draw"; value: root.historyStats ? root.historyWatt(root.historyStats.avgDrawW) : "—" }
+              StatTile {
+                width: historyGrid.cellWidth
+                label: "A full charge lasts"
+                value: root.historyStats && root.historyStats.runtimeH !== null ? "≈ " + Model.durationText(root.historyStats.runtimeH) : "—"
+              }
+            }
+
+            Caption {
+              visible: text !== ""
+              text: root.historyStats === null ? ""
+                : (root.historyStats.samples ? root.historyDischargeText : "No samples in " + root.historyDir)
+            }
+            Caption { visible: text !== ""; text: root.historyChargeText }
+          }
+        }
+      }
     }
   }
 
@@ -1592,11 +1642,14 @@ Panel {
     id: disc
     property string text: ""
     property bool expanded: false
+    // Drill-in row: the chevron stays pointing right and nudges on hover.
+    property bool drill: false
     signal toggled()
     width: parent.width
     height: visible ? Style.space(Motion.controlHeight) : 0
 
     HUi.Pressable {
+      id: discPress
       // Hover fill reaches a little past the text, like a macOS row.
       x: -Style.space(6)
       width: parent.width + Style.space(12)
@@ -1623,7 +1676,16 @@ Panel {
         anchors.rightMargin: Style.space(8)
         anchors.verticalCenter: parent.verticalCenter
         text: "󰅂"
-        rotation: disc.expanded ? 90 : 0
+        rotation: disc.expanded && !disc.drill ? 90 : 0
+        transform: Translate {
+          x: disc.drill && discPress.hovered && !Motion.reduceMotion ? Style.space(3) : 0
+          Behavior on x {
+            NumberAnimation {
+              duration: discPress.hovered ? Motion.instant : Motion.fast
+              easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+            }
+          }
+        }
         color: root.dimText
         font.family: root.iconFont
         font.pixelSize: Style.font.icon
@@ -1634,32 +1696,37 @@ Panel {
     }
   }
 
-  // Charge level over the history window: an accent line with a soft fill,
-  // charging stretches shaded behind it, sleeps/gaps left open. Gridlines at
-  // 0/50/100 %, clock ticks every six hours. Hovering reads a sample out.
+  // Charge level over the history window as bars, like the macOS battery
+  // graph: one bar per 20 minutes at the level it ended on — accent on
+  // battery, pale accent while plugged in, urgent at 20 % and below. Slots
+  // without samples (sleep, laptop off) stay empty. Gridlines at 0/50/100 %,
+  // clock ticks every six hours; hovering a bar reads it out and dims the rest.
   component HistoryGraph: Item {
     id: graph
     readonly property real gutter: gutterMetrics.advanceWidth + Style.space(8)
     readonly property real plotW: Math.max(1, width - gutter)
     readonly property real plotH: Style.space(88)
     readonly property real from: root.historyNow - root.historyHours * 3600000
-    readonly property color line: Color.accent
+    readonly property real slotW: plotW / root.historyBarCount
+    readonly property real barGap: Math.max(1, Math.round(slotW * 0.3))
+    readonly property color batteryInk: Color.accent
+    readonly property color pluggedInk: Util.alpha(Color.accent, 0.35)
     property int hoverIndex: -1
-    readonly property var hoverPoint: hoverIndex >= 0 ? root.historyPoints[hoverIndex] || null : null
+    readonly property var hoverBar: hoverIndex >= 0 ? root.historyBars[hoverIndex] || null : null
     readonly property string readout: {
-      var p = graph.hoverPoint
-      if (p && !p.gap)
-        return root.clockText(p.t) + " · " + p.pct + " %" + (p.w !== null && p.status !== "Full" ? " · " + root.historyWatt(p.w) : "")
+      var b = graph.hoverBar
+      if (b) return root.clockText(b.t0) + "–" + root.clockText(b.t1) + " · " + b.pct + " %"
+        + (b.w !== null ? " · " + root.historyWatt(b.w) : "")
       var st = root.historyStats
       if (!st || !st.samples) return ""
       return "Now " + Math.round(root.batteryFraction * 100) + " %"
     }
-    implicitHeight: plotH + timeRow.height + Style.space(4)
+    implicitHeight: plotH + timeRow.height + Style.space(12) + legend.height
 
     TextMetrics { id: gutterMetrics; font.family: Style.font.family; font.pixelSize: Style.font.caption; text: "100 %" }
 
     function xOf(t) { return (t - from) / (root.historyHours * 3600000) * plotW }
-    function yOf(pct) { return plotH - Math.max(0, Math.min(100, pct)) / 100 * (plotH - 2) - 1 }
+    function yOf(pct) { return plotH - Math.max(0, Math.min(100, pct)) / 100 * plotH }
 
     // Six-hour clock marks inside the window.
     readonly property var ticks: {
@@ -1672,12 +1739,12 @@ Panel {
       return out
     }
 
-    // Gridlines and labels on the right, like the macOS battery graph.
+    // Gridlines and labels on the right.
     Repeater {
       model: [100, 50, 0]
       Item {
         required property var modelData
-        y: graph.yOf(modelData)
+        y: Math.round(graph.yOf(modelData))
         width: graph.width
         Rectangle { width: graph.plotW; height: 1; color: root.hairline }
         Text {
@@ -1691,94 +1758,28 @@ Panel {
       }
     }
 
-    Canvas {
-      id: canvas
-      width: graph.plotW
-      height: graph.plotH
-      antialiasing: true
-      onWidthChanged: requestPaint()
-      Connections {
-        target: root
-        function onHistoryPointsChanged() { canvas.requestPaint() }
-      }
-      Connections {
-        target: graph
-        function onLineChanged() { canvas.requestPaint() }
-      }
-
-      onPaint: {
-        var ctx = getContext("2d")
-        ctx.reset()
-        var pts = root.historyPoints
-        if (!pts || pts.length === 0) return
-        var c = graph.line
-
-        // Charging stretches: a pale band from one sample to the next.
-        ctx.fillStyle = Qt.rgba(c.r, c.g, c.b, 0.07)
-        for (var i = 0; i + 1 < pts.length; i++) {
-          var a = pts[i], b = pts[i + 1]
-          if (a.gap || b.gap || a.status !== "Charging") continue
-          var x0 = graph.xOf(a.t), x1 = graph.xOf(b.t)
-          ctx.fillRect(x0, 0, Math.max(0.5, x1 - x0), graph.plotH)
+    // Full-height bars scaled from the baseline: level changes and the first
+    // fill animate as a transform, never as a layout change.
+    Repeater {
+      model: root.historyBarCount
+      Rectangle {
+        id: bar
+        required property int index
+        readonly property var bucket: root.historyBars[index] || null
+        x: Math.round(index * graph.slotW + graph.barGap / 2)
+        width: Math.max(1, Math.round(graph.slotW - graph.barGap))
+        height: graph.plotH
+        color: !bucket ? "transparent"
+          : (bucket.pct <= 20 ? Color.urgent : (bucket.battery ? graph.batteryInk : graph.pluggedInk))
+        opacity: !bucket ? 0 : (graph.hoverIndex < 0 || graph.hoverIndex === index ? 1 : 0.45)
+        transform: Scale {
+          origin.y: graph.plotH
+          yScale: bar.bucket ? Math.max(0.02, bar.bucket.pct / 100) : 0
+          Behavior on yScale { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
         }
-
-        // One path per unbroken run: area first, then the line on top.
-        var runs = []
-        var run = []
-        for (var j = 0; j < pts.length; j++) {
-          if (pts[j].gap) { if (run.length) runs.push(run); run = []; continue }
-          run.push(pts[j])
-        }
-        if (run.length) runs.push(run)
-
-        var grad = ctx.createLinearGradient(0, 0, 0, graph.plotH)
-        grad.addColorStop(0, Qt.rgba(c.r, c.g, c.b, 0.22))
-        grad.addColorStop(1, Qt.rgba(c.r, c.g, c.b, 0.02))
-        ctx.lineWidth = Style.spaceReal(1.5)
-        ctx.lineJoin = "round"
-        ctx.lineCap = "round"
-        for (var k = 0; k < runs.length; k++) {
-          var r = runs[k]
-          ctx.beginPath()
-          ctx.moveTo(graph.xOf(r[0].t), graph.plotH)
-          for (var m = 0; m < r.length; m++) ctx.lineTo(graph.xOf(r[m].t), graph.yOf(r[m].pct))
-          ctx.lineTo(graph.xOf(r[r.length - 1].t), graph.plotH)
-          ctx.closePath()
-          ctx.fillStyle = grad
-          ctx.fill()
-
-          ctx.beginPath()
-          ctx.moveTo(graph.xOf(r[0].t), graph.yOf(r[0].pct))
-          for (var n = 1; n < r.length; n++) ctx.lineTo(graph.xOf(r[n].t), graph.yOf(r[n].pct))
-          ctx.strokeStyle = c
-          ctx.stroke()
-        }
+        Behavior on opacity { NumberAnimation { duration: graph.hoverIndex >= 0 ? Motion.instant : Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
       }
-    }
-
-    // Hover: a hairline and a dot on the nearest sample; the readout above
-    // crossfades to its time, charge and draw.
-    Rectangle {
-      id: hoverLine
-      readonly property bool active: graph.hoverPoint !== null && !graph.hoverPoint.gap
-      x: active ? Math.round(graph.xOf(graph.hoverPoint.t)) : x
-      width: 1
-      height: graph.plotH
-      color: Util.alpha(root.fg, 0.35)
-      opacity: active ? 1 : 0
-      Behavior on opacity { NumberAnimation { duration: hoverLine.active ? Motion.instant : Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
-    }
-    Rectangle {
-      readonly property real size: Style.space(7)
-      x: hoverLine.x - size / 2 + 0.5
-      y: hoverLine.active ? graph.yOf(graph.hoverPoint.pct) - size / 2 : y
-      width: size
-      height: size
-      radius: size / 2
-      color: graph.line
-      border.width: Style.space(1.5)
-      border.color: Color.popups.background
-      opacity: hoverLine.opacity
     }
 
     MouseArea {
@@ -1788,21 +1789,8 @@ Panel {
       acceptedButtons: Qt.NoButton
       onExited: graph.hoverIndex = -1
       onPositionChanged: function(mouse) {
-        var pts = root.historyPoints
-        if (!pts || pts.length === 0) { graph.hoverIndex = -1; return }
-        var t = graph.from + mouse.x / graph.plotW * root.historyHours * 3600000
-        // Samples are sorted by time: binary search, then the nearer neighbour.
-        var lo = 0, hi = pts.length - 1
-        while (lo < hi) {
-          var mid = (lo + hi) >> 1
-          if (pts[mid].t < t) lo = mid + 1
-          else hi = mid
-        }
-        var best = lo
-        if (lo > 0 && Math.abs(pts[lo - 1].t - t) < Math.abs(pts[lo].t - t)) best = lo - 1
-        // Nothing within ten minutes (a gap, before the first sample): no readout.
-        var p = pts[best]
-        graph.hoverIndex = !p.gap && Math.abs(p.t - t) <= 600000 ? best : -1
+        var i = Math.max(0, Math.min(root.historyBarCount - 1, Math.floor(mouse.x / graph.slotW)))
+        graph.hoverIndex = root.historyBars[i] ? i : -1
       }
     }
 
@@ -1822,6 +1810,36 @@ Panel {
           color: root.dimText
           font.family: Style.font.family
           font.pixelSize: Style.font.caption
+        }
+      }
+    }
+
+    // What the two bar colours mean.
+    Row {
+      id: legend
+      y: timeRow.y + timeRow.height + Style.space(8)
+      spacing: Style.space(12)
+      Repeater {
+        model: [
+          { ink: graph.batteryInk, text: "On battery" },
+          { ink: graph.pluggedInk, text: "Plugged in" }
+        ]
+        Row {
+          required property var modelData
+          spacing: Style.space(5)
+          Rectangle {
+            anchors.verticalCenter: parent.verticalCenter
+            width: Style.space(8)
+            height: Style.space(8)
+            radius: Style.space(2)
+            color: modelData.ink
+          }
+          Text {
+            text: modelData.text
+            color: root.dimText
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
         }
       }
     }

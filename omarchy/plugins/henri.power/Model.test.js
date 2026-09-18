@@ -178,6 +178,19 @@ check("duration 2 h 50", Model.durationText(2 + 50 / 60), "2 h 50 min")
 check("duration 3 h", Model.durationText(3), "3 h")
 check("duration null", Model.durationText(null), "—")
 
+// barres : 3 créneaux d'une heure
+const bNow = 3 * 3600000
+const bPts = [
+  { t: 10 * 60000, gap: false, status: "Discharging", pct: 80, w: 10 },
+  { t: 50 * 60000, gap: false, status: "Discharging", pct: 75, w: 12 },
+  { t: 150 * 60000, gap: false, status: "Charging", pct: 60, w: 20 },
+  { t: 170 * 60000, gap: true }
+]
+const bars = Model.historyBuckets(bPts, bNow, 3, 3)
+check("buckets: first", [bars[0].pct, bars[0].battery, bars[0].w], [75, true, 11])
+check("buckets: empty slot", bars[1], null)
+check("buckets: plugged", [bars[2].pct, bars[2].battery], [60, false])
+
 if (failures > 0) {
   console.log("\n" + failures + " échec(s)")
   process.exit(1)

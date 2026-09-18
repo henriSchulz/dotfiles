@@ -177,10 +177,10 @@ ShellRoot {
     Component {
       id: subPage
       Column {
+        id: sub
         property string title
         spacing: 8
-        HUi.Button { text: "‹ Zurück"; onClicked: pages.pop() }
-        Text { text: title; color: Color.foreground; font.pixelSize: Style.font.heading; font.weight: Font.DemiBold }
+        HUi.PageHeader { width: parent.width; title: sub.title; onBack: pages.pop() }
         Repeater { model: 5; Text { text: title + " Option " + (index + 1); color: Util.alpha(Color.foreground, Motion.secondaryTextAlpha); font.pixelSize: Style.font.body } }
       }
     }

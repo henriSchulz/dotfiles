@@ -57,6 +57,7 @@ Eingabe-Test (echte Tasten-/Maus-Events: Esc, Pfeile, Drill-in-Zurück, Klick in
 | `HUi.CrossfadeText` | Text/Zahl, die sich ändert | `text`, `color`, `fontSize`, `fontWeight`, `fontFamily` |
 | `HUi.Collapse` | Aufklappen / Höhe gleitet mit Inhalt | `expanded` (true lassen = Höhe folgt jeder Inhaltsänderung), `snap()` (ohne Animation auf den Zustand springen — z. B. Abschnitt zurücksetzen, während das Popup unsichtbar ist) |
 | `HUi.PageStack` | Drill-in-Seiten mit Parallax | StackView: `initialItem`, `push()`, `pop()`, Höhe gleitet, Esc/← = zurück |
+| `HUi.PageHeader` | Kopf einer Drill-in-Seite: ‹ + Titel, ganze linke Fläche = Zurück, Chevron rückt beim Hover nach links | `title`, `back()`, `ink`, `iconFont`; Kinder = rechte Controls (Schalter, Wert) |
 | `HUi.StaggerIn` | Gestaffeltes Erscheinen | `active`, `index` |
 | `HUi.SpringValue` | Eigene Spring-Animation | `to`, `value`, `preset`, `epsilon`, `snap(v)` |
 | `HUi.BatteryGlyph` | macOS-Menüleisten-Batterie (SF `battery`-Nachbau, Vektor) | `level` 0…1, `charging` (Blitz), `plugged` (Stecker), `ink`, `height` (12 ≈ Bar) — Füllung ≤ 20 % rot |
