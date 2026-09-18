@@ -40,6 +40,9 @@ Panel {
   // Secondary text: foreground at the henri-ui secondary alpha (not a darkened fg / muted).
   readonly property color dimText: Util.alpha(fg, Motion.secondaryTextAlpha)
   readonly property string iconFont: bar ? bar.fontFamily : Style.font.family
+  // SF Symbols (local font only, not in the repo). Bluetooth has no SF symbol → Nerd glyph via fallback.
+  readonly property string symbolFont: ".SF Symbols Fallback"
+  function sf(cp) { return String.fromCodePoint(cp) }
   readonly property int tileRadius: Style.space(Motion.radiusPopover)
   readonly property int gap: Style.space(10)
   readonly property int panelWidth: Style.space(340)
@@ -171,7 +174,7 @@ Panel {
     wifiPendingTimeout.restart()
   }
   function wifiIcon(signal) {
-    return signal >= 75 ? "󰤨" : signal >= 50 ? "󰤥" : signal >= 25 ? "󰤢" : "󰤟"
+    return sf(0x100647)
   }
   // The pending row settles once its connected state flips.
   property bool wifiPendingStartedConnected: false
@@ -394,13 +397,13 @@ Panel {
     onTriggered: root.btPending = ({})
   }
   function btIcon(icon) {
-    if (icon.indexOf("headset") >= 0 || icon.indexOf("headphone") >= 0) return "󰋋"
-    if (icon.indexOf("audio") >= 0 || icon.indexOf("speaker") >= 0) return "󰓃"
-    if (icon.indexOf("mouse") >= 0) return "󰍽"
-    if (icon.indexOf("keyboard") >= 0) return "󰌌"
-    if (icon.indexOf("phone") >= 0) return "󰏲"
-    if (icon.indexOf("computer") >= 0) return "󰌢"
-    if (icon.indexOf("gaming") >= 0 || icon.indexOf("joystick") >= 0) return "󰊴"
+    if (icon.indexOf("headset") >= 0 || icon.indexOf("headphone") >= 0) return sf(0x100448)
+    if (icon.indexOf("audio") >= 0 || icon.indexOf("speaker") >= 0) return sf(0x10074E)
+    if (icon.indexOf("mouse") >= 0) return sf(0x100EA4)
+    if (icon.indexOf("keyboard") >= 0) return sf(0x100A33)
+    if (icon.indexOf("phone") >= 0) return sf(0x1007DD)
+    if (icon.indexOf("computer") >= 0) return sf(0x100657)
+    if (icon.indexOf("gaming") >= 0 || icon.indexOf("joystick") >= 0) return sf(0x1006F8)
     return "󰂯"
   }
 
@@ -433,9 +436,9 @@ Panel {
   }
   function sinkIcon(label) {
     var l = String(label).toLowerCase()
-    if (l.indexOf("hdmi") >= 0 || l.indexOf("displayport") >= 0) return "󰍹"
-    if (l.indexOf("head") >= 0 || l.indexOf("kopfh") >= 0) return "󰋋"
-    return "󰓃"
+    if (l.indexOf("hdmi") >= 0 || l.indexOf("displayport") >= 0) return sf(0x1008B9)
+    if (l.indexOf("head") >= 0 || l.indexOf("kopfh") >= 0) return sf(0x100448)
+    return sf(0x10074E)
   }
 
   // ---- Hardware: read-only live readings from system/henri-hwstat (CPU load,
@@ -763,7 +766,7 @@ Panel {
       anchors.centerIn: parent
       horizontalAlignment: Text.AlignHCenter
       text: circle.icon
-      fontFamily: root.iconFont
+      fontFamily: root.symbolFont
       fontSize: Style.font.iconLarge
       color: circle.on ? root.onIcon : root.fg
       Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
@@ -969,10 +972,10 @@ Panel {
           visible: st.expandable
           anchors.right: parent.right
           anchors.verticalCenter: stHeading.verticalCenter
-          text: "󰅂"
+          text: root.sf(0x10018A)
           rotation: st.expanded ? 90 : 0
           color: root.dimText
-          font.family: root.iconFont
+          font.family: root.symbolFont
           font.pixelSize: Style.font.icon
           Behavior on rotation { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
         }
@@ -994,7 +997,7 @@ Panel {
           width: Style.space(20)
           text: st.icon
           color: root.fg
-          fontFamily: root.iconFont
+          fontFamily: root.symbolFont
           fontSize: Style.font.iconLarge
           MouseArea {
             anchors.fill: parent
@@ -1074,17 +1077,21 @@ Panel {
       preset: Motion.snappy
       to: pillMouse.pressed && !Motion.reduceMotion ? Motion.pressScale : 1
     }
-    property var glyph: null
+    property string symbol: ""
     property color ink: pill.selected ? root.onIcon : root.fg
     Behavior on ink { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
     Row {
       anchors.centerIn: parent
       spacing: Style.space(6)
-      LayoutGlyph {
-        visible: pill.glyph !== null
+      // SF Symbol, tinted like the label.
+      Text {
+        visible: pill.symbol !== ""
         anchors.verticalCenter: parent.verticalCenter
-        tiles: pill.glyph || []
-        tint: pill.ink
+        text: pill.symbol
+        color: pill.ink
+        font.family: root.symbolFont
+        font.pixelSize: Style.font.bodySmall
+        font.weight: pill.selected ? Font.DemiBold : Font.Normal
       }
       Text {
         anchors.verticalCenter: parent.verticalCenter
@@ -1104,29 +1111,6 @@ Panel {
     }
   }
 
-  // Tiny tiling-layout diagram: tiles as [x, y, w, h, alpha] on a 16×12 grid.
-  component LayoutGlyph: Item {
-    id: lg
-    property var tiles: []
-    property color tint: root.fg
-    readonly property real unit: Style.spaceReal(1)
-    width: Math.round(16 * unit)
-    height: Math.round(12 * unit)
-    Repeater {
-      model: lg.tiles
-      delegate: Rectangle {
-        required property var modelData
-        x: Math.round(modelData[0] * lg.unit)
-        y: Math.round(modelData[1] * lg.unit)
-        width: Math.round((modelData[0] + modelData[2]) * lg.unit) - x
-        height: Math.round((modelData[1] + modelData[3]) * lg.unit) - y
-        radius: Math.max(1, Math.round(1.5 * lg.unit))
-        color: lg.tint
-        opacity: modelData[4]
-      }
-    }
-  }
-
   // Header of a detail page: back chevron + title, with an optional switch.
   component PageHeader: Item {
     id: ph
@@ -1143,7 +1127,7 @@ Panel {
       spacing: Style.space(6)
       Text {
         anchors.verticalCenter: parent.verticalCenter
-        text: "󰅁"
+        text: root.sf(0x100189)
         transform: Translate {
           x: backMouse.containsMouse && !Motion.reduceMotion ? -Style.space(3) : 0
           Behavior on x {
@@ -1154,7 +1138,7 @@ Panel {
           }
         }
         color: root.fg
-        font.family: root.iconFont
+        font.family: root.symbolFont
         font.pixelSize: Style.font.iconLarge
       }
       Text {
@@ -1275,7 +1259,7 @@ Panel {
         text: lr.icon
         color: lr.active ? root.onIcon : root.fg
         Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
-        font.family: root.iconFont
+        font.family: root.symbolFont
         font.pixelSize: Style.font.icon
       }
     }
@@ -1320,7 +1304,7 @@ Panel {
       horizontalAlignment: Text.AlignRight
       text: lr.trailing
       color: root.dimText
-      fontFamily: root.iconFont
+      fontFamily: lr.trailing.codePointAt(0) >= 0x100000 ? root.symbolFont : root.iconFont
       fontSize: Style.font.bodySmall
     }
     MouseArea {
@@ -1453,7 +1437,7 @@ Panel {
       anchors.centerIn: parent
       text: ib.icon
       color: root.fg
-      font.family: root.iconFont
+      font.family: root.symbolFont
       font.pixelSize: Style.font.icon
     }
     MouseArea {
@@ -1576,7 +1560,7 @@ Panel {
 
             ToggleRow {
               width: parent.width
-              icon: root.wifiOn ? "󰖩" : "󰖪"
+              icon: root.wifiOn ? root.sf(0x100647) : root.sf(0x100648)
               on: root.wifiOn
               title: "Wi-Fi"
               subtitle: !root.wifiOn ? "Off" : (root.wifiName !== "" ? root.wifiName : "Not connected")
@@ -1598,7 +1582,7 @@ Panel {
             }
             ToggleRow {
               width: parent.width
-              icon: "󰜡"
+              icon: root.sf(0x100319)
               on: root.localsendRunning
               title: "AirDrop"
               subtitle: root.localsendRunning ? "LocalSend active" : "LocalSend"
@@ -1630,7 +1614,7 @@ Panel {
               anchors.fill: parent
               anchors.leftMargin: Style.space(10)
               anchors.rightMargin: Style.space(6)
-              icon: "󰽥"
+              icon: root.sf(0x1001BA)
               on: root.dnd
               title: "Focus"
               subtitle: root.dnd ? "Do Not Disturb" : ""
@@ -1643,14 +1627,14 @@ Panel {
             spacing: root.gap
             SmallTile {
               revealIndex: 2
-              icon: "󰖔"
+              icon: root.sf(0x1001B4)
               on: root.nightOn
               title: "Night Shift"
               onClicked: if (root.nightlight) root.nightlight.setNightlight(!root.nightOn)
             }
             SmallTile {
               revealIndex: 3
-              icon: "󰅶"
+              icon: root.sf(0x1017B5)
               on: root.stayAwake
               title: "Stay Awake"
               onClicked: if (root.idle) root.idle.setIdleEnabled(root.stayAwake)
@@ -1663,7 +1647,7 @@ Panel {
         revealIndex: 4
         visible: root.brightnessAvailable || root.displays.length > 0
         heading: "Display"
-        icon: root.brightness < 40 ? "󰃞" : root.brightness < 75 ? "󰃟" : "󰃠"
+        icon: root.sf(root.brightness < 40 ? 0x1001AC : 0x1001AE)
         value: root.brightness / 100
         expandable: true
         expanded: root.displayExpanded
@@ -1752,14 +1736,24 @@ Panel {
             width: parent.width
             height: Style.space(30)
             opacity: modelData.enabled && root.enabledDisplayCount <= 1 ? 0.6 : 1
-            Text {
+            Row {
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
-              text: (modelData.focused ? "󰍹  " : "󰍺  ") + modelData.name
-                    + (modelData.width ? "   " + modelData.width + " × " + modelData.height : "")
-              color: root.fg
-              font.family: root.iconFont
-              font.pixelSize: Style.font.bodySmall
+              spacing: Style.space(8)
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.sf(0x1008B9)
+                color: modelData.focused ? root.fg : root.dimText
+                font.family: root.symbolFont
+                font.pixelSize: Style.font.bodySmall
+              }
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: modelData.name + (modelData.width ? "   " + modelData.width + " × " + modelData.height : "")
+                color: root.fg
+                font.family: root.iconFont
+                font.pixelSize: Style.font.bodySmall
+              }
             }
             Pill {
               anchors.right: parent.right
@@ -1779,7 +1773,7 @@ Panel {
         visible: root.sink !== null
         heading: "Sound"
         expandable: true
-        icon: root.muted || root.volume === 0 ? "󰝟" : root.volume < 0.34 ? "󰕿" : root.volume < 0.67 ? "󰖀" : "󰕾"
+        icon: root.muted || root.volume === 0 ? root.sf(0x1002A3) : root.volume < 0.34 ? root.sf(0x1002A5) : root.volume < 0.67 ? root.sf(0x1002A7) : root.sf(0x1002A9)
         value: root.muted ? 0 : Math.min(1, root.volume)
         onMoved: function(v) {
           if (!root.sink || !root.sink.audio) return
@@ -1818,12 +1812,9 @@ Panel {
             width: parent.width
             spacing: Style.space(5)
             readonly property var layouts: [
-              // Dwindle: master left, the rest keeps halving.
-              { id: "dwindle", label: "Dwindle",
-                glyph: [[0, 0, 7, 12, 1], [8.5, 0, 7.5, 5.25, 1], [8.5, 6.75, 3, 5.25, 1], [13, 6.75, 3, 5.25, 1]] },
-              // Scrolling: full-height columns running off both edges.
-              { id: "scrolling", label: "Scrolling",
-                glyph: [[0, 0, 2.5, 12, 0.4], [4, 0, 8, 12, 1], [13.5, 0, 2.5, 12, 0.4]] }
+              // SF Symbols: square split recursively / rectangle.split.3x1.
+              { id: "dwindle", label: "Dwindle", symbol: String.fromCodePoint(0x100BEB) },
+              { id: "scrolling", label: "Scrolling", symbol: String.fromCodePoint(0x1003DF) }
             ]
             Repeater {
               model: tilingRow.layouts
@@ -1831,7 +1822,7 @@ Panel {
                 required property var modelData
                 width: Math.floor((tilingRow.width - tilingRow.spacing * (tilingRow.layouts.length - 1)) / tilingRow.layouts.length)
                 label: modelData.label
-                glyph: modelData.glyph
+                symbol: modelData.symbol
                 selected: root.tilingLayout === modelData.id
                 onClicked: root.setTilingLayout(modelData.id)
               }
@@ -1863,9 +1854,9 @@ Panel {
           Text {
             anchors.centerIn: parent
             visible: artImage.status !== Image.Ready
-            text: "󰝚"
+            text: root.sf(0x10046A)
             color: root.dimText
-            font.family: root.iconFont
+            font.family: root.symbolFont
             font.pixelSize: Style.font.iconLarge
           }
           Image {
@@ -1913,9 +1904,9 @@ Panel {
 
           Repeater {
             model: [
-              { icon: "󰒮", action: "previous" },
-              { icon: nowPlaying.playing ? "󰏤" : "󰐊", action: "playPause" },
-              { icon: "󰒭", action: "next" }
+              { icon: root.sf(0x10028A), action: "previous" },
+              { icon: nowPlaying.playing ? root.sf(0x100286) : root.sf(0x100284), action: "playPause" },
+              { icon: root.sf(0x10028C), action: "next" }
             ]
             delegate: Rectangle {
               required property var modelData
@@ -1933,7 +1924,7 @@ Panel {
                 anchors.centerIn: parent
                 text: modelData.icon
                 color: root.fg
-                font.family: root.iconFont
+                font.family: root.symbolFont
                 font.pixelSize: Style.font.iconLarge
               }
               MouseArea {
@@ -1961,7 +1952,7 @@ Panel {
           anchors.left: parent.left
           anchors.leftMargin: Style.space(10)
           anchors.verticalCenter: parent.verticalCenter
-          icon: "󰻠"
+          icon: root.sf(0x1009D3)
           onClicked: root.showPage("hardware")
         }
         Column {
@@ -1992,9 +1983,9 @@ Panel {
           anchors.right: parent.right
           anchors.rightMargin: Style.space(14)
           anchors.verticalCenter: parent.verticalCenter
-          text: "󰅂"
+          text: root.sf(0x10018A)
           color: root.dimText
-          font.family: root.iconFont
+          font.family: root.symbolFont
           font.pixelSize: Style.font.icon
         }
       }
@@ -2012,9 +2003,9 @@ Panel {
           anchors.left: parent.left
           anchors.leftMargin: Style.space(14)
           anchors.verticalCenter: parent.verticalCenter
-          text: "󰐱"
+          text: root.sf(0x10096E)
           color: root.fg
-          font.family: root.iconFont
+          font.family: root.symbolFont
           font.pixelSize: Style.font.iconLarge
         }
         Text {
@@ -2030,9 +2021,9 @@ Panel {
           anchors.right: parent.right
           anchors.rightMargin: Style.space(14)
           anchors.verticalCenter: parent.verticalCenter
-          text: "󰅂"
+          text: root.sf(0x10018A)
           color: root.dimText
-          font.family: root.iconFont
+          font.family: root.symbolFont
           font.pixelSize: Style.font.icon
         }
       }
@@ -2095,7 +2086,7 @@ Panel {
                   : root.wifiFailed === modelData.name ? "Connection failed"
                   : modelData.connected ? "Connected"
                   : modelData.known ? "Known" : ""
-                trailing: modelData.secure ? "󰌾" : ""
+                trailing: modelData.secure ? root.sf(0x1003A1) : ""
                 onClicked: root.wifiActivate(modelData)
               }
 
@@ -2153,9 +2144,9 @@ Panel {
                   anchors.right: parent.right
                   anchors.rightMargin: Style.space(10)
                   anchors.verticalCenter: parent.verticalCenter
-                  text: "󰁔"
+                  text: root.sf(0x100C13)
                   color: passwordInput.text === "" ? root.dimText : root.fg
-                  font.family: root.iconFont
+                  font.family: root.symbolFont
                   font.pixelSize: Style.font.icon
                   MouseArea {
                     anchors.fill: parent
@@ -2207,10 +2198,10 @@ Panel {
               anchors.right: parent.right
               anchors.rightMargin: Style.space(12)
               anchors.verticalCenter: parent.verticalCenter
-              text: "󰅂"
+              text: root.sf(0x10018A)
               rotation: root.wifiAdvanced ? 90 : 0
               color: root.dimText
-              font.family: root.iconFont
+              font.family: root.symbolFont
               font.pixelSize: Style.font.icon
               Behavior on rotation { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
             }
@@ -2279,12 +2270,12 @@ Panel {
                 spacing: Style.space(6)
                 IconButton {
                   visible: root.netInfo.type === "wifi"
-                  icon: "󰐲"
+                  icon: root.sf(0x100582)
                   onClicked: root.summonOverlay("omarchy.wifiqr",
                     root.netInfo.iface ? { iface: root.netInfo.iface, ssid: root.netInfo.ssid || "" } : {})
                 }
                 IconButton {
-                  icon: "󰓅"
+                  icon: root.sf(0x10037E)
                   onClicked: root.summonOverlay("omarchy.speedtest",
                     root.netInfo.type === "wifi" ? { connection: root.netInfo.ssid || "Wi-Fi" } : {})
                 }
@@ -2420,9 +2411,9 @@ Panel {
           anchors.leftMargin: Style.space(12)
           anchors.verticalCenter: parent.verticalCenter
           width: Style.space(20)
-          text: root.muted || root.volume === 0 ? "󰝟" : "󰕾"
+          text: root.muted || root.volume === 0 ? root.sf(0x1002A3) : root.sf(0x1002A9)
           color: root.fg
-          fontFamily: root.iconFont
+          fontFamily: root.symbolFont
           fontSize: Style.font.iconLarge
           MouseArea {
             anchors.fill: parent
@@ -2466,7 +2457,7 @@ Panel {
           icon: root.sinkIcon(modelData.label)
           active: modelData.active
           title: modelData.label
-          trailing: modelData.active ? "󰄬" : " "
+          trailing: modelData.active ? root.sf(0x100185) : " "
           onClicked: if (!modelData.active) root.setSink(modelData)
         }
       }
