@@ -198,8 +198,9 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
    Aktion auslösen + Menü schließt (Exit, 0.7×).
 3. **Drill-in** (Detailseite): neue Seite von rechts, alte 30 % nach links + Fade,
    `slow` easeInOut, Höhe gleitet mit. Zurück: Button „‹“, Esc oder ← — gespiegelt.
-4. **Schließen:** **Esc** (immer, bei jedem Menü/Popover/Panel), Klick daneben oder
-   erneuter Klick auf den Auslöser → Exit ohne Stagger, alles gemeinsam, schneller als
+4. **Schließen:** **Esc** und **Klick ins Leere** (immer, bei jedem Menü/Popover/Panel —
+   auch Klick in ein anderes Fenster/den Desktop; der schließende Klick wird verschluckt
+   und löst darunter nichts aus) oder erneuter Klick auf den Auslöser → Exit ohne Stagger, alles gemeinsam, schneller als
    der Eintritt. Fokus zurück zum Auslöser. Auf einer Drill-in-Unterseite geht Esc
    erst eine Seite zurück, erst auf der Hauptseite schließt es.
 5. **Wechsel zwischen Popups** (Maus gleitet in der Bar zum Nachbarn): altes schließt,

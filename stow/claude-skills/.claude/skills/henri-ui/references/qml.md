@@ -25,7 +25,7 @@ import "file:///home/henri/.local/share/henri-ui" as HUi
 `QT_QPA_PLATFORM=offscreen HUI_AUTOTEST=1 HUI_SHOT=/tmp/hui quickshell -p ~/.local/share/henri-ui/gallery/shell.qml`
 → keine `WARN scene`/`TypeError`-Zeilen, endet mit `HUI done`; Screenshots
 `/tmp/hui-*.png` ansehen.
-Tastatur-Test (echte Key-Events: Esc, Pfeile, Drill-in-Zurück):
+Eingabe-Test (echte Tasten-/Maus-Events: Esc, Pfeile, Drill-in-Zurück, Klick ins Leere):
 `QT_QPA_PLATFORM=offscreen quickshell -p ~/.local/share/henri-ui/gallery/keytest.qml`
 → muss mit `RESULT ALL PASS` enden.
 
@@ -33,7 +33,7 @@ Tastatur-Test (echte Key-Events: Esc, Pfeile, Drill-in-Zurück):
 
 | Komponente | Wofür | Wichtigste API |
 |------------|-------|----------------|
-| `HUi.Reveal` | Ein-/Ausblenden jeder Fläche + Esc | `open`, `kind: menu\|popover\|panel\|toast`, `origin`, `fromX/fromY`, `settled`, `shown`, `closed()`, **`dismissRequested()`** (Esc), `closeOnEscape` |
+| `HUi.Reveal` | Ein-/Ausblenden jeder Fläche + Esc | `open`, `kind: menu\|popover\|panel\|toast`, `origin`, `fromX/fromY`, `settled`, `shown`, `closed()`, **`dismissRequested()`** (Esc + Klick ins Leere), `closeOnEscape`, `closeOnOutsideClick`, `insideWindows` |
 | `HUi.Surface` | Material (Theme-Hintergrund, Haarlinie, Radius) | `role: popups\|menu\|tooltip\|notifications`, `kind: panel\|popover\|menu\|chip`, `padding`, `contentLeftInset`… (BorderSurface) |
 | `HUi.Pressable` | Basis alles Klickbaren | `clicked()`, `secondaryClicked()`, `tint`, `prominent`, `selected`, `showFill`, `pressScaleEnabled`, `contentColor`, `radius` |
 | `HUi.Button` | Standard-Button | `text`, `icon` (Glyph), `prominent`, + alles von Pressable |
@@ -64,7 +64,8 @@ HUi.Reveal {
   kind: "menu"
   origin: Item.Top                         // Bar unten → Item.Bottom + fromY: 4
   open: root.opened
-  onDismissRequested: root.close()          // Esc — PFLICHT bei jeder Reveal
+  onDismissRequested: root.close()          // Esc + Klick ins Leere — PFLICHT bei jeder Reveal
+  insideWindows: [barWindow]                // Fenster mit dem Auslöser zählt nicht als „außen“
   width: surface.implicitWidth; height: surface.implicitHeight
 
   HUi.Surface {
@@ -86,13 +87,18 @@ HUi.Reveal {
 }
 ```
 
-**Esc:** Reveal holt sich beim Öffnen den Tastaturfokus und meldet Esc als
-`dismissRequested()`. Es setzt `open` nie selbst (würde das Binding `open: root.opened`
+**Esc & Klick ins Leere:** Reveal holt sich beim Öffnen den Tastaturfokus und meldet Esc
+sowie Klicks außerhalb als `dismissRequested()` — im selben Fenster über eine
+unsichtbare Klick-Fläche (Klick wird verschluckt, Klicks auf die Fläche selbst gehen
+durch), in andere Fenster/den Desktop über `HyprlandFocusGrab` (steckt in Reveal —
+nicht zusätzlich selbst anlegen). Das Fenster mit dem Auslöser (z. B. die Bar) in
+`insideWindows` eintragen, sonst schließt der Klick auf den Auslöser über den Grab und
+öffnet es direkt wieder. Es setzt `open` nie selbst (würde das Binding `open: root.opened`
 brechen und den Panel-Zustand desynchronisieren) → immer
 `onDismissRequested: root.close()` bzw. `open = false` bei imperativer Steuerung.
 Damit Tasten überhaupt ankommen, braucht das Fenster Tastaturfokus:
 `PanelWindow` → `WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand` (bzw.
-`Exclusive` für Launcher), `PopupWindow` mit `HyprlandFocusGrab` wie in der Shell-`PopupCard`.
+`Exclusive` für Launcher).
 
 Im `PopupWindow`/`PanelWindow`: Fenster `visible: menu.shown`, damit es erst nach dem
 Ausblenden verschwindet. Keine zusätzliche Opacity-Animation auf der Karte (die

@@ -1,4 +1,6 @@
 import QtQuick
+import Quickshell
+import Quickshell.Hyprland
 import "Motion.js" as Motion
 
 // Enter/exit choreography for everything that appears: menu, popover, panel, toast.
@@ -8,7 +10,8 @@ import "Motion.js" as Motion
 //     open: root.opened
 //     kind: "menu"                  // menu | popover | panel | toast
 //     origin: Item.Top              // side of the anchor it grows out of
-//     onDismissRequested: root.close()      // Esc — REQUIRED, see below
+//     onDismissRequested: root.close()      // Esc / click outside — REQUIRED, see below
+//     insideWindows: [barWindow]            // optional: windows that don't count as "outside"
 //     onClosed: popupWindow.visible = false   // optional: after the exit finished
 //     HUi.Surface { … }
 //   }
@@ -20,6 +23,13 @@ import "Motion.js" as Motion
 // caller's binding (e.g. open: root.opened) and desync the panel state — so the
 // caller closes it the way it opened it. Inner handlers get Esc first
 // (HUi.PageStack goes back a page before the surface closes).
+//
+// Click outside — also dismissRequested(), two layers:
+//  • same window: a transparent catcher covers the window while open; a press
+//    outside the surface is consumed (like macOS: the dismissing click does not
+//    also hit what is underneath), presses on the surface pass straight through.
+//  • other windows / desktop: HyprlandFocusGrab on this window (+ insideWindows,
+//    e.g. the bar holding the trigger, so the trigger can toggle it itself).
 FocusScope {
   id: root
 
@@ -38,6 +48,13 @@ FocusScope {
   signal closed()
   signal dismissRequested()
   property bool closeOnEscape: true
+  property bool closeOnOutsideClick: true
+  property var insideWindows: []
+
+  function containsScenePoint(item, x, y) {
+    var p = item.mapToItem(root, x, y)
+    return p.x >= 0 && p.y >= 0 && p.x < root.width && p.y < root.height
+  }
 
   default property alias content: holder.data
 
@@ -91,5 +108,27 @@ FocusScope {
   Item {
     id: holder
     anchors.fill: parent
+  }
+
+  // Same-window outside clicks. Lives on the window's content item so it
+  // covers everything, but lets presses on the surface fall through.
+  MouseArea {
+    parent: root.Window.contentItem
+    anchors.fill: parent
+    z: 100000
+    enabled: root.open && root.closeOnOutsideClick && parent !== null
+    visible: enabled
+    acceptedButtons: Qt.AllButtons
+    onPressed: function(mouse) {
+      if (root.containsScenePoint(this, mouse.x, mouse.y)) { mouse.accepted = false; return }
+      root.dismissRequested()
+    }
+  }
+
+  // Clicks into other windows or the desktop.
+  HyprlandFocusGrab {
+    active: root.open && root.closeOnOutsideClick && root.QsWindow.window !== null
+    windows: [root.QsWindow.window].concat(root.insideWindows).filter(function(w) { return !!w })
+    onCleared: if (root.open) root.dismissRequested()
   }
 }
