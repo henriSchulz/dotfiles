@@ -28,7 +28,6 @@ Panel {
   property string activeProfile: ""
   property int profileIndex: 0
   property bool cursorActive: false
-  property bool advancedOpen: false
   property var dellStatus: null
   property bool dellBusy: false
   property bool dellProbed: false
@@ -43,17 +42,32 @@ Panel {
   // Battery history from the akku-aufzeichnung logger (one CSV per day).
   // Kept across opens, so the section never starts empty after the first load.
   // True while the History drill-in page is shown (HUi.PageStack depth 2).
-  readonly property bool historyShown: pages.depth > 1
+  // Which drill-in page is showing (HUi.PageStack): the overview, History
+  // or Advanced.
+  readonly property bool historyShown: pages.currentItem === historyPage
+  readonly property bool advancedOpen: pages.currentItem === advancedPage
   property var historyPoints: []
   property var historyStats: null
   property var historyBars: []
-  readonly property int historyBarCount: 72   // 20-minute bars over 24 h
+  // The same number of bars for every range: 5 min each over 6 h, 10 over
+  // 12 h, 20 over 24 h.
+  readonly property int historyBarCount: 72
   property real historyNow: 0
   property string historyTodayText: ""
   property string historyYesterdayText: ""
   property string historyTodayName: ""
   property string historyYesterdayName: ""
-  readonly property int historyHours: 24
+  readonly property var historyRanges: [6, 12, 24]
+  // A plain value, synced from the settings in a handler: a binding here fed
+  // the graph's time axis straight from the settings object and looped.
+  property int historyHours: 6
+  function syncHistoryHours() {
+    var h = Number(setting("historyHours", 6))
+    h = historyRanges.indexOf(h) >= 0 ? h : 6
+    if (h !== historyHours) historyHours = h
+  }
+  onSettingsChanged: syncHistoryHours()
+  Component.onCompleted: syncHistoryHours()
   readonly property bool showHistory: setting("showHistory", true) === true
   readonly property string historyDir: {
     var d = String(setting("historyDir", "") || "")
@@ -140,6 +154,20 @@ Panel {
 
   function closeHistoryPage() {
     if (historyShown) pages.pop()
+  }
+
+  // Advanced is a drill-in page too; it scrolls when it is taller than the
+  // screen allows.
+  function showAdvancedPage() {
+    if (pages.depth > 1) return
+    cursorActive = false
+    advancedFlick.contentY = 0
+    pages.push(advancedPage)
+  }
+
+  function closeSubPage() {
+    cursorActive = false
+    if (pages.depth > 1) pages.pop()
   }
 
   function selectProfileByDelta(delta) {
@@ -525,6 +553,16 @@ Panel {
     historyBars = Model.historyBuckets(historyPoints, historyNow, historyHours, historyBarCount)
   }
 
+  // Remembered like the bar percentage: written back into the bar entry.
+  function setHistoryHours(hours) {
+    var h = Number(hours)
+    if (historyRanges.indexOf(h) < 0 || h === historyHours) return
+    root.settings = Object.assign({}, root.settings, { historyHours: String(h) })
+    if (root.bar && root.bar.shell) root.bar.shell.updateEntryInline(root.moduleName, root.settings)
+  }
+
+  onHistoryHoursChanged: Qt.callLater(rebuildHistory)
+
   function historyWatt(w) {
     return w === null || w === undefined || !isFinite(w) ? "—" : w.toFixed(1) + " W"
   }
@@ -812,46 +850,40 @@ Panel {
     // Follows the page stack, whose height glides between the two pages.
     contentHeight: panel.fittedContentHeight(pages.implicitHeight)
 
-    // Every open starts on the overview: fold "Advanced" back once the popup
-    // is fully gone, without animating it.
+    // Every open starts on the overview: go back to it once the popup is
+    // fully gone, without animating it.
     onVisibleChanged: {
       if (visible) return
-      root.advancedOpen = false
-      advancedCollapse.snap()
+      root.cursorActive = false
       pages.pop(null, QQC.StackView.Immediate)
     }
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      // ↓ / ⏎ / Space open "Advanced"; there ←/→ walk the power profiles,
-      // ⏎ applies the one under the cursor, ↑ folds the section again.
+      // Overview: → opens History, ↓ / ⏎ open Advanced. History: ← goes back.
+      // Advanced: ←/→ walk the power profiles, ⏎ applies the one under the
+      // cursor. Esc goes back one page, and closes on the overview.
       onMoveRequested: function(dx, dy) {
-        if (!root.advancedOpen) {
-          if (root.historyShown) {
-            if (dx < 0) root.closeHistoryPage()
-            return
-          }
-          if (dx > 0 && root.showHistory) root.showHistoryPage()
-          else if (dy > 0) root.advancedOpen = true
+        if (root.historyShown) {
+          if (dx < 0) root.closeSubPage()
           return
         }
-        if (dx !== 0) {
+        if (root.advancedOpen) {
+          if (dx === 0) return
           if (!root.cursorActive) { root.cursorActive = true; return }
           root.selectProfileByDelta(dx)
-        } else if (dy < 0) {
-          root.cursorActive = false
-          root.advancedOpen = false
+          return
         }
+        if (dx > 0 && root.showHistory) root.showHistoryPage()
+        else if (dy > 0) root.showAdvancedPage()
       }
       onActivateRequested: {
         if (root.historyShown) return
-        if (!root.advancedOpen) root.advancedOpen = true
+        if (!root.advancedOpen) root.showAdvancedPage()
         else if (root.cursorActive) root.activateSelectedProfile()
-        else root.advancedOpen = false
       }
-      // On the History page Esc goes back first, then closes (drill-in flow).
-      onCloseRequested: root.historyShown ? root.closeHistoryPage() : root.close()
+      onCloseRequested: pages.depth > 1 ? root.closeSubPage() : root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
       HUi.PageStack {
@@ -981,22 +1013,54 @@ Panel {
           onToggled: root.showHistoryPage()
         }
 
-        // ---------- Advanced disclosure ----------
+        // ---------- Advanced: drill-in to its own page ----------
         DisclosureRow {
           text: "Advanced"
-          expanded: root.advancedOpen
-          onToggled: {
-            root.cursorActive = false
-            root.advancedOpen = !root.advancedOpen
-          }
+          drill: true
+          onToggled: root.showAdvancedPage()
         }
 
-        HUi.Collapse {
-          id: advancedCollapse
-          width: parent.width
-          expanded: root.advancedOpen
+      }
+      }
 
+      // ---------- Page 3: advanced (drill-in) ----------
+      Item {
+        id: advancedPage
+        visible: false
+        // Taller than the screen allows → the body scrolls under the header.
+        readonly property real maxBody: Math.max(Style.space(120),
+          panel.availableCardHeight - panel.verticalContentInset - advancedHeader.implicitHeight)
+        implicitHeight: advancedHeader.implicitHeight + Math.min(advancedBody.implicitHeight, maxBody)
+
+        HUi.PageHeader {
+          id: advancedHeader
+          x: root.pageInset
+          width: parent.width - root.pageInset * 2
+          title: "Advanced"
+          ink: root.fg
+          iconFont: root.iconFont
+          onBack: root.closeSubPage()
+        }
+
+        Flickable {
+          id: advancedFlick
+          x: root.pageInset
+          y: advancedHeader.height
+          width: parent.width - root.pageInset * 2
+          height: parent.height - y
+          contentHeight: advancedBody.implicitHeight
+          clip: true
+          interactive: contentHeight > height
+          boundsBehavior: Flickable.DragAndOvershootBounds
+          flickDeceleration: Motion.flickDeceleration
+          maximumFlickVelocity: Motion.maximumFlickVelocity
+
+          Item {
+            id: advancedBody
+            width: advancedFlick.width
+            implicitHeight: advancedCol.implicitHeight
           Column {
+            id: advancedCol
             width: parent.width
             spacing: 0
 
@@ -1314,8 +1378,8 @@ Panel {
 
             Item { width: 1; height: Style.space(4) }
           }
+          }
         }
-      }
       }
 
       // ---------- Page 2: battery history (drill-in) ----------
@@ -1331,7 +1395,15 @@ Panel {
           title: "Battery History"
           ink: root.fg
           iconFont: root.iconFont
-          onBack: root.closeHistoryPage()
+          onBack: root.closeSubPage()
+
+          Segmented {
+            width: Style.space(132)
+            options: root.historyRanges.map(function (h) { return String(h) })
+            labels: root.historyRanges.map(function (h) { return h + " h" })
+            current: String(root.historyHours)
+            onPicked: function(value) { root.setHistoryHours(value) }
+          }
         }
 
         Item {
@@ -1697,7 +1769,7 @@ Panel {
   }
 
   // Charge level over the history window as bars, like the macOS battery
-  // graph: one bar per 20 minutes at the level it ended on — accent on
+  // graph: 72 bars over the chosen range, each at the level it ended on — accent on
   // battery, pale accent while plugged in, urgent at 20 % and below. Slots
   // without samples (sleep, laptop off) stay empty. Gridlines at 0/50/100 %,
   // clock ticks every six hours; hovering a bar reads it out and dims the rest.
@@ -1730,12 +1802,18 @@ Panel {
 
     // Six-hour clock marks inside the window.
     readonly property var ticks: {
-      if (root.historyNow <= 0) return []
-      var d = new Date(graph.from)
+      var now = root.historyNow
+      var start = graph.from
+      if (!(now > 0) || !isFinite(start) || start >= now) return []
+      // About four labels whatever the range: every 1, 3 or 6 hours. Every
+      // loop is bounded: a bad time must never hang the shell.
+      var step = root.historyHours <= 6 ? 1 : (root.historyHours <= 12 ? 3 : 6)
+      var d = new Date(start)
       d.setMinutes(0, 0, 0)
-      while (d.getTime() < graph.from || d.getHours() % 6 !== 0) d.setHours(d.getHours() + 1)
+      for (var g = 0; g < 48 && (d.getTime() < start || d.getHours() % step !== 0); g++)
+        d.setHours(d.getHours() + 1)
       var out = []
-      for (var t = d.getTime(); t <= root.historyNow; t += 6 * 3600000) out.push(t)
+      for (var t = d.getTime(); isFinite(t) && t <= now && out.length < 30; t += step * 3600000) out.push(t)
       return out
     }
 

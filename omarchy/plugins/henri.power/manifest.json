@@ -20,7 +20,8 @@
       "showPercentage": false,
       "chargeLimitStep": 5,
       "showHistory": true,
-      "historyDir": ""
+      "historyDir": "",
+      "historyHours": "6"
     },
     "schema": [
       {
@@ -44,6 +45,17 @@
         "label": "Battery log folder",
         "defaultValue": "",
         "description": "Folder with the akku-YYYY-MM-DD.csv files. Empty: ~/Documents/akku-test/verlauf"
+      },
+      {
+        "key": "historyHours",
+        "type": "enum",
+        "label": "Battery history range (hours)",
+        "options": [
+          "6",
+          "12",
+          "24"
+        ],
+        "defaultValue": "6"
       }
     ]
   },
