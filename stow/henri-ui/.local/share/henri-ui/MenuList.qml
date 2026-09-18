@@ -2,7 +2,7 @@ import QtQuick
 import qs.Commons
 import "Motion.js" as Motion
 
-// macOS menu body: gliding highlight, pointer + keyboard (↑ ↓ Home End ⏎),
+// macOS menu body: instant highlight (like NSMenu, no glide), pointer + keyboard (↑ ↓ Home End ⏎),
 // separators, shortcuts, disabled/destructive entries, and the NSMenu blink
 // on activation before `activated` fires. Put it in HUi.Surface inside
 // HUi.Reveal and close the Reveal in onActivated.
@@ -77,6 +77,7 @@ FocusScope {
 
   Highlight {
     id: hl
+    glide: false
     target: root.currentIndex >= 0 ? rep.itemAt(root.currentIndex) : null
   }
 
@@ -132,7 +133,6 @@ FocusScope {
             font.family: Style.font.family
             font.pixelSize: Style.font.icon
             anchors.verticalCenter: parent.verticalCenter
-            Behavior on color { ColorAnimation { duration: Motion.instant } }
           }
           Text {
             text: row.modelData.text || ""
@@ -140,7 +140,6 @@ FocusScope {
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
             anchors.verticalCenter: parent.verticalCenter
-            Behavior on color { ColorAnimation { duration: Motion.instant } }
           }
         }
 
@@ -154,7 +153,6 @@ FocusScope {
           color: row.isCurrent ? Color.background : Color.muted
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
-          Behavior on color { ColorAnimation { duration: Motion.instant } }
         }
 
         HoverHandler {

@@ -34,8 +34,8 @@ import "file:///home/henri/.local/share/henri-ui" as HUi
 | `HUi.Surface` | Material (Theme-Hintergrund, Haarlinie, Radius) | `role: popups\|menu\|tooltip\|notifications`, `kind: panel\|popover\|menu\|chip`, `padding`, `contentLeftInset`… (BorderSurface) |
 | `HUi.Pressable` | Basis alles Klickbaren | `clicked()`, `secondaryClicked()`, `tint`, `prominent`, `selected`, `showFill`, `pressScaleEnabled`, `contentColor`, `radius` |
 | `HUi.Button` | Standard-Button | `text`, `icon` (Glyph), `prominent`, + alles von Pressable |
-| `HUi.MenuList` | Komplettes macOS-Menü | `model: [{text, icon, shortcut, enabled, danger, separator}]`, `activated(index, entry)`, `currentIndex`, `move()`, `activate()` |
-| `HUi.Highlight` | Gleitende Auswahl (Listen, Tabs, Segmente) | `target: <Item>` — muss im selben Koordinatenraum liegen |
+| `HUi.MenuList` | Komplettes macOS-Menü (Highlight sofort, kein Gleiten) | `model: [{text, icon, shortcut, enabled, danger, separator}]`, `activated(index, entry)`, `currentIndex`, `move()`, `activate()` |
+| `HUi.Highlight` | Auswahl-Form für eine Gruppe | `target: <Item>`, `glide` (true = gleitet: Tabs/Segmente/Sidebar; false = springt: Menüs/Hover-Listen) — selber Koordinatenraum wie die Targets |
 | `HUi.Toggle` | Schalter | `checked`, `toggled(bool)` |
 | `HUi.CrossfadeText` | Text/Zahl, die sich ändert | `text`, `color`, `fontSize`, `fontWeight`, `fontFamily` |
 | `HUi.Collapse` | Aufklappen / Höhe gleitet mit Inhalt | `expanded` (true lassen = Höhe folgt jeder Inhaltsänderung) |
@@ -114,11 +114,11 @@ Teure Arbeit (Scans, Polling, große Modelle) erst bei `panel.settled` starten.
 `HUi.CrossfadeText { text: volume + " %" }`, Schalter `HUi.Toggle`. Icons: zwei Glyphs
 übereinander mit Opacity-Behavior (oder CrossfadeText mit der Icon-Schrift).
 
-### Gleitende Auswahl in eigenen Listen
+### Auswahl in eigenen Listen / Tabs
 
 ```qml
 Item {
-  HUi.Highlight { target: col.children[currentIndex] || null }
+  HUi.Highlight { target: col.children[currentIndex] || null; glide: false }  // Tabs: true
   Column { id: col; … }        // bei 0,0 im selben Parent wie der Highlight
 }
 ```

@@ -97,7 +97,7 @@ erklären sie und müssen bei Änderungen mitgezogen werden.
 
 | Token      | ms  | Verwendung |
 |------------|-----|------------|
-| `instant`  | 90  | Hover-*rein*, Press-Feedback, Highlight folgt Maus |
+| `instant`  | 90  | Hover-*rein*, Press-Feedback |
 | `fast`     | 160 | Hover-*raus*, Farbwechsel, Icon-Crossfade, Tooltip |
 | `base`     | 240 | Menüs, Popover, Dropdowns, Toggles, kleine Größenwechsel |
 | `slow`     | 380 | Panels, Sheets, Seitenwechsel, Control-Center-Drill-in |
@@ -120,7 +120,7 @@ Ausgerechnet (Masse 1, `stiffness = (2π/response)²`). Presets in `Motion.js`
 
 | Token    | response | dampingRatio | stiffness | Overshoot | Einschwingen | Verwendung |
 |----------|----------|--------------|-----------|-----------|--------------|------------|
-| `smooth` | 0.35 s   | 1.0          | 322       | 0 %       | ~510 ms (optisch fertig ~300) | **Default** für Bewegung, Popover-Scale, Highlight gleitet |
+| `smooth` | 0.35 s   | 1.0          | 322       | 0 %       | ~510 ms (optisch fertig ~300) | **Default** für Bewegung, Popover-Scale, Tab-/Segment-Highlight |
 | `snappy` | 0.40 s   | 0.85         | 247       | 0.6 %     | ~560 ms      | Toggles, Press-Release, Drag-Ende |
 | `gentle` | 0.50 s   | 1.0          | 158       | 0 %       | ~730 ms      | Große Flächen: Panels, Overview, Sheets |
 | `bouncy` | 0.45 s   | 0.75         | 195       | 2.8 %     | ~570 ms      | Selten! Nur Spielerisches (Dock-Icon, Erfolg) |
@@ -148,8 +148,9 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   dann erst die Aktion + Menü ausfaden — wie NSMenu.
 - Maus verlässt das Menü → Highlight blendet aus. Tastatur: ↑ ↓ Home End ⏎ Esc;
   Separatoren und deaktivierte Einträge werden übersprungen.
-- Hover-/Tastatur-Highlight ist **ein einziges** abgerundetes Rechteck, das mit
-  `smooth`-Spring zwischen den Einträgen **gleitet** (nicht pro Eintrag an/aus).
+- Hover-/Tastatur-Highlight springt **sofort** auf den Eintrag, ohne Gleiten und ohne
+  Fade — wie NSMenu. (Henri: gleitender Menü-Highlight ist „too much“.) Gleiten nur
+  bei Tabs, Segment-Umschaltern und Sidebars (`HUi.Highlight { glide: true }`).
 - Einträge: Höhe 26 px (bei 12 pt), Radius 6, Innenabstand 10 px, Accent-Fill mit
   Hintergrundfarbe als Text für den aktiven Eintrag; Kürzel rechtsbündig in `muted`;
   destruktive Einträge in `urgent`.
@@ -193,7 +194,7 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
    Reveal vom Anker (Menü `smooth`/`base`, Panel `gentle`/`slow`) → Inhalt (Kacheln,
    Zeilen) gleichzeitig gestaffelt (15 ms, max. 10) → Tastaturfokus auf das erste
    sinnvolle Element. Teure Arbeit erst, wenn die Fläche „settled“ ist.
-2. **Auswählen im Menü:** Highlight gleitet mit Maus/Tastatur → Klick/⏎ → Blinken →
+2. **Auswählen im Menü:** Highlight folgt Maus/Tastatur sofort (kein Gleiten) → Klick/⏎ → Blinken →
    Aktion auslösen + Menü schließt (Exit, 0.7×).
 3. **Drill-in** (Detailseite): neue Seite von rechts, alte 30 % nach links + Fade,
    `slow` easeInOut, Höhe gleitet mit. Zurück: Button „‹“, Esc oder ← — gespiegelt.
