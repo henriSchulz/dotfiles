@@ -7,6 +7,8 @@ import qs.Ui
 import "MenuModel.js" as MenuModel
 import "FuzzySearch.js" as FuzzySearch
 import "/usr/share/omarchy/shell/services/AppSearch.js" as AppSearch
+import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
+import "file:///home/henri/.local/share/henri-ui" as HUi
 
 Item {
   id: root
@@ -585,8 +587,8 @@ Item {
   readonly property int spotlightGridWidth: 680     // card width for the app grid
   readonly property int spotlightMinDmenuWidth: 460 // floor for caller-sized dmenus
   readonly property real spotlightTopFraction: 0.18 // card top as a share of screen height
-  readonly property int cardRadius: Math.max(Style.space(16), Style.cornerRadius)
-  readonly property int rowRadius: Math.max(Style.space(9), Style.cornerRadius)
+  readonly property int cardRadius: Style.space(Motion.radiusPanel)
+  readonly property int rowRadius: Style.space(Motion.radiusRow)
   readonly property int searchFontSize: Style.font.display
   readonly property int rowInset: Style.space(9)
   readonly property int iconSize: Math.round(Style.font.iconLarge * 1.2)
@@ -1698,13 +1700,50 @@ Item {
   }
   PanelWindow {
     id: panel
-    visible: root.opened && root.rowsLoaded
+    // Stays mapped until the card has faded out (henri-ui: nothing vanishes
+    // without a transition). While closing it no longer takes keyboard or
+    // pointer input, so a launched app gets focus and clicks immediately.
+    visible: root.rowsLoaded && (root.opened || card.opacity > 0)
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     WlrLayershell.namespace: "omarchy-menu"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+    WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
+    mask: root.opened ? null : closingMask
+    Region { id: closingMask }
+
+    // Launcher = full-screen surface: fade + scale from popoverFromScale on
+    // the gentle spring over Motion.slower; exit faster (0.7x, easeExit).
+    readonly property bool animating: cardScale.running || (card.opacity > 0 && card.opacity < 1)
+    HUi.SpringValue {
+      id: cardScale
+      preset: Motion.gentle
+      to: root.opened ? 1 : Motion.exitToScale
+    }
+    // The query as it looked while open, so the search line does not blank
+    // out during the exit fade (closing clears filterText right away).
+    property string shownFilter: ""
+    Binding {
+      target: panel
+      property: "shownFilter"
+      value: root.filterText
+      when: root.opened
+      restoreMode: Binding.RestoreNone
+    }
+    Connections {
+      target: root
+      function onOpenedChanged() {
+        if (!root.opened) return
+        // Only a fully closed card starts from the small pose; reopening
+        // mid-exit just turns around.
+        if (card.opacity < 0.01) {
+          cardScale.snap(Motion.popoverFromScale)
+          panel.cardTop = -1
+          panel.maxRowsHeight = -1
+        }
+      }
+    }
 
     // The card opens centered exactly as always. The first search keystroke
     // or submenu move freezes the top line where it currently sits — from
@@ -1728,9 +1767,11 @@ Item {
     }
     onVisibleChanged: if (!visible) { cardTop = -1; maxRowsHeight = -1 }
 
+    // Scrim fades with the card (opacity only, never blur).
     Rectangle {
       anchors.fill: parent
       color: root.scrim
+      opacity: card.opacity
     }
 
     MouseArea {
@@ -1747,6 +1788,20 @@ Item {
       y: panel.effectiveCardTop
       color: root.background
       borderSpec: root.borderSpec
+      opacity: root.opened ? 1 : 0
+      scale: cardScale.value
+      transformOrigin: Item.Top
+      // Composite as one layer while animating, so the rows do not show
+      // through each other at partial opacity.
+      layer.enabled: panel.animating
+      layer.smooth: true
+      Behavior on opacity {
+        NumberAnimation {
+          duration: root.opened ? Motion.slower : Motion.exit(Motion.slower)
+          easing.type: Easing.BezierSpline
+          easing.bezierCurve: root.opened ? Motion.easeOut : Motion.easeExit
+        }
+      }
       topPadding: root.contentMargin
       bottomPadding: root.contentMargin
       leftPadding: 0
@@ -1857,7 +1912,7 @@ Item {
           selectedBackground: root.selectedBackground
           selectedText: root.selectedText
           fontFamily: root.fontFamily
-          cornerRadius: root.cornerRadius
+          cornerRadius: Style.space(Motion.radiusPopover)
           onCanceled: root.cancelDelete()
           onConfirmed: root.confirmDelete()
         }
@@ -1883,7 +1938,10 @@ Item {
             textFormat: Text.PlainText
             text: root.fileSearchActive ? root.folderGlyph : ""
             color: root.foreground
-            opacity: root.filterText ? 0.72 : 0.42
+            opacity: panel.shownFilter ? Motion.secondaryTextAlpha : Motion.disabledOpacity
+            Behavior on opacity {
+              NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+            }
             font.family: root.fontFamily
             font.pixelSize: Math.round(root.searchFontSize * 0.92)
             width: root.iconColumnWidth
@@ -1912,8 +1970,8 @@ Item {
               textFormat: Text.PlainText
               // The mode prefix is carried by the glyph, not the query text:
               // a leading space would otherwise read as a stray indent.
-              visible: root.filterText.trim().length > 0
-              text: root.fileSearchActive ? root.filterText.slice(1) : root.filterText
+              visible: panel.shownFilter.trim().length > 0
+              text: root.fileSearchActive ? panel.shownFilter.slice(1) : panel.shownFilter
               // Elide from the left so the tail of a long query — the part
               // still being typed — stays next to the caret.
               width: Math.min(implicitWidth, Math.max(0, queryRow.width - caret.width - queryRow.caretGap))
@@ -1928,11 +1986,11 @@ Item {
             Text {
               id: placeholderText
               textFormat: Text.PlainText
-              visible: root.filterText.trim().length === 0
+              visible: panel.shownFilter.trim().length === 0
               text: root.searchPlaceholder
               width: parent.width
-              color: root.foreground
-              opacity: 0.38
+              // Placeholder = hint, weaker than secondary text.
+              color: Util.alpha(root.foreground, Motion.disabledOpacity)
               font.family: root.fontFamily
               font.pixelSize: root.searchFontSize
               elide: Text.ElideRight
@@ -1950,12 +2008,14 @@ Item {
               // invisible against the card.
               color: root.foreground
               opacity: root.caretOn ? 0.9 : 0
-              x: root.filterText.trim().length > 0
+              x: panel.shownFilter.trim().length > 0
                 ? queryText.width + queryRow.caretGap
                 : -(width + queryRow.caretGap)
               anchors.verticalCenter: parent.verticalCenter
 
-              Behavior on opacity { NumberAnimation { duration: 90 } }
+              Behavior on opacity {
+                NumberAnimation { duration: Motion.instant; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+              }
             }
           }
 
@@ -2109,11 +2169,11 @@ Item {
                   textFormat: Text.PlainText
                   width: parent.width
                   text: row.detail
-                  visible: (root.filterText || row.kind === "dmenu") && row.detail.length > 0
-                  // Follow the row's text color so the subtitle stays legible
-                  // on top of a strong selection fill.
-                  color: row.hasCursor ? root.selectedText : root.foreground
-                  opacity: row.hasCursor ? 0.75 : 0.52
+                  visible: (panel.shownFilter || row.kind === "dmenu") && row.detail.length > 0
+                  // On the selection fill the subtitle takes the theme's
+                  // selected text at full strength (as HUi.MenuList does) so
+                  // it stays legible; elsewhere it is secondary text.
+                  color: row.hasCursor ? root.selectedText : Util.alpha(root.foreground, Motion.secondaryTextAlpha)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.bodySmall
                   elide: Text.ElideRight
@@ -2132,8 +2192,7 @@ Item {
                   textFormat: Text.PlainText
                   visible: false
                   text: row.childCount
-                  color: root.foreground
-                  opacity: 0.45
+                  color: Util.alpha(root.foreground, Motion.secondaryTextAlpha)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
                   anchors.verticalCenter: parent.verticalCenter
@@ -2142,8 +2201,7 @@ Item {
                 Text {
                   textFormat: Text.PlainText
                   text: row.kind === "menu" || row.kind === "link" || row.isDir ? "›" : ""
-                  color: row.hasCursor ? root.selectedText : root.foreground
-                  opacity: row.kind === "menu" || row.kind === "link" || row.isDir ? 0.36 : 0
+                  color: row.hasCursor ? root.selectedText : Util.alpha(root.foreground, Motion.secondaryTextAlpha)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.subtitle
                   font.weight: Font.Normal
@@ -2304,8 +2362,8 @@ Item {
 
             Text {
               text: "󰈉"
-              color: root.foreground
-              opacity: 0.35
+              // Decorative glyph.
+              color: Util.alpha(root.foreground, Motion.disabledOpacity)
               font.family: root.fontFamily
               font.pixelSize: Style.font.display
               horizontalAlignment: Text.AlignHCenter
@@ -2315,8 +2373,7 @@ Item {
             Text {
               textFormat: Text.PlainText
               text: root.emptyStateText
-              color: root.foreground
-              opacity: 0.6
+              color: Util.alpha(root.foreground, Motion.secondaryTextAlpha)
               font.family: root.fontFamily
               font.pixelSize: Style.font.subtitle
               horizontalAlignment: Text.AlignHCenter
