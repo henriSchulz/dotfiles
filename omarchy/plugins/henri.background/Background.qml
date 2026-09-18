@@ -6,6 +6,7 @@ import QtQuick.Effects
 import QtQuick.Shapes
 import qs.Commons
 import qs.Ui
+import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
 
 Item {
   id: root
@@ -182,8 +183,10 @@ Item {
     property: "revealProgress"
     from: 0
     to: 1
-    duration: 420
-    easing.type: Easing.InOutCubic
+    // Full-screen change (henri-ui "Vollbild"): slower, easeInOut.
+    duration: Motion.slower
+    easing.type: Easing.BezierSpline
+    easing.bezierCurve: Motion.easeInOut
     onFinished: {
       if (root.incomingBackground) {
         root.displayedBackground = root.currentBackground || root.incomingBackground
