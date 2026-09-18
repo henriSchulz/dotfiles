@@ -435,28 +435,25 @@ Panel {
     return "󰓃"
   }
 
-  // ---- Hardware: fans, turbo and CPU limits through system/henri-hwctl.
+  // ---- Hardware: thermal mode, turbo and CPU limits through system/henri-hwctl.
   //      `status` is unprivileged, so it runs from the plugin copy; writes go
   //      through the root-owned install via sudo -n (system/install.sh).
   readonly property string hwStatusPath: String(Qt.resolvedUrl("system/henri-hwctl")).replace(/^file:\/\//, "")
   readonly property string hwHelperPath: "/usr/local/bin/henri-hwctl"
-  property var hw: ({ fans: [], fanMode: "auto", fanLevel: -1, cpuTemp: -1, turbo: true, maxPerf: 100, helper: false, fanControl: false })
+  property var hw: ({ fans: [], thermal: "", thermalChoices: [], cpuTemp: -1, turbo: true, maxPerf: 100, helper: false })
   property string powerProfile: ""
   property string hwPending: ""
   property string hwError: ""
   property int maxPerfPreview: -1
-  readonly property var fanLevels: [
-    { id: "auto", label: "Auto" },
-    { id: "0", label: "Off" },
-    { id: "1", label: "Medium" },
-    { id: "2", label: "Full" }
-  ]
+  // Dell firmware thermal modes; they set the fan curve (the EC ignores
+  // direct fan commands on this XPS). Power profiles map onto quiet /
+  // balanced / performance, so only "cool" is unique to this row.
+  readonly property var thermalLabels: ({ cool: "Cool", quiet: "Quiet", balanced: "Balanced", performance: "Perform." })
   readonly property var powerProfiles: [
     { id: "power-saver", label: "Saver" },
     { id: "balanced", label: "Balanced" },
     { id: "performance", label: "Performance" }
   ]
-  readonly property string fanSelection: hw.fanMode === "manual" ? String(hw.fanLevel) : "auto"
   readonly property string hwSummary: {
     var parts = []
     if (hw.cpuTemp >= 0) parts.push(hw.cpuTemp + " °C")
@@ -483,13 +480,13 @@ Panel {
   }
   function hwRun(key, args) {
     if (hwActionProc.running) return
-    if (!hw.helper) { hwError = "Helper not installed — run system/install.sh"; return }
+    if (!hw.helper) { hwError = "Helper missing or outdated — run system/install.sh"; return }
     hwError = ""
     hwPending = key
     hwActionProc.command = ["/usr/bin/timeout", "-k", "5", "20", "/usr/bin/sudo", "-n", hwHelperPath].concat(args)
     hwActionProc.running = true
   }
-  function setFanLevel(id) { if (id !== fanSelection) hwRun("fan:" + id, ["fan", id]) }
+  function setThermal(id) { if (id !== hw.thermal) hwRun("thermal:" + id, ["thermal", id]) }
   function setTurbo(on) { hwRun("turbo", ["turbo", on ? "on" : "off"]) }
   function setMaxPerf(pct) {
     var p = Math.max(20, Math.min(100, Math.round(pct / 5) * 5))
@@ -1816,7 +1813,7 @@ Panel {
           anchors.leftMargin: Style.space(10)
           anchors.verticalCenter: parent.verticalCenter
           icon: "󰈐"
-          on: root.hw.fanMode === "manual"
+          on: root.hw.thermal === "cool"
           onClicked: root.showPage("hardware")
         }
         Column {
@@ -1835,7 +1832,7 @@ Panel {
           Text {
             width: parent.width
             visible: text !== ""
-            text: root.hwSummary + (root.hw.fanMode === "manual" ? " · Manual fans" : "")
+            text: root.hwSummary + (root.hw.thermal === "cool" ? " · Cool" : "")
             color: root.hw.cpuTemp >= 80 ? root.tempColor(root.hw.cpuTemp) : root.dimText
             font.family: Style.font.family
             font.pixelSize: Style.font.bodySmall
@@ -2343,29 +2340,31 @@ Panel {
           }
         }
 
-        // Fans
+        // Thermal mode (fan curve)
         SectionLabel {
-          visible: root.hw.fanControl
-          text: "Fans · " + (root.hw.fanMode === "manual" ? "manual" : root.hw.guardTripped ? "back to auto (too hot)" : "BIOS controlled")
+          visible: root.hw.thermalChoices.length > 0
+          text: "Fans & thermals"
         }
         Row {
-          visible: root.hw.fanControl
+          visible: root.hw.thermalChoices.length > 0
           spacing: Style.space(5)
           Repeater {
-            model: root.fanLevels
+            model: root.hw.thermalChoices
             delegate: Pill {
-              required property var modelData
-              width: Math.floor((root.panelWidth - Style.space(12) - Style.space(5) * 3) / 4)
-              label: root.hwPending === "fan:" + modelData.id ? "…" : modelData.label
-              selected: root.fanSelection === modelData.id
-              onClicked: root.setFanLevel(modelData.id)
+              required property string modelData
+              width: Math.floor((root.panelWidth - Style.space(12) - Style.space(5) * (root.hw.thermalChoices.length - 1)) / Math.max(1, root.hw.thermalChoices.length))
+              label: root.hwPending === "thermal:" + modelData ? "…" : (root.thermalLabels[modelData] || modelData)
+              selected: root.hw.thermal === modelData
+              onClicked: root.setThermal(modelData)
             }
           }
         }
         Text {
-          visible: root.hw.fanControl && root.hw.fanMode === "manual"
+          visible: root.hw.thermalChoices.length > 0
           width: parent.innerWidth
-          text: "Returns to Auto at " + root.hw.guardTemp + " °C and on reboot."
+          text: root.hw.thermal === "cool" ? "Cool keeps the chassis cooler — fans start earlier."
+            : root.hw.thermal === "quiet" ? "Quiet keeps fans low and slows the CPU sooner."
+            : "Changing the power profile also sets this."
           color: root.dimText
           font.family: Style.font.family
           font.pixelSize: Style.font.caption
@@ -2439,7 +2438,7 @@ Panel {
         Text {
           visible: root.hwError !== "" || !root.hw.helper
           width: parent.innerWidth
-          text: root.hwError !== "" ? root.hwError : "Helper not installed — run system/install.sh"
+          text: root.hwError !== "" ? root.hwError : "Helper missing or outdated — run system/install.sh"
           color: Color.urgent
           font.family: Style.font.family
           font.pixelSize: Style.font.caption

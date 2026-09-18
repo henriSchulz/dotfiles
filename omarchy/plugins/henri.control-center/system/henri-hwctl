@@ -6,20 +6,18 @@
 # privileges; everything else writes sysfs and must run as root.
 #
 #   henri-hwctl status              JSON snapshot for the panel
-#   henri-hwctl fan auto|0|1|2      BIOS control, or a fixed Dell fan level
+#   henri-hwctl thermal MODE        Dell firmware thermal mode (cool, quiet, …)
 #   henri-hwctl turbo on|off        Intel Turbo Boost
 #   henri-hwctl max-perf 20..100    intel_pstate max_perf_pct
-#   henri-hwctl guard               internal: temperature watchdog
+#
+# Direct fan control is not offered: on the XPS 13 9310 the EC ignores the
+# SMM fan commands (pwm writes read back 0, pwm1_enable=2 fails with EINVAL).
+# The firmware thermal modes are what actually shape the fan curve.
 set -u
 export PATH=/usr/bin
 
 PSTATE=/sys/devices/system/cpu/intel_pstate
-STATE_DIR=/run/henri-hwctl
-FAN_STATE=$STATE_DIR/fan
-GUARD_UNIT=henri-hwctl-fanguard
-# Manual fans hand control back to the BIOS at this package temperature.
-GUARD_TEMP=85
-PWM_LEVELS=(0 128 255)
+PROFILE=/sys/firmware/acpi/platform_profile
 
 hwmon_by_name() {
   local d
@@ -44,10 +42,10 @@ cpu_temp() {
   (( t >= 0 )) && printf '%d' $(( t / 1000 )) || printf -- '-1'
 }
 
-fan_mode() { [[ -r $FAN_STATE ]] && printf '%s' "$(<"$FAN_STATE")" || printf 'auto'; }
+json_list() { local out="" w; for w in $1; do out+="${out:+,}\"$w\""; done; printf '[%s]' "$out"; }
 
 cmd_status() {
-  local fans="" i label rpm max pwm mode level=-1 guard=false
+  local fans="" i label rpm max
   if [[ -n $DELL ]]; then
     for i in 1 2 3; do
       [[ -r $DELL/fan${i}_input ]] || continue
@@ -56,74 +54,26 @@ cmd_status() {
       [[ -n $label ]] || label="Fan $i"
       rpm=$(read_int "$DELL/fan${i}_input")
       max=$(read_int "$DELL/fan${i}_max")
-      pwm=$(read_int "$DELL/pwm$i")
-      fans+="${fans:+,}{\"label\":\"${label//\"/}\",\"rpm\":$rpm,\"max\":$max,\"pwm\":$pwm}"
+      fans+="${fans:+,}{\"label\":\"${label//\"/}\",\"rpm\":$rpm,\"max\":$max}"
     done
   fi
-  mode=$(fan_mode)
-  case $mode in
-    manual:[0-2]) level=${mode#manual:}; mode=manual ;;
-    guard) mode=auto; guard=true ;;
-    *) mode=auto ;;
-  esac
-  printf '{"fanControl":%s,"fans":[%s],"fanMode":"%s","fanLevel":%d,"guardTripped":%s,"guardTemp":%d,' \
-    "$([[ -n $DELL && -e $DELL/pwm1_enable ]] && echo true || echo false)" \
-    "$fans" "$mode" "$level" "$guard" "$GUARD_TEMP"
+  printf '{"fans":[%s],"thermal":"%s","thermalChoices":%s,' \
+    "$fans" "$(cat $PROFILE 2>/dev/null)" "$(json_list "$(cat ${PROFILE}_choices 2>/dev/null)")"
+  # helper: the root-owned install exists and matches this copy.
   printf '"cpuTemp":%d,"turbo":%s,"maxPerf":%d,"helper":%s}\n' \
     "$(cpu_temp)" \
     "$([[ $(read_int $PSTATE/no_turbo) == 0 ]] && echo true || echo false)" \
     "$(read_int $PSTATE/max_perf_pct)" \
-    "$([[ -x /usr/local/bin/henri-hwctl ]] && echo true || echo false)"
+    "$(cmp -s "$0" /usr/local/bin/henri-hwctl && echo true || echo false)"
 }
 
-set_enable() {
-  local i
-  for i in 1 2 3; do
-    [[ -w $DELL/pwm${i}_enable ]] && printf '%d' "$1" > "$DELL/pwm${i}_enable"
-  done
-  return 0
-}
-
-cmd_fan() {
+cmd_thermal() {
   need_root
-  [[ -n $DELL && -e $DELL/pwm1_enable ]] || die "no Dell fan control"
-  mkdir -p "$STATE_DIR"
-  case "${1:-}" in
-    auto)
-      set_enable 2 || die "could not restore BIOS fan control"
-      printf 'auto\n' > "$FAN_STATE"
-      systemctl stop "$GUARD_UNIT" 2>/dev/null
-      ;;
-    0|1|2)
-      set_enable 1 || die "could not take over fan control"
-      local i
-      for i in 1 2 3; do
-        [[ -w $DELL/pwm$i ]] && printf '%d' "${PWM_LEVELS[$1]}" > "$DELL/pwm$i"
-      done
-      printf 'manual:%d\n' "$1" > "$FAN_STATE"
-      systemctl is-active --quiet "$GUARD_UNIT" ||
-        systemd-run --quiet --collect --unit="$GUARD_UNIT" /usr/local/bin/henri-hwctl guard
-      ;;
-    *) die "fan: expected auto|0|1|2" ;;
-  esac
+  local choices
+  choices=$(cat "${PROFILE}_choices" 2>/dev/null) || die "no firmware thermal modes"
+  [[ ${1:-} =~ ^[a-z-]+$ && " $choices " == *" $1 "* ]] || die "thermal: expected one of: $choices"
+  printf '%s' "$1" > "$PROFILE" || die "could not set thermal mode"
   cmd_status
-}
-
-# Runs as a transient root unit while the fans are manual. Leaves as soon as
-# control is back with the BIOS, and gives it back itself when the CPU runs hot.
-cmd_guard() {
-  need_root
-  local t
-  while [[ $(fan_mode) == manual:* ]]; do
-    t=$(cpu_temp)
-    if (( t >= GUARD_TEMP )); then
-      set_enable 2
-      printf 'guard\n' > "$FAN_STATE"
-      logger -t henri-hwctl "CPU at ${t}°C: fan control returned to BIOS"
-      exit 0
-    fi
-    sleep 2
-  done
 }
 
 cmd_turbo() {
@@ -145,9 +95,8 @@ cmd_max_perf() {
 
 case "${1:-}" in
   status) cmd_status ;;
-  fan) cmd_fan "${2:-}" ;;
+  thermal) cmd_thermal "${2:-}" ;;
   turbo) cmd_turbo "${2:-}" ;;
   max-perf) cmd_max_perf "${2:-}" ;;
-  guard) cmd_guard ;;
-  *) die "usage: henri-hwctl status|fan auto|0|1|2|turbo on|off|max-perf N" ;;
+  *) die "usage: henri-hwctl status|thermal MODE|turbo on|off|max-perf N" ;;
 esac
