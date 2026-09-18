@@ -72,7 +72,7 @@ Panel {
   }
 
   // ---- Detail pages. Like macOS, a tile's label swaps the grid for a list
-  //      inside the same popup ("main" | "wifi" | "bluetooth" | "sound").
+  //      inside the same popup ("main" | "wifi" | "bluetooth" | "sound" | "hardware").
   property string page: "main"
   function showPage(name) { page = name }
 
@@ -435,6 +435,116 @@ Panel {
     return "󰓃"
   }
 
+  // ---- Hardware: fans, turbo and CPU limits through system/henri-hwctl.
+  //      `status` is unprivileged, so it runs from the plugin copy; writes go
+  //      through the root-owned install via sudo -n (system/install.sh).
+  readonly property string hwStatusPath: String(Qt.resolvedUrl("system/henri-hwctl")).replace(/^file:\/\//, "")
+  readonly property string hwHelperPath: "/usr/local/bin/henri-hwctl"
+  property var hw: ({ fans: [], fanMode: "auto", fanLevel: -1, cpuTemp: -1, turbo: true, maxPerf: 100, helper: false, fanControl: false })
+  property string powerProfile: ""
+  property string hwPending: ""
+  property string hwError: ""
+  property int maxPerfPreview: -1
+  readonly property var fanLevels: [
+    { id: "auto", label: "Auto" },
+    { id: "0", label: "Off" },
+    { id: "1", label: "Medium" },
+    { id: "2", label: "Full" }
+  ]
+  readonly property var powerProfiles: [
+    { id: "power-saver", label: "Saver" },
+    { id: "balanced", label: "Balanced" },
+    { id: "performance", label: "Performance" }
+  ]
+  readonly property string fanSelection: hw.fanMode === "manual" ? String(hw.fanLevel) : "auto"
+  readonly property string hwSummary: {
+    var parts = []
+    if (hw.cpuTemp >= 0) parts.push(hw.cpuTemp + " °C")
+    var rpm = 0
+    for (var i = 0; i < hw.fans.length; i++) rpm = Math.max(rpm, hw.fans[i].rpm)
+    if (hw.fans.length) parts.push(rpm > 0 ? rpm + " rpm" : "Fans idle")
+    if (powerProfile) parts.push(profileLabel(powerProfile))
+    return parts.join(" · ")
+  }
+  function profileLabel(id) {
+    for (var i = 0; i < powerProfiles.length; i++) if (powerProfiles[i].id === id) return powerProfiles[i].label
+    return id
+  }
+  function tempColor(t) {
+    return t >= 80 ? Color.urgent : root.fg
+  }
+  function refreshHardware() {
+    if (!hwStatusProc.running) hwStatusProc.running = true
+  }
+  function applyHwStatus(raw) {
+    var lines = String(raw || "").trim().split("\n")
+    try { hw = JSON.parse(lines[0]) } catch (e) { return }
+    if (lines.length > 1) powerProfile = lines[lines.length - 1].trim()
+  }
+  function hwRun(key, args) {
+    if (hwActionProc.running) return
+    if (!hw.helper) { hwError = "Helper not installed — run system/install.sh"; return }
+    hwError = ""
+    hwPending = key
+    hwActionProc.command = ["/usr/bin/timeout", "-k", "5", "20", "/usr/bin/sudo", "-n", hwHelperPath].concat(args)
+    hwActionProc.running = true
+  }
+  function setFanLevel(id) { if (id !== fanSelection) hwRun("fan:" + id, ["fan", id]) }
+  function setTurbo(on) { hwRun("turbo", ["turbo", on ? "on" : "off"]) }
+  function setMaxPerf(pct) {
+    var p = Math.max(20, Math.min(100, Math.round(pct / 5) * 5))
+    maxPerfPreview = p
+    if (p !== hw.maxPerf) hwRun("maxperf", ["max-perf", String(p)])
+    else maxPerfPreview = -1
+  }
+  function setPowerProfile(id) {
+    if (id === powerProfile || profileProc.running) return
+    powerProfile = id
+    profileProc.command = ["omarchy-powerprofiles-set", "autodetect", id]
+    profileProc.running = true
+  }
+
+  Process {
+    id: hwStatusProc
+    command: ["bash", "-c", "\"$1\" status; powerprofilesctl get 2>/dev/null", "_", root.hwStatusPath]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.applyHwStatus(text)
+    }
+  }
+  Process {
+    id: hwActionProc
+    stdout: StdioCollector {
+      id: hwActionOut
+      waitForEnd: true
+    }
+    stderr: StdioCollector {
+      id: hwActionErr
+      waitForEnd: true
+    }
+    onExited: function(code) {
+      if (code !== 0) {
+        var err = String(hwActionErr.text || "").trim()
+        root.hwError = err.indexOf("password") >= 0 || err.indexOf("sudo") >= 0
+          ? "No permission — run system/install.sh" : (err.replace(/^henri-hwctl: /, "") || "Action failed")
+      }
+      root.hwPending = ""
+      root.maxPerfPreview = -1
+      root.refreshHardware()
+    }
+  }
+  Process {
+    id: profileProc
+    onExited: root.refreshHardware()
+  }
+  Timer {
+    interval: 2000
+    repeat: true
+    running: root.opened
+    triggeredOnStart: true
+    onTriggered: root.refreshHardware()
+  }
+
   // ---- Services owned by the shell
   function service(ids) {
     if (!shell) return null
@@ -576,6 +686,7 @@ Panel {
       page = "main"
       wifiPasswordFor = ""
       wifiAdvanced = false
+      hwError = ""
     }
   }
 
@@ -1691,9 +1802,61 @@ Panel {
         }
       }
 
-      // Bottom row, like "Edit Controls" on macOS.
+      // Hardware: temperature, fans and power profile at a glance.
       Tile {
         revealIndex: 8
+        width: root.panelWidth
+        height: Style.space(52)
+        hoverable: true
+        onClicked: root.showPage("hardware")
+
+        Circle {
+          id: hwCircle
+          anchors.left: parent.left
+          anchors.leftMargin: Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          icon: "󰈐"
+          on: root.hw.fanMode === "manual"
+          onClicked: root.showPage("hardware")
+        }
+        Column {
+          anchors.left: hwCircle.right
+          anchors.leftMargin: Style.space(8)
+          anchors.right: hwChevron.left
+          anchors.verticalCenter: parent.verticalCenter
+          Text {
+            width: parent.width
+            text: "Hardware"
+            color: root.fg
+            font.family: Style.font.family
+            font.pixelSize: Style.font.subtitle
+            font.weight: Font.DemiBold
+          }
+          Text {
+            width: parent.width
+            visible: text !== ""
+            text: root.hwSummary + (root.hw.fanMode === "manual" ? " · Manual fans" : "")
+            color: root.hw.cpuTemp >= 80 ? root.tempColor(root.hw.cpuTemp) : root.dimText
+            font.family: Style.font.family
+            font.pixelSize: Style.font.bodySmall
+            elide: Text.ElideRight
+          }
+        }
+        Text {
+          id: hwChevron
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(14)
+          anchors.verticalCenter: parent.verticalCenter
+          text: "󰅂"
+          color: root.dimText
+          font.family: root.iconFont
+          font.pixelSize: Style.font.icon
+        }
+      }
+
+      // Bottom row, like "Edit Controls" on macOS.
+      Tile {
+        revealIndex: 9
         width: root.panelWidth
         height: Style.space(40)
         hoverable: true
@@ -2138,6 +2301,149 @@ Panel {
           title: modelData.label
           trailing: modelData.active ? "󰄬" : " "
           onClicked: if (!modelData.active) root.setSink(modelData)
+        }
+      }
+
+      // Hardware
+      PageHeader {
+        visible: root.detailPage === "hardware"
+        title: "Hardware"
+      }
+      Separator { visible: root.detailPage === "hardware" }
+      Column {
+        visible: root.detailPage === "hardware"
+        width: root.panelWidth
+        leftPadding: Style.space(6)
+        rightPadding: Style.space(6)
+        topPadding: Style.space(4)
+        bottomPadding: Style.space(6)
+        spacing: Style.space(8)
+        readonly property int innerWidth: root.panelWidth - Style.space(12)
+
+        // Live readings
+        Grid {
+          id: hwStats
+          columns: 2
+          columnSpacing: Style.space(16)
+          rowSpacing: Style.space(2)
+          readonly property int cellWidth: Math.floor((root.panelWidth - Style.space(12) - columnSpacing) / 2)
+          Stat {
+            width: hwStats.cellWidth
+            label: "CPU"
+            value: root.hw.cpuTemp >= 0 ? root.hw.cpuTemp + " °C" : "--"
+          }
+          Repeater {
+            model: root.hw.fans
+            delegate: Stat {
+              required property var modelData
+              width: hwStats.cellWidth
+              label: modelData.label
+              value: modelData.rpm > 0 ? modelData.rpm + " rpm" : "Idle"
+            }
+          }
+        }
+
+        // Fans
+        SectionLabel {
+          visible: root.hw.fanControl
+          text: "Fans · " + (root.hw.fanMode === "manual" ? "manual" : root.hw.guardTripped ? "back to auto (too hot)" : "BIOS controlled")
+        }
+        Row {
+          visible: root.hw.fanControl
+          spacing: Style.space(5)
+          Repeater {
+            model: root.fanLevels
+            delegate: Pill {
+              required property var modelData
+              width: Math.floor((root.panelWidth - Style.space(12) - Style.space(5) * 3) / 4)
+              label: root.hwPending === "fan:" + modelData.id ? "…" : modelData.label
+              selected: root.fanSelection === modelData.id
+              onClicked: root.setFanLevel(modelData.id)
+            }
+          }
+        }
+        Text {
+          visible: root.hw.fanControl && root.hw.fanMode === "manual"
+          width: parent.innerWidth
+          text: "Returns to Auto at " + root.hw.guardTemp + " °C and on reboot."
+          color: root.dimText
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+        }
+
+        // Power profile (remembered per AC / battery by Omarchy)
+        SectionLabel { text: "Power profile" }
+        Row {
+          spacing: Style.space(5)
+          Repeater {
+            model: root.powerProfiles
+            delegate: Pill {
+              required property var modelData
+              width: Math.floor((root.panelWidth - Style.space(12) - Style.space(5) * 2) / 3)
+              label: modelData.label
+              selected: root.powerProfile === modelData.id
+              onClicked: root.setPowerProfile(modelData.id)
+            }
+          }
+        }
+
+        // Turbo Boost
+        Item {
+          width: parent.innerWidth
+          height: Style.space(28)
+          SectionLabel {
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Turbo Boost"
+          }
+          Row {
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(5)
+            Pill {
+              width: Style.space(52)
+              label: root.hwPending === "turbo" && !root.hw.turbo ? "…" : "On"
+              selected: root.hw.turbo
+              onClicked: if (!root.hw.turbo) root.setTurbo(true)
+            }
+            Pill {
+              width: Style.space(52)
+              label: root.hwPending === "turbo" && root.hw.turbo ? "…" : "Off"
+              selected: !root.hw.turbo
+              onClicked: if (root.hw.turbo) root.setTurbo(false)
+            }
+          }
+        }
+
+        // Max CPU performance (intel_pstate)
+        SectionLabel {
+          text: "Max CPU speed · " + (root.maxPerfPreview >= 0 ? root.maxPerfPreview : root.hw.maxPerf) + " %"
+        }
+        PanelSlider {
+          width: parent.innerWidth
+          bar: root.bar
+          minimum: 20
+          maximum: 100
+          step: 5
+          integer: true
+          value: root.maxPerfPreview >= 0 ? root.maxPerfPreview : root.hw.maxPerf
+          fillColor: root.fg
+          knobColor: root.fg
+          trackColor: root.circleOff
+          tickColor: "transparent"
+          onMoved: function(v) { root.maxPerfPreview = Math.round(v / 5) * 5 }
+          onReleased: function(v) { root.setMaxPerf(v) }
+        }
+
+        Text {
+          visible: root.hwError !== "" || !root.hw.helper
+          width: parent.innerWidth
+          text: root.hwError !== "" ? root.hwError : "Helper not installed — run system/install.sh"
+          color: Color.urgent
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
         }
       }
     }
