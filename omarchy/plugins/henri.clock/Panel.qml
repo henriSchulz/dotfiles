@@ -3,6 +3,8 @@ import Quickshell
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
+import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
+import "file:///home/henri/.local/share/henri-ui" as HUi
 
 // The clock's calendar popup: a month grid with ISO week numbers, built to
 // sit beside the weather panel — same hero-over-detail composition, same
@@ -78,6 +80,9 @@ Panel {
   // contract instantiates it bare).
   readonly property color contentForeground: bar ? bar.foreground : Color.foreground
   readonly property string contentFontFamily: bar ? bar.fontFamily : Style.font.family
+  // henri-ui: secondary text by alpha, not Qt.darker (which darkens dark text
+  // further in light themes such as cupertino instead of receding it).
+  readonly property color secondaryText: Util.alpha(contentForeground, Motion.secondaryTextAlpha)
 
   readonly property int cellWidth: Style.space(52)
   readonly property int cellHeight: Style.space(34)
@@ -234,8 +239,9 @@ Panel {
     }
   }
 
-  KeyboardPanel {
+  HUi.PopupPanel {
     id: panel
+    kind: "popover"
     anchorItem: root.anchorItem
     owner: root.barIdentity
     bar: root.bar
@@ -308,6 +314,7 @@ Panel {
                 // scale. Sized so the glyph reads at the cap height of the
                 // date beside it rather than towering over it.
                 font.pixelSize: 48
+                Behavior on color { ColorAnimation { duration: heroMouse.containsMouse ? Motion.instant : Motion.fast } }
               }
 
               Text {
@@ -321,6 +328,7 @@ Panel {
                 font.family: root.contentFontFamily
                 font.pixelSize: 52
                 font.bold: true
+                Behavior on color { ColorAnimation { duration: heroMouse.containsMouse ? Motion.instant : Motion.fast } }
               }
             }
 
@@ -371,7 +379,7 @@ Panel {
                 Text {
                   anchors.verticalCenter: parent.verticalCenter
                   text: "BORN"
-                  color: Qt.darker(root.contentForeground, 1.5)
+                  color: root.secondaryText
                   font.family: root.contentFontFamily
                   font.pixelSize: Style.font.bodySmall
                   font.letterSpacing: 1
@@ -394,7 +402,7 @@ Panel {
                   anchors.verticalCenterOffset: 0
                   leftPadding: Style.space(6)
                   text: "LIVE TO"
-                  color: Qt.darker(root.contentForeground, 1.5)
+                  color: root.secondaryText
                   font.family: root.contentFontFamily
                   font.pixelSize: Style.font.bodySmall
                   font.letterSpacing: 1
@@ -420,7 +428,7 @@ Panel {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.today.getFullYear()
-                color: Qt.darker(root.contentForeground, 1.5)
+                color: root.secondaryText
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.bodySmall
                 font.letterSpacing: 1
@@ -447,7 +455,7 @@ Panel {
                 anchors.rightMargin: Style.space(12)
                 anchors.verticalCenter: parent.verticalCenter
                 height: Style.space(6)
-                radius: Style.cornerRadius > 0 ? height / 2 : 0
+                radius: height / 2
                 color: Qt.rgba(root.contentForeground.r, root.contentForeground.g, root.contentForeground.b, 0.12)
 
                 Rectangle {
@@ -456,7 +464,7 @@ Panel {
                   radius: parent.radius
                   color: Style.selectedStateColor(root.contentForeground, Color.accent)
 
-                  Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                  Behavior on width { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
                 }
               }
             }
@@ -481,7 +489,7 @@ Panel {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 text: "LIFE"
-                color: Qt.darker(root.contentForeground, 1.5)
+                color: root.secondaryText
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.bodySmall
                 font.letterSpacing: 1
@@ -505,7 +513,7 @@ Panel {
                 anchors.rightMargin: Style.space(12)
                 anchors.verticalCenter: parent.verticalCenter
                 height: Style.space(6)
-                radius: Style.cornerRadius > 0 ? height / 2 : 0
+                radius: height / 2
                 color: Qt.rgba(root.contentForeground.r, root.contentForeground.g, root.contentForeground.b, 0.12)
 
                 Rectangle {
@@ -514,7 +522,7 @@ Panel {
                   radius: parent.radius
                   color: Style.selectedStateColor(root.contentForeground, Color.accent)
 
-                  Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                  Behavior on width { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
                 }
               }
 
@@ -572,21 +580,23 @@ Panel {
                 Rectangle {
                   width: root.weekColumnWidth
                   height: Style.space(16)
-                  radius: Style.cornerRadius
+                  radius: Style.space(Motion.radiusChip)
                   color: weekStartMouse.containsMouse
                     ? Style.hoverFillFor(root.contentForeground, Color.accent)
-                    : "transparent"
+                    : Util.alpha(Style.hoverFillFor(root.contentForeground, Color.accent), 0)
+                  Behavior on color { ColorAnimation { duration: weekStartMouse.containsMouse ? Motion.instant : Motion.fast } }
 
                   Text {
                     anchors.centerIn: parent
                     text: "W"
                     color: weekStartMouse.containsMouse
                       ? Style.hoverStateColor(root.contentForeground, Color.accent)
-                      : Qt.darker(root.contentForeground, 1.9)
+                      : root.secondaryText
                     font.family: root.contentFontFamily
                     font.pixelSize: Style.font.caption
                     font.letterSpacing: 1
                     font.bold: true
+                    Behavior on color { ColorAnimation { duration: weekStartMouse.containsMouse ? Motion.instant : Motion.fast } }
                   }
 
                   MouseArea {
@@ -620,7 +630,7 @@ Panel {
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     text: root.weekdayLabel(modelData)
-                    color: Qt.darker(root.contentForeground, 1.5)
+                    color: root.secondaryText
                     font.family: root.contentFontFamily
                     font.pixelSize: Style.font.caption
                     font.letterSpacing: 1
@@ -643,7 +653,7 @@ Panel {
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     text: modelData.week
-                    color: Qt.darker(root.contentForeground, 1.9)
+                    color: root.secondaryText
                     font.family: root.contentFontFamily
                     font.pixelSize: Style.font.caption
                   }
@@ -661,7 +671,7 @@ Panel {
 
                       width: root.cellWidth
                       height: root.cellHeight
-                      radius: Style.cornerRadius
+                      radius: Style.space(Motion.radiusRow)
                       // Today is outlined, not filled: a lit-up block shouts
                       // over a grid this quiet.
                       color: "transparent"
@@ -673,8 +683,8 @@ Panel {
                         anchors.centerIn: parent
                         text: modelData.day
                         color: modelData.inMonth
-                          ? (modelData.weekend ? Qt.darker(root.contentForeground, 1.45) : root.contentForeground)
-                          : Qt.darker(root.contentForeground, 2.2)
+                          ? (modelData.weekend ? root.secondaryText : root.contentForeground)
+                          : Util.alpha(root.contentForeground, Motion.disabledOpacity)
                         font.family: root.contentFontFamily
                         font.pixelSize: Style.font.body
                         font.bold: modelData.today
@@ -713,9 +723,8 @@ Panel {
               width: gridColumn.width
               height: monthLabel.implicitHeight + Style.space(10)
 
-              Text {
+              HUi.CrossfadeText {
                 id: monthLabel
-                textFormat: Text.PlainText
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.verticalCenter: parent.verticalCenter
                 // Fixed width so the chevrons hold still between a
@@ -723,10 +732,9 @@ Panel {
                 width: Style.space(130)
                 horizontalAlignment: Text.AlignHCenter
                 text: root.labelLocale.toString(root.viewDate, "MMMM yyyy").toUpperCase()
-                color: Qt.darker(root.contentForeground, 1.4)
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.body
-                font.letterSpacing: 1
+                color: root.secondaryText
+                fontFamily: root.contentFontFamily
+                fontSize: Style.font.body
               }
 
               PanelActionButton {

@@ -48,6 +48,9 @@ FocusScope {
   signal closed()
   signal dismissRequested()
   property bool closeOnEscape: true
+  // false = switch instantly (no fade/scale). macOS does this when the pointer
+  // slides from one open menu-bar menu to the next.
+  property bool animated: true
   property bool closeOnOutsideClick: true
   property var insideWindows: []
 
@@ -76,6 +79,7 @@ FocusScope {
   }
 
   Behavior on opacity {
+    enabled: root.animated
     NumberAnimation {
       duration: root.open ? root.enterDuration : Motion.exit(root.enterDuration)
       easing.type: Easing.BezierSpline
@@ -96,6 +100,12 @@ FocusScope {
   // reopened mid-exit just turns around.
   onOpenChanged: {
     if (open) forceActiveFocus()
+    if (!animated) {
+      scaleS.snap(open ? 1 : toExitScale)
+      offX.snap(open ? 0 : fromX)
+      offY.snap(open ? 0 : fromY)
+      return
+    }
     if (open && opacity < 0.01) {
       scaleS.snap(fromScale)
       offX.snap(fromX)
