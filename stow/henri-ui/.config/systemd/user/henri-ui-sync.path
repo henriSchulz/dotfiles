@@ -1,0 +1,9 @@
+[Unit]
+Description=Mirror henri-ui into plugins that vendor it, whenever it changes
+
+[Path]
+# The real directory (~/.local/share/henri-ui is a stow symlink to it).
+PathModified=%h/Projects/dotfiles/stow/henri-ui/.local/share/henri-ui
+
+[Install]
+WantedBy=default.target

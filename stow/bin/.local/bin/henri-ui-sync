@@ -1,0 +1,44 @@
+#!/bin/bash
+# Mirror the central henri-ui folder into plugins that must ship their own
+# copy (public repos: other users don't have ~/.local/share/henri-ui).
+#
+# Run automatically by henri-ui-sync.path whenever the central folder changes,
+# so on this machine every plugin — vendored or not — follows at once (the
+# shell hot-reloads a plugin when its files change). The vendored copies then
+# show up as a diff in their repos, to be committed and pushed like any other
+# change.
+#
+# A plugin opts in by having a henri-ui/ folder with a .henri-ui-vendored marker.
+#
+# Then it restarts the Omarchy shell: the shell only re-reads a plugin's own
+# files on its hot-reload, and keeps already-loaded henri-ui components cached
+# until a full restart. Debounced — waits until the folder has been quiet for
+# $quiet seconds, so an editing burst restarts once. HENRI_UI_NO_RESTART=1 skips it.
+set -euo pipefail
+quiet=2
+
+src="$HOME/.local/share/henri-ui/"
+plugins="$HOME/.config/omarchy/plugins"
+
+[[ -d $src ]] || { echo "henri-ui-sync: $src missing" >&2; exit 1; }
+
+for marker in "$plugins"/*/henri-ui/.henri-ui-vendored; do
+  [[ -e $marker ]] || continue
+  dest="$(dirname "$marker")/"
+  rsync -a --delete --checksum \
+    --exclude gallery/ --exclude .henri-ui-vendored \
+    "$src" "$dest"
+  echo "henri-ui-sync: updated ${dest#"$HOME"/}"
+done
+
+[[ ${HENRI_UI_NO_RESTART:-0} == 1 ]] && exit 0
+
+# Debounce: only restart once nothing in henri-ui changed for $quiet seconds.
+while [[ -n $(find -L "$src" -maxdepth 1 -type f -newermt "-$quiet seconds" -print -quit) ]]; do
+  sleep 0.5
+done
+
+restart="${OMARCHY_PATH:-/usr/share/omarchy}/bin/omarchy-restart-shell"
+if quickshell list --all 2>/dev/null | grep -q 'omarchy/shell'; then
+  "$restart" && echo "henri-ui-sync: shell restarted"
+fi

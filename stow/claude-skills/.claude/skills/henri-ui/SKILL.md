@@ -60,7 +60,13 @@ danach gebaut wurden, automatisch mitziehen. Deshalb:
      ~/.config/omarchy/plugins/henri.* --include=*.qml
    ```
    (GTK/Web-Projekte in `~/Projects` analog auf feste ms-/cubic-bezier-/px-Werte prüfen.)
-4. Omarchy-Shell neu laden, prüfen, im dotfiles-Repo committen und pushen.
+4. Neustart passiert automatisch: `henri-ui-sync.path` (systemd, user) sieht jede
+   Änderung im zentralen Ordner, spiegelt sie in eingebettete Kopien (öffentliche
+   Repos, Marker `henri-ui/.henri-ui-vendored`) und startet nach 2 s Ruhe die Shell neu
+   (`omarchy-restart-shell`) — nötig, weil die Shell beim Plugin-Hot-Reload bereits
+   geladene henri-ui-Komponenten im Cache behält. Log:
+   `journalctl --user -u henri-ui-sync.service`. Danach prüfen, committen, pushen
+   (dotfiles + ggf. die Plugin-Repos mit eingebetteter Kopie).
 
 ## 1. Die sieben Motion-Gesetze (nicht verhandelbar)
 

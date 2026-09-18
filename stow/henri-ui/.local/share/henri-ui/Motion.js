@@ -43,6 +43,8 @@ var menuOffsetY = -4          // menus drop 4 px out of their anchor
 var toastOffset = 16          // toasts slide in from the screen edge
 var pageParallax = 0.3        // outgoing page moves 30 % while the new one slides in
 var flashDuration = ms(70)    // menu item blink after a click (macOS)
+// Reveal waits for its window's first frame before animating; give up after this.
+var firstFrameTimeout = 400
 var tooltipDelay = 500
 var tooltipGrace = 1000       // follow-up tooltips show instantly within this window
 

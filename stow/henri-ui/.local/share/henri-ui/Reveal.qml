@@ -44,7 +44,20 @@ FocusScope {
   // true from the moment it starts opening until the exit has finished
   readonly property bool shown: visible
   // true once fully in — start expensive work (models, polling) here, not at open
-  readonly property bool settled: open && opacity >= 1
+  readonly property bool settled: _shownOpen && opacity >= 1
+
+  // What the animation follows. Lags `open` until the window has presented a
+  // frame: a popup window that is only just mapping (plus whatever the content
+  // builds on open) can take a few hundred ms to show its first frame, and an
+  // animation started at `open` would be over by then — the popup would just
+  // appear. So opening waits for frameSwapped (fallback: Motion.firstFrameTimeout).
+  property bool _shownOpen: false
+  property bool _awaitingFrame: false
+  function _present() {
+    _awaitingFrame = false
+    firstFrameFallback.stop()
+    _shownOpen = open
+  }
   signal closed()
   signal dismissRequested()
   property bool closeOnEscape: true
@@ -70,7 +83,7 @@ FocusScope {
   implicitWidth: holder.childrenRect.width
   implicitHeight: holder.childrenRect.height
   visible: open || opacity > 0.001
-  opacity: open ? 1 : 0
+  opacity: _shownOpen ? 1 : 0
   transformOrigin: origin
   scale: Motion.reduceMotion ? 1 : scaleS.value
   transform: Translate {
@@ -81,15 +94,15 @@ FocusScope {
   Behavior on opacity {
     enabled: root.animated
     NumberAnimation {
-      duration: root.open ? root.enterDuration : Motion.exit(root.enterDuration)
+      duration: root._shownOpen ? root.enterDuration : Motion.exit(root.enterDuration)
       easing.type: Easing.BezierSpline
-      easing.bezierCurve: root.open ? Motion.easeOut : Motion.easeExit
+      easing.bezierCurve: root._shownOpen ? Motion.easeOut : Motion.easeExit
     }
   }
 
-  SpringValue { id: scaleS; preset: root.preset; to: root.open ? 1 : root.toExitScale }
-  SpringValue { id: offX; preset: root.preset; epsilon: 0.1; to: root.open ? 0 : root.fromX }
-  SpringValue { id: offY; preset: root.preset; epsilon: 0.1; to: root.open ? 0 : root.fromY }
+  SpringValue { id: scaleS; preset: root.preset; to: root._shownOpen ? 1 : root.toExitScale }
+  SpringValue { id: offX; preset: root.preset; epsilon: 0.1; to: root._shownOpen ? 0 : root.fromX }
+  SpringValue { id: offY; preset: root.preset; epsilon: 0.1; to: root._shownOpen ? 0 : root.fromY }
 
   Keys.onEscapePressed: function(e) {
     if (root.closeOnEscape && root.open) { root.dismissRequested(); e.accepted = true }
@@ -104,6 +117,7 @@ FocusScope {
       scaleS.snap(open ? 1 : toExitScale)
       offX.snap(open ? 0 : fromX)
       offY.snap(open ? 0 : fromY)
+      _present()
       return
     }
     if (open && opacity < 0.01) {
@@ -111,6 +125,26 @@ FocusScope {
       offX.snap(fromX)
       offY.snap(fromY)
     }
+    if (open) {
+      _awaitingFrame = true
+      firstFrameFallback.restart()
+    } else {
+      _present()     // closing never waits
+    }
+  }
+
+  Connections {
+    target: root.Window.window
+    ignoreUnknownSignals: true
+    function onFrameSwapped() {
+      if (!root._awaitingFrame) return
+      root._present()
+    }
+  }
+  Timer {
+    id: firstFrameFallback
+    interval: Motion.firstFrameTimeout
+    onTriggered: if (root._awaitingFrame) root._present()
   }
   onOpacityChanged: if (!open && opacity <= 0) closed()
   Component.onCompleted: if (!open) { scaleS.snap(toExitScale); offX.snap(fromX); offY.snap(fromY) }

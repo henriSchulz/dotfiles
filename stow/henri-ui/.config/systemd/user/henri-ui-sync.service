@@ -1,0 +1,6 @@
+[Unit]
+Description=Mirror henri-ui into plugins that vendor it
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/henri-ui-sync

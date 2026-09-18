@@ -17,6 +17,14 @@ import "file:///home/henri/.local/share/henri-ui" as HUi
   file:///…“ — harmlos (nur der Vorab-Scanner), die Imports funktionieren.
 - Die Komponenten importieren selbst `qs.Commons`/`qs.Ui` → sie bekommen automatisch
   die Theme-Farben des laufenden Omarchy-Shells.
+- **Änderungen an henri-ui brauchen einen Shell-Neustart** (Plugin-Hot-Reload liest nur
+  Plugin-Dateien neu, zentrale Komponenten bleiben gecacht). Das erledigt
+  `henri-ui-sync.path` automatisch (2 s nach der letzten Änderung). Änderungen an
+  Plugin-Dateien lädt die Shell dagegen sofort selbst neu.
+- `Reveal` (und damit PopupPanel/PopupCard) startet die Öffnen-Animation erst, wenn das
+  Fenster seinen ersten Frame gezeigt hat (live gemessen: Control Center 77–107 ms nach
+  `open`) — sonst wäre die Animation beim Erscheinen schon halb vorbei. Fallback nach
+  `Motion.firstFrameTimeout`.
 
 **Galerie** (alle Komponenten live zum Anfassen/Tunen):
 `quickshell -p ~/.local/share/henri-ui/gallery/shell.qml`
