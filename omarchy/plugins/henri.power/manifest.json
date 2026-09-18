@@ -4,7 +4,7 @@
   "name": "Power",
   "version": "1.0.0",
   "author": "henri",
-  "description": "macOS-style battery menu: charge, battery size, time left, cycles and power draw up front; power profile, Dell thermal modes, fans, power flow, charge mode and USB under Advanced",
+  "description": "macOS-style battery menu: charge, battery size, time left, cycles and power draw up front; a 24 h charge graph and discharge statistics under History; power profile, Dell thermal modes, fans, power flow, charge mode and USB under Advanced",
   "kinds": [
     "bar-widget"
   ],
@@ -18,7 +18,9 @@
     "allowMultiple": false,
     "defaults": {
       "showPercentage": false,
-      "chargeLimitStep": 5
+      "chargeLimitStep": 5,
+      "showHistory": true,
+      "historyDir": ""
     },
     "schema": [
       {
@@ -30,6 +32,18 @@
         "key": "chargeLimitStep",
         "type": "integer",
         "label": "Charge limit step"
+      },
+      {
+        "key": "showHistory",
+        "type": "boolean",
+        "label": "Show the battery history section"
+      },
+      {
+        "key": "historyDir",
+        "type": "path",
+        "label": "Battery log folder",
+        "defaultValue": "",
+        "description": "Folder with the akku-YYYY-MM-DD.csv files. Empty: ~/Documents/akku-test/verlauf"
       }
     ]
   },

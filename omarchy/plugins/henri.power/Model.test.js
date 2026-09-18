@@ -130,6 +130,54 @@ check("parseProfiles", Model.parseProfiles("balanced\t1\nperformance\t0", 0),
 check("clampIndex 5/3", Model.clampIndex(5, 3), 2)
 check("clampIndex -2/3", Model.clampIndex(-2, 3), 0)
 
+// ---- historique de la batterie ----
+const day = new Date(2026, 8, 18)
+check("historyFileName", Model.historyFileName(day), "akku-2026-09-18.csv")
+const csv = [
+  "zeit,status,prozent,energie_wh,leistung_w,spannung_v,strom_a,voll_wh,temperatur_c,zyklus_wh",
+  "10:00:00,Discharging,80,26.0,10.00,7.5,1.3,33.0,34.0,0.000",
+  "10:02:00,Discharging,79,25.6,10.00,7.4,1.3,33.0,35.5,0.333",
+  "10:04:00,LUECKE,,,,,,,,0.333",
+  "10:30:00,Discharging,70,21.0,12.00,7.4,1.6,33.0,35.0,0.333",
+  "11:00:00,Charging,60,19.0,20.00,7.8,2.5,33.0,33.0,0.000",
+  "11:02:00,Charging,62,20.0,20.00,7.8,2.5,33.0,33.0,0.000",
+  "garbage"
+].join("\n")
+const parsed = Model.parseHistoryCsv(csv, day)
+check("parse: count", parsed.length, 6)
+check("parse: gap", parsed[2].gap, true)
+check("parse: time", parsed[0].t, new Date(2026, 8, 18, 10, 0, 0).getTime())
+check("parse: pct/w", [parsed[1].pct, parsed[1].w, parsed[1].fullWh], [79, 10, 33])
+
+const now = new Date(2026, 8, 18, 11, 2, 0).getTime()
+const win = Model.historyWindow(parsed, now, 24)
+// 10:30 → 11:00 is a jump longer than 150 s: a gap is inserted
+check("window: jump becomes gap", win.map(p => p.gap), [false, false, true, false, true, false, false])
+const st = Model.historyStats(win)
+const near = (a, b) => Math.abs(a - b) < 1e-9
+check("stats: on battery 2 min", near(st.onBatteryH, 2 / 60), true)
+check("stats: used", near(st.usedWh, 10 * 2 / 60), true)
+check("stats: avg needs 10 min", st.avgDrawW, null)
+check("stats: charged", near(st.chargedWh, 20 * 2 / 60), true)
+check("stats: min/max", [st.minPct, st.maxPct, st.maxTemp], [60, 80, 35.5])
+check("stats: charging now", [st.discharging, st.cycleWh], [false, null])
+check("window: cut", Model.historyWindow(parsed, now, 0.5).length, 2)
+check("stats: empty", Model.historyStats([]).samples, false)
+
+// une heure de décharge à 11 W, échantillons toutes les 30 s
+const run = []
+for (let i = 0; i <= 120; i++)
+  run.push({ t: i * 30000, gap: false, status: "Discharging", pct: 90 - i / 10, w: 11, fullWh: 33, temp: 30, cycleWh: i * 11 / 120 })
+const rs = Model.historyStats(run)
+check("run: avg", near(rs.avgDrawW, 11), true)
+check("run: runtime", near(rs.runtimeH, 3), true)
+check("run: cycle", [rs.discharging, rs.cycleWh, rs.cycleStart], [true, 11, 0])
+
+check("duration 45 min", Model.durationText(0.75), "45 min")
+check("duration 2 h 50", Model.durationText(2 + 50 / 60), "2 h 50 min")
+check("duration 3 h", Model.durationText(3), "3 h")
+check("duration null", Model.durationText(null), "—")
+
 if (failures > 0) {
   console.log("\n" + failures + " échec(s)")
   process.exit(1)

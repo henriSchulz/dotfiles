@@ -39,6 +39,22 @@ Panel {
   property bool dellTriedPkexec: false
   property bool dellActionHandled: false
   property var powerChain: null
+  // Battery history from the akku-aufzeichnung logger (one CSV per day).
+  // Kept across opens, so the section never starts empty after the first load.
+  property bool historyOpen: false
+  property var historyPoints: []
+  property var historyStats: null
+  property real historyNow: 0
+  property string historyTodayText: ""
+  property string historyYesterdayText: ""
+  property string historyTodayName: ""
+  property string historyYesterdayName: ""
+  readonly property int historyHours: 24
+  readonly property bool showHistory: setting("showHistory", true) === true
+  readonly property string historyDir: {
+    var d = String(setting("historyDir", "") || "")
+    return d !== "" ? d : Quickshell.env("HOME") + "/Documents/akku-test/verlauf"
+  }
   // Every spawned process runs with absolute executables and a closed,
   // minimal environment: a shadowed binary earlier in the shell PATH must
   // never get code execution (or impersonate the privilege UI) on routine
@@ -104,6 +120,14 @@ Panel {
       FullyCharged: UPowerDeviceState.FullyCharged,
       PendingCharge: UPowerDeviceState.PendingCharge
     }
+  }
+
+  // History and Advanced fold like an accordion: one open at a time keeps
+  // the popup inside a laptop screen.
+  function openSection(name) {
+    historyOpen = name === "history"
+    advancedOpen = name === "advanced"
+    if (historyOpen && historyStats === null) refreshHistory()
   }
 
   function selectProfileByDelta(delta) {
@@ -465,6 +489,55 @@ Panel {
     return "none"
   }
 
+  // Points at today's and yesterday's file; the FileViews load them on a
+  // path change, a reload() picks up the lines added since.
+  function refreshHistory() {
+    if (!root.showHistory) return
+    var now = new Date()
+    var today = Model.historyFileName(now)
+    var yesterday = Model.historyFileName(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 12))
+    if (today === historyTodayName) todayFile.reload()
+    else historyTodayName = today
+    if (yesterday === historyYesterdayName) yesterdayFile.reload()
+    else historyYesterdayName = yesterday
+  }
+
+  function rebuildHistory() {
+    var now = new Date()
+    var yDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 12)
+    var samples = Model.parseHistoryCsv(historyYesterdayText, yDay)
+      .concat(Model.parseHistoryCsv(historyTodayText, now))
+    historyNow = now.getTime()
+    historyPoints = Model.historyWindow(samples, historyNow, historyHours)
+    historyStats = Model.historyStats(historyPoints)
+  }
+
+  function historyWatt(w) {
+    return w === null || w === undefined || !isFinite(w) ? "—" : w.toFixed(1) + " W"
+  }
+
+  function historyWh(wh) {
+    return wh === null || wh === undefined || !isFinite(wh) ? "—" : wh.toFixed(1) + " Wh"
+  }
+
+  function clockText(t) {
+    return Qt.formatTime(new Date(t), "HH:mm")
+  }
+
+  readonly property string historyDischargeText: {
+    var st = root.historyStats
+    if (!st || !st.discharging || st.cycleWh === null || st.cycleStart === null) return ""
+    return "This discharge: " + root.historyWh(st.cycleWh) + " since " + root.clockText(st.cycleStart)
+  }
+
+  readonly property string historyChargeText: {
+    var st = root.historyStats
+    if (!st || !st.samples) return ""
+    var parts = []
+    if (st.chargingH > 0) parts.push("Charging (shaded): " + root.historyWh(st.chargedWh) + " in " + Model.durationText(st.chargingH))
+    return parts.join(" · ")
+  }
+
   IpcHandler {
     target: "henri.power"
 
@@ -474,6 +547,8 @@ Panel {
     function hide() { root.close() }
     function toggle() { root.toggle() }
     function togglePercentage() { root.togglePercentage() }
+    // Opens the popup straight on the History section.
+    function history() { root.open(); root.openSection("history") }
   }
 
   onOpenedChanged: {
@@ -490,6 +565,9 @@ Panel {
       var idx = profiles.indexOf(activeProfile)
       profileIndex = idx >= 0 ? idx : 0
       cursorActive = false
+      // Reading and parsing a day of samples waits until the popup has
+      // settled, so it never costs a frame of the opening animation.
+      historySettleTimer.restart()
     }
   }
 
@@ -618,6 +696,31 @@ Panel {
 
   Timer { interval: 5000; running: root.opened; repeat: true; onTriggered: { root.refresh(); root.refreshDell(); root.refreshPowerChain() } }
 
+  // ---- Battery history files (logger writes a line every 30 s)
+  Timer {
+    id: historySettleTimer
+    interval: Motion.firstFrameTimeout + Motion.slow
+    onTriggered: root.refreshHistory()
+  }
+
+  Timer { interval: 30000; running: root.opened && root.showHistory; repeat: true; onTriggered: root.refreshHistory() }
+
+  FileView {
+    id: todayFile
+    path: root.historyTodayName !== "" ? root.historyDir + "/" + root.historyTodayName : ""
+    printErrors: false
+    onLoaded: { root.historyTodayText = text(); Qt.callLater(root.rebuildHistory) }
+    onLoadFailed: { root.historyTodayText = ""; Qt.callLater(root.rebuildHistory) }
+  }
+
+  FileView {
+    id: yesterdayFile
+    path: root.historyYesterdayName !== "" ? root.historyDir + "/" + root.historyYesterdayName : ""
+    printErrors: false
+    onLoaded: { root.historyYesterdayText = text(); Qt.callLater(root.rebuildHistory) }
+    onLoadFailed: { root.historyYesterdayText = ""; Qt.callLater(root.rebuildHistory) }
+  }
+
   Timer {
     interval: 2800
     running: root.opened && root.rotatingPhrases
@@ -701,6 +804,8 @@ Panel {
       if (visible) return
       root.advancedOpen = false
       advancedCollapse.snap()
+      root.historyOpen = false
+      historyCollapse.snap()
     }
 
     PanelKeyCatcher {
@@ -710,7 +815,7 @@ Panel {
       // ⏎ applies the one under the cursor, ↑ folds the section again.
       onMoveRequested: function(dx, dy) {
         if (!root.advancedOpen) {
-          if (dy > 0) root.advancedOpen = true
+          if (dy > 0) root.openSection("advanced")
           return
         }
         if (dx !== 0) {
@@ -722,7 +827,7 @@ Panel {
         }
       }
       onActivateRequested: {
-        if (!root.advancedOpen) root.advancedOpen = true
+        if (!root.advancedOpen) root.openSection("advanced")
         else if (root.cursorActive) root.activateSelectedProfile()
         else root.advancedOpen = false
       }
@@ -832,54 +937,94 @@ Panel {
           }
         }
 
-        // ---------- Advanced disclosure ----------
+        // ---------- Disclosures ----------
         Item { width: 1; height: Style.space(12) }
         Rectangle { width: parent.width; height: 1; color: root.hairline }
         Item { width: 1; height: Style.space(6) }
 
-        Item {
+        // ---------- History disclosure (battery logger) ----------
+        DisclosureRow {
+          visible: root.showHistory
+          text: "History"
+          expanded: root.historyOpen
+          onToggled: root.openSection(root.historyOpen ? "" : "history")
+        }
+
+        HUi.Collapse {
+          id: historyCollapse
           width: parent.width
-          height: Style.space(Motion.controlHeight)
+          visible: root.showHistory
+          expanded: root.historyOpen
 
-          HUi.Pressable {
-            id: advancedRow
-            // Hover fill reaches a little past the text, like a macOS row.
-            x: -Style.space(6)
-            width: parent.width + Style.space(12)
-            height: parent.height
-            radius: Style.space(Motion.radiusRow)
-            tint: root.fg
-            pressScaleEnabled: false
-            activeFocusOnTab: false
-            onClicked: {
-              root.cursorActive = false
-              root.advancedOpen = !root.advancedOpen
-            }
+          Column {
+            width: parent.width
+            topPadding: Style.space(6)
+            bottomPadding: Style.space(10)
+            spacing: Style.space(8)
 
-            Text {
-              anchors.left: parent.left
-              anchors.leftMargin: Style.space(6)
-              anchors.verticalCenter: parent.verticalCenter
-              text: "Advanced"
-              color: root.fg
-              font.family: Style.font.family
-              font.pixelSize: Style.font.body
-              font.weight: Font.Medium
-            }
-
-            Text {
-              anchors.right: parent.right
-              anchors.rightMargin: Style.space(8)
-              anchors.verticalCenter: parent.verticalCenter
-              text: "󰅂"
-              rotation: root.advancedOpen ? 90 : 0
-              color: root.dimText
-              font.family: root.iconFont
-              font.pixelSize: Style.font.icon
-              Behavior on rotation {
-                NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+            Item {
+              width: parent.width
+              height: Math.max(historyTitle.implicitHeight, historyReadout.implicitHeight)
+              SectionLabel {
+                id: historyTitle
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Charge · last " + root.historyHours + " h"
+              }
+              HUi.CrossfadeText {
+                id: historyReadout
+                anchors.right: parent.right
+                anchors.left: historyTitle.right
+                anchors.leftMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+                horizontalAlignment: Text.AlignRight
+                elide: Text.ElideLeft
+                text: historyGraph.readout
+                color: root.fg
+                fontSize: Style.font.caption
+                fontWeight: Font.Medium
               }
             }
+
+            HistoryGraph {
+              id: historyGraph
+              width: parent.width
+            }
+
+            Grid {
+              id: historyGrid
+              width: parent.width
+              columns: 2
+              spacing: Style.space(8)
+              visible: root.historyStats !== null && root.historyStats.samples
+              readonly property real cellWidth: (width - spacing) / 2
+
+              StatTile { width: historyGrid.cellWidth; label: "Time on battery"; value: root.historyStats ? Model.durationText(root.historyStats.onBatteryH) : "—" }
+              StatTile { width: historyGrid.cellWidth; label: "Used on battery"; value: root.historyStats ? root.historyWh(root.historyStats.usedWh) : "—" }
+              StatTile { width: historyGrid.cellWidth; label: "Average draw"; value: root.historyStats ? root.historyWatt(root.historyStats.avgDrawW) : "—" }
+              StatTile {
+                width: historyGrid.cellWidth
+                label: "A full charge lasts"
+                value: root.historyStats && root.historyStats.runtimeH !== null ? "≈ " + Model.durationText(root.historyStats.runtimeH) : "—"
+              }
+            }
+
+            Caption {
+              visible: text !== ""
+              text: root.historyStats === null ? ""
+                : (root.historyStats.samples ? root.historyDischargeText : "No samples in " + root.historyDir)
+            }
+            Caption { visible: text !== ""; text: root.historyChargeText }
+          }
+        }
+
+        // ---------- Advanced disclosure ----------
+        DisclosureRow {
+          text: "Advanced"
+          expanded: root.advancedOpen
+          onToggled: {
+            root.cursorActive = false
+            root.openSection(root.advancedOpen ? "" : "advanced")
           }
         }
 
@@ -1440,6 +1585,246 @@ Panel {
     }
     Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
     Behavior on scale { NumberAnimation { duration: Motion.instant; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+  }
+
+  // A row that folds a section open, chevron turning like a macOS disclosure.
+  component DisclosureRow: Item {
+    id: disc
+    property string text: ""
+    property bool expanded: false
+    signal toggled()
+    width: parent.width
+    height: visible ? Style.space(Motion.controlHeight) : 0
+
+    HUi.Pressable {
+      // Hover fill reaches a little past the text, like a macOS row.
+      x: -Style.space(6)
+      width: parent.width + Style.space(12)
+      height: parent.height
+      radius: Style.space(Motion.radiusRow)
+      tint: root.fg
+      pressScaleEnabled: false
+      activeFocusOnTab: false
+      onClicked: disc.toggled()
+
+      Text {
+        anchors.left: parent.left
+        anchors.leftMargin: Style.space(6)
+        anchors.verticalCenter: parent.verticalCenter
+        text: disc.text
+        color: root.fg
+        font.family: Style.font.family
+        font.pixelSize: Style.font.body
+        font.weight: Font.Medium
+      }
+
+      Text {
+        anchors.right: parent.right
+        anchors.rightMargin: Style.space(8)
+        anchors.verticalCenter: parent.verticalCenter
+        text: "󰅂"
+        rotation: disc.expanded ? 90 : 0
+        color: root.dimText
+        font.family: root.iconFont
+        font.pixelSize: Style.font.icon
+        Behavior on rotation {
+          NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+        }
+      }
+    }
+  }
+
+  // Charge level over the history window: an accent line with a soft fill,
+  // charging stretches shaded behind it, sleeps/gaps left open. Gridlines at
+  // 0/50/100 %, clock ticks every six hours. Hovering reads a sample out.
+  component HistoryGraph: Item {
+    id: graph
+    readonly property real gutter: gutterMetrics.advanceWidth + Style.space(8)
+    readonly property real plotW: Math.max(1, width - gutter)
+    readonly property real plotH: Style.space(88)
+    readonly property real from: root.historyNow - root.historyHours * 3600000
+    readonly property color line: Color.accent
+    property int hoverIndex: -1
+    readonly property var hoverPoint: hoverIndex >= 0 ? root.historyPoints[hoverIndex] || null : null
+    readonly property string readout: {
+      var p = graph.hoverPoint
+      if (p && !p.gap)
+        return root.clockText(p.t) + " · " + p.pct + " %" + (p.w !== null && p.status !== "Full" ? " · " + root.historyWatt(p.w) : "")
+      var st = root.historyStats
+      if (!st || !st.samples) return ""
+      return "Now " + Math.round(root.batteryFraction * 100) + " %"
+    }
+    implicitHeight: plotH + timeRow.height + Style.space(4)
+
+    TextMetrics { id: gutterMetrics; font.family: Style.font.family; font.pixelSize: Style.font.caption; text: "100 %" }
+
+    function xOf(t) { return (t - from) / (root.historyHours * 3600000) * plotW }
+    function yOf(pct) { return plotH - Math.max(0, Math.min(100, pct)) / 100 * (plotH - 2) - 1 }
+
+    // Six-hour clock marks inside the window.
+    readonly property var ticks: {
+      if (root.historyNow <= 0) return []
+      var d = new Date(graph.from)
+      d.setMinutes(0, 0, 0)
+      while (d.getTime() < graph.from || d.getHours() % 6 !== 0) d.setHours(d.getHours() + 1)
+      var out = []
+      for (var t = d.getTime(); t <= root.historyNow; t += 6 * 3600000) out.push(t)
+      return out
+    }
+
+    // Gridlines and labels on the right, like the macOS battery graph.
+    Repeater {
+      model: [100, 50, 0]
+      Item {
+        required property var modelData
+        y: graph.yOf(modelData)
+        width: graph.width
+        Rectangle { width: graph.plotW; height: 1; color: root.hairline }
+        Text {
+          x: graph.plotW + Style.space(6)
+          anchors.verticalCenter: parent.top
+          text: modelData + " %"
+          color: root.dimText
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+        }
+      }
+    }
+
+    Canvas {
+      id: canvas
+      width: graph.plotW
+      height: graph.plotH
+      antialiasing: true
+      onWidthChanged: requestPaint()
+      Connections {
+        target: root
+        function onHistoryPointsChanged() { canvas.requestPaint() }
+      }
+      Connections {
+        target: graph
+        function onLineChanged() { canvas.requestPaint() }
+      }
+
+      onPaint: {
+        var ctx = getContext("2d")
+        ctx.reset()
+        var pts = root.historyPoints
+        if (!pts || pts.length === 0) return
+        var c = graph.line
+
+        // Charging stretches: a pale band from one sample to the next.
+        ctx.fillStyle = Qt.rgba(c.r, c.g, c.b, 0.07)
+        for (var i = 0; i + 1 < pts.length; i++) {
+          var a = pts[i], b = pts[i + 1]
+          if (a.gap || b.gap || a.status !== "Charging") continue
+          var x0 = graph.xOf(a.t), x1 = graph.xOf(b.t)
+          ctx.fillRect(x0, 0, Math.max(0.5, x1 - x0), graph.plotH)
+        }
+
+        // One path per unbroken run: area first, then the line on top.
+        var runs = []
+        var run = []
+        for (var j = 0; j < pts.length; j++) {
+          if (pts[j].gap) { if (run.length) runs.push(run); run = []; continue }
+          run.push(pts[j])
+        }
+        if (run.length) runs.push(run)
+
+        var grad = ctx.createLinearGradient(0, 0, 0, graph.plotH)
+        grad.addColorStop(0, Qt.rgba(c.r, c.g, c.b, 0.22))
+        grad.addColorStop(1, Qt.rgba(c.r, c.g, c.b, 0.02))
+        ctx.lineWidth = Style.spaceReal(1.5)
+        ctx.lineJoin = "round"
+        ctx.lineCap = "round"
+        for (var k = 0; k < runs.length; k++) {
+          var r = runs[k]
+          ctx.beginPath()
+          ctx.moveTo(graph.xOf(r[0].t), graph.plotH)
+          for (var m = 0; m < r.length; m++) ctx.lineTo(graph.xOf(r[m].t), graph.yOf(r[m].pct))
+          ctx.lineTo(graph.xOf(r[r.length - 1].t), graph.plotH)
+          ctx.closePath()
+          ctx.fillStyle = grad
+          ctx.fill()
+
+          ctx.beginPath()
+          ctx.moveTo(graph.xOf(r[0].t), graph.yOf(r[0].pct))
+          for (var n = 1; n < r.length; n++) ctx.lineTo(graph.xOf(r[n].t), graph.yOf(r[n].pct))
+          ctx.strokeStyle = c
+          ctx.stroke()
+        }
+      }
+    }
+
+    // Hover: a hairline and a dot on the nearest sample; the readout above
+    // crossfades to its time, charge and draw.
+    Rectangle {
+      id: hoverLine
+      readonly property bool active: graph.hoverPoint !== null && !graph.hoverPoint.gap
+      x: active ? Math.round(graph.xOf(graph.hoverPoint.t)) : x
+      width: 1
+      height: graph.plotH
+      color: Util.alpha(root.fg, 0.35)
+      opacity: active ? 1 : 0
+      Behavior on opacity { NumberAnimation { duration: hoverLine.active ? Motion.instant : Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+    }
+    Rectangle {
+      readonly property real size: Style.space(7)
+      x: hoverLine.x - size / 2 + 0.5
+      y: hoverLine.active ? graph.yOf(graph.hoverPoint.pct) - size / 2 : y
+      width: size
+      height: size
+      radius: size / 2
+      color: graph.line
+      border.width: Style.space(1.5)
+      border.color: Color.popups.background
+      opacity: hoverLine.opacity
+    }
+
+    MouseArea {
+      width: graph.plotW
+      height: graph.plotH
+      hoverEnabled: true
+      acceptedButtons: Qt.NoButton
+      onExited: graph.hoverIndex = -1
+      onPositionChanged: function(mouse) {
+        var pts = root.historyPoints
+        if (!pts || pts.length === 0) { graph.hoverIndex = -1; return }
+        var t = graph.from + mouse.x / graph.plotW * root.historyHours * 3600000
+        // Samples are sorted by time: binary search, then the nearer neighbour.
+        var lo = 0, hi = pts.length - 1
+        while (lo < hi) {
+          var mid = (lo + hi) >> 1
+          if (pts[mid].t < t) lo = mid + 1
+          else hi = mid
+        }
+        var best = lo
+        if (lo > 0 && Math.abs(pts[lo - 1].t - t) < Math.abs(pts[lo].t - t)) best = lo - 1
+        // Nothing within ten minutes (a gap, before the first sample): no readout.
+        var p = pts[best]
+        graph.hoverIndex = !p.gap && Math.abs(p.t - t) <= 600000 ? best : -1
+      }
+    }
+
+    Item {
+      id: timeRow
+      y: graph.plotH + Style.space(4)
+      width: graph.plotW
+      height: tickMetrics.height
+      TextMetrics { id: tickMetrics; font.family: Style.font.family; font.pixelSize: Style.font.caption; text: "00:00" }
+      Repeater {
+        model: graph.ticks
+        Text {
+          required property var modelData
+          readonly property real cx: graph.xOf(modelData)
+          x: Math.max(0, Math.min(graph.plotW - width, cx - width / 2))
+          text: root.clockText(modelData)
+          color: root.dimText
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+        }
+      }
+    }
   }
 
   // Overview tile: small secondary label over the value.

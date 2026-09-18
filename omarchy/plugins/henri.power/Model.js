@@ -369,8 +369,147 @@ function parseDellStatus(raw) {
   }
 }
 
+// ---- Battery history (the akku-aufzeichnung logger, one CSV per day) ----
+//
+// Columns: zeit,status,prozent,energie_wh,leistung_w,spannung_v,strom_a,
+// voll_wh,temperatur_c,zyklus_wh — a line every 30 s. A LUECKE line marks
+// a sleep or a stopped service; a longer gap between two lines (the logger
+// restarting at boot writes no marker) counts as one too.
+var HISTORY_GAP_MS = 150 * 1000
+
+function historyFileName(date) {
+  function pad(n) { return (n < 10 ? "0" : "") + n }
+  return "akku-" + date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate()) + ".csv"
+}
+
+// One day's CSV → samples. `day` is any Date on that day.
+function parseHistoryCsv(raw, day) {
+  var out = []
+  var lines = String(raw || "").split("\n")
+  var y = day.getFullYear(), m = day.getMonth(), d = day.getDate()
+  function num(v) {
+    if (v === undefined || v === "") return null
+    var n = Number(v)
+    return isFinite(n) ? n : null
+  }
+  for (var i = 0; i < lines.length; i++) {
+    var f = lines[i].trim().split(",")
+    var hms = /^(\d\d):(\d\d):(\d\d)$/.exec(f[0])
+    if (!hms) continue
+    var t = new Date(y, m, d, Number(hms[1]), Number(hms[2]), Number(hms[3])).getTime()
+    if (f[1] === "LUECKE") {
+      out.push({ t: t, gap: true })
+      continue
+    }
+    var pct = num(f[2])
+    if (pct === null) continue
+    out.push({
+      t: t,
+      gap: false,
+      status: f[1],
+      pct: pct,
+      wh: num(f[3]),
+      w: num(f[4]),
+      fullWh: num(f[7]),
+      temp: num(f[8]),
+      cycleWh: num(f[9])
+    })
+  }
+  return out
+}
+
+// Samples of both days (older first), cut to the window ending at `now`.
+// A time jump longer than HISTORY_GAP_MS becomes a gap marker.
+function historyWindow(samples, now, hours) {
+  var from = now - hours * 3600 * 1000
+  var out = []
+  var prev = null
+  for (var i = 0; i < samples.length; i++) {
+    var s = samples[i]
+    if (s.t < from || s.t > now) continue
+    if (s.gap) {
+      if (prev && !prev.gap) out.push(s)
+      prev = s
+      continue
+    }
+    if (prev && !prev.gap && s.t - prev.t > HISTORY_GAP_MS)
+      out.push({ t: prev.t + 1, gap: true })
+    out.push(s)
+    prev = s
+  }
+  return out
+}
+
+// Figures for the history section. Energy is integrated from the logged
+// power over the time to the next sample, never across a gap.
+function historyStats(points) {
+  var onBatteryH = 0, usedWh = 0, chargedWh = 0, chargingH = 0
+  var minPct = null, maxPct = null, maxTemp = null, last = null
+  for (var i = 0; i < points.length; i++) {
+    var a = points[i]
+    if (a.gap) continue
+    last = a
+    if (minPct === null || a.pct < minPct) minPct = a.pct
+    if (maxPct === null || a.pct > maxPct) maxPct = a.pct
+    if (a.temp !== null && (maxTemp === null || a.temp > maxTemp)) maxTemp = a.temp
+    var b = points[i + 1]
+    if (!b || b.gap || a.w === null) continue
+    var h = (b.t - a.t) / 3600000
+    if (a.status === "Discharging") {
+      onBatteryH += h
+      usedWh += a.w * h
+    } else if (a.status === "Charging") {
+      chargingH += h
+      chargedWh += a.w * h
+    }
+  }
+  // Below ten minutes on battery the average is mostly noise.
+  var avgDrawW = onBatteryH >= 1 / 6 ? usedWh / onBatteryH : null
+  var fullWh = last ? last.fullWh : null
+  var cycleStart = null
+  if (last && last.status === "Discharging") {
+    // The logger keeps counting zyklus_wh across a sleep, so walk back over
+    // gaps too, up to the sample where the discharge began.
+    for (var j = points.length - 1; j >= 0; j--) {
+      if (points[j].gap) continue
+      if (points[j].status !== "Discharging") break
+      cycleStart = points[j].t
+    }
+  }
+  return {
+    samples: last !== null,
+    onBatteryH: onBatteryH,
+    usedWh: usedWh,
+    chargingH: chargingH,
+    chargedWh: chargedWh,
+    avgDrawW: avgDrawW,
+    runtimeH: avgDrawW && fullWh ? fullWh / avgDrawW : null,
+    fullWh: fullWh,
+    minPct: minPct,
+    maxPct: maxPct,
+    maxTemp: maxTemp,
+    discharging: !!last && last.status === "Discharging",
+    cycleWh: last && last.status === "Discharging" ? last.cycleWh : null,
+    cycleStart: cycleStart
+  }
+}
+
+function durationText(hours) {
+  if (hours === null || !isFinite(hours)) return "—"
+  var mins = Math.round(hours * 60)
+  if (mins < 60) return mins + " min"
+  var h = Math.floor(mins / 60), m = mins % 60
+  return h + " h" + (m > 0 ? " " + m + " min" : "")
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
+    HISTORY_GAP_MS: HISTORY_GAP_MS,
+    historyFileName: historyFileName,
+    parseHistoryCsv: parseHistoryCsv,
+    historyWindow: historyWindow,
+    historyStats: historyStats,
+    durationText: durationText,
     clampIndex: clampIndex,
     selectProfileIndex: selectProfileIndex,
     parseKeyValue: parseKeyValue,
