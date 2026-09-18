@@ -1074,14 +1074,26 @@ Panel {
       preset: Motion.snappy
       to: pillMouse.pressed && !Motion.reduceMotion ? Motion.pressScale : 1
     }
-    Text {
+    property var glyph: null
+    readonly property color ink: pill.selected ? root.onIcon : root.fg
+    Behavior on ink { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+    Row {
       anchors.centerIn: parent
-      text: pill.label
-      color: pill.selected ? root.onIcon : root.fg
-      Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
-      font.family: Style.font.family
-      font.pixelSize: Style.font.bodySmall
-      font.weight: pill.selected ? Font.DemiBold : Font.Normal
+      spacing: Style.space(6)
+      LayoutGlyph {
+        visible: pill.glyph !== null
+        anchors.verticalCenter: parent.verticalCenter
+        tiles: pill.glyph || []
+        tint: pill.ink
+      }
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: pill.label
+        color: pill.ink
+        font.family: Style.font.family
+        font.pixelSize: Style.font.bodySmall
+        font.weight: pill.selected ? Font.DemiBold : Font.Normal
+      }
     }
     MouseArea {
       id: pillMouse
@@ -1089,6 +1101,29 @@ Panel {
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onClicked: pill.clicked()
+    }
+  }
+
+  // Tiny tiling-layout diagram: tiles as [x, y, w, h, alpha] on a 16×12 grid.
+  component LayoutGlyph: Item {
+    id: lg
+    property var tiles: []
+    property color tint: root.fg
+    readonly property real unit: Style.spaceReal(1)
+    width: Math.round(16 * unit)
+    height: Math.round(12 * unit)
+    Repeater {
+      model: lg.tiles
+      delegate: Rectangle {
+        required property var modelData
+        x: Math.round(modelData[0] * lg.unit)
+        y: Math.round(modelData[1] * lg.unit)
+        width: Math.round((modelData[0] + modelData[2]) * lg.unit) - x
+        height: Math.round((modelData[1] + modelData[3]) * lg.unit) - y
+        radius: Math.max(1, Math.round(1.5 * lg.unit))
+        color: lg.tint
+        opacity: modelData[4]
+      }
     }
   }
 
@@ -1783,8 +1818,12 @@ Panel {
             width: parent.width
             spacing: Style.space(5)
             readonly property var layouts: [
-              { id: "dwindle", label: "Dwindle" },
-              { id: "scrolling", label: "Scrolling" }
+              // Dwindle: master left, the rest keeps halving.
+              { id: "dwindle", label: "Dwindle",
+                glyph: [[0, 0, 7, 12, 1], [8.5, 0, 7.5, 5.25, 1], [8.5, 6.75, 3, 5.25, 1], [13, 6.75, 3, 5.25, 1]] },
+              // Scrolling: full-height columns running off both edges.
+              { id: "scrolling", label: "Scrolling",
+                glyph: [[0, 0, 2.5, 12, 0.4], [4, 0, 8, 12, 1], [13.5, 0, 2.5, 12, 0.4]] }
             ]
             Repeater {
               model: tilingRow.layouts
@@ -1792,6 +1831,7 @@ Panel {
                 required property var modelData
                 width: Math.floor((tilingRow.width - tilingRow.spacing * (tilingRow.layouts.length - 1)) / tilingRow.layouts.length)
                 label: modelData.label
+                glyph: modelData.glyph
                 selected: root.tilingLayout === modelData.id
                 onClicked: root.setTilingLayout(modelData.id)
               }
