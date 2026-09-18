@@ -13,5 +13,6 @@ Bar: left click opens the menu, right click toggles the percentage.
 Keyboard: ↓ / ⏎ open Advanced, ←/→ + ⏎ pick a power profile, ↑ folds it, Esc closes.
 
 The privileged helper (`/usr/local/bin/dell-charge-limit`) is installed from
-the upstream checkout, which must stay in place:
-`~/.config/omarchy/plugins/io.github.nipsen.dell-power/install-system.sh`.
+a fresh upstream checkout (the installer verifies itself against it):
+
+    git clone https://github.com/NIPSEN/omarchy-dell-power /tmp/dell-power && /tmp/dell-power/install-system.sh

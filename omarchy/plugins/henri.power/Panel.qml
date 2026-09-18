@@ -71,8 +71,8 @@ Panel {
   // installed answers {dell:false} instead — no hint there.
   readonly property bool helperMissing: dellProbed && dellStatus === null
   // The installer authenticates its privileged core against the upstream
-  // git checkout, so setup always runs from the original plugin's clone.
-  readonly property string setupCommand: "~/.config/omarchy/plugins/io.github.nipsen.dell-power/install-system.sh"
+  // git checkout, so setup runs from a fresh clone of the original repo.
+  readonly property string setupCommand: "git clone https://github.com/NIPSEN/omarchy-dell-power /tmp/dell-power && /tmp/dell-power/install-system.sh"
   property bool draggingStart: false
   property bool draggingStop: false
   property int previewStart: -1
