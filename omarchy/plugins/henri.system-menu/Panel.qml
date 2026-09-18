@@ -56,19 +56,19 @@ Panel {
   property bool logoSqueezed: false
 
   readonly property var items: [
-    { label: "Über diesen Computer", page: "about" },
+    { icon: "󰋽", label: "Über diesen Computer", page: "about" },
     { separator: true },
-    { label: "Systemeinstellungen …", cmd: "omarchy-menu toggle root" },
-    { label: "App Store …", cmd: "xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-install" },
+    { icon: "󰢻", label: "Systemeinstellungen …", cmd: "omarchy-menu toggle root" },
+    { icon: "󱃁", label: "App Store …", cmd: "xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-install" },
     { separator: true },
-    { label: "Sofort beenden …", cmd: "hyprctl kill" },
+    { icon: "󰅝", label: "Sofort beenden …", cmd: "hyprctl kill" },
     { separator: true },
-    { label: "Ruhezustand", cmd: "systemctl suspend" },
-    { label: "Neustart …", cmd: "omarchy-system-reboot", title: "Möchtest du den Computer jetzt neu starten?", confirm: "Neustart" },
-    { label: "Ausschalten …", cmd: "omarchy-system-shutdown", title: "Möchtest du den Computer jetzt ausschalten?", confirm: "Ausschalten" },
+    { icon: "󰖔", label: "Ruhezustand", cmd: "systemctl suspend" },
+    { icon: "󰜉", label: "Neustart …", cmd: "omarchy-system-reboot", title: "Möchtest du den Computer jetzt neu starten?", confirm: "Neustart" },
+    { icon: "󰐥", label: "Ausschalten …", cmd: "omarchy-system-shutdown", title: "Möchtest du den Computer jetzt ausschalten?", confirm: "Ausschalten" },
     { separator: true },
-    { label: "Bildschirm sperren", cmd: "omarchy-system-lock" },
-    { label: "Abmelden „" + userName + "“ …", cmd: "omarchy-system-logout", title: "Möchtest du dich jetzt abmelden?", confirm: "Abmelden" }
+    { icon: "󰍁", label: "Bildschirm sperren", cmd: "omarchy-system-lock" },
+    { icon: "󰍃", label: "Abmelden „" + userName + "“ …", cmd: "omarchy-system-logout", title: "Möchtest du dich jetzt abmelden?", confirm: "Abmelden" }
   ]
 
   function activate(index) {
@@ -309,10 +309,25 @@ Panel {
                   color: root.separatorColor
                 }
 
+                // Symbol column, fixed width so the labels line up.
                 Text {
+                  id: rowIcon
                   visible: !row.modelData.separator
                   anchors.left: parent.left
                   anchors.leftMargin: Style.space(10)
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Style.space(18)
+                  horizontalAlignment: Text.AlignHCenter
+                  text: row.modelData.icon || ""
+                  color: row.isSelected ? root.highlightText : root.fg
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.icon
+                }
+
+                Text {
+                  visible: !row.modelData.separator
+                  anchors.left: rowIcon.right
+                  anchors.leftMargin: Style.space(8)
                   anchors.verticalCenter: parent.verticalCenter
                   text: row.modelData.label || ""
                   // Switches with the highlight, no fade (NSMenu).
