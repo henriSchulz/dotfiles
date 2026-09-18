@@ -189,7 +189,8 @@ BarWidget {
         }
       }
     }
-    tooltipText: root.opened ? "" : "Control Center"
+    // No hover tooltip (Henri) — like macOS menu-bar extras, the icon speaks for itself.
+    tooltipText: ""
     onPressed: function(b) { root.togglePanel() }
   }
 }
