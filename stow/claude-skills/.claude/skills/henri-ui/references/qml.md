@@ -3,20 +3,20 @@
 Plugins liegen in `~/.config/omarchy/plugins/henri.*` (gesynct nach `~/Projects/dotfiles`).
 Qt 6.11, Quickshell 0.3 — `FrameAnimation` ist verfügbar.
 
-## Setup pro Plugin
+## Setup pro Plugin — zentral importieren, NIE kopieren
 
-Kopiere beide Dateien ins Plugin-Root (Plugins bleiben so eigenständig/veröffentlichbar):
-
-```bash
-cp ~/.claude/skills/henri-ui/assets/{Motion.js,SpringValue.qml} <plugin>/
-```
+Tokens und Bausteine liegen zentral in `~/.local/share/henri-ui/` (Symlink ins
+dotfiles-Repo). Jedes Plugin importiert sie per absoluter `file:///`-URL — ein
+nackter absoluter Pfad wird von QML abgelehnt:
 
 ```qml
 import QtQuick
 import qs.Commons            // Color.*, Style.* aus dem Omarchy-Theme
-import "Motion.js" as Motion
-// SpringValue.qml liegt im selben Ordner → direkt als Typ nutzbar
+import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
+import "file:///home/henri/.local/share/henri-ui" as HUi   // HUi.SpringValue, zentrale Komponenten
 ```
+
+Ändert sich ein Wert in `Motion.js` → Shell neu laden → alle Plugins ziehen mit.
 
 ## Bausteine
 
@@ -43,29 +43,32 @@ Behavior on color {
 }
 ```
 
-### Position / Scale → SpringValue (behält Geschwindigkeit beim Umlenken)
+### Position / Scale → HUi.SpringValue (behält Geschwindigkeit beim Umlenken)
+
+Default-Preset ist `Motion.smooth`; andere nur über `preset: Motion.snappy|gentle|bouncy`,
+nie eigene `response`-Zahlen.
 
 ```qml
-SpringValue { id: pressS; to: tap.pressed ? Motion.pressScale : 1; response: 0.40; dampingRatio: 0.85 }
+HUi.SpringValue { id: pressS; to: tap.pressed ? Motion.pressScale : 1; preset: Motion.snappy }
 scale: pressS.value
 ```
 
 `Behavior on x { NumberAnimation {…} }` nur für einfache Fälle; für alles, was oft
-umgelenkt wird (Highlight, Drag, Workspace-Wechsel, Popover-Scale), `SpringValue`.
+umgelenkt wird (Highlight, Drag, Workspace-Wechsel, Popover-Scale), `HUi.SpringValue`.
 
 ### Button
 
 ```qml
 Rectangle {
   id: btn
-  radius: 8
+  radius: Motion.radiusControl
   color: tap.pressed ? Style.pressedFill : hover.hovered ? Style.hoverFill : "transparent"
   scale: pressS.value
   Behavior on color {
     ColorAnimation { duration: hover.hovered ? Motion.instant : Motion.fast
       easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
   }
-  SpringValue { id: pressS; to: tap.pressed ? Motion.pressScale : 1; response: 0.40; dampingRatio: 0.85 }
+  HUi.SpringValue { id: pressS; to: tap.pressed ? Motion.pressScale : 1; preset: Motion.snappy }
   HoverHandler { id: hover }
   TapHandler { id: tap; onTapped: btn.clicked() }
   signal clicked()
@@ -85,8 +88,8 @@ Item {
   scale: scaleS.value
   transform: Translate { y: offS.value }
 
-  SpringValue { id: scaleS; to: menu.open ? 1 : Motion.exitToScale; response: 0.35 }
-  SpringValue { id: offS; to: menu.open ? 0 : Motion.menuOffsetY; response: 0.35; epsilon: 0.1 }
+  HUi.SpringValue { id: scaleS; to: menu.open ? 1 : Motion.exitToScale }
+  HUi.SpringValue { id: offS; to: menu.open ? 0 : Motion.menuOffsetY; epsilon: 0.1 }
 
   Behavior on opacity {
     NumberAnimation {
@@ -101,7 +104,7 @@ Item {
 }
 ```
 
-Popover/Panel: gleich, aber `Motion.popoverFromScale`, `response: 0.5` (gentle),
+Popover/Panel: gleich, aber `Motion.popoverFromScale`, `preset: Motion.gentle`,
 Opacity-Dauer `Motion.slow`.
 
 ### Gleitendes Auswahl-Highlight (Menüs, Listen, Tabs)
@@ -111,14 +114,14 @@ Ein einziges Rechteck hinter den Einträgen, das per Spring zur aktuellen Zeile 
 ```qml
 Rectangle {
   id: highlight
-  radius: 6
+  radius: Motion.radiusRow
   color: Color.accent
   opacity: list.currentIndex >= 0 ? 1 : 0
   y: hlY.value
   height: hlH.value
   width: parent.width
-  SpringValue { id: hlY; to: list.currentItem ? list.currentItem.y : 0; response: 0.35; epsilon: 0.3 }
-  SpringValue { id: hlH; to: list.currentItem ? list.currentItem.height : 0; response: 0.35; epsilon: 0.3 }
+  HUi.SpringValue { id: hlY; to: list.currentItem ? list.currentItem.y : 0; epsilon: 0.3 }
+  HUi.SpringValue { id: hlH; to: list.currentItem ? list.currentItem.height : 0; epsilon: 0.3 }
   Behavior on opacity { NumberAnimation { duration: Motion.fast } }
 }
 ```
@@ -132,7 +135,7 @@ selbst an den Spring binden.
 Item {
   clip: true
   height: hS.value
-  SpringValue { id: hS; to: content.implicitHeight; response: 0.35; epsilon: 0.3 }
+  HUi.SpringValue { id: hS; to: content.implicitHeight; epsilon: 0.3 }
 }
 ```
 
@@ -167,7 +170,7 @@ Text {
 add: Transition {
   NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Motion.base
     easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
-  NumberAnimation { property: "scale"; from: 0.96; to: 1; duration: Motion.base
+  NumberAnimation { property: "scale"; from: Motion.menuFromScale; to: 1; duration: Motion.base
     easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
 }
 displaced: Transition {
@@ -178,7 +181,8 @@ displaced: Transition {
 
 - Stagger beim ersten Erscheinen: `PauseAnimation { duration: Motion.stagger(index) }`.
 - `Flickable`/`ListView`: `boundsBehavior: Flickable.DragAndOvershootBounds`,
-  `flickDeceleration: 1500`, `maximumFlickVelocity: 4000`.
+  `flickDeceleration: Motion.flickDeceleration`,
+  `maximumFlickVelocity: Motion.maximumFlickVelocity`.
 
 ## Theme & Stil
 
@@ -193,7 +197,7 @@ displaced: Transition {
 ## Reduce Motion
 
 Es gibt keinen System-Schalter; wenn ein Plugin eine Option `reduceMotion` hat,
-dann: SpringValue `snap()` statt `to`, nur Opacity-Behaviors aktiv lassen.
+dann: `HUi.SpringValue.snap()` statt `to`, nur Opacity-Behaviors aktiv lassen.
 
 ## Verboten in Plugins
 

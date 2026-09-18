@@ -10,12 +10,52 @@ weich, ruhig, physikalisch, jederzeit unterbrechbar. Der Nutzer will diese Regel
 **nicht jedes Mal neu erklären** — sie gelten als Default, ohne Rückfrage. Nur
 abweichen, wenn er es im konkreten Fall ausdrücklich sagt.
 
-Framework-spezifische Umsetzung (fertige Snippets, Dateien zum Kopieren):
-- Omarchy-Shell-Plugins / Quickshell / QML → `references/qml.md` + `assets/Motion.js`
+Framework-spezifische Umsetzung (Snippets + wie man zentral einbindet):
+- Omarchy-Shell-Plugins / Quickshell / QML → `references/qml.md`
 - GTK4 / libadwaita (gtk-rs, PyGObject) → `references/gtk.md`
-- Web / Tauri / Electron / HTML → `references/web.md` + `assets/motion.css`
+- Web / Tauri / Electron / HTML → `references/web.md`
 
 Lies die passende Referenz, bevor du Code schreibst.
+
+## 0. Eine zentrale Quelle — Änderungen ziehen überall mit
+
+Henris Anforderung: Ändert er eine Richtlinie, müssen **alle** Plugins und Apps, die
+danach gebaut wurden, automatisch mitziehen. Deshalb:
+
+**Wo alles liegt** — `~/.local/share/henri-ui/` (Symlink auf
+`~/Projects/dotfiles/stow/henri-ui/.local/share/henri-ui/`):
+
+| Datei | Für | Einbinden |
+|-------|-----|-----------|
+| `Motion.js` | QML-Plugins: Dauern, Kurven, Spring-Presets, Radien, Skalen | `import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion` |
+| `SpringValue.qml` + weitere `*.qml` | QML: gemeinsame Bausteine/Komponenten | `import "file:///home/henri/.local/share/henri-ui" as HUi` |
+| `gtk.css` | GTK4/libadwaita-Apps | zur Laufzeit laden + FileMonitor |
+| `motion.css` | Web/Tauri/Electron | zur Laufzeit laden bzw. im Build aus der Quelle ziehen |
+
+**Regeln beim Bauen**
+1. **Nie kopieren, immer zentral importieren.** Keine lokale Kopie von `Motion.js`,
+   `SpringValue.qml` oder den CSS-Dateien im Projekt.
+2. **Keine eigenen Zahlen im Plugin/in der App** für Dauer, Kurve, Spring, Radius,
+   Press-/Enter-Skala. Fehlt ein Token, wird er **zentral** ergänzt (und in diesem
+   Skill dokumentiert), dann verwendet.
+3. **Wiederkehrende Komponenten zentral.** Braucht ein zweites Plugin denselben
+   Baustein (Button, Menü-Container, gleitendes Highlight, Toggle, Popover-Hülle,
+   Crossfade-Text …), wird er als `HUi.<Name>.qml` in `~/.local/share/henri-ui/`
+   angelegt und beide Plugins nutzen ihn. So ziehen auch **Verhaltens**-Änderungen
+   überall mit, nicht nur Zahlen.
+4. Farben kommen ohnehin zentral aus dem Omarchy-Theme.
+
+**Wenn Henri eine Richtlinie ändert** („Menüs langsamer“, „Buttons ohne Scale“ …):
+1. Wert-Änderung → nur in der zentralen Datei ändern (QML **und** CSS-Dateien, damit
+   alle Toolkits gleich bleiben) und die Tabellen hier in SKILL.md mitziehen.
+2. Verhaltens-Änderung → die zentrale Komponente ändern + Regel hier anpassen.
+3. Danach Altlasten suchen, die noch nicht zentral sind, und umstellen:
+   ```bash
+   grep -rnE 'duration: *[0-9]|Easing\.(Out|In|InOut)(Back|Elastic|Bounce|Quad|Cubic|Quint)|response: *[0-9]|radius: *[0-9]' \
+     ~/.config/omarchy/plugins/henri.* --include=*.qml
+   ```
+   (GTK/Web-Projekte in `~/Projects` analog auf feste ms-/cubic-bezier-/px-Werte prüfen.)
+4. Omarchy-Shell neu laden, prüfen, im dotfiles-Repo committen und pushen.
 
 ## 1. Die sieben Motion-Gesetze (nicht verhandelbar)
 
@@ -39,7 +79,9 @@ Lies die passende Referenz, bevor du Code schreibst.
 
 ## 2. Motion-Tokens (überall identisch — keine Freihand-Werte!)
 
-Nie eigene Dauern/Kurven erfinden (`duration: 137`, `Easing.OutBack` …). Immer diese Tokens.
+Nie eigene Dauern/Kurven erfinden (`duration: 137`, `Easing.OutBack` …). Immer diese
+Tokens — die gültigen Werte stehen in den zentralen Dateien (§0); diese Tabellen
+erklären sie und müssen bei Änderungen mitgezogen werden.
 
 ### Dauern
 
@@ -63,7 +105,8 @@ Nie eigene Dauern/Kurven erfinden (`duration: 137`, `Easing.OutBack` …). Immer
 
 ### Springs (SwiftUI-Parameter, bevorzugt für Position/Scale)
 
-Ausgerechnet (Masse 1, `stiffness = (2π/response)²`), exakte CSS-Kurven in `assets/motion.css`.
+Ausgerechnet (Masse 1, `stiffness = (2π/response)²`). Presets in `Motion.js`
+(`Motion.smooth` …), exakte CSS-Kurven in `motion.css`.
 
 | Token    | response | dampingRatio | stiffness | Overshoot | Einschwingen | Verwendung |
 |----------|----------|--------------|-----------|-----------|--------------|------------|
@@ -156,7 +199,8 @@ Springs behalten beim Unterbrechen die Geschwindigkeit bei → das ist das
 
 ## 6. Checkliste vor dem Abschluss
 
-- [ ] Keine hartkodierten Dauern/Kurven — nur Tokens aus Abschnitt 2
+- [ ] Zentral importiert (§0), keine lokale Kopie; keine eigenen Zahlen für Dauer/Kurve/Spring/Radius
+- [ ] Baustein, den es schon in einem anderen Plugin gibt → zentral als `HUi.*` angelegt
 - [ ] Kein Element erscheint/verschwindet ohne Übergang
 - [ ] Schnelles Hover-Wackeln / Auf-Zu-Spam getestet: kein Springen, keine Queue
 - [ ] Nur transform/opacity pro Frame animiert

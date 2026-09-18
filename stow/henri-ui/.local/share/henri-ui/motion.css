@@ -1,5 +1,7 @@
 /* Henri UI motion tokens — Web / Tauri / Electron.
- * Copy into the project (or @import) and use the variables; never hand-pick
+ * Single source of truth: load this file at runtime from
+ * ~/.local/share/henri-ui/motion.css (Tauri/Electron) instead of copying it,
+ * so edits here reach every app. Use the variables; never hand-pick
  * durations or curves. Values mirror SKILL.md.
  * Spring curves are exact solutions of a mass-1 spring (see SKILL.md table),
  * sampled into linear(); pair each with its -dur. */

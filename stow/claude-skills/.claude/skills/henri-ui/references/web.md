@@ -1,10 +1,15 @@
 # Web / Tauri / Electron / HTML
 
-## Setup
+## Setup — zentral laden, NIE kopieren
 
-```bash
-cp ~/.claude/skills/henri-ui/assets/motion.css <projekt>/src/styles/motion.css
-```
+Einzige Quelle: `~/.local/share/henri-ui/motion.css`.
+- **Tauri/Electron:** Datei beim Start lesen (fs-API) und als `<style id="henri-ui">`
+  einfügen; Datei beobachten → Inhalt ersetzen (live). Im Dev-Server alternativ per
+  Symlink/Alias einbinden (`@import "henri-ui/motion.css"` mit Vite-Alias auf den Ordner).
+- **Veröffentlichte Web-Seiten** (kein Dateizugriff): beim Build aus der zentralen
+  Datei kopieren lassen (Build-Schritt), nicht von Hand — so bleibt es eine Quelle.
+- JS-Werte (`spring`, `dur`, `ease` unten) ebenfalls aus einer zentralen Datei
+  importieren, nicht im Projekt duplizieren.
 
 Enthält alle Tokens als CSS-Variablen, exakte Spring-Kurven (`--spring-*` als
 `linear()` + passende `--spring-*-dur`), fertige Klassen `.ui-control`, `.ui-menu`,

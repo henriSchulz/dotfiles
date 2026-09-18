@@ -4,41 +4,24 @@ Installiert: GTK 4.22, libadwaita 1.9. GTK-CSS kann `transition`, `cubic-bezier(
 `transform`/`transform-origin` und CSS-Variablen (`var()`). libadwaita hat echte
 Springs (`Adw.SpringAnimation`).
 
-## 1. CSS-Tokens (einmal pro App laden, `gtk::CssProvider`, Priorität APPLICATION)
+## 1. CSS-Tokens — zentral laden, NIE kopieren
 
-```css
-:root {
-  --dur-instant: 90ms;
-  --dur-fast: 160ms;
-  --dur-base: 240ms;
-  --dur-slow: 380ms;
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-in-out: cubic-bezier(0.45, 0, 0.15, 1);
-  --ease-exit: cubic-bezier(0.4, 0, 0.7, 0.2);
+Die Tokens liegen in `~/.local/share/henri-ui/gtk.css` (einzige Quelle). Jede App lädt
+genau diese Datei zur Laufzeit und beobachtet sie, damit Änderungen überall ankommen:
 
-  --radius-panel: 14px;
-  --radius-popover: 10px;
-  --radius-control: 8px;
-  --radius-row: 6px;
-}
-
-button, row, .card, menuitem, modelbutton {
-  transition: background-color var(--dur-fast) var(--ease-out),
-              color var(--dur-fast) var(--ease-out),
-              box-shadow var(--dur-fast) var(--ease-out),
-              opacity var(--dur-base) var(--ease-out),
-              transform var(--dur-fast) var(--ease-out);
-}
-button:hover, row:hover, modelbutton:hover { transition-duration: var(--dur-instant); }
-button:active { transform: scale(0.97); transition-duration: var(--dur-instant); }
-
-button   { border-radius: var(--radius-control); }
-popover > contents { border-radius: var(--radius-popover); }
-popover modelbutton, popover row { border-radius: var(--radius-row); }
+```rust
+let path = glib::home_dir().join(".local/share/henri-ui/gtk.css");
+let provider = gtk::CssProvider::new();
+provider.load_from_path(&path);
+gtk::style_context_add_provider_for_display(
+    &gdk::Display::default().unwrap(), &provider,
+    gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+// FileMonitor auf `path` → bei Änderung provider.load_from_path(&path)
 ```
 
-Falls eine GTK-Version `var()` in `transition` ablehnt (Warnung im Terminal), die
-Werte direkt einsetzen — Tokens bleiben dieselben Zahlen.
+App-eigenes CSS danach laden und dort nur `var(--dur-*)`, `var(--radius-*)` usw.
+verwenden, keine eigenen Zahlen. Fehlt die Datei (fremder Rechner), läuft die App mit
+libadwaita-Defaults weiter — kein Absturz.
 
 ## 2. Farben aus dem Omarchy-Theme
 
