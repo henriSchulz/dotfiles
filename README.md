@@ -41,7 +41,7 @@ differences were committed:
 | `stow/git/.config/git/config` | identity + credential helper |
 | `stow/claude-quick/` | `Claude` app-launcher entry (Claude logo): `claude-quick` opens Claude Code in `~` with `--model sonnet` and pre-accepts the trust dialog for `~` |
 | `stow/claude-skills/.claude/skills/henri-ui/` | Claude-Code-Skill mit meinem verbindlichen UI-/Motion-Stil (macOS-Feeling): Regeln, Komponenten-Rezepte, Einbindung pro Toolkit. Lädt automatisch bei jeder UI-Arbeit |
-| `stow/henri-ui/.local/share/henri-ui/` | **Einzige Quelle** der UI-Tokens, die alle Plugins/Apps zur Laufzeit importieren (`Motion.js`, `SpringValue.qml`, `gtk.css`, `motion.css`) — hier einen Wert ändern, Shell neu laden, alles zieht mit |
+| `stow/henri-ui/.local/share/henri-ui/` | **Einzige Quelle** meines UI-Stils, die alle Plugins/Apps zur Laufzeit importieren: Tokens (`Motion.js`, `gtk.css`, `motion.css`) und fertige QML-Komponenten (`Reveal`, `Surface`, `Button`, `MenuList`, `Highlight`, `Toggle`, `PageStack` …). Galerie + Selbsttest: `quickshell -p ~/.local/share/henri-ui/gallery/shell.qml`. Hier ändern, Shell neu laden, alles zieht mit |
 | `stow/icons/` | Icon overrides for the dock, each a Yaru PNG wrapped in an SVG. `apps/org.gnome.Nautilus.svg` — Files as the Yaru-blue folder; Nautilus has no icon in the active theme, so lookups fell through to the blue filing cabinet in `/usr/share/icons/hicolor`. `devices/drive-*.svg`, `devices/media-optical.svg` — mounted drives in light Yaru grey; they resolved to Breeze's dark-on-light 24px glyphs and were invisible on the dark dock. Both work because the shell's icon index scans `~/.local/share/icons` first and prefers SVG over PNG, so a scalable file here wins |
 | `omarchy/shell.json` | bar layout, widget order, idle timers |
 | `omarchy/keystroke.json`, `omadock.json`, `dock.json`, `defaults/agent` | small real settings |
@@ -148,6 +148,7 @@ install/
   50-omarchy-config.sh      copy keystroke/dock settings into place
   70-omarchy-shell.sh       restore shell.json, restart the shell
   80-obsidian.sh            vault config, plugins, themes, vault registration
+  85-claude-skills.sh       third-party Claude skills at a pinned commit (apple-design; not vendored — Apple text)
   90-icloud-photos.sh       clone the client, build its venv, seed its config
 packages/packages.txt
 stow/                       symlinked into $HOME

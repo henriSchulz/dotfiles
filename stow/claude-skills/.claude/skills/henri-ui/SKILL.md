@@ -28,7 +28,8 @@ danach gebaut wurden, automatisch mitziehen. Deshalb:
 | Datei | Für | Einbinden |
 |-------|-----|-----------|
 | `Motion.js` | QML-Plugins: Dauern, Kurven, Spring-Presets, Radien, Skalen | `import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion` |
-| `SpringValue.qml` + weitere `*.qml` | QML: gemeinsame Bausteine/Komponenten | `import "file:///home/henri/.local/share/henri-ui" as HUi` |
+| `*.qml` (Reveal, Surface, Pressable, Button, MenuList, Highlight, Toggle, CrossfadeText, Collapse, PageStack, StaggerIn, SpringValue) | QML: fertige Komponenten — Katalog in `references/qml.md` | `import "file:///home/henri/.local/share/henri-ui" as HUi` |
+| `gallery/shell.qml` | Alle Komponenten live + Selbsttest | `quickshell -p ~/.local/share/henri-ui/gallery/shell.qml` |
 | `gtk.css` | GTK4/libadwaita-Apps | zur Laufzeit laden + FileMonitor |
 | `motion.css` | Web/Tauri/Electron | zur Laufzeit laden bzw. im Build aus der Quelle ziehen |
 
@@ -44,6 +45,10 @@ danach gebaut wurden, automatisch mitziehen. Deshalb:
    angelegt und beide Plugins nutzen ihn. So ziehen auch **Verhaltens**-Änderungen
    überall mit, nicht nur Zahlen.
 4. Farben kommen ohnehin zentral aus dem Omarchy-Theme.
+
+**Globale Schalter** (in `Motion.js`, CSS analog): `speed` (1.0 = normal, 1.2 = alles
+20 % langsamer — Dauern *und* Springs) und `reduceMotion` (nur noch Crossfades).
+„Alles etwas langsamer/schneller“ = nur `speed` ändern.
 
 **Wenn Henri eine Richtlinie ändert** („Menüs langsamer“, „Buttons ohne Scale“ …):
 1. Wert-Änderung → nur in der zentralen Datei ändern (QML **und** CSS-Dateien, damit
@@ -61,6 +66,11 @@ danach gebaut wurden, automatisch mitziehen. Deshalb:
 
 1. **Nichts springt.** Jede sichtbare Zustandsänderung (Farbe, Größe, Position,
    Sichtbarkeit, Inhalt) wird animiert. Kein `visible = false` ohne vorheriges Ausfaden.
+   Aber (Apple HIG): **häufige** Interaktionen (Hover, Tippen, Listen-Navigation)
+   bekommen nur kurze, leise Übergänge (`instant`/`fast`, Farbe/Opacity) — keine
+   Bewegung, kein Scale außer dem Press-Feedback. Große Bewegung nur für seltene,
+   räumliche Wechsel (Popup öffnen, Drill-in, Overview). Nie warten müssen: jede
+   Animation ist sofort überschreibbar.
 2. **Unterbrechbar.** Eine Animation startet immer vom *aktuellen* Wert, nie vom
    Anfang. Schnelles Hin-und-Her (Hover rein/raus, Menü auf/zu) darf nie ruckeln,
    springen oder sich in einer Queue stauen. → Transitions/Behaviors statt Keyframes.
@@ -120,6 +130,9 @@ Springs behalten beim Unterbrechen die Geschwindigkeit bei → das ist das
 
 ## 3. Komponenten-Rezepte (macOS-Verhalten)
 
+In QML sind diese Rezepte als **fertige `HUi.*`-Komponenten** umgesetzt — benutzen,
+nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
+
 **Button**
 - Hover: Fill blendet ein (`instant`, easeOut), raus (`fast`). Kein Größen-Hover.
 - Press: `scale 0.97` + etwas dunklerer Fill, sofort (`instant`); Loslassen springt mit
@@ -131,12 +144,15 @@ Springs behalten beim Unterbrechen die Geschwindigkeit bei → das ist das
 - Öffnen: `opacity 0→1` + `scale 0.96→1` + `translateY -4px→0`, Ursprung am Anker,
   `base` + easeOut (oder `smooth`-Spring für Scale).
 - Schließen: nur `opacity→0` + `scale→0.98`, `base×0.7`, easeExit.
-- Nach Klick auf einen Eintrag: Eintrag blinkt einmal kurz (Highlight aus/an, ~80 ms),
-  danach Menü ausfaden — wie NSMenu.
+- Nach Klick auf einen Eintrag: Eintrag blinkt einmal kurz (Highlight aus/an, je 70 ms),
+  dann erst die Aktion + Menü ausfaden — wie NSMenu.
+- Maus verlässt das Menü → Highlight blendet aus. Tastatur: ↑ ↓ Home End ⏎ Esc;
+  Separatoren und deaktivierte Einträge werden übersprungen.
 - Hover-/Tastatur-Highlight ist **ein einziges** abgerundetes Rechteck, das mit
   `smooth`-Spring zwischen den Einträgen **gleitet** (nicht pro Eintrag an/aus).
-- Einträge: Höhe ~26–28 px (bei 12pt), Radius 6, Innenabstand 8–10 px, Accent-Fill
-  mit weißem Text für den aktiven Eintrag.
+- Einträge: Höhe 26 px (bei 12 pt), Radius 6, Innenabstand 10 px, Accent-Fill mit
+  Hintergrundfarbe als Text für den aktiven Eintrag; Kürzel rechtsbündig in `muted`;
+  destruktive Einträge in `urgent`.
 
 **Popover / Panel / Control Center**
 - Rein: `opacity` + `scale 0.95→1` vom Anker, `gentle`-Spring bzw. `slow` easeOut.
@@ -171,6 +187,30 @@ Springs behalten beim Unterbrechen die Geschwindigkeit bei → das ist das
 - Hintergrund dimmt/blurt per Opacity eines vorgerenderten Layers (Blur-Radius nie
   animieren). Fenster/Kacheln skalieren von ihrer echten Position aus, `gentle`.
 
+## 3b. Abläufe (Choreografie — immer gleich, in jedem Plugin)
+
+1. **Öffnen** (Bar-Button → Popup): Button gibt Press-Feedback → Fläche erscheint per
+   Reveal vom Anker (Menü `smooth`/`base`, Panel `gentle`/`slow`) → Inhalt (Kacheln,
+   Zeilen) gleichzeitig gestaffelt (15 ms, max. 10) → Tastaturfokus auf das erste
+   sinnvolle Element. Teure Arbeit erst, wenn die Fläche „settled“ ist.
+2. **Auswählen im Menü:** Highlight gleitet mit Maus/Tastatur → Klick/⏎ → Blinken →
+   Aktion auslösen + Menü schließt (Exit, 0.7×).
+3. **Drill-in** (Detailseite): neue Seite von rechts, alte 30 % nach links + Fade,
+   `slow` easeInOut, Höhe gleitet mit. Zurück: Button „‹“, Esc oder ← — gespiegelt.
+4. **Schließen:** Esc, Klick daneben oder erneuter Klick auf den Auslöser → Exit ohne
+   Stagger, alles gemeinsam, schneller als der Eintritt. Fokus zurück zum Auslöser.
+5. **Wechsel zwischen Popups** (Maus gleitet in der Bar zum Nachbarn): altes schließt,
+   neues öffnet **gleichzeitig** — nie auf das Ende der Exit-Animation warten.
+6. **Wert ändert sich:** Text/Zahl crossfadet, Schalter gleitet, Fortschritt animiert
+   linear; nie hartes Umspringen.
+7. **Liste ändert sich:** Neue Zeilen klappen auf + faden, entfernte klappen zu,
+   Nachbarn gleiten nach (`smooth`).
+8. **Warten/Laden:** Unter 300 ms nichts anzeigen; danach dezenter Spinner/Fortschritt
+   per Fade. Inhalt, der ankommt, crossfadet den Platzhalter.
+9. **Fehler:** Feld rötet sich per Farb-Fade; bei falscher Eingabe (Passwort) ein
+   kurzes horizontales Schütteln (3 Ausschläge, ±6 px, ~300 ms) — das einzige erlaubte
+   „Wackeln“, wie bei macOS.
+
 ## 4. Visueller Stil (macOS-nah)
 
 - **Farben immer aus dem Omarchy-Theme**, nie hart codiert
@@ -187,6 +227,12 @@ Springs behalten beim Unterbrechen die Geschwindigkeit bei → das ist das
   Text 400, sekundär = `muted`-Farbe).
 - **Abstände:** 4-px-Raster (4/8/12/16/20/24). In Shell-Plugins `Style.spacing.*`.
 - Icons: dünn, einfarbig (Symbolic), gleiche Strichstärke überall.
+- **Größen (Apple HIG, Desktop):** Controls 28 px hoch (Klickfläche), nie unter 20 px;
+  Fließtext = Theme-Body, nie unter 10 pt; dünne/leichte Schnitte nicht für kleinen Text.
+- **Kontrast:** Text ≤ 17 pt mindestens 4.5 : 1, großer/fetter Text und Glyph-Icons
+  3 : 1 — gegen die tatsächliche Theme-Hintergrundfarbe prüfen (auch `muted`-Text!).
+- Nichts nur über Farbe vermitteln (Status = Farbe + Icon/Text). Jedes Icon-only-Control
+  braucht einen Tooltip/Accessible-Namen. Alles per Tastatur bedienbar.
 
 ## 5. Performance-Regeln (smooth = keine Frame-Drops)
 
@@ -197,10 +243,22 @@ Springs behalten beim Unterbrechen die Geschwindigkeit bei → das ist das
 - Popups vorab instanziieren und nur ein-/ausblenden, statt sie bei jedem Öffnen neu zu bauen.
 - Blur/Schatten nicht animieren; stattdessen Opacity einer fertigen Ebene.
 
-## 6. Checkliste vor dem Abschluss
+## 6. Review mit dem `apple-design`-Skill
+
+Nach dem Bauen einer neuen Oberfläche (oder wenn Henri „review“ sagt) den Skill
+`apple-design` als Prüfer nutzen: Accessibility, Plattform-Konventionen, Craft.
+Rangfolge bei Widersprüchen: **henri-ui gewinnt** (Henris bewusste Entscheidungen,
+z. B. Animations-Werte, Theme-Farben statt Apple-Systemfarben). Findet der Review einen
+echten Mangel, der für alle gilt (z. B. zu kleine Klickflächen), wird er **zentral**
+behoben (Token/Komponente), nicht nur im einen Plugin.
+
+## 7. Checkliste vor dem Abschluss
 
 - [ ] Zentral importiert (§0), keine lokale Kopie; keine eigenen Zahlen für Dauer/Kurve/Spring/Radius
-- [ ] Baustein, den es schon in einem anderen Plugin gibt → zentral als `HUi.*` angelegt
+- [ ] Vorhandene `HUi.*`-Komponenten benutzt; neuer wiederkehrender Baustein → zentral angelegt
+- [ ] Komponenten geändert → Galerie-Selbsttest läuft ohne Warnungen, Screenshots angesehen
+- [ ] Abläufe aus §3b eingehalten (Öffnen, Auswählen, Drill-in, Schließen, Wechsel)
+- [ ] Größen/Kontrast laut §4 (Controls ≥ 20 px, Text ≥ 10 pt, 4.5 : 1)
 - [ ] Kein Element erscheint/verschwindet ohne Übergang
 - [ ] Schnelles Hover-Wackeln / Auf-Zu-Spam getestet: kein Springen, keine Queue
 - [ ] Nur transform/opacity pro Frame animiert

@@ -32,6 +32,16 @@
   --radius-chip: 5px;
 
   --press-scale: 0.97;
+  --flash-duration: 70ms;
+  --stagger-step: 15ms;
+
+  /* Size (Apple HIG, desktop) */
+  --control-height: 28px;
+  --control-min: 20px;
+  --menu-item-height: 26px;
+  --focus-ring: 2px;
+  --hover-alpha: 8%;
+  --pressed-alpha: 14%;
   --hairline: 1px solid color-mix(in srgb, var(--fg, currentColor) 10%, transparent);
   --shadow-popover: 0 8px 24px rgb(0 0 0 / 0.2), 0 0 0 0.5px rgb(0 0 0 / 0.12);
 }

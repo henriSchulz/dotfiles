@@ -1,170 +1,148 @@
 # QML / Quickshell / Omarchy-Shell-Plugins
 
 Plugins liegen in `~/.config/omarchy/plugins/henri.*` (gesynct nach `~/Projects/dotfiles`).
-Qt 6.11, Quickshell 0.3 — `FrameAnimation` ist verfügbar.
+Qt 6.11, Quickshell 0.3.
 
-## Setup pro Plugin — zentral importieren, NIE kopieren
-
-Tokens und Bausteine liegen zentral in `~/.local/share/henri-ui/` (Symlink ins
-dotfiles-Repo). Jedes Plugin importiert sie per absoluter `file:///`-URL — ein
-nackter absoluter Pfad wird von QML abgelehnt:
+## Setup — zentral importieren, NIE kopieren
 
 ```qml
 import QtQuick
-import qs.Commons            // Color.*, Style.* aus dem Omarchy-Theme
+import qs.Commons            // Color.*, Style.*, Util.* aus dem Omarchy-Theme
 import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
-import "file:///home/henri/.local/share/henri-ui" as HUi   // HUi.SpringValue, zentrale Komponenten
+import "file:///home/henri/.local/share/henri-ui" as HUi
 ```
 
-Ändert sich ein Wert in `Motion.js` → Shell neu laden → alle Plugins ziehen mit.
+- Nackte absolute Pfade lehnt QML ab → immer `file:///…`.
+- Beim Shell-Start meldet `quickshell.qmlscanner` „Ignoring unresolvable import …
+  file:///…“ — harmlos (nur der Vorab-Scanner), die Imports funktionieren.
+- Die Komponenten importieren selbst `qs.Commons`/`qs.Ui` → sie bekommen automatisch
+  die Theme-Farben des laufenden Omarchy-Shells.
 
-## Bausteine
+**Galerie** (alle Komponenten live zum Anfassen/Tunen):
+`quickshell -p ~/.local/share/henri-ui/gallery/shell.qml`
 
-### Farbe / Opacity (Behavior, unterbrechbar)
+**Selbsttest** (headless, mit Screenshots) — nach jeder Komponenten-Änderung:
+`QT_QPA_PLATFORM=offscreen HUI_AUTOTEST=1 HUI_SHOT=/tmp/hui quickshell -p ~/.local/share/henri-ui/gallery/shell.qml`
+→ keine `WARN scene`/`TypeError`-Zeilen, endet mit `HUI done`; Screenshots
+`/tmp/hui-*.png` ansehen.
+
+## Komponenten (erst diese benutzen, dann selbst bauen)
+
+| Komponente | Wofür | Wichtigste API |
+|------------|-------|----------------|
+| `HUi.Reveal` | Ein-/Ausblenden jeder Fläche | `open`, `kind: menu\|popover\|panel\|toast`, `origin`, `fromX/fromY`, `settled`, `shown`, `closed()` |
+| `HUi.Surface` | Material (Theme-Hintergrund, Haarlinie, Radius) | `role: popups\|menu\|tooltip\|notifications`, `kind: panel\|popover\|menu\|chip`, `padding`, `contentLeftInset`… (BorderSurface) |
+| `HUi.Pressable` | Basis alles Klickbaren | `clicked()`, `secondaryClicked()`, `tint`, `prominent`, `selected`, `showFill`, `pressScaleEnabled`, `contentColor`, `radius` |
+| `HUi.Button` | Standard-Button | `text`, `icon` (Glyph), `prominent`, + alles von Pressable |
+| `HUi.MenuList` | Komplettes macOS-Menü | `model: [{text, icon, shortcut, enabled, danger, separator}]`, `activated(index, entry)`, `currentIndex`, `move()`, `activate()` |
+| `HUi.Highlight` | Gleitende Auswahl (Listen, Tabs, Segmente) | `target: <Item>` — muss im selben Koordinatenraum liegen |
+| `HUi.Toggle` | Schalter | `checked`, `toggled(bool)` |
+| `HUi.CrossfadeText` | Text/Zahl, die sich ändert | `text`, `color`, `fontSize`, `fontWeight`, `fontFamily` |
+| `HUi.Collapse` | Aufklappen / Höhe gleitet mit Inhalt | `expanded` (true lassen = Höhe folgt jeder Inhaltsänderung) |
+| `HUi.PageStack` | Drill-in-Seiten mit Parallax | StackView: `initialItem`, `push()`, `pop()`, Höhe gleitet |
+| `HUi.StaggerIn` | Gestaffeltes Erscheinen | `active`, `index` |
+| `HUi.SpringValue` | Eigene Spring-Animation | `to`, `value`, `preset`, `epsilon`, `snap(v)` |
+
+Stolperfalle: Kinder von `Pressable`/`Reveal`/`Collapse`/`StaggerIn` landen in einem
+inneren Container — `parent.xyz` zeigt dorthin. Die Komponente per `id` ansprechen
+(`color: row.contentColor`, nicht `parent.contentColor`).
+
+Fehlt ein Baustein und wird er in ≥ 2 Plugins gebraucht → als neue `HUi.*`-Datei in
+`~/.local/share/henri-ui/` anlegen, in die Galerie + Selbsttest aufnehmen, hier in der
+Tabelle ergänzen.
+
+## Abläufe als Code
+
+### Popup aus der Bar (Menü)
 
 ```qml
-Behavior on color {
-  ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
-}
-Behavior on opacity {
-  NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+HUi.Reveal {
+  id: menu
+  kind: "menu"
+  origin: Item.Top                         // Bar unten → Item.Bottom + fromY: 4
+  open: root.opened
+  width: surface.implicitWidth; height: surface.implicitHeight
+
+  HUi.Surface {
+    id: surface
+    anchors.fill: parent
+    role: "menu"; kind: "menu"
+    padding: Style.space(5)
+    implicitWidth: list.implicitWidth + padding * 2
+    implicitHeight: list.implicitHeight + padding * 2
+    HUi.MenuList {
+      id: list
+      x: surface.contentLeftInset; y: surface.contentTopInset
+      width: parent.width - surface.contentLeftInset - surface.contentRightInset
+      focus: menu.open
+      model: root.entries
+      onActivated: function(index, entry) { root.close(); root.run(entry) }
+    }
+  }
 }
 ```
 
-Hover rein schnell, raus langsamer:
+Im `PopupWindow`/`PanelWindow`: Fenster `visible: menu.shown`, damit es erst nach dem
+Ausblenden verschwindet. Keine zusätzliche Opacity-Animation auf der Karte (die
+`PopupCard` der Shell faded selbst mit 140 ms — für neue Plugins HUi.Reveal + eigenes
+`PopupWindow` bevorzugen).
+
+### Panel mit Kacheln (Control Center)
 
 ```qml
-color: hover.hovered ? Style.hoverFill : "transparent"
+HUi.Reveal {
+  id: panel; kind: "panel"; open: root.opened; origin: Item.TopRight
+  HUi.Surface {
+    kind: "panel"
+    HUi.PageStack {
+      id: pages
+      initialItem: Grid {
+        Repeater {
+          model: tiles
+          HUi.StaggerIn { active: panel.open; index: model.index; Tile { … } }
+        }
+      }
+    }
+  }
+}
+```
+
+Teure Arbeit (Scans, Polling, große Modelle) erst bei `panel.settled` starten.
+
+### Wert ändert sich
+
+`HUi.CrossfadeText { text: volume + " %" }`, Schalter `HUi.Toggle`. Icons: zwei Glyphs
+übereinander mit Opacity-Behavior (oder CrossfadeText mit der Icon-Schrift).
+
+### Gleitende Auswahl in eigenen Listen
+
+```qml
+Item {
+  HUi.Highlight { target: col.children[currentIndex] || null }
+  Column { id: col; … }        // bei 0,0 im selben Parent wie der Highlight
+}
+```
+
+`ListView`: `HUi.Highlight` in `contentItem` legen, `target: list.currentItem`.
+
+## Low-Level (nur wenn keine Komponente passt)
+
+```qml
 Behavior on color {
   ColorAnimation {
-    duration: hover.hovered ? Motion.instant : Motion.fast
+    duration: hovered ? Motion.instant : Motion.fast
     easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
   }
 }
+HUi.SpringValue { id: s; to: target; preset: Motion.snappy }   // Default: Motion.smooth
 ```
 
-### Position / Scale → HUi.SpringValue (behält Geschwindigkeit beim Umlenken)
+- Hover-Fills als `Util.alpha(tint, 0)` statt `"transparent"` (sonst blendet es über Schwarz).
+- `from:` nur in `add`-Transitions; in Zustandswechseln erzwingt es Sprünge.
+- Keine `XAnimator`/`OpacityAnimator` für Zustände: sie schreiben den Endwert nicht
+  zuverlässig zurück (im Test blieb eine Seite unsichtbar). `NumberAnimation` nehmen.
 
-Default-Preset ist `Motion.smooth`; andere nur über `preset: Motion.snappy|gentle|bouncy`,
-nie eigene `response`-Zahlen.
-
-```qml
-HUi.SpringValue { id: pressS; to: tap.pressed ? Motion.pressScale : 1; preset: Motion.snappy }
-scale: pressS.value
-```
-
-`Behavior on x { NumberAnimation {…} }` nur für einfache Fälle; für alles, was oft
-umgelenkt wird (Highlight, Drag, Workspace-Wechsel, Popover-Scale), `HUi.SpringValue`.
-
-### Button
-
-```qml
-Rectangle {
-  id: btn
-  radius: Motion.radiusControl
-  color: tap.pressed ? Style.pressedFill : hover.hovered ? Style.hoverFill : "transparent"
-  scale: pressS.value
-  Behavior on color {
-    ColorAnimation { duration: hover.hovered ? Motion.instant : Motion.fast
-      easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
-  }
-  HUi.SpringValue { id: pressS; to: tap.pressed ? Motion.pressScale : 1; preset: Motion.snappy }
-  HoverHandler { id: hover }
-  TapHandler { id: tap; onTapped: btn.clicked() }
-  signal clicked()
-}
-```
-
-### Menü / Popover ein- und ausblenden (nie `visible` hart schalten)
-
-```qml
-Item {
-  id: menu
-  property bool open: false
-  // erst nach dem Ausfaden unsichtbar machen → spart Rendering, kein Sprung
-  visible: open || opacity > 0.001
-  opacity: open ? 1 : 0
-  transformOrigin: Item.Top            // Anker! (Bar oben → Item.Top / TopLeft / TopRight)
-  scale: scaleS.value
-  transform: Translate { y: offS.value }
-
-  HUi.SpringValue { id: scaleS; to: menu.open ? 1 : Motion.exitToScale }
-  HUi.SpringValue { id: offS; to: menu.open ? 0 : Motion.menuOffsetY; epsilon: 0.1 }
-
-  Behavior on opacity {
-    NumberAnimation {
-      duration: menu.open ? Motion.base : Motion.exit(Motion.base)
-      easing.type: Easing.BezierSpline
-      easing.bezierCurve: menu.open ? Motion.easeOut : Motion.easeExit
-    }
-  }
-  // Nur aus komplett geschlossenem Zustand von kleiner Skala starten;
-  // mitten im Schließen wieder öffnen = Spring dreht einfach um.
-  onOpenChanged: if (open && opacity < 0.01) scaleS.snap(Motion.menuFromScale)
-}
-```
-
-Popover/Panel: gleich, aber `Motion.popoverFromScale`, `preset: Motion.gentle`,
-Opacity-Dauer `Motion.slow`.
-
-### Gleitendes Auswahl-Highlight (Menüs, Listen, Tabs)
-
-Ein einziges Rechteck hinter den Einträgen, das per Spring zur aktuellen Zeile gleitet:
-
-```qml
-Rectangle {
-  id: highlight
-  radius: Motion.radiusRow
-  color: Color.accent
-  opacity: list.currentIndex >= 0 ? 1 : 0
-  y: hlY.value
-  height: hlH.value
-  width: parent.width
-  HUi.SpringValue { id: hlY; to: list.currentItem ? list.currentItem.y : 0; epsilon: 0.3 }
-  HUi.SpringValue { id: hlH; to: list.currentItem ? list.currentItem.height : 0; epsilon: 0.3 }
-  Behavior on opacity { NumberAnimation { duration: Motion.fast } }
-}
-```
-
-Bei `ListView` alternativ `highlight:` + `highlightFollowsCurrentItem: false` und y
-selbst an den Spring binden.
-
-### Höhe eines Panels ändert sich
-
-```qml
-Item {
-  clip: true
-  height: hS.value
-  HUi.SpringValue { id: hS; to: content.implicitHeight; epsilon: 0.3 }
-}
-```
-
-### Inhalt crossfaden (Zahl, Icon, Text)
-
-Echter Crossfade = zwei Instanzen übereinander, die neue faded ein, die alte aus
-(beide mit `Behavior on opacity`). Für einfachen Text reicht Aus-/Einfaden über den
-aktuellen Opacity-Wert — `restart()` startet dabei vom aktuellen Wert, springt nicht:
-
-```qml
-Text {
-  id: label
-  property string value            // hier binden, nicht an text
-  onValueChanged: swap.restart()
-  SequentialAnimation {
-    id: swap
-    NumberAnimation { target: label; property: "opacity"; to: 0; duration: Motion.exit(Motion.fast)
-      easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeExit }
-    ScriptAction { script: label.text = label.value }
-    NumberAnimation { target: label; property: "opacity"; to: 1; duration: Motion.fast
-      easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
-  }
-  Component.onCompleted: text = value
-}
-```
-
-### Listen
-
-- `ListView` `add` / `remove` / `displaced` Transitions setzen:
+Listen-Transitions:
 
 ```qml
 add: Transition {
@@ -179,29 +157,23 @@ displaced: Transition {
 }
 ```
 
-- Stagger beim ersten Erscheinen: `PauseAnimation { duration: Motion.stagger(index) }`.
-- `Flickable`/`ListView`: `boundsBehavior: Flickable.DragAndOvershootBounds`,
-  `flickDeceleration: Motion.flickDeceleration`,
-  `maximumFlickVelocity: Motion.maximumFlickVelocity`.
+`Flickable`/`ListView`: `boundsBehavior: Flickable.DragAndOvershootBounds`,
+`flickDeceleration: Motion.flickDeceleration`, `maximumFlickVelocity: Motion.maximumFlickVelocity`.
 
 ## Theme & Stil
 
 - Farben: `Color.foreground/background/accent/muted/urgent`, Flächen `Color.popups.*`,
-  `Color.menu.*`. Zustände: `Style.hoverFill`, `Style.pressedFill`, `Style.selectedFill`.
-- Abstände: `Style.spacing.*` bzw. `Style.space(px)`; Schrift: `Style.font.*`.
-- Radien laut SKILL.md; wo das Plugin zu Hyprland passen soll, `Style.cornerRadius`
-  berücksichtigen (Hyprland-Rounding).
-- Blur hinter Layer-Surfaces: Hyprland `layerrule = blur, <namespace>` +
-  `ignorealpha`. Namespace der `PanelWindow` (`WlrLayershell.namespace`) setzen.
+  `Color.menu.*`. Schrift: `Style.font.*`, Abstände `Style.spacing.*` / `Style.space(px)`.
+- Alle px-Tokens aus `Motion.js` durch `Style.space()` schicken (skaliert mit der Schrift).
+- Blur hinter Layer-Surfaces: Hyprland `layerrule = blur, <namespace>` + `ignorealpha`.
 
-## Reduce Motion
+## Reduce Motion / Tempo
 
-Es gibt keinen System-Schalter; wenn ein Plugin eine Option `reduceMotion` hat,
-dann: `HUi.SpringValue.snap()` statt `to`, nur Opacity-Behaviors aktiv lassen.
+`Motion.reduceMotion = true` → alle Komponenten nur noch Crossfades.
+`Motion.speed = 1.2` → alles 20 % langsamer. Beides zentral, wirkt nach Shell-Reload überall.
 
 ## Verboten in Plugins
 
-`Easing.OutBack`, `Easing.OutElastic`, `Easing.OutBounce`, `Easing.InQuad` auf
-Erscheinen, Freihand-`duration`-Zahlen, `visible:` ohne Fade, `from:`-Werte in
-Zustands-Animationen (erzwingen einen Sprung beim Unterbrechen — nur in
-`add`-Transitions erlaubt).
+`Easing.OutBack`, `Easing.OutElastic`, `Easing.OutBounce`, Freihand-`duration`-Zahlen,
+eigene `response`-Werte, `visible:` ohne Fade, lokale Kopien der henri-ui-Dateien,
+eigene Nachbauten von Button/Menü/Toggle/Highlight, wenn die HUi-Komponente reicht.

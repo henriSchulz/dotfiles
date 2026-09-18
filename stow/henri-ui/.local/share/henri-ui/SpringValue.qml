@@ -27,12 +27,15 @@ FrameAnimation {
   // then runs from v to the current target (e.g. start an open from 0.96).
   function snap(v) {
     velocity = 0
-    value = v
+    value = Motion.reduceMotion ? to : v
     running = value !== to
   }
 
   running: false
-  onToChanged: if (value !== to) running = true
+  onToChanged: {
+    if (Motion.reduceMotion) { velocity = 0; value = to; running = false; return }
+    if (value !== to) running = true
+  }
   Component.onCompleted: value = to
 
   onTriggered: {
