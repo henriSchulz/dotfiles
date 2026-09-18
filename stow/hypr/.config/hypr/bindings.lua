@@ -43,12 +43,23 @@ o.bind("SUPER + SHIFT + G", "Agy", "omarchy-launch-tui --app-id=org.omarchy.agen
 -- Super+Tab wie unter Windows: Super halten + Tab zeigt eine Vorschau aller
 -- Workspaces (Plugin henri.workspace-switcher), jedes weitere Tab wählt den
 -- nächsten, Loslassen von Super wechselt. Ersetzt Omarchys "Next/Previous workspace".
+-- Jeder Aufruf ist ein eigener Prozess und kann einen früheren überholen (kurzes
+-- Antippen: Loslassen kommt vor dem Tab an). Deshalb bekommt jedes Ereignis eine
+-- lückenlose laufende Nummer, mit der das Plugin die Reihenfolge wiederherstellt.
+-- Startwert aus der Uhrzeit, damit die Zählung nach einem Config-Reload weiter steigt.
+local switcher_seq = os.time() * 1000
+local function workspace_switcher(method)
+  return function()
+    switcher_seq = switcher_seq + 1
+    hl.exec_cmd(string.format("omarchy-shell -q workspace-switcher %s %d", method, switcher_seq))
+  end
+end
 hl.unbind("SUPER + TAB")
 hl.unbind("SUPER + SHIFT + TAB")
-o.bind("SUPER + TAB", "Workspace switcher", "omarchy-shell -q workspace-switcher next")
-o.bind("SUPER + SHIFT + TAB", "Workspace switcher (previous)", "omarchy-shell -q workspace-switcher prev")
-o.bind("SUPER + SUPER_L", nil, "omarchy-shell -q workspace-switcher commit", { release = true })
-o.bind("SUPER + SHIFT + SUPER_L", nil, "omarchy-shell -q workspace-switcher commit", { release = true })
+o.bind("SUPER + TAB", "Workspace switcher", workspace_switcher("next"))
+o.bind("SUPER + SHIFT + TAB", "Workspace switcher (previous)", workspace_switcher("prev"))
+o.bind("SUPER + SUPER_L", nil, workspace_switcher("commit"), { release = true })
+o.bind("SUPER + SHIFT + SUPER_L", nil, workspace_switcher("commit"), { release = true })
 
 -- Audio, Bluetooth, Display und WLAN sind nicht mehr in der Leiste, sondern
 -- im Kontrollzentrum (henri.control-center). Omarchys Kürzel öffnen daher

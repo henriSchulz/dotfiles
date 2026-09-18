@@ -46,6 +46,12 @@ var flashDuration = ms(70)    // menu item blink after a click (macOS)
 // Reveal waits for its window's first frame before animating; give up after this.
 var firstFrameTimeout = 400
 var tooltipDelay = 500
+// Super+Tab switcher: the strip only appears once Super+Tab is held this long,
+// a quick tap switches without flashing it (Cmd+Tab / Alt+Tab behaviour).
+var switcherDelay = 100
+// On commit the strip drifts this far in the direction the workspaces slide,
+// so the overlay and the desktop read as one movement.
+var carryOffset = 24
 var tooltipGrace = 1000       // follow-up tooltips show instantly within this window
 
 var staggerStep = 15

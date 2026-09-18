@@ -194,6 +194,17 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
 - Hintergrund dimmt/blurt per Opacity eines vorgerenderten Layers (Blur-Radius nie
   animieren). Fenster/Kacheln skalieren von ihrer echten Position aus, `gentle`.
 
+**Switcher (Super+Tab, wie Cmd/Alt+Tab)**
+- Streifen erscheint erst nach `Motion.switcherDelay` (100 ms) Halten; kurzes Antippen
+  wechselt direkt, ohne dass der Streifen aufblitzt.
+- Rein wie ein Menü aus der Mitte (`HUi.Reveal kind: "menu"`). Auswahlrahmen springt
+  sofort (häufige Interaktion). Aktueller Workspace ist markiert, damit die Richtung
+  vor dem Loslassen lesbar ist.
+- Loslassen: Streifen driftet `Motion.carryOffset` (24 px) **mit** dem Workspace-Slide
+  (Ziel rechts → alles wandert nach links) und faded dabei aus — ein Bewegungsfluss,
+  räumlich wie die Anordnung im Streifen. Hyprlands eigene Layer-Animation für
+  solche Overlays aus (`no_anim`), sonst läuft alles doppelt.
+
 ## 3b. Abläufe (Choreografie — immer gleich, in jedem Plugin)
 
 1. **Öffnen** (Bar-Button → Popup): Button gibt Press-Feedback → Fläche erscheint per

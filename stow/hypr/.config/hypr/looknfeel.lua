@@ -63,3 +63,8 @@ hl.layer_rule({ match = { namespace = "omarchy-bar" }, blur = true, ignore_alpha
 -- Mission Control animiert selbst (Fenster schrumpfen, eigener Crossfade).
 -- Hyprlands Layer-Fade darüber lässt es ruckeln und doppelt blenden.
 hl.layer_rule({ match = { namespace = "mission-control" }, no_anim = true, animation = "none" })
+
+-- Super+Tab-Switcher (henri.workspace-switcher) animiert ebenfalls selbst.
+-- Mit Hyprlands Layer-Fade lag beim Wechsel ein verblassendes Standbild des
+-- Streifens über dem Workspace-Slide.
+hl.layer_rule({ match = { namespace = "workspace-switcher" }, no_anim = true, animation = "none" })
