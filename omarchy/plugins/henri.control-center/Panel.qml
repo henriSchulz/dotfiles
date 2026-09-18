@@ -1075,7 +1075,7 @@ Panel {
       to: pillMouse.pressed && !Motion.reduceMotion ? Motion.pressScale : 1
     }
     property var glyph: null
-    readonly property color ink: pill.selected ? root.onIcon : root.fg
+    property color ink: pill.selected ? root.onIcon : root.fg
     Behavior on ink { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
     Row {
       anchors.centerIn: parent
