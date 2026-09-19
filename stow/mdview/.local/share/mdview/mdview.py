@@ -215,7 +215,7 @@ class ViewerWindow(Gtk.ApplicationWindow):
 
         st = app.state
         self.set_default_size(st.get("width", 900), st.get("height", 1040))
-        self.set_icon_name("text-markdown")
+        self.set_icon_name("mdview")
         bg = Gdk.RGBA()
         bg.parse(app.theme["colors"]["background"])
         self.override_background_color(Gtk.StateFlags.NORMAL, bg)
