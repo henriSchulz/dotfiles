@@ -98,3 +98,38 @@ Verboten: `EaseOutBack`, `EaseOutElastic`, `EaseOutBounce` und alle `*Back/*Elas
 
 `gtk::ScrolledWindow` hat Kinetic Scrolling + Overshoot eingebaut — nicht
 deaktivieren. `set_kinetic_scrolling(true)`.
+
+## 6. Fremde GTK4-Apps umstylen (Files/Nautilus)
+
+Apps, deren Code wir nicht haben, bekommen den Stil über `~/.config/gtk-4.0/gtk.css`
+(stow-Paket `gtk`). Diese Datei **importiert nur**:
+
+1. `~/.local/share/henri-ui/gtk-tokens.css` — nur `:root`-Tokens, keine Regeln
+   (`--dur-*`, `--ease-*`, `--radius-*`, `--press-scale`, `--hover-alpha` …).
+   `gtk.css` (für eigene Apps) importiert dieselbe Datei.
+2. `~/.local/state/henri-ui/gtk-colors.css` — von `henri-ui-gtk-colors` aus dem
+   aktiven Omarchy-Theme erzeugt (`--hui-bg`, `--hui-view`, `--hui-fg`, `--hui-accent`,
+   `--hui-on-accent`, `--hui-menu-selected-*` …); der Hook
+   `~/.config/omarchy/hooks/theme-set.d/henri-ui-gtk-colors` erzeugt sie bei jedem
+   Theme-Wechsel neu (laufende Apps übernehmen sie beim nächsten Start).
+3. Pro App eine Datei (`henri-files.css`), deren Regeln **alle** auf die App gescoped
+   sind (`window.nautilus-window …`) — die globale Datei ändert nie andere Apps.
+   Darin libadwaita-Variablen (`--accent-bg-color`, `--sidebar-bg-color`, …) auf
+   `--hui-*` legen und nur Tokens verwenden.
+
+Files ist nach dem macOS-Finder gebaut: weißer Inhalt + Toolbar (52 px, Haarlinie),
+graue Sidebar mit Akzent-Icons und grauer Auswahl, Pfadleiste als Fenstertitel,
+Liste mit Zebra-Streifen und Akzent-Auswahl, Grid mit grauer Kachel + Akzent-Chip
+am Namen, NSMenu-Menüs (Highlight springt sofort). Icon-Größen per gsettings
+(Grid 64 px, Liste 16 px, `install/26-files-app.sh`).
+
+Testen, ohne Henri zu stören: auf einem versteckten Spezial-Workspace öffnen und
+das Fenster direkt abgreifen:
+
+```bash
+hyprctl eval "hl.exec_cmd('nautilus --new-window ~/Projects/dotfiles', { workspace = 'special:huitest silent', float = true, size = '1100 720' })"
+id=$(hyprctl clients -j | jq -r '.[] | select(.class|test("autilus")) | .stableId')
+grim -T "$id" shot.png     # versteckte Fenster rendern träge: ggf. 2–5 s warten
+nautilus -q
+```
+Unfokussiert = `:backdrop`, dort wirkt alles etwas blasser.

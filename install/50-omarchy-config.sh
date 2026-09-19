@@ -28,6 +28,7 @@ files=(
   "menu.json       644"
   "defaults/agent  644"
   "hooks/theme-set.d/global-wallpaper  755"
+  "hooks/theme-set.d/henri-ui-gtk-colors  755"
 )
 
 for entry in "${files[@]}"; do

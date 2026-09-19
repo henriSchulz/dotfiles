@@ -1,0 +1,3 @@
+#!/bin/bash
+# Regenerate the --hui-* GTK color tokens so henri-ui-styled GTK apps follow the theme.
+"$HOME/.local/bin/henri-ui-gtk-colors"

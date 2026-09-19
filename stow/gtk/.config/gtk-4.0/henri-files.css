@@ -1,0 +1,281 @@
+/* Files (Nautilus) in the henri-ui style, built after the macOS Finder:
+ * white content + toolbar, grey sidebar with accent icons, striped list,
+ * grey icon tile + accent name chip in the grid, NSMenu-style menus.
+ * Every rule is scoped to Nautilus windows; all numbers come from
+ * gtk-tokens.css (--dur-*, --radius-*, …) and colors from gtk-colors.css
+ * (--hui-*, the active Omarchy theme). Reduce motion: GTK's
+ * gtk-enable-animations=false turns every transition here off. */
+
+/* ── Palette: libadwaita variables mapped onto the Omarchy theme ────────── */
+window.nautilus-window {
+  --accent-bg-color: var(--hui-accent);
+  --accent-color: var(--hui-accent);
+  --accent-fg-color: var(--hui-on-accent);
+  --window-bg-color: var(--hui-bg);
+  --window-fg-color: var(--hui-fg);
+  --view-bg-color: var(--hui-view);
+  --view-fg-color: var(--hui-fg);
+  --headerbar-bg-color: var(--hui-view);
+  --headerbar-fg-color: var(--hui-fg);
+  --headerbar-backdrop-color: var(--hui-view);
+  --headerbar-shade-color: color-mix(in srgb, var(--hui-fg) var(--hairline-alpha), transparent);
+  --sidebar-bg-color: var(--hui-bg-dark);
+  --sidebar-fg-color: var(--hui-fg);
+  --sidebar-backdrop-color: var(--hui-bg-dark);
+  --sidebar-border-color: color-mix(in srgb, var(--hui-fg) var(--hairline-alpha), transparent);
+  --sidebar-shade-color: transparent;
+  --popover-bg-color: color-mix(in srgb, var(--hui-bg) var(--hui-surface-alpha), transparent);
+  --popover-fg-color: var(--hui-fg);
+  --dialog-bg-color: var(--hui-bg);
+  --dialog-fg-color: var(--hui-fg);
+  --card-bg-color: color-mix(in srgb, var(--hui-fg) 4%, transparent);
+  --border-color: color-mix(in srgb, var(--hui-fg) var(--hairline-alpha), transparent);
+  --destructive-bg-color: var(--hui-urgent);
+  --destructive-color: var(--hui-urgent);
+  font-size: var(--hui-font-size);
+}
+
+/* ── Buttons: hover fill in fast, out slower; press = scale + darker ────── */
+window.nautilus-window button {
+  min-height: var(--control-min);
+  border-radius: var(--radius-control);
+  transition: background-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out),
+              outline-color var(--dur-fast) var(--ease-out),
+              opacity var(--dur-base) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+window.nautilus-window button:hover { transition-duration: var(--dur-instant); }
+window.nautilus-window button:active,
+window.nautilus-window button.keyboard-activating {
+  transform: scale(var(--press-scale));
+  transition-duration: var(--dur-instant);
+}
+window.nautilus-window button:disabled { opacity: 0.4; }
+
+window.nautilus-window button.flat:hover,
+window.nautilus-window headerbar button:not(.suggested-action):hover,
+window.nautilus-window splitbutton > button:hover,
+window.nautilus-window splitbutton > menubutton > button:hover {
+  background-color: color-mix(in srgb, currentColor var(--hover-alpha), transparent);
+}
+window.nautilus-window button.flat:active,
+window.nautilus-window button.flat:checked,
+window.nautilus-window headerbar button:not(.suggested-action):active,
+window.nautilus-window headerbar button:not(.suggested-action):checked {
+  background-color: color-mix(in srgb, currentColor var(--pressed-alpha), transparent);
+}
+
+/* Split button (view switcher): one pill, like a macOS segmented control. */
+window.nautilus-window splitbutton > button,
+window.nautilus-window splitbutton > menubutton > button { border-radius: var(--radius-control); }
+
+/* ── Toolbar: tall, flat, white, one hairline — the Finder toolbar ─────── */
+window.nautilus-window headerbar {
+  min-height: 52px;
+  box-shadow: inset 0 -1px var(--headerbar-shade-color);
+}
+window.nautilus-window headerbar button { min-height: var(--control-height); min-width: var(--control-height); }
+window.nautilus-window .sidebar-pane headerbar { background: none; box-shadow: none; }
+window.nautilus-window .sidebar-pane headerbar windowtitle { opacity: 0; }
+
+/* Path bar reads like Finder's window title: no pill, the folder name bold,
+ * its parents as quiet secondary crumbs that fill on hover. */
+window.nautilus-window .nautilus-pathbar {
+  background: none;
+  border-radius: var(--radius-control);
+}
+window.nautilus-window .nautilus-pathbar > scrolledwindow undershoot { background: none; border: none; }
+window.nautilus-window .nautilus-path-button {
+  border-radius: var(--radius-row);
+}
+window.nautilus-window .nautilus-path-button:not(.current-dir) {
+  color: color-mix(in srgb, var(--hui-fg) var(--secondary-text-alpha), transparent);
+}
+window.nautilus-window .nautilus-path-button:not(.current-dir):hover {
+  background-color: color-mix(in srgb, currentColor var(--hover-alpha), transparent);
+}
+window.nautilus-window .nautilus-path-button.current-dir label { font-weight: 700; color: var(--hui-fg); }
+window.nautilus-window .nautilus-pathbar > scrolledwindow:dir(ltr) undershoot.left { border-radius: var(--radius-control) 0 0 var(--radius-control); }
+window.nautilus-window .nautilus-pathbar > scrolledwindow:dir(rtl) undershoot.right { border-radius: 0 var(--radius-control) var(--radius-control) 0; }
+
+window.nautilus-window entry,
+window.nautilus-window .nautilus-query-editor {
+  min-height: var(--control-height);
+  border-radius: var(--radius-control);
+  transition: background-color var(--dur-fast) var(--ease-out),
+              outline-color var(--dur-fast) var(--ease-out);
+}
+
+/* Tabs */
+window.nautilus-window tabbar tab {
+  border-radius: var(--radius-control);
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+window.nautilus-window tabbar tab:hover { transition-duration: var(--dur-instant); }
+
+/* ── Sidebar: grey selection, accent icons, 28 px rows ─────────────────── */
+window.nautilus-window .navigation-sidebar > row {
+  min-height: var(--control-height);
+  padding: 0 var(--menu-row-padding);
+  margin: 0 var(--radius-control);
+  border-radius: var(--radius-row);
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+window.nautilus-window .navigation-sidebar > row image { color: var(--hui-accent); }
+window.nautilus-window .navigation-sidebar > row:hover {
+  background-color: color-mix(in srgb, var(--hui-fg) 5%, transparent);
+  transition-duration: var(--dur-instant);
+}
+window.nautilus-window .navigation-sidebar > row:selected {
+  background-color: color-mix(in srgb, var(--hui-fg) 10%, transparent);
+  color: var(--hui-fg);
+}
+window.nautilus-window .navigation-sidebar > row:selected image { color: var(--hui-accent); }
+window.nautilus-window .navigation-sidebar > separator { margin: 6px 16px; }
+
+/* ── File views: accent selection (Nautilus forces grey) ───────────────── */
+window.nautilus-window .nautilus-list-view listview,
+window.nautilus-window .nautilus-grid-view gridview,
+window.nautilus-window .nautilus-network-view listview {
+  --accent-bg-color: var(--hui-accent);
+  --accent-color: var(--hui-accent);
+}
+
+/* List: contiguous rows with Finder's zebra stripes, selection = accent + white. */
+window.nautilus-window .nautilus-list-view columnview > listview { border-spacing: 0; padding-top: 4px; }
+window.nautilus-window .nautilus-list-view columnview > listview > row:nth-child(even) {
+  background-color: color-mix(in srgb, var(--hui-fg) 3%, transparent);
+}
+window.nautilus-window .nautilus-list-view columnview > listview > row,
+window.nautilus-window .nautilus-network-view listview > row {
+  border-radius: var(--radius-row);
+  transition: background-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+window.nautilus-window .nautilus-list-view columnview > listview > row:hover,
+window.nautilus-window .nautilus-network-view listview > row:hover {
+  background-color: color-mix(in srgb, var(--hui-fg) 5%, transparent);
+  transition-duration: var(--dur-instant);
+}
+window.nautilus-window .nautilus-list-view columnview > listview > row:selected,
+window.nautilus-window .nautilus-network-view listview > row:selected {
+  background-color: var(--hui-accent);
+  color: var(--hui-on-accent);
+}
+window.nautilus-window .nautilus-list-view columnview > listview > row:selected .dim-label,
+window.nautilus-window .nautilus-list-view columnview > listview > row:selected label {
+  color: var(--hui-on-accent);
+}
+/* Column header like Finder: secondary text, hairline column separators. */
+window.nautilus-window .nautilus-list-view columnview > header {
+  box-shadow: inset 0 -1px var(--border-color);
+}
+window.nautilus-window .nautilus-list-view columnview > header > button {
+  border-radius: 0;
+  font-weight: 500;
+  opacity: 1;
+  color: color-mix(in srgb, var(--hui-fg) var(--secondary-text-alpha), transparent);
+}
+window.nautilus-window .nautilus-list-view columnview > header > button label { opacity: 1; color: inherit; }
+window.nautilus-window .nautilus-list-view columnview > header > button + button {
+  box-shadow: inset 1px 0 var(--border-color);
+}
+
+/* Grid: grey rounded tile behind the icon, accent chip behind the name. */
+window.nautilus-window .nautilus-grid-view gridview > child {
+  border-radius: var(--radius-control);
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+window.nautilus-window .nautilus-grid-view gridview > child:hover {
+  background-color: color-mix(in srgb, var(--hui-fg) 5%, transparent);
+  transition-duration: var(--dur-instant);
+}
+window.nautilus-window .nautilus-grid-view gridview > child:selected {
+  background-color: color-mix(in srgb, var(--hui-fg) 10%, transparent);
+  color: var(--hui-fg);
+}
+window.nautilus-window .nautilus-grid-view .nautilus-view-cell { border-radius: var(--radius-control); }
+window.nautilus-window .nautilus-grid-view .icon-ui-labels-box > label {
+  padding: 1px 4px;
+  border-radius: var(--radius-chip);
+  transition: background-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+window.nautilus-window .nautilus-grid-view gridview > child:selected .icon-ui-labels-box > label:not(.caption) {
+  background-color: var(--hui-accent);
+  color: var(--hui-on-accent);
+}
+
+window.nautilus-window rubberband {
+  border-radius: var(--radius-chip);
+  border: 1px solid color-mix(in srgb, var(--hui-accent) 60%, transparent);
+  background-color: color-mix(in srgb, var(--hui-accent) 15%, transparent);
+}
+
+/* Secondary text readable (4.5 : 1), not the faint dim-label default. */
+window.nautilus-window .dim-label,
+window.nautilus-window .caption.dim-label {
+  opacity: 1;
+  color: color-mix(in srgb, currentColor var(--secondary-text-alpha), transparent);
+}
+
+/* ── Menus & popovers: Finder menus, NSMenu highlight ──────────────────── */
+@keyframes hui-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.96); }
+}
+window.nautilus-window popover > contents {
+  border-radius: var(--radius-popover);
+  box-shadow: 0 0 0 1px var(--border-color),
+              0 8px 24px color-mix(in srgb, black 20%, transparent);
+  animation: hui-menu-in var(--dur-base) var(--ease-out);
+}
+window.nautilus-window popover > arrow { border-color: var(--border-color); }
+
+window.nautilus-window popover.menu > contents { padding: 5px; }
+window.nautilus-window popover.menu modelbutton {
+  min-height: var(--menu-row-height);
+  padding: 0 var(--menu-row-padding);
+  border-radius: var(--radius-row);
+  transition: none;  /* highlight jumps instantly, like NSMenu */
+}
+window.nautilus-window popover.menu modelbutton:hover,
+window.nautilus-window popover.menu modelbutton:focus-visible,
+window.nautilus-window popover.menu modelbutton:selected {
+  background-color: var(--hui-menu-selected-bg);
+  color: var(--hui-menu-selected-fg);
+}
+window.nautilus-window popover.menu modelbutton:hover accelerator,
+window.nautilus-window popover.menu modelbutton:selected accelerator {
+  color: var(--hui-menu-selected-fg);
+}
+window.nautilus-window popover.menu modelbutton accelerator {
+  color: color-mix(in srgb, var(--hui-fg) var(--secondary-text-alpha), transparent);
+}
+window.nautilus-window popover.menu modelbutton:disabled { opacity: 0.4; }
+window.nautilus-window popover.menu separator { margin: 5px var(--menu-row-padding); }
+window.nautilus-window popover.menu .destructive-action,
+window.nautilus-window popover.menu modelbutton.destructive { color: var(--hui-urgent); }
+
+/* ── Floating status bar, toasts, dialogs ──────────────────────────────── */
+window.nautilus-window .floating-bar {
+  border-radius: var(--radius-popover);
+  background-color: var(--popover-bg-color);
+  box-shadow: 0 0 0 1px var(--border-color),
+              0 4px 12px color-mix(in srgb, black 12%, transparent);
+}
+window.nautilus-window toast {
+  border-radius: var(--radius-popover);
+}
+window.nautilus-window dialog.floating sheet,
+window.nautilus-window dialog.floating > widget {
+  border-radius: var(--radius-panel);
+}
+window.nautilus-window .card,
+window.nautilus-window list.boxed-list {
+  border-radius: var(--radius-control);
+}
+window.nautilus-window list.boxed-list > row {
+  min-height: var(--control-height);
+}

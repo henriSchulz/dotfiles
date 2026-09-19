@@ -24,7 +24,7 @@ for pkg in "${packages[@]}"; do
 done
 
 # Real dirs so stow does not fold them into this repo (other apps write there).
-run mkdir -p "$HOME/.local/share/icons/hicolor/scalable/apps" "$HOME/.claude/skills"
+run mkdir -p "$HOME/.local/share/icons/hicolor/scalable/apps" "$HOME/.claude/skills" "$HOME/.config/gtk-4.0"
 
 info "stowing: ${packages[*]}"
 run stow --dir "$DOTFILES_ROOT/stow" --target "$HOME" --restow "${packages[@]}"
