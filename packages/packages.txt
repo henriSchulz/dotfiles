@@ -12,6 +12,9 @@
 # directly, so it gets named here rather than left to chance.
 stow
 rsync
+# xdg-open (and so `open`) detects file types with `file` unless this is
+# installed; `file` calls .md text/plain, so step 25's defaults would not apply.
+perl-file-mimeinfo
 
 # Editors / dev
 visual-studio-code-bin
