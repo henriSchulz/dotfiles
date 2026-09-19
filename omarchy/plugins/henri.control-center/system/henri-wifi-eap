@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+# Join a WPA/WPA2-Enterprise (802.1X) Wi-Fi network with username + password.
+#
+# Reads one JSON object from stdin so the password never shows up in argv:
+#   {"ssid": "eduroam", "identity": "ab1234@kit.edu", "password": "…",
+#    "eap": "peap"}                      # optional: "peap" (default) or "ttls"
+#
+# Replaces any saved profile for that SSID, creates a system profile with the
+# secrets stored (so later connects are automatic), activates it and waits.
+# Exit 0 = connected, 1 = failed (profile removed again), 2 = bad input.
+import json
+import sys
+import time
+import uuid
+
+import dbus
+
+NM = "org.freedesktop.NetworkManager"
+NM_PATH = "/org/freedesktop/NetworkManager"
+SETTINGS_PATH = "/org/freedesktop/NetworkManager/Settings"
+PROPS = "org.freedesktop.DBus.Properties"
+DEVICE_TYPE_WIFI = 2
+ACTIVE_ACTIVATED = 2
+ACTIVE_DEACTIVATED = 4
+TIMEOUT = 45
+
+
+def fail(message, code=1):
+    print(message, file=sys.stderr)
+    sys.exit(code)
+
+
+try:
+    req = json.loads(sys.stdin.read())
+    ssid = str(req["ssid"])
+    identity = str(req["identity"])
+    password = str(req["password"])
+except Exception:
+    fail("expected JSON {ssid, identity, password} on stdin", 2)
+if not ssid or not identity or not password:
+    fail("ssid, identity and password must not be empty", 2)
+
+eap = "ttls" if req.get("eap") == "ttls" else "peap"
+phase2 = "pap" if eap == "ttls" else "mschapv2"
+
+bus = dbus.SystemBus()
+nm = bus.get_object(NM, NM_PATH)
+settings = dbus.Interface(bus.get_object(NM, SETTINGS_PATH), "org.freedesktop.NetworkManager.Settings")
+
+device = None
+for path in dbus.Interface(nm, NM).GetDevices():
+    obj = bus.get_object(NM, path)
+    if int(obj.Get("org.freedesktop.NetworkManager.Device", "DeviceType", dbus_interface=PROPS)) == DEVICE_TYPE_WIFI:
+        device = path
+        break
+if device is None:
+    fail("no Wi-Fi device")
+
+# Drop stale profiles for this SSID (e.g. an earlier attempt with a typo).
+ssid_bytes = ssid.encode()
+for path in settings.ListConnections():
+    conn = dbus.Interface(bus.get_object(NM, path), "org.freedesktop.NetworkManager.Settings.Connection")
+    try:
+        cfg = conn.GetSettings()
+        if bytes(cfg.get("802-11-wireless", {}).get("ssid", [])) == ssid_bytes:
+            conn.Delete()
+    except dbus.DBusException:
+        pass
+
+profile = dbus.Dictionary({
+    "connection": dbus.Dictionary({
+        "id": ssid,
+        "uuid": str(uuid.uuid4()),
+        "type": "802-11-wireless",
+        "autoconnect": True,
+    }, signature="sv"),
+    "802-11-wireless": dbus.Dictionary({
+        "ssid": dbus.ByteArray(ssid_bytes),
+        "mode": "infrastructure",
+    }, signature="sv"),
+    "802-11-wireless-security": dbus.Dictionary({
+        "key-mgmt": "wpa-eap",
+    }, signature="sv"),
+    "802-1x": dbus.Dictionary({
+        "eap": dbus.Array([eap], signature="s"),
+        "identity": identity,
+        "password": password,
+        "password-flags": dbus.UInt32(0),   # stored by NetworkManager
+        "phase2-auth": phase2,
+    }, signature="sv"),
+    "ipv4": dbus.Dictionary({"method": "auto"}, signature="sv"),
+    "ipv6": dbus.Dictionary({"method": "auto"}, signature="sv"),
+}, signature="sa{sv}")
+
+try:
+    conn_path, active_path = dbus.Interface(nm, NM).AddAndActivateConnection(profile, device, "/")
+except dbus.DBusException as e:
+    fail(e.get_dbus_message() or str(e))
+
+
+def remove_profile():
+    try:
+        dbus.Interface(bus.get_object(NM, conn_path), "org.freedesktop.NetworkManager.Settings.Connection").Delete()
+    except dbus.DBusException:
+        pass
+
+
+deadline = time.monotonic() + TIMEOUT
+while time.monotonic() < deadline:
+    try:
+        state = int(bus.get_object(NM, active_path).Get(
+            "org.freedesktop.NetworkManager.Connection.Active", "State", dbus_interface=PROPS))
+    except dbus.DBusException:
+        state = ACTIVE_DEACTIVATED   # the active connection vanished
+    if state == ACTIVE_ACTIVATED:
+        sys.exit(0)
+    if state == ACTIVE_DEACTIVATED:
+        break
+    time.sleep(0.25)
+
+remove_profile()
+fail("activation failed")

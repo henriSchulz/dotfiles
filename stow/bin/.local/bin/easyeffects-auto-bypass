@@ -1,0 +1,34 @@
+#!/bin/bash
+# EasyEffects only on the laptop speakers: follow the default output and turn
+# the global bypass off on the speakers, on for everything else (AirPods,
+# HDMI, USB). Runs next to easyeffects-service, started from autostart.lua.
+
+speaker_pattern='HiFi__Speaker__sink'
+applied=""
+
+apply() {
+  # Without a running service `easyeffects -b` would open a new window.
+  pgrep -x easyeffects >/dev/null || { applied=""; return; }
+  local sink want
+  sink=$(pactl get-default-sink 2>/dev/null) || return
+  [[ -z $sink || $sink == easyeffects_sink ]] && return
+  if [[ $sink == *$speaker_pattern* ]]; then want=2; else want=1; fi
+  [[ $want == "$applied" ]] && return
+  easyeffects -b "$want" >/dev/null 2>&1 && applied=$want
+}
+
+# EasyEffects starts in parallel at login; wait until it answers.
+for _ in $(seq 60); do
+  pgrep -x easyeffects >/dev/null && break
+  sleep 1
+done
+sleep 2
+apply
+
+# "server" changes carry default-sink switches, sink events cover a device
+# (AirPods) appearing or going away while it is the default.
+pactl subscribe 2>/dev/null | while read -r line; do
+  case $line in
+    *"on server"*|*"on sink #"*) apply ;;
+  esac
+done

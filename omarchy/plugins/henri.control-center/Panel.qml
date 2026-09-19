@@ -8,6 +8,7 @@ import qs.Commons
 import qs.Ui
 import "Display.js" as Display
 import "Network.js" as Net
+import "AirPods.js" as Pods
 import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
 import "file:///home/henri/.local/share/henri-ui" as HUi
 
@@ -462,6 +463,7 @@ Panel {
     for (var i = 0; i < nodes.length; i++) {
       var n = nodes[i]
       if (!n || !n.isSink || n.isStream || !n.audio) continue
+      if (n.name === "easyeffects_sink") continue
       var props = n.properties || {}
       rows.push({
         id: n.id,
@@ -563,6 +565,34 @@ Panel {
   readonly property bool dnd: notifications ? notifications.doNotDisturb : false
   readonly property bool nightOn: nightlight ? nightlight.enabled : false
   readonly property bool stayAwake: idle ? idle.stayAwake : false
+
+  // ---- AirPods, through the librepods daemon (AirPodsService.qml). While
+  //      they are connected the Sound tile becomes theirs and drills into
+  //      the "airpods" page with battery, listening mode and pod settings.
+  AirPodsService { id: pods }
+  readonly property bool airpodsActive: pods.hasAirPods
+  readonly property string airpodsName: pods.modelName !== "" ? pods.modelName
+    : pods.deviceName !== "" ? pods.deviceName : "AirPods"
+  readonly property string airpodsVariant: pods.isHeadset ? "max" : pods.isProSeries ? "pro" : "buds"
+  readonly property var airpodsModes: pods.availableModes()
+  readonly property var airpodsBatteries: pods.isHeadset
+    ? [{ label: "Headphones", level: pods.headsetBattery.level, charging: pods.headsetBattery.charging }]
+    : [{ label: "Left", level: pods.leftPod.level, charging: pods.leftPod.charging },
+       { label: "Right", level: pods.rightPod.level, charging: pods.rightPod.charging },
+       { label: "Case", level: pods.caseBattery.level, charging: pods.caseBattery.charging }]
+  // Lowest bud (or headset) level for the Sound tile, like the macOS menu.
+  readonly property int airpodsLevel: {
+    var levels = pods.isHeadset ? [pods.headsetBattery.level] : [pods.leftPod.level, pods.rightPod.level]
+    var known = levels.filter(function(l) { return l !== Pods.LEVEL_UNKNOWN })
+    return known.length ? Math.min.apply(null, known) : -1
+  }
+  function noiseModeIcon(mode) {
+    if (mode === Pods.NOISE_ANC) return sf(0xF0A45)          // md ear-hearing-off
+    if (mode === Pods.NOISE_TRANSPARENCY) return sf(0xF07C5) // md ear-hearing
+    if (mode === Pods.NOISE_ADAPTIVE) return sf(0xF00E1)     // md brightness-auto
+    return sf(0xF1852)                                        // md earbuds-outline
+  }
+  onAirpodsActiveChanged: if (!airpodsActive && page === "airpods") page = "main"
 
   // ---- Sound
   readonly property var sink: Pipewire.defaultAudioSink
@@ -678,6 +708,7 @@ Panel {
   onOpenedChanged: {
     if (opened) {
       refresh()
+      pods.refresh()
       revealTimer.restart()
     } else {
       revealed = false
@@ -981,6 +1012,8 @@ Panel {
     property real value: 0
     property bool expandable: false
     property bool expanded: false
+    property string headingDetail: ""
+    property Component headingGlyph: null
     default property alias extra: extraColumn.data
     signal moved(real value)
     signal iconClicked()
@@ -1007,15 +1040,32 @@ Panel {
         width: parent.width
         height: stHeading.implicitHeight
 
-        Text {
+        Loader {
+          id: stGlyph
+          anchors.verticalCenter: stHeading.verticalCenter
+          active: st.headingGlyph !== null
+          sourceComponent: st.headingGlyph
+          width: active ? Style.space(20) : 0
+        }
+        HUi.CrossfadeText {
           id: stHeading
+          anchors.left: stGlyph.right
           text: st.heading
           color: root.fg
-          font.family: Style.font.family
-          font.pixelSize: Style.font.subtitle
-          font.weight: Font.DemiBold
+          fontSize: Style.font.subtitle
+          fontWeight: Font.DemiBold
+        }
+        HUi.CrossfadeText {
+          anchors.right: stChevron.left
+          anchors.rightMargin: Style.space(6)
+          anchors.verticalCenter: stHeading.verticalCenter
+          horizontalAlignment: Text.AlignRight
+          text: st.headingDetail
+          color: root.dimText
+          fontSize: Style.font.bodySmall
         }
         Text {
+          id: stChevron
           visible: st.expandable
           anchors.right: parent.right
           anchors.verticalCenter: stHeading.verticalCenter
@@ -1584,6 +1634,157 @@ Panel {
     color: root.circleOff
   }
 
+  // Volume slider of the default output, with a mute button (Sound + AirPods pages).
+  component VolumeRow: Item {
+    width: root.panelWidth
+    height: Style.space(40)
+    HUi.CrossfadeText {
+      id: vrIcon
+      anchors.left: parent.left
+      anchors.leftMargin: Style.space(12)
+      anchors.verticalCenter: parent.verticalCenter
+      width: Style.space(20)
+      text: root.muted || root.volume === 0 ? root.sf(0x1002A3) : root.sf(0x1002A9)
+      color: root.fg
+      fontFamily: root.symbolFont
+      fontSize: Style.font.iconLarge
+      MouseArea {
+        anchors.fill: parent
+        anchors.margins: -Style.space(4)
+        cursorShape: Qt.PointingHandCursor
+        onClicked: if (root.sink && root.sink.audio) root.sink.audio.muted = !root.muted
+      }
+    }
+    PanelSlider {
+      anchors.left: vrIcon.right
+      anchors.right: parent.right
+      anchors.leftMargin: Style.space(6)
+      anchors.rightMargin: Style.space(14)
+      anchors.verticalCenter: parent.verticalCenter
+      bar: root.bar
+      minimum: 0
+      maximum: 1
+      step: 0.05
+      value: root.muted ? 0 : Math.min(1, root.volume)
+      fillColor: root.fg
+      knobColor: root.fg
+      trackColor: root.circleOff
+      tickColor: "transparent"
+      onMoved: function(v) {
+        if (!root.sink || !root.sink.audio) return
+        root.sink.audio.volume = v
+        if (root.muted && v > 0) root.sink.audio.muted = false
+      }
+    }
+  }
+
+  // Row with a title, a caption and a switch; the whole row toggles.
+  // The switch follows the backend (the binding is restored after a flip).
+  component SwitchRow: Rectangle {
+    id: sr
+    property string title: ""
+    property string caption: ""
+    property bool checked: false
+    signal toggled(bool on)
+    width: root.panelWidth
+    height: Style.space(48)
+    radius: Style.space(Motion.radiusRow)
+    color: srMouse.containsMouse ? root.tileColor : Util.alpha(root.tileColor, 0)
+    Behavior on color {
+      ColorAnimation {
+        duration: srMouse.containsMouse ? Motion.instant : Motion.fast
+        easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+      }
+    }
+    MouseArea {
+      id: srMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: sr.toggled(!sr.checked)
+    }
+    Column {
+      anchors.left: parent.left
+      anchors.leftMargin: Style.space(12)
+      anchors.right: srSwitch.left
+      anchors.rightMargin: Style.space(10)
+      anchors.verticalCenter: parent.verticalCenter
+      Text {
+        width: parent.width
+        text: sr.title
+        color: root.fg
+        font.family: Style.font.family
+        font.pixelSize: Style.font.subtitle
+        elide: Text.ElideRight
+      }
+      Text {
+        width: parent.width
+        text: sr.caption
+        color: root.dimText
+        font.family: Style.font.family
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideRight
+      }
+    }
+    HUi.Toggle {
+      id: srSwitch
+      anchors.right: parent.right
+      anchors.rightMargin: Style.space(10)
+      anchors.verticalCenter: parent.verticalCenter
+      checked: sr.checked
+      onToggled: function(on) {
+        sr.toggled(on)
+        srSwitch.checked = Qt.binding(function() { return sr.checked })
+      }
+    }
+  }
+
+  // One battery cell on the AirPods page: level, battery glyph and label.
+  component PodBattery: Column {
+    id: pb
+    property string label: ""
+    property int level: -1
+    property bool charging: false
+    readonly property bool known: level !== Pods.LEVEL_UNKNOWN
+    spacing: Style.space(3)
+    HUi.CrossfadeText {
+      anchors.horizontalCenter: parent.horizontalCenter
+      text: pb.known ? pb.level + " %" : "--"
+      color: pb.known && pb.level <= 20 && !pb.charging ? Color.urgent : root.fg
+      fontSize: Style.font.subtitle
+      fontWeight: Font.DemiBold
+    }
+    Row {
+      anchors.horizontalCenter: parent.horizontalCenter
+      spacing: Style.space(5)
+      HUi.BatteryGlyph {
+        anchors.verticalCenter: parent.verticalCenter
+        visible: pb.known
+        height: Style.space(10)
+        level: Pods.levelFraction(pb.level)
+        charging: pb.charging
+        ink: root.fg
+      }
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: pb.label
+        color: root.dimText
+        font.family: Style.font.family
+        font.pixelSize: Style.font.caption
+      }
+    }
+  }
+
+  // Outline of the connected AirPods for the Sound tile heading.
+  Component {
+    id: airpodsGlyph
+    AirPodsIcon {
+      iconSize: Style.space(15)
+      color: root.fg
+      variant: root.airpodsVariant
+    }
+  }
+
   // Footer link at the bottom of a detail page.
   component FooterLink: Text {
     id: fl
@@ -1890,7 +2091,9 @@ Panel {
       SliderTile {
         revealIndex: 5
         visible: root.sink !== null
-        heading: "Sound"
+        heading: root.airpodsActive ? root.airpodsName : "Sound"
+        headingGlyph: root.airpodsActive ? airpodsGlyph : null
+        headingDetail: root.airpodsActive && root.airpodsLevel >= 0 ? root.airpodsLevel + " %" : ""
         expandable: true
         icon: root.muted || root.volume === 0 ? root.sf(0x1002A3) : root.volume < 0.34 ? root.sf(0x1002A5) : root.volume < 0.67 ? root.sf(0x1002A7) : root.sf(0x1002A9)
         value: root.muted ? 0 : Math.min(1, root.volume)
@@ -1900,7 +2103,7 @@ Panel {
           if (root.muted && v > 0) root.sink.audio.muted = false
         }
         onIconClicked: if (root.sink && root.sink.audio) root.sink.audio.muted = !root.muted
-        onHeadingClicked: root.showPage("sound")
+        onHeadingClicked: root.showPage(root.airpodsActive ? "airpods" : "sound")
       }
 
       // Now Playing — only while an MPRIS player has a track.
@@ -2592,49 +2795,7 @@ Panel {
         title: "Sound"
       }
       Separator { visible: root.detailPage === "sound" }
-      Item {
-        visible: root.detailPage === "sound" && root.sink !== null
-        width: root.panelWidth
-        height: Style.space(40)
-        HUi.CrossfadeText {
-          id: soundIcon
-          anchors.left: parent.left
-          anchors.leftMargin: Style.space(12)
-          anchors.verticalCenter: parent.verticalCenter
-          width: Style.space(20)
-          text: root.muted || root.volume === 0 ? root.sf(0x1002A3) : root.sf(0x1002A9)
-          color: root.fg
-          fontFamily: root.symbolFont
-          fontSize: Style.font.iconLarge
-          MouseArea {
-            anchors.fill: parent
-            anchors.margins: -Style.space(4)
-            cursorShape: Qt.PointingHandCursor
-            onClicked: if (root.sink && root.sink.audio) root.sink.audio.muted = !root.muted
-          }
-        }
-        PanelSlider {
-          anchors.left: soundIcon.right
-          anchors.right: parent.right
-          anchors.leftMargin: Style.space(6)
-          anchors.rightMargin: Style.space(14)
-          anchors.verticalCenter: parent.verticalCenter
-          bar: root.bar
-          minimum: 0
-          maximum: 1
-          step: 0.05
-          value: root.muted ? 0 : Math.min(1, root.volume)
-          fillColor: root.fg
-          knobColor: root.fg
-          trackColor: root.circleOff
-          tickColor: "transparent"
-          onMoved: function(v) {
-            if (!root.sink || !root.sink.audio) return
-            root.sink.audio.volume = v
-            if (root.muted && v > 0) root.sink.audio.muted = false
-          }
-        }
-      }
+      VolumeRow { visible: root.detailPage === "sound" && root.sink !== null }
       ListLabel {
         visible: root.detailPage === "sound"
         text: "Output"
@@ -2650,6 +2811,188 @@ Panel {
           title: modelData.label
           trailing: modelData.active ? root.sf(0x100185) : " "
           onClicked: if (!modelData.active) root.setSink(modelData)
+        }
+      }
+      ListRow {
+        visible: root.detailPage === "sound" && pods.daemonReachable && !pods.connected && pods.deviceName !== ""
+        icon: root.sf(0xF1852)
+        title: root.airpodsName
+        subtitle: pods.connectionBusy ? "Connecting …" : pods.actionStatus !== "" ? pods.actionStatus : "Not connected"
+        busy: pods.connectionBusy
+        onClicked: pods.toggleConnection()
+      }
+
+      // AirPods — everything the librepods daemon can do, shown while connected.
+      PageHeader {
+        visible: root.detailPage === "airpods"
+        title: root.airpodsName
+      }
+      Separator { visible: root.detailPage === "airpods" }
+      Flickable {
+        visible: root.detailPage === "airpods"
+        width: root.panelWidth
+        // Tall on purpose; scrolls only on short screens.
+        height: Math.min(podsPage.implicitHeight, Math.max(Style.space(240), panel.availableCardHeight - Style.space(80)))
+        contentHeight: podsPage.implicitHeight
+        clip: true
+        interactive: contentHeight > height
+        boundsBehavior: Flickable.StopAtBounds
+        flickDeceleration: Motion.flickDeceleration
+        maximumFlickVelocity: Motion.maximumFlickVelocity
+
+        Column {
+          id: podsPage
+          width: root.panelWidth
+          spacing: Style.space(4)
+
+          // Battery: left, right and case (or the one headset battery).
+          Row {
+            x: Style.space(6)
+            topPadding: Style.space(6)
+            bottomPadding: Style.space(4)
+            Repeater {
+              model: root.airpodsBatteries
+              delegate: PodBattery {
+                required property var modelData
+                width: Math.floor((root.panelWidth - Style.space(12)) / root.airpodsBatteries.length)
+                label: modelData.label
+                level: modelData.level
+                charging: modelData.charging
+              }
+            }
+          }
+
+          VolumeRow {}
+
+          Text {
+            visible: text !== ""
+            width: root.panelWidth
+            leftPadding: Style.space(6)
+            rightPadding: Style.space(6)
+            text: pods.actionStatus !== "" ? pods.actionStatus : pods.lastError
+            color: Color.urgent
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
+          }
+
+          ListLabel {
+            visible: root.airpodsModes.length > 0
+            text: "Listening Mode"
+          }
+          Repeater {
+            model: root.detailPage === "airpods" ? root.airpodsModes : []
+            delegate: ListRow {
+              required property var modelData
+              required property int index
+              rowIndex: index
+              icon: root.noiseModeIcon(modelData)
+              active: pods.noiseMode === modelData
+              title: Pods.noiseModeName(modelData)
+              trailing: active ? root.sf(0x100185) : " "
+              onClicked: pods.setNoiseMode(modelData)
+            }
+          }
+          HUi.Collapse {
+            width: root.panelWidth
+            expanded: pods.supportsAdaptive && pods.noiseMode === Pods.NOISE_ADAPTIVE
+            Column {
+              width: root.panelWidth
+              topPadding: Style.space(2)
+              bottomPadding: Style.space(6)
+              spacing: Style.space(2)
+              Item {
+                width: root.panelWidth
+                height: adaptiveLabel.implicitHeight
+                Text {
+                  id: adaptiveLabel
+                  x: Style.space(12)
+                  text: "Adaptive noise level"
+                  color: root.dimText
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
+                HUi.CrossfadeText {
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(14)
+                  horizontalAlignment: Text.AlignRight
+                  text: pods.adaptiveNoiseLevel + " %"
+                  color: root.dimText
+                  fontSize: Style.font.caption
+                }
+              }
+              PanelSlider {
+                x: Style.space(12)
+                width: root.panelWidth - Style.space(26)
+                bar: root.bar
+                minimum: 0
+                maximum: 1
+                step: 0.05
+                value: pods.adaptiveNoiseLevel / 100
+                fillColor: root.fg
+                knobColor: root.fg
+                trackColor: root.circleOff
+                tickColor: "transparent"
+                onMoved: function(v) { pods.setAdaptiveNoiseLevel(v * 100) }
+              }
+            }
+          }
+
+          SwitchRow {
+            visible: pods.supportsConversationalAwareness
+            title: "Conversation Awareness"
+            caption: "Lowers the volume when you start talking"
+            checked: pods.conversationalAwareness
+            onToggled: function(on) { pods.setConversationalAwareness(on) }
+          }
+          SwitchRow {
+            visible: pods.supportsOneBudANC
+            title: "One-Bud Noise Cancellation"
+            caption: "Keeps the mode on with only one AirPod in"
+            checked: pods.oneBudANC
+            onToggled: function(on) { pods.setOneBudANC(on) }
+          }
+
+          ListLabel { text: "Pause Media When Removed" }
+          Row {
+            x: Style.space(6)
+            spacing: Style.space(6)
+            topPadding: Style.space(2)
+            bottomPadding: Style.space(4)
+            Repeater {
+              model: [
+                { label: "One AirPod", value: Pods.EAR_PAUSE_ONE_OUT },
+                { label: "Both", value: Pods.EAR_PAUSE_BOTH_OUT },
+                { label: "Never", value: Pods.EAR_DISABLED }
+              ]
+              delegate: Pill {
+                required property var modelData
+                width: Math.floor((root.panelWidth - Style.space(24)) / 3)
+                label: modelData.label
+                selected: pods.earDetectionBehavior === modelData.value
+                onClicked: pods.setEarDetectionBehavior(modelData.value)
+              }
+            }
+          }
+
+          Separator {}
+          Item {
+            width: root.panelWidth
+            height: Style.space(30)
+            FooterLink {
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              text: pods.connectionRequest === "disconnect" ? "Disconnecting …" : "Disconnect"
+              onClicked: if (!pods.busy) pods.toggleConnection()
+            }
+            FooterLink {
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(6)
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Sound Output …"
+              onClicked: root.showPage("sound")
+            }
+          }
         }
       }
 

@@ -106,6 +106,8 @@ BarWidget {
     // Opens straight onto the expanded display settings.
     function display(): void { root.openDisplay() }
     function plugins(): void { root.openPluginManager() }
+    function tmpCred(name: string): void { if (panelLoader.item) { panelLoader.item.wifiIdentity = ""; panelLoader.item.wifiPasswordFor = name } }
+    function tmpShake(): void { if (panelLoader.item) panelLoader.item.wifiShakeTick++ }
     // Keyboard entry: toggles the Control Center on a page (wifi, bluetooth,
     // sound, display). Pressing the same shortcut again closes it; another
     // page's shortcut switches the open popup over.
@@ -119,7 +121,7 @@ BarWidget {
       if (name === "display") p.displayExpanded = true
       p.open()
     }
-    // Opens straight onto a detail page: wifi, wifi-advanced, bluetooth or sound.
+    // Opens straight onto a detail page: wifi, wifi-advanced, bluetooth, sound or airpods.
     function page(name: string): void {
       if (!panelLoader.item) return
       // "wifi-advanced" opens the Wi-Fi page with its advanced options expanded.
