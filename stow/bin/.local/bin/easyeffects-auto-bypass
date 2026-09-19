@@ -1,20 +1,26 @@
 #!/bin/bash
-# EasyEffects only on the laptop speakers: follow the default output and turn
-# the global bypass off on the speakers, on for everything else (AirPods,
-# HDMI, USB). Runs next to easyeffects-service, started from autostart.lua.
+# EasyEffects only on the laptop speakers: follow the default output and load
+# the speaker preset there, the empty "Passthrough" preset everywhere else
+# (AirPods, HDMI, USB). Runs next to easyeffects-service, from autostart.lua.
+#
+# Not the global bypass: in EasyEffects 8.2.9 bypass silences the output
+# instead of passing it through (AirPods stayed SUSPENDED).
 
 speaker_pattern='HiFi__Speaker__sink'
+speaker_preset='XPS 13 Speakers'
+other_preset='Passthrough'
 applied=""
 
 apply() {
-  # Without a running service `easyeffects -b` would open a new window.
+  # Without a running service `easyeffects -l` would open a new window.
   pgrep -x easyeffects >/dev/null || { applied=""; return; }
   local sink want
   sink=$(pactl get-default-sink 2>/dev/null) || return
   [[ -z $sink || $sink == easyeffects_sink ]] && return
-  if [[ $sink == *$speaker_pattern* ]]; then want=2; else want=1; fi
+  if [[ $sink == *$speaker_pattern* ]]; then want=$speaker_preset; else want=$other_preset; fi
   [[ $want == "$applied" ]] && return
-  easyeffects -b "$want" >/dev/null 2>&1 && applied=$want
+  easyeffects -b 2 >/dev/null 2>&1
+  easyeffects -l "$want" >/dev/null 2>&1 && applied=$want
 }
 
 # EasyEffects starts in parallel at login; wait until it answers.
