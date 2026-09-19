@@ -126,7 +126,10 @@ Panel {
         connected: !!n.connected,
         known: !!n.known,
         signal: Math.round((n.signalStrength || 0) * 100),
-        secure: n.security !== WifiSecurityType.Open && n.security !== WifiSecurityType.Owe
+        secure: n.security !== WifiSecurityType.Open && n.security !== WifiSecurityType.Owe,
+        // 802.1X: asks for username + password instead of a single key.
+        enterprise: n.security === WifiSecurityType.Wpa2Eap || n.security === WifiSecurityType.WpaEap
+          || n.security === WifiSecurityType.Wpa3SuiteB192
       })
     }
     rows.sort(function(a, b) {
@@ -151,11 +154,14 @@ Panel {
   function wifiActivate(row) {
     var net = wifiNetwork(row.name)
     if (!net) return
+    // A saved enterprise profile that just failed most likely has stale
+    // credentials: ask for them again instead of retrying the same ones.
+    var retryCredentials = row.enterprise && wifiFailed === row.name
     wifiFailed = ""
     if (row.connected) {
       markWifiPending(row.name)
       net.disconnect()
-    } else if (row.secure && !row.known) {
+    } else if (row.secure && (!row.known || retryCredentials)) {
       wifiPasswordFor = wifiPasswordFor === row.name ? "" : row.name
       return
     } else {
@@ -172,6 +178,46 @@ Panel {
     markWifiPending(name)
     net.connectWithPsk(password)
     wifiPendingTimeout.restart()
+  }
+  // WPA/WPA2-Enterprise: Quickshell only speaks PSK, so a helper creates the
+  // 802.1X profile over D-Bus. Credentials go through stdin, never argv.
+  readonly property string wifiEapPath: String(Qt.resolvedUrl("system/henri-wifi-eap")).replace(/^file:\/\//, "")
+  property string wifiEapRequest: ""
+  property string wifiIdentity: ""
+  // Bumped on a rejected login so the credential fields shake once.
+  property int wifiShakeTick: 0
+  function wifiConnectEnterprise(name, identity, password) {
+    if (identity === "" || password === "" || eapProc.running) return
+    wifiIdentity = identity
+    wifiPasswordFor = ""
+    wifiFailed = ""
+    markWifiPending(name)
+    wifiEapRequest = JSON.stringify({ ssid: name, identity: identity, password: password })
+    eapProc.running = true
+  }
+  Process {
+    id: eapProc
+    property string ssid: ""
+    command: [root.wifiEapPath]
+    stdinEnabled: true
+    onStarted: {
+      ssid = root.wifiPending
+      write(root.wifiEapRequest + "\n")
+      root.wifiEapRequest = ""
+      stdinEnabled = false
+    }
+    onExited: function(exitCode) {
+      stdinEnabled = true
+      if (root.wifiPending === ssid) root.wifiPending = ""
+      if (exitCode !== 0) {
+        root.wifiFailed = ssid
+        // Reopen the fields (username kept) so a typo is a quick fix.
+        if (root.opened && root.page === "wifi") {
+          root.wifiPasswordFor = ssid
+          root.wifiShakeTick++
+        }
+      }
+    }
   }
   function wifiIcon(signal) {
     return sf(0x100647)
@@ -502,18 +548,17 @@ Panel {
   }
 
   // ---- Services owned by the shell
-  function service(ids) {
-    if (!shell) return null
-    for (var i = 0; i < ids.length; i++) {
-      var s = shell.serviceFor(ids[i])
-      if (s) return s
-    }
-    return null
+  // Plugins only get narrow first-party proxies now (serviceFor is limited to
+  // the caller's own services); omarchy.idle resolves to the henri.idle clone.
+  function service(id) {
+    return shell && typeof shell.firstPartyServiceFor === "function"
+      ? shell.firstPartyServiceFor(id) : null
   }
-  readonly property var notifications: opened ? service(["omarchy.notifications"]) : null
-  readonly property var nightlight: opened ? service(["omarchy.nightlight"]) : null
-  readonly property var idle: opened ? service(["henri.idle", "omarchy.idle"]) : null
-  readonly property var media: opened ? service(["omarchy.media"]) : null
+  readonly property var notifications: opened ? service("omarchy.notifications") : null
+  readonly property var nightlight: opened ? service("omarchy.nightlight") : null
+  readonly property var idle: opened ? service("omarchy.idle") : null
+  readonly property var media: opened ? service("omarchy.media") : null
+  readonly property var player: media ? media.activePlayer : null
 
   readonly property bool dnd: notifications ? notifications.doNotDisturb : false
   readonly property bool nightOn: nightlight ? nightlight.enabled : false
@@ -1461,6 +1506,78 @@ Panel {
     font.letterSpacing: 0.6
   }
 
+  // One-line text field for the inline Wi-Fi credentials. With `submitIcon`
+  // it carries the join arrow on the right.
+  component CredField: Rectangle {
+    id: cf
+    property alias input: cfInput
+    property alias text: cfInput.text
+    property string placeholder: ""
+    property bool password: false
+    property bool submitIcon: false
+    property bool error: false
+    property Item nextField: null
+    property Item prevField: null
+    signal submitted()
+    signal cancelled()
+    signal edited()
+    width: parent ? parent.width : 0
+    height: Style.space(32)
+    radius: Style.space(Motion.radiusControl)
+    color: root.tileColor
+    border.width: 1
+    border.color: cf.error ? Color.urgent : cfInput.activeFocus ? root.circleOn : root.circleOff
+    Behavior on border.color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+
+    TextInput {
+      id: cfInput
+      anchors.fill: parent
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: cf.submitIcon ? Style.space(34) : Style.space(10)
+      verticalAlignment: TextInput.AlignVCenter
+      echoMode: cf.password ? TextInput.Password : TextInput.Normal
+      inputMethodHints: cf.password ? Qt.ImhSensitiveData | Qt.ImhNoPredictiveText : Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+      color: root.fg
+      selectionColor: root.circleOn
+      selectedTextColor: root.onIcon
+      font.family: Style.font.family
+      font.pixelSize: Style.font.body
+      clip: true
+      Keys.onReturnPressed: cf.submitted()
+      Keys.onEnterPressed: cf.submitted()
+      Keys.onEscapePressed: cf.cancelled()
+      onTextEdited: cf.edited()
+      KeyNavigation.tab: cf.nextField
+      KeyNavigation.backtab: cf.prevField
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        opacity: parent.text === "" ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Motion.instant; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        text: cf.placeholder
+        color: root.dimText
+        font: parent.font
+      }
+    }
+    Text {
+      visible: cf.submitIcon
+      anchors.right: parent.right
+      anchors.rightMargin: Style.space(10)
+      anchors.verticalCenter: parent.verticalCenter
+      text: root.sf(0x100C13)
+      color: cfInput.text === "" ? root.dimText : root.fg
+      Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+      font.family: root.symbolFont
+      font.pixelSize: Style.font.icon
+      MouseArea {
+        anchors.fill: parent
+        anchors.margins: -Style.space(6)
+        cursorShape: Qt.PointingHandCursor
+        onClicked: cf.submitted()
+      }
+    }
+  }
+
   component Separator: Rectangle {
     width: root.panelWidth
     height: 1
@@ -1790,8 +1907,8 @@ Panel {
       Tile {
         revealIndex: 6
         id: nowPlaying
-        readonly property bool playing: root.media && root.media.activePlayer ? root.media.activePlayer.isPlaying === true : false
-        visible: root.media ? root.media.hasMedia === true : false
+        readonly property bool playing: root.player ? root.player.isPlaying === true : false
+        visible: root.player !== null
         width: root.panelWidth
         height: Style.space(64)
 
@@ -1817,7 +1934,7 @@ Panel {
           Image {
             id: artImage
             anchors.fill: parent
-            source: root.media ? root.media.artUrl : ""
+            source: root.player ? (root.player.trackArtUrl || "") : ""
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
             sourceSize.width: width * 2
@@ -1833,7 +1950,7 @@ Panel {
           anchors.verticalCenter: parent.verticalCenter
           Text {
             width: parent.width
-            text: root.media ? root.media.title : ""
+            text: root.player ? (root.player.trackTitle || "") : ""
             color: root.fg
             font.family: Style.font.family
             font.pixelSize: Style.font.subtitle
@@ -1842,7 +1959,7 @@ Panel {
           }
           Text {
             width: parent.width
-            text: root.media ? (root.media.artist || root.media.identity) : ""
+            text: root.player ? (root.player.trackArtist || root.player.identity || "") : ""
             color: root.dimText
             font.family: Style.font.family
             font.pixelSize: Style.font.bodySmall
@@ -2139,76 +2256,94 @@ Panel {
                 active: modelData.connected
                 title: modelData.name
                 subtitle: root.wifiPending === modelData.name ? (modelData.connected ? "Disconnecting …" : "Connecting …")
-                  : root.wifiFailed === modelData.name ? "Connection failed"
+                  : root.wifiFailed === modelData.name ? (modelData.enterprise ? "Check username and password" : "Connection failed")
                   : modelData.connected ? "Connected"
-                  : modelData.known ? "Known" : ""
+                  : modelData.known ? "Known"
+                  : modelData.enterprise ? "Username and password" : ""
                 trailing: modelData.secure ? root.sf(0x1003A1) : ""
                 onClicked: root.wifiActivate(modelData)
               }
 
-              // Inline password entry for a new secured network.
-              Rectangle {
-                id: pwBox
+              // Inline credentials for a new secured network: one password
+              // field, or username + password for WPA/WPA2-Enterprise.
+              Item {
+                id: credBox
                 readonly property bool wanted: root.wifiPasswordFor === modelData.name
+                readonly property bool enterprise: !!modelData.enterprise
+                readonly property bool rejected: root.wifiFailed === modelData.name
                 visible: height > 0.5
                 x: Style.space(44)
                 width: root.panelWidth - Style.space(50)
-                height: wanted ? Style.space(32) : 0
+                height: wanted ? credColumn.implicitHeight : 0
                 opacity: wanted ? 1 : 0
                 clip: true
                 Behavior on height { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
                 Behavior on opacity {
                   NumberAnimation {
-                    duration: pwBox.wanted ? Motion.base : Motion.exit(Motion.fast)
+                    duration: credBox.wanted ? Motion.base : Motion.exit(Motion.fast)
                     easing.type: Easing.BezierSpline
-                    easing.bezierCurve: pwBox.wanted ? Motion.easeOut : Motion.easeExit
+                    easing.bezierCurve: credBox.wanted ? Motion.easeOut : Motion.easeExit
                   }
                 }
-                Behavior on border.color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
-                radius: Style.space(Motion.radiusControl)
-                color: root.tileColor
-                border.width: 1
-                border.color: passwordInput.activeFocus ? root.circleOn : root.circleOff
 
-                onWantedChanged: if (wanted) { passwordInput.text = ""; passwordInput.forceActiveFocus() }
-
-                TextInput {
-                  id: passwordInput
-                  anchors.fill: parent
-                  anchors.leftMargin: Style.space(10)
-                  anchors.rightMargin: Style.space(34)
-                  verticalAlignment: TextInput.AlignVCenter
-                  echoMode: TextInput.Password
-                  color: root.fg
-                  selectionColor: root.circleOn
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.body
-                  clip: true
-                  Keys.onReturnPressed: root.wifiConnectWithPassword(modelData.name, text)
-                  Keys.onEnterPressed: root.wifiConnectWithPassword(modelData.name, text)
-                  Keys.onEscapePressed: root.wifiPasswordFor = ""
-
-                  Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: parent.text === ""
-                    text: "Password"
-                    color: root.dimText
-                    font: parent.font
+                function submit() {
+                  if (enterprise) {
+                    if (userField.text === "") { userField.input.forceActiveFocus(); return }
+                    if (passField.text === "") { passField.input.forceActiveFocus(); return }
+                    root.wifiConnectEnterprise(modelData.name, userField.text, passField.text)
+                  } else {
+                    root.wifiConnectWithPassword(modelData.name, passField.text)
                   }
                 }
-                Text {
-                  anchors.right: parent.right
-                  anchors.rightMargin: Style.space(10)
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: root.sf(0x100C13)
-                  color: passwordInput.text === "" ? root.dimText : root.fg
-                  font.family: root.symbolFont
-                  font.pixelSize: Style.font.icon
-                  MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -Style.space(6)
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.wifiConnectWithPassword(modelData.name, passwordInput.text)
+                function clearError() { if (rejected) root.wifiFailed = "" }
+
+                onWantedChanged: {
+                  if (!wanted) return
+                  passField.text = ""
+                  userField.text = enterprise ? root.wifiIdentity : ""
+                  if (enterprise && userField.text === "") userField.input.forceActiveFocus()
+                  else passField.input.forceActiveFocus()
+                }
+
+                // Rejected login: shake once, like the macOS password field.
+                Connections {
+                  target: root
+                  function onWifiShakeTickChanged() { if (credBox.wanted && !Motion.reduceMotion) shake.restart() }
+                }
+                SequentialAnimation {
+                  id: shake
+                  NumberAnimation { target: credShift; property: "x"; to: Motion.shakeDistance; duration: Motion.shakeDuration / 6; easing.type: Easing.OutSine }
+                  NumberAnimation { target: credShift; property: "x"; to: -Motion.shakeDistance; duration: Motion.shakeDuration / 4; easing.type: Easing.InOutSine }
+                  NumberAnimation { target: credShift; property: "x"; to: Motion.shakeDistance; duration: Motion.shakeDuration / 4; easing.type: Easing.InOutSine }
+                  NumberAnimation { target: credShift; property: "x"; to: 0; duration: Motion.shakeDuration / 3; easing.type: Easing.OutSine }
+                }
+
+                Column {
+                  id: credColumn
+                  width: parent.width
+                  spacing: Style.space(6)
+                  transform: Translate { id: credShift }
+
+                  CredField {
+                    id: userField
+                    visible: credBox.enterprise
+                    placeholder: "Username"
+                    error: credBox.rejected
+                    nextField: passField.input
+                    onSubmitted: credBox.submit()
+                    onCancelled: root.wifiPasswordFor = ""
+                    onEdited: credBox.clearError()
+                  }
+                  CredField {
+                    id: passField
+                    placeholder: "Password"
+                    password: true
+                    submitIcon: true
+                    error: credBox.rejected
+                    prevField: credBox.enterprise ? userField.input : null
+                    onSubmitted: credBox.submit()
+                    onCancelled: root.wifiPasswordFor = ""
+                    onEdited: credBox.clearError()
                   }
                 }
               }
