@@ -67,6 +67,18 @@ Item {
       var route = parts[1] || "root"
       var id = (root.manifest && root.manifest.id) ? root.manifest.id : "henri.menu"
       var payload = JSON.stringify({ menu: route })
+      // Beim Plugin-Hot-Reload zieht die Shell die hier hereingereichte API
+      // wieder ein (revokePluginShellApi), das Panel selbst bleibt aber
+      // geladen (keepLoaded: true) — danach steht in root.shell null und
+      // Super+Space war bis zum nächsten Shell-Neustart tot. Der Umweg über
+      // die IPC kostet genau die ~95 ms, die der Ereignisweg sonst spart,
+      // aber nur in diesem kaputten Zustand.
+      if (!root.shell) {
+        if (verb === "close") Quickshell.execDetached(["omarchy-shell", "-q", "shell", "hide", id])
+        else if (verb === "summon") Quickshell.execDetached(["omarchy-shell", "-q", "shell", "summon", id, payload])
+        else Quickshell.execDetached(["omarchy-shell", "-q", "shell", "toggle", id, payload])
+        return
+      }
       if (verb === "close") root.shell.hide(id)
       else if (verb === "summon") root.shell.summon(id, payload)
       else root.shell.toggle(id, payload)
