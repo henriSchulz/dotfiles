@@ -19,9 +19,9 @@ BarWidget {
     return null
   }
 
-  // Only workspaces that hold windows, plus the focused one.
+  // Always 1–5; above that only workspaces that hold windows, plus the focused one.
   function workspaceIds() {
-    var ids = []
+    var ids = [1, 2, 3, 4, 5]
     var values = Hyprland.workspaces.values
     var focusedId = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
 
@@ -42,6 +42,11 @@ BarWidget {
   }
 
   readonly property real trailingGap: root.vertical ? 0 : Style.spaceReal(1.5)
+
+  // Occupancy dot (macOS Dock "app is running"): sits in the ~7 px of bar below
+  // the focus pill, so it never collides with it.
+  readonly property real dotSize: Style.spaceReal(2.5)
+  readonly property real dotInset: Style.spaceReal(2)
 
   implicitWidth: grid.implicitWidth + trailingGap
   implicitHeight: grid.implicitHeight
@@ -84,6 +89,7 @@ BarWidget {
       model: root.workspaceIds()
 
       WidgetButton {
+        id: wsButton
         required property int modelData
 
         readonly property var workspace: root.workspaceById(modelData)
@@ -100,6 +106,23 @@ BarWidget {
         fixedWidth: root.vertical ? root.barSize : Style.space(20)
         fixedHeight: root.barSize
         onPressed: function() { root.focusWorkspace(modelData) }
+
+        // Windows open on this workspace. Inherits the button's opacity, so the
+        // dot always carries the same weight as its number.
+        Rectangle {
+          anchors.horizontalCenter: parent.horizontalCenter
+          anchors.bottom: parent.bottom
+          anchors.bottomMargin: root.dotInset
+          width: root.dotSize
+          height: root.dotSize
+          radius: width / 2
+          color: wsButton.foreground
+          antialiasing: true
+          opacity: wsButton.occupied ? 1 : 0
+          scale: wsButton.occupied ? 1 : Motion.iconFromScale
+          Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+          Behavior on scale { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        }
       }
     }
   }

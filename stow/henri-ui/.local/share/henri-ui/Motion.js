@@ -39,6 +39,7 @@ var pressScale = 0.97
 var menuFromScale = 0.96
 var popoverFromScale = 0.95
 var exitToScale = 0.98
+var iconFromScale = 0.8     // icon/glyph/dot crossfade: scales up from this
 var menuOffsetY = -4          // menus drop 4 px out of their anchor
 var toastOffset = 16          // toasts slide in from the screen edge
 var pageParallax = 0.3        // outgoing page moves 30 % while the new one slides in
@@ -53,6 +54,10 @@ var switcherDelay = 50
 // so the overlay and the desktop read as one movement.
 var carryOffset = 24
 var tooltipGrace = 1000       // follow-up tooltips show instantly within this window
+// Rejected input (wrong password): one horizontal shake, 3 swings — the only
+// allowed wobble, like the macOS login field.
+var shakeDistance = 6
+var shakeDuration = ms(300)
 
 var staggerStep = 15
 var staggerMax = 10

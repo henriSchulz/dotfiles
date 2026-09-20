@@ -184,7 +184,8 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   solange die Maus innerhalb ~1 s weiterwandert.
 
 **Inhalt wechselt (Zahl, Text, Icon, Bild)**
-- Crossfade (`fast`). Icons zusätzlich `scale 0.8→1`. Zahlen nie hart umspringen.
+- Crossfade (`fast`). Icons und kleine Statuspunkte zusätzlich `Motion.iconFromScale`→1 (0.8).
+  Zahlen nie hart umspringen.
 
 **Toast / Notification**
 - Rein: von der Bildschirmkante gleiten + faden, `gentle`. Raus: zurück zur Kante,
@@ -234,7 +235,7 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
 8. **Warten/Laden:** Unter 300 ms nichts anzeigen; danach dezenter Spinner/Fortschritt
    per Fade. Inhalt, der ankommt, crossfadet den Platzhalter.
 9. **Fehler:** Feld rötet sich per Farb-Fade; bei falscher Eingabe (Passwort) ein
-   kurzes horizontales Schütteln (3 Ausschläge, ±6 px, ~300 ms) — das einzige erlaubte
+   kurzes horizontales Schütteln (3 Ausschläge, `Motion.shakeDistance` ±6 px, `Motion.shakeDuration` ~300 ms) — das einzige erlaubte
    „Wackeln“, wie bei macOS.
 
 ## 4. Visueller Stil (macOS-nah)
