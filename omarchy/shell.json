@@ -21,8 +21,8 @@
         {
           "id": "henri.power",
           "chargeLimitStep": 5,
-          "showPercentage": true,
-          "historyHours": "6"
+          "historyHours": "6",
+          "showPercentage": true
         },
         {
           "id": "henri.control-center"
@@ -50,8 +50,8 @@
     "omarchy.background"
   ],
   "idle": {
-    "lock": 300,
-    "screensaver": 150
+    "lock": 600,
+    "screensaver": 300
   },
   "plugins": [
     {
