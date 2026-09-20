@@ -1,0 +1,15 @@
+[Unit]
+Description=Pull the iCloud calendars every 15 minutes
+
+[Timer]
+# Two minutes after login rather than on the dot: the calendar is not worth
+# competing with the rest of the session startup for.
+OnStartupSec=2min
+OnUnitActiveSec=15min
+# A laptop that was asleep over the interval syncs on wake instead of
+# waiting out a fresh 15 minutes with a stale calendar on screen.
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

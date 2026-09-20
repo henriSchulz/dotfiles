@@ -1,0 +1,44 @@
+# iCloud calendars, mirrored one way into a vdir the clock plugin reads.
+#
+#   sync         vdirsyncer-sync.timer, every 15 minutes
+#   destination  ~/.local/share/calendars/<calendar>/<uid>.ics
+#   password     the Secret Service keyring, under service "icloud-caldav" —
+#                NOT here. It is an app-specific password from
+#                appleid.apple.com, not the Apple ID password itself, because
+#                the account has 2FA and CalDAV cannot prompt for a code.
+#
+# Store it with:
+#   secret-tool store --label="iCloud CalDAV" \
+#     service icloud-caldav username henri.schulz.bs@icloud.com
+#
+# After changing collections or credentials, re-run `vdirsyncer discover`.
+
+[general]
+status_path = "~/.local/state/vdirsyncer/status/"
+
+[pair icloud_calendars]
+a = "local_calendars"
+b = "icloud_remote"
+collections = ["from b"]
+
+# Names and colors come down with the events, so the panel can tint a day's
+# dots the same color the calendar has on the phone.
+metadata = ["displayname", "color"]
+
+# Belt and braces for a mirror nothing local writes to: `read_only` on the
+# remote means vdirsyncer will never push, so no local mishap can reach the
+# real calendar, and conflict_resolution settles the rest in iCloud's favour.
+# Drop the read_only line to make this a two-way sync.
+conflict_resolution = "b wins"
+
+[storage local_calendars]
+type = "filesystem"
+path = "~/.local/share/calendars/"
+fileext = ".ics"
+
+[storage icloud_remote]
+type = "caldav"
+url = "https://caldav.icloud.com/"
+username = "henri.schulz.bs@icloud.com"
+password.fetch = ["command", "secret-tool", "lookup", "service", "icloud-caldav", "username", "henri.schulz.bs@icloud.com"]
+read_only = true

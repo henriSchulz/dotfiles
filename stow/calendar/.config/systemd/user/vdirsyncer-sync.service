@@ -1,0 +1,12 @@
+[Unit]
+Description=Pull the iCloud calendars into the local vdir
+# No network, no point waking the Apple servers up.
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Discover is what picks up a calendar added on the phone since the last run.
+# It is cheap, and skipping it would leave new calendars invisible until
+# someone remembered to run it by hand.
+ExecStart=/usr/bin/vdirsyncer discover --yes
+ExecStart=/usr/bin/vdirsyncer sync

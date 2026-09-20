@@ -53,3 +53,12 @@ freerdp
 # Fonts
 inter-font
 
+
+# iCloud calendars in the clock plugin's popup. vdirsyncer mirrors CalDAV
+# into ~/.local/share/calendars; the python trio is what
+# `omarchy-calendar-events` reads that vdir with — recurrence expansion is
+# the part worth a library.
+vdirsyncer
+python-icalendar
+python-recurring-ical-events
+python-dateutil

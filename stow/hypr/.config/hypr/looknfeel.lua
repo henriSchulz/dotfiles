@@ -68,3 +68,8 @@ hl.layer_rule({ match = { namespace = "mission-control" }, no_anim = true, anima
 -- Mit Hyprlands Layer-Fade lag beim Wechsel ein verblassendes Standbild des
 -- Streifens über dem Workspace-Slide.
 hl.layer_rule({ match = { namespace = "workspace-switcher" }, no_anim = true, animation = "none" })
+
+-- Spotlight (henri.menu) blendet seine Karte selbst ein (Fade + gentle-Spring).
+-- Hyprlands eigener Layer-Fade (layersIn, speed 4 = 400 ms) legte eine zweite
+-- Blende darüber: nach dem Tastendruck stand die Karte spürbar lange halb da.
+hl.layer_rule({ match = { namespace = "omarchy-menu" }, no_anim = true, animation = "none" })

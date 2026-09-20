@@ -262,6 +262,17 @@ function monthGrid(year, month, weekStart, todayKey) {
   return weeks
 }
 
+// First and last day the grid is showing, as "yyyy-MM-dd". The events
+// helper is asked for exactly this span, so the leading and trailing days
+// from the neighbouring months carry their dots too rather than reading as
+// empty.
+function gridRange(weeks) {
+  if (!weeks || weeks.length === 0) return { from: "", to: "" }
+  var firstWeek = weeks[0].days
+  var lastWeek = weeks[weeks.length - 1].days
+  return { from: firstWeek[0].key, to: lastWeek[lastWeek.length - 1].key }
+}
+
 function stepMonth(year, month, delta) {
   var target = new Date(year, Number(month) + Number(delta), 1)
   return { year: target.getFullYear(), month: target.getMonth() }
@@ -288,6 +299,7 @@ if (typeof module !== "undefined") {
     lifeProgressPercent: lifeProgressPercent,
     monthGrid: monthGrid,
     stepMonth: stepMonth,
+    gridRange: gridRange,
     clockFormats: clockFormats,
     clockFormatRing: clockFormatRing,
     nextClockFormat: nextClockFormat,

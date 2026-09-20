@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+"""Print the synced calendars' events for a date range as JSON, bucketed per day.
+
+vdirsyncer mirrors iCloud into a vdir at ~/.local/share/calendars: one
+directory per calendar, one .ics file per event, plus the vdir spec's
+`displayname` and `color` sidecars. This turns that pile into the one shape
+the clock plugin's calendar popup wants — a map from "yyyy-MM-dd" to the
+events on that day.
+
+Recurrence expansion (RRULE, EXDATE, RECURRENCE-ID overrides) and timezone
+conversion are the reason this is a Python helper rather than a parser in the
+panel's QML: getting them right by hand is a project, and
+recurring-ical-events already did it.
+
+  omarchy-calendar-events --from 2026-09-01 --to 2026-10-11
+
+Anything unreadable is skipped with a note on stderr rather than taken down
+the whole run: one corrupt .ics must not empty the calendar.
+"""
+
+import argparse
+import json
+import os
+import sys
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+try:
+    import icalendar
+    import recurring_ical_events
+except ImportError as exc:  # pragma: no cover - environment, not logic
+    print(
+        f"missing dependency: {exc.name}\n"
+        "install: sudo pacman -S --needed python-icalendar python-recurring-ical-events",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+DEFAULT_DIR = Path.home() / ".local/share/calendars"
+
+
+def parse_day(text):
+    return datetime.strptime(text, "%Y-%m-%d").date()
+
+
+def day_key(value):
+    return value.strftime("%Y-%m-%d")
+
+
+def read_sidecar(directory, name):
+    """vdir metadata file — absent is the normal case, not an error."""
+    try:
+        return (directory / name).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def normalize_color(text):
+    """A hex color the panel can use, or "" to let it fall back to the theme.
+
+    Apple writes `color` as #rrggbb or #rrggbbaa; the alpha byte is dropped
+    because the panel tints a dot with it and a half-transparent dot reads as
+    a different, quieter calendar rather than the same one.
+    """
+    value = text.strip()
+    if not value.startswith("#"):
+        return ""
+    digits = value[1:]
+    if len(digits) in (6, 8) and all(c in "0123456789abcdefABCDEF" for c in digits):
+        return "#" + digits[:6].lower()
+    return ""
+
+
+def collections(root):
+    """Every calendar directory in the vdir, in display order."""
+    try:
+        entries = sorted(p for p in root.iterdir() if p.is_dir())
+    except OSError:
+        return []
+
+    out = []
+    for directory in entries:
+        out.append(
+            {
+                "id": directory.name,
+                "name": read_sidecar(directory, "displayname") or directory.name,
+                "color": normalize_color(read_sidecar(directory, "color")),
+                "path": directory,
+            }
+        )
+    return out
+
+
+def load_calendar(directory):
+    """One icalendar VCALENDAR holding every event file in the directory.
+
+    recurring-ical-events expands across a whole calendar at once, so merging
+    first means one expansion per calendar rather than one per file — and it
+    keeps RECURRENCE-ID overrides next to the series they amend, which is the
+    only arrangement where they actually override anything.
+    """
+    merged = icalendar.Calendar()
+    merged.add("prodid", "-//omarchy-calendar-events//EN")
+    merged.add("version", "2.0")
+
+    try:
+        files = sorted(directory.glob("*.ics"))
+    except OSError as exc:
+        print(f"{directory}: {exc}", file=sys.stderr)
+        return merged, 0
+
+    count = 0
+    for path in files:
+        try:
+            parsed = icalendar.Calendar.from_ical(path.read_bytes())
+        except (OSError, ValueError) as exc:
+            print(f"{path.name}: {exc}", file=sys.stderr)
+            continue
+        for component in parsed.walk():
+            # VTIMEZONE rides along: without the definitions, a floating
+            # TZID on a DTSTART has nothing to resolve against.
+            if component.name in ("VEVENT", "VTIMEZONE"):
+                merged.add_component(component)
+                count += component.name == "VEVENT"
+    return merged, count
+
+
+def is_all_day(value):
+    """iCalendar spells all-day as a DATE rather than a DATE-TIME."""
+    return isinstance(value, date) and not isinstance(value, datetime)
+
+
+def as_local(value):
+    """A naive local datetime, so day bucketing is in the viewer's timezone."""
+    if not isinstance(value, datetime):
+        return value
+    if value.tzinfo is None:
+        return value
+    return value.astimezone().replace(tzinfo=None)
+
+
+def event_days(start, end, all_day):
+    """Every date the event touches, first to last.
+
+    An exclusive end is what iCalendar means by DTEND, so a 09:00–10:00
+    meeting and an all-day Monday both end on the day they started. Only a
+    genuinely multi-day event reaches past it. An end at exactly midnight is
+    the same story: it belongs to the evening before, not to the next
+    morning it never occupies.
+    """
+    first = start.date() if isinstance(start, datetime) else start
+    last_value = end if end is not None else start
+    last = last_value.date() if isinstance(last_value, datetime) else last_value
+
+    if all_day:
+        last = last - timedelta(days=1)
+    elif isinstance(last_value, datetime) and last_value.time() == datetime.min.time():
+        last = last - timedelta(days=1)
+
+    if last < first:
+        last = first
+
+    out = []
+    cursor = first
+    while cursor <= last:
+        out.append(cursor)
+        cursor += timedelta(days=1)
+    return out
+
+
+def text_of(component, key):
+    value = component.get(key)
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def collect(root, first, last):
+    days = {}
+    calendars = []
+
+    # recurring-ical-events takes an inclusive-start, exclusive-end window.
+    window_end = last + timedelta(days=1)
+
+    for entry in collections(root):
+        calendar, total = load_calendar(entry["path"])
+        calendars.append(
+            {"id": entry["id"], "name": entry["name"], "color": entry["color"], "events": total}
+        )
+        if total == 0:
+            continue
+
+        try:
+            occurrences = recurring_ical_events.of(calendar).between(first, window_end)
+        except Exception as exc:  # the library raises a wide range on bad data
+            print(f"{entry['id']}: expansion failed: {exc}", file=sys.stderr)
+            continue
+
+        for occurrence in occurrences:
+            start_raw = occurrence.get("DTSTART")
+            if start_raw is None:
+                continue
+            start = start_raw.dt
+            end_raw = occurrence.get("DTEND")
+            end = end_raw.dt if end_raw is not None else None
+
+            all_day = is_all_day(start)
+            start = as_local(start)
+            end = as_local(end)
+
+            for moment in event_days(start, end, all_day):
+                if moment < first or moment > last:
+                    continue
+                days.setdefault(day_key(moment), []).append(
+                    {
+                        "summary": text_of(occurrence, "SUMMARY") or "(ohne Titel)",
+                        "location": text_of(occurrence, "LOCATION"),
+                        "allDay": all_day,
+                        "start": "" if all_day else start.strftime("%H:%M"),
+                        "end": "" if all_day or end is None else end.strftime("%H:%M"),
+                        "calendar": entry["name"],
+                        "color": entry["color"],
+                        # Sorting keys, kept out of the panel's way below.
+                        "_sort": (0, "") if all_day else (1, start.strftime("%H:%M")),
+                    }
+                )
+
+    # All-day events first, then by start time, then alphabetically — the
+    # order a day reads in, and stable across runs so the list does not
+    # reshuffle itself when nothing changed.
+    for key in days:
+        days[key].sort(key=lambda e: (e["_sort"], e["summary"].lower()))
+        for event in days[key]:
+            del event["_sort"]
+
+    return calendars, days
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    today = date.today()
+    parser.add_argument("--from", dest="first", default=day_key(today), type=parse_day)
+    parser.add_argument("--to", dest="last", default=day_key(today), type=parse_day)
+    parser.add_argument("--dir", default=str(DEFAULT_DIR), type=Path)
+    args = parser.parse_args()
+
+    if args.last < args.first:
+        args.first, args.last = args.last, args.first
+
+    root = args.dir.expanduser()
+    if not root.is_dir():
+        # Not an error: nothing is synced yet, and the panel should show an
+        # empty calendar rather than a failure.
+        json.dump({"days": {}, "calendars": [], "synced": False}, sys.stdout)
+        sys.stdout.write("\n")
+        return 0
+
+    calendars, days = collect(root, args.first, args.last)
+    json.dump(
+        {
+            "days": days,
+            "calendars": calendars,
+            "synced": True,
+            "from": day_key(args.first),
+            "to": day_key(args.last),
+        },
+        sys.stdout,
+        ensure_ascii=False,
+    )
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

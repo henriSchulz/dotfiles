@@ -10,9 +10,10 @@ import "file:///home/henri/.local/share/henri-ui" as HUi
 // sit beside the weather panel — same hero-over-detail composition, same
 // spacing scale, same small-caps labels.
 //
-// The grid is a read-out rather than a picker: today is the only marked
-// day, and the only thing that moves is which month is on screen —
-// chevrons, the scroll wheel, and the arrow keys all step it.
+// The grid reads out a month: today is outlined, chevrons, the scroll
+// wheel and the arrow keys step which month is on screen. Days carrying
+// events from the synced iCloud calendars show a dot apiece, and clicking
+// one grows that day's list out of the bottom of the grid.
 //
 // BarWidget.qml owns the bar label and hands this panel the button to
 // anchor against.
@@ -74,6 +75,17 @@ Panel {
   readonly property string nextWeekStartLabel: labelLocale.dayName(Model.toggledWeekStart(weekStart), Locale.LongFormat)
   readonly property var weekdays: Model.weekdayOrder(weekStart)
   readonly property var weeks: Model.monthGrid(viewYear, viewMonth, weekStart, todayKey)
+  readonly property var gridRange: Model.gridRange(weeks)
+
+  // ---- The day being asked about, as the grid's own cell object, or null.
+  //      Nothing is selected until a day is clicked, so a calendar nobody is
+  //      questioning stays the quiet read-out it has always been.
+  property var selectedDay: null
+  readonly property string selectedKey: selectedDay ? String(selectedDay.key) : ""
+  readonly property var selectedEvents: selectedDay ? events.eventsOn(selectedDay.key) : []
+  readonly property string selectedDayLabel: selectedDay
+    ? labelLocale.toString(new Date(selectedDay.year, selectedDay.month, selectedDay.day), "dddd, d. MMMM")
+    : ""
 
 
   // Guarded so the widget renders before the bar is injected (the bar-widget
@@ -105,6 +117,9 @@ Panel {
 
   function close() {
     setCenterHoverRevealSuppressed(false)
+    // Next time it opens it should be the month grid again, not whichever
+    // Tuesday was left expanded underneath it.
+    root.clearSelection()
     // Dismissing the panel mid-edit would otherwise leave the inputs up,
     // waiting behind a closed popup for the next time it opens.
     if (root.editingLife) root.cancelEditingLife()
@@ -132,17 +147,34 @@ Panel {
   function refresh() {
     root.today = new Date()
     root.goToToday()
+    // The timer syncs every 15 minutes, so what is on disk when the panel
+    // opens is what the panel should be showing.
+    events.refresh()
   }
 
   function goToToday() {
+    root.clearSelection()
     root.viewYear = today.getFullYear()
     root.viewMonth = today.getMonth()
   }
 
   function moveMonth(delta) {
     var next = Model.stepMonth(viewYear, viewMonth, delta)
+    root.clearSelection()
     root.viewYear = next.year
     root.viewMonth = next.month
+  }
+
+  // Clicking the open day closes it again, so the same target both asks and
+  // stops asking.
+  function selectDay(day) {
+    if (!day) root.selectedDay = null
+    else if (root.selectedKey === String(day.key)) root.selectedDay = null
+    else root.selectedDay = day
+  }
+
+  function clearSelection() {
+    root.selectedDay = null
   }
 
   function moveYear(delta) {
@@ -239,6 +271,12 @@ Panel {
     }
   }
 
+  EventService {
+    id: events
+    rangeFrom: root.gridRange.from
+    rangeTo: root.gridRange.to
+  }
+
   HUi.PopupPanel {
     id: panel
     kind: "popover"
@@ -260,7 +298,10 @@ Panel {
         if (dy !== 0) root.moveYear(dy)
       }
       onActivateRequested: root.goToToday()
-      onCloseRequested: root.close()
+      onCloseRequested: {
+        if (root.selectedDay) root.clearSelection()
+        else root.close()
+      }
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
         if (t === "[") root.moveMonth(-1)
@@ -667,27 +708,121 @@ Panel {
                     model: modelData.days
 
                     Rectangle {
+                      id: cell
                       required property var modelData
+
+                      readonly property var dayEvents: events.eventsOn(cell.modelData.key)
+                      readonly property bool selected: root.selectedKey === String(cell.modelData.key)
 
                       width: root.cellWidth
                       height: root.cellHeight
                       radius: Style.space(Motion.radiusRow)
                       // Today is outlined, not filled: a lit-up block shouts
-                      // over a grid this quiet.
-                      color: "transparent"
-                      border.width: modelData.today ? Style.spacing.hairline : 0
+                      // over a grid this quiet. The day you picked is the one
+                      // exception, because that is what selection looks like
+                      // everywhere else in the shell.
+                      color: cell.selected
+                        ? Color.accent
+                        : Util.alpha(Style.hoverFillFor(root.contentForeground, Color.accent),
+                                     dayMouse.containsMouse ? 1 : 0)
+                      Behavior on color {
+                        ColorAnimation {
+                          duration: cell.selected || dayMouse.containsMouse ? Motion.instant : Motion.fast
+                          easing.type: Easing.BezierSpline
+                          easing.bezierCurve: Motion.easeOut
+                        }
+                      }
+                      // Dropped under the accent fill rather than drawn over
+                      // it: today and selected both want the eye, and two
+                      // markers on one cell only muddle which is which.
+                      border.width: cell.modelData.today && !cell.selected ? Style.spacing.hairline : 0
                       border.color: Style.normalBorderFor(root.contentForeground, Color.accent)
 
                       Text {
                         textFormat: Text.PlainText
-                        anchors.centerIn: parent
-                        text: modelData.day
-                        color: modelData.inMonth
-                          ? (modelData.weekend ? root.secondaryText : root.contentForeground)
-                          : Util.alpha(root.contentForeground, Motion.disabledOpacity)
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.verticalCenter: parent.verticalCenter
+                        // Lifted by the height of the dot row below, so a day
+                        // with events and a day without still sit on the same
+                        // line across the grid.
+                        anchors.verticalCenterOffset: -Style.space(3)
+                        text: cell.modelData.day
+                        color: cell.selected
+                          ? Motion.onColor(Color.accent)
+                          : (cell.modelData.inMonth
+                              ? (cell.modelData.weekend ? root.secondaryText : root.contentForeground)
+                              : Util.alpha(root.contentForeground, Motion.disabledOpacity))
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
                         font.family: root.contentFontFamily
                         font.pixelSize: Style.font.body
-                        font.bold: modelData.today
+                        font.bold: cell.modelData.today
+                      }
+
+                      // One dot per event, three at most. Past that the count
+                      // stops being readable at this size and the grid only
+                      // gets noisier; the day's own list has the rest.
+                      Row {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: Style.space(6)
+                        spacing: Style.space(3)
+
+                        Repeater {
+                          model: Math.min(cell.dayEvents.length, 3)
+
+                          Rectangle {
+                            id: dot
+                            required property int index
+
+                            readonly property string calendarColor: String(cell.dayEvents[dot.index].color || "")
+                            // The dots arrive with the helper's answer rather
+                            // than with the frame, so they fade up instead of
+                            // popping into a grid that was already drawn.
+                            property bool shown: false
+
+                            width: Style.space(4)
+                            height: width
+                            radius: width / 2
+                            // On an accent-filled cell the calendar's own
+                            // color would be whatever survives against blue.
+                            // The selected day borrows the fill's text color
+                            // instead, which is the one thing guaranteed to
+                            // read on it.
+                            color: cell.selected
+                              ? Motion.onColor(Color.accent)
+                              : (dot.calendarColor !== "" ? dot.calendarColor : Color.accent)
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+                            opacity: dot.shown ? (cell.modelData.inMonth ? 1 : Motion.disabledOpacity) : 0
+                            scale: dot.shown ? 1 : Motion.iconFromScale
+                            Component.onCompleted: Qt.callLater(function() { dot.shown = true })
+                            Behavior on opacity {
+                              NumberAnimation {
+                                duration: Motion.fast
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Motion.easeOut
+                              }
+                            }
+                            Behavior on scale {
+                              NumberAnimation {
+                                duration: Motion.fast
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Motion.easeOut
+                              }
+                            }
+                          }
+                        }
+                      }
+
+                      MouseArea {
+                        id: dayMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        // Every day answers, not just the ones with dots:
+                        // "is anything on the 23rd?" is the same question
+                        // whether or not the answer turns out to be no.
+                        onClicked: root.selectDay(cell.modelData)
                       }
                     }
                   }
@@ -704,6 +839,157 @@ Panel {
               height: gridColumn.height - headerRow.height - gridColumn.spacing
               color: root.contentForeground
               opacity: 0.1
+            }
+          }
+
+          // ---- The day you clicked, growing out of the bottom of the grid
+          //      it came from. Collapsed to nothing the rest of the time, so
+          //      the popup is the same panel it always was until something is
+          //      actually asked of it.
+          HUi.Collapse {
+            width: parent.width
+            expanded: root.selectedDay !== null
+
+            Column {
+              anchors.horizontalCenter: parent.horizontalCenter
+              // The grid's own width, so the list lines up under the days
+              // rather than under the popup.
+              width: gridColumn.width
+              spacing: Style.space(2)
+
+              Item { width: parent.width; height: Style.space(14) }
+
+              Rectangle {
+                width: parent.width
+                height: Style.spacing.hairline
+                color: root.contentForeground
+                opacity: Motion.hairlineAlpha
+              }
+
+              Item { width: parent.width; height: Style.space(6) }
+
+              // The day spelled out. The cell it came from is two digits,
+              // which is not enough to confirm you hit the one you meant.
+              HUi.CrossfadeText {
+                width: parent.width
+                height: implicitHeight
+                text: root.selectedDayLabel
+                color: root.secondaryText
+                fontFamily: root.contentFontFamily
+                fontSize: Style.font.caption
+                fontWeight: Font.Bold
+                elide: Text.ElideRight
+              }
+
+              Item { width: parent.width; height: Style.space(4) }
+
+              Repeater {
+                model: root.selectedEvents
+
+                Item {
+                  id: eventRow
+                  required property var modelData
+                  required property int index
+
+                  width: parent.width
+                  height: Style.space(Motion.controlHeight)
+
+                  HUi.StaggerIn {
+                    anchors.fill: parent
+                    active: true
+                    index: eventRow.index
+
+                    // The calendar's own color, the way it is on the phone —
+                    // a stripe rather than a dot, because at this size a dot
+                    // beside text reads as a bullet point.
+                    Rectangle {
+                      id: stripe
+                      anchors.left: parent.left
+                      anchors.verticalCenter: parent.verticalCenter
+                      width: Style.space(3)
+                      height: Style.space(16)
+                      radius: width / 2
+                      color: String(eventRow.modelData.color || "") !== ""
+                        ? eventRow.modelData.color
+                        : Color.accent
+                    }
+
+                    Text {
+                      id: timeText
+                      textFormat: Text.PlainText
+                      anchors.left: stripe.right
+                      anchors.leftMargin: Style.space(10)
+                      anchors.verticalCenter: parent.verticalCenter
+                      // Fixed, so the titles line up into a column instead of
+                      // stepping in and out behind times of different widths.
+                      width: Style.space(58)
+                      text: eventRow.modelData.allDay ? "ganztägig" : String(eventRow.modelData.start)
+                      color: root.secondaryText
+                      font.family: root.contentFontFamily
+                      font.pixelSize: Style.font.caption
+                    }
+
+                    Text {
+                      id: placeText
+                      textFormat: Text.PlainText
+                      anchors.right: parent.right
+                      anchors.verticalCenter: parent.verticalCenter
+                      // Never more than a third of the row: the title is what
+                      // the list is for, and a long address must not squeeze
+                      // it down to an ellipsis.
+                      width: Math.min(implicitWidth, Math.round(parent.width / 3))
+                      horizontalAlignment: Text.AlignRight
+                      elide: Text.ElideRight
+                      text: String(eventRow.modelData.location || "")
+                      color: root.secondaryText
+                      font.family: root.contentFontFamily
+                      font.pixelSize: Style.font.caption
+                    }
+
+                    Text {
+                      textFormat: Text.PlainText
+                      anchors.left: timeText.right
+                      anchors.leftMargin: Style.space(8)
+                      anchors.right: placeText.text !== "" ? placeText.left : parent.right
+                      anchors.rightMargin: Style.space(8)
+                      anchors.verticalCenter: parent.verticalCenter
+                      elide: Text.ElideRight
+                      text: String(eventRow.modelData.summary)
+                      color: root.contentForeground
+                      font.family: root.contentFontFamily
+                      font.pixelSize: Style.font.body
+                    }
+                  }
+                }
+              }
+
+              // An empty day still answers. A blank gap under the grid would
+              // read as a panel that broke rather than as a free afternoon.
+              Item {
+                width: parent.width
+                height: root.selectedEvents.length === 0 ? Style.space(Motion.controlHeight) : 0
+                visible: height > 0
+
+                HUi.CrossfadeText {
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(13)
+                  anchors.right: parent.right
+                  anchors.verticalCenter: parent.verticalCenter
+                  height: implicitHeight
+                  // Told apart deliberately: a day with nothing on it and a
+                  // machine with no calendar on it look identical otherwise,
+                  // and only one of them is worth doing something about.
+                  text: events.everLoaded && !events.synced
+                    ? "Kein Kalender synchronisiert"
+                    : "Keine Termine"
+                  color: root.secondaryText
+                  fontFamily: root.contentFontFamily
+                  fontSize: Style.font.body
+                  elide: Text.ElideRight
+                }
+              }
+
+              Item { width: parent.width; height: Style.space(6) }
             }
           }
 
