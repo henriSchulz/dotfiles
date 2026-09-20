@@ -5,8 +5,23 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-# Discover is what picks up a calendar added on the phone since the last run.
-# It is cheap, and skipping it would leave new calendars invisible until
-# someone remembered to run it by hand.
-ExecStart=/usr/bin/vdirsyncer discover --yes
+
+# Discover is what notices a calendar added on the phone since the last run.
+# It is allowed to fail: for a genuinely new calendar it asks whether to
+# create the local side, and a service has no stdin to answer with. Sync then
+# carries on with the collections already known, and picking up the new one
+# is a one-off `vdirsyncer discover` in a terminal.
+ExecStart=-/usr/bin/vdirsyncer discover
+
 ExecStart=/usr/bin/vdirsyncer sync
+
+# Names and colors travel separately from the events, and the panel tints
+# each day's dots with them. Non-fatal: a calendar whose color did not come
+# down still shows its events, in the theme's accent.
+ExecStart=-/usr/bin/vdirsyncer metasync
+
+# Re-expand the cache the popup reads. Reading the vdir itself costs about
+# 13 ms per event file, which is seconds — the panel must never do that on a
+# click, so it happens here instead, right after the only thing that can
+# invalidate it.
+ExecStart=%h/.local/bin/omarchy-calendar-events --rebuild-cache

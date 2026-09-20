@@ -13,6 +13,13 @@ panel's QML: getting them right by hand is a project, and
 recurring-ical-events already did it.
 
   omarchy-calendar-events --from 2026-09-01 --to 2026-10-11
+  omarchy-calendar-events --rebuild-cache      # after a sync
+
+Reading the vdir costs about 13 ms per .ics file, which at a few hundred
+events is seconds — far too long for a popup that opens on a click. So the
+expansion is done once over a window of years and cached as plain JSON, and
+a request that lands inside that window is a dict lookup. The sync timer
+rebuilds the cache right after it pulls, so the panel never pays for it.
 
 Anything unreadable is skipped with a note on stderr rather than taken down
 the whole run: one corrupt .ics must not empty the calendar.
@@ -22,21 +29,44 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-try:
-    import icalendar
-    import recurring_ical_events
-except ImportError as exc:  # pragma: no cover - environment, not logic
-    print(
-        f"missing dependency: {exc.name}\n"
-        "install: sudo pacman -S --needed python-icalendar python-recurring-ical-events",
-        file=sys.stderr,
-    )
-    sys.exit(2)
+# Imported on demand rather than at startup. Together they take about a
+# quarter of a second to load, which is most of what answering from the
+# cache costs in total — and answering from the cache never needs them.
+icalendar = None
+recurring_ical_events = None
+
+
+def require_libraries():
+    global icalendar, recurring_ical_events
+    if icalendar is not None:
+        return
+    try:
+        import icalendar as _icalendar
+        import recurring_ical_events as _recurring
+    except ImportError as exc:  # pragma: no cover - environment, not logic
+        print(
+            f"missing dependency: {exc.name}\n"
+            "install: sudo pacman -S --needed python-icalendar python-recurring-ical-events",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    icalendar = _icalendar
+    recurring_ical_events = _recurring
 
 DEFAULT_DIR = Path.home() / ".local/share/calendars"
+CACHE_PATH = Path(
+    os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")
+) / "omarchy-calendar/events.json"
+
+# How far either side of this year the cache reaches. Wide enough that
+# thumbing through the months never leaves it, short enough that rebuilding
+# stays a second or two.
+CACHE_YEARS = 1
+CACHE_VERSION = 1
 
 
 def parse_day(text):
@@ -89,6 +119,37 @@ def collections(root):
             }
         )
     return out
+
+
+def fingerprint(root):
+    """What the cache is keyed on: cheap to compute, changes on every sync.
+
+    Per calendar, the number of files and the newest mtime among them and
+    the two sidecars. A sync that adds, removes, or rewrites anything moves
+    one of those; nothing else has to be read to find out.
+    """
+    parts = []
+    try:
+        directories = sorted(p for p in root.iterdir() if p.is_dir())
+    except OSError:
+        return ""
+
+    for directory in directories:
+        count = 0
+        newest = 0
+        try:
+            for entry in os.scandir(directory):
+                if not entry.is_file():
+                    continue
+                if entry.name.endswith(".ics"):
+                    count += 1
+                elif entry.name not in ("displayname", "color"):
+                    continue
+                newest = max(newest, entry.stat().st_mtime_ns)
+        except OSError:
+            return ""
+        parts.append(f"{directory.name}:{count}:{newest}")
+    return f"v{CACHE_VERSION}|" + "|".join(parts)
 
 
 def load_calendar(directory):
@@ -176,6 +237,8 @@ def text_of(component, key):
 
 
 def collect(root, first, last):
+    """Read the vdir and expand everything falling between two dates."""
+    require_libraries()
     days = {}
     calendars = []
 
@@ -236,26 +299,115 @@ def collect(root, first, last):
     return calendars, days
 
 
+def default_window(today):
+    return (date(today.year - CACHE_YEARS, 1, 1), date(today.year + CACHE_YEARS, 12, 31))
+
+
+def read_cache(root):
+    """The cached window, or None if it is missing, stale, or unreadable."""
+    try:
+        cached = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if cached.get("fingerprint") != fingerprint(root):
+        return None
+    return cached
+
+
+def write_cache(payload):
+    """Atomically, because the panel may be reading it as the timer writes."""
+    try:
+        CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        handle = tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=CACHE_PATH.parent, delete=False
+        )
+        with handle as out:
+            json.dump(payload, out, ensure_ascii=False)
+        os.replace(handle.name, CACHE_PATH)
+    except OSError as exc:
+        # A cache that cannot be written is a slow panel, not a broken one.
+        print(f"cache: {exc}", file=sys.stderr)
+
+
+def build_cache(root, first, last):
+    calendars, days = collect(root, first, last)
+    payload = {
+        "fingerprint": fingerprint(root),
+        "from": day_key(first),
+        "to": day_key(last),
+        "calendars": calendars,
+        "days": days,
+    }
+    write_cache(payload)
+    return payload
+
+
+def slice_days(days, first, last):
+    lo, hi = day_key(first), day_key(last)
+    return {key: value for key, value in days.items() if lo <= key <= hi}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     today = date.today()
     parser.add_argument("--from", dest="first", default=day_key(today), type=parse_day)
     parser.add_argument("--to", dest="last", default=day_key(today), type=parse_day)
     parser.add_argument("--dir", default=str(DEFAULT_DIR), type=Path)
+    parser.add_argument(
+        "--rebuild-cache",
+        action="store_true",
+        help="re-expand the cache window and exit; run this after a sync",
+    )
+    parser.add_argument(
+        "--no-cache", action="store_true", help="read the vdir directly, ignoring the cache"
+    )
     args = parser.parse_args()
 
     if args.last < args.first:
         args.first, args.last = args.last, args.first
 
     root = args.dir.expanduser()
+
     if not root.is_dir():
         # Not an error: nothing is synced yet, and the panel should show an
         # empty calendar rather than a failure.
-        json.dump({"days": {}, "calendars": [], "synced": False}, sys.stdout)
-        sys.stdout.write("\n")
+        if not args.rebuild_cache:
+            json.dump({"days": {}, "calendars": [], "synced": False}, sys.stdout)
+            sys.stdout.write("\n")
         return 0
 
-    calendars, days = collect(root, args.first, args.last)
+    window_first, window_last = default_window(today)
+
+    if args.rebuild_cache:
+        payload = build_cache(root, window_first, window_last)
+        total = sum(len(v) for v in payload["days"].values())
+        print(
+            f"cached {total} occurrences from {payload['from']} to {payload['to']}"
+            f" in {len(payload['calendars'])} calendars",
+            file=sys.stderr,
+        )
+        return 0
+
+    days = None
+    calendars = []
+
+    if not args.no_cache:
+        cached = read_cache(root)
+        # Only answer from the cache when it actually covers the question.
+        if cached and cached["from"] <= day_key(args.first) and day_key(args.last) <= cached["to"]:
+            days = slice_days(cached["days"], args.first, args.last)
+            calendars = cached["calendars"]
+
+    if days is None:
+        # A miss, or a month outside the window. Rebuild over a window wide
+        # enough to hold both, so thumbing further in that direction is a
+        # cache hit rather than another few seconds of parsing.
+        payload = build_cache(
+            root, min(window_first, args.first), max(window_last, args.last)
+        )
+        days = slice_days(payload["days"], args.first, args.last)
+        calendars = payload["calendars"]
+
     json.dump(
         {
             "days": days,
