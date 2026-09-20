@@ -1,6 +1,7 @@
 #!/bin/bash
-# Keep workspaces 1–10 free of gaps: with windows on 1, 3 and 4, the windows on
-# 3 move to 2 and those on 4 move to 3. Runs as a listener on Hyprland's event
+# Workspaces 1–5 are fixed slots and are never renumbered. Above them, keep
+# 6–10 free of gaps: with windows on 6, 8 and 9, the windows on 8 move to 7 and
+# those on 9 move to 8. Runs as a listener on Hyprland's event
 # socket and compacts whenever a window opens, closes or changes workspace, and
 # whenever the focused workspace changes. The focused workspace keeps its slot
 # while it is empty, so windows from higher workspaces only move down once you
@@ -14,11 +15,11 @@
 set -euo pipefail
 
 compact() {
-  local state focused id addr target=1 follow="" lua=""
+  local state focused id addr target=6 follow="" lua=""
   state=$(hyprctl -j clients) || return 0
   focused=$(hyprctl -j activeworkspace | jq -r '.id') || return 0
 
-  for id in $(jq -r --argjson f "$focused" '[(.[] | .workspace.id), $f | select(. >= 1 and . <= 10)] | unique | .[]' <<<"$state"); do
+  for id in $(jq -r --argjson f "$focused" '[(.[] | .workspace.id), $f | select(. >= 6 and . <= 10)] | unique | .[]' <<<"$state"); do
     if (( id == focused )) && ! jq -e --argjson ws "$id" 'any(.[]; .workspace.id == $ws)' <<<"$state" >/dev/null; then
       # Focused and empty: reserve its slot instead of filling it.
       target=$((id + 1))
