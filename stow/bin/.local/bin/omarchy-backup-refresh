@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+# ============================================================================
+# omarchy-backup-refresh
+#
+# Bringt den bootfaehigen Omarchy-Klon auf der externen SSD auf den aktuellen
+# Stand des laufenden Systems.
+#
+# Verfahren: read-only btrfs-Snapshot der Quelle (konsistenter Stand trotz
+# laufendem System), daraus rsync (nur Aenderungen). Danach werden die
+# UUIDs des Backups wiederhergestellt und die Kernel-Images neu gebaut.
+#
+#   omarchy-backup-refresh          normal
+#   omarchy-backup-refresh -n       Probelauf, aendert nichts
+# ============================================================================
+set -euo pipefail
+
+DRY=""
+[[ ${1:-} == -n || ${1:-} == --dry-run ]] && DRY="--dry-run"
+
+WORK=/run/omarchy-backup
+SRC=$WORK/src          # Quelle, Top-Level
+TGT=$WORK/target       # Backup, fertig gemountet
+SNAPS=(@ @home)
+
+say(){ printf '\n\033[1;34m>>> %s\033[0m\n' "$*"; }
+ok(){  printf '    \033[32m%s\033[0m\n' "$*"; }
+die(){ printf '\n\033[1;31m!!! ABBRUCH: %s\033[0m\n' "$*" >&2; exit 1; }
+
+[[ $EUID -eq 0 ]] || exec sudo -- "$0" "$@"
+
+cleanup(){
+  set +e
+  mountpoint -q "$TGT/boot" && umount "$TGT/boot"
+  mountpoint -q "$TGT"      && umount -R "$TGT"
+  for s in "${SNAPS[@]}"; do
+    [[ -d "$SRC/.refresh-$s" ]] && btrfs subvolume delete "$SRC/.refresh-$s" >/dev/null 2>&1
+  done
+  mountpoint -q "$SRC" && umount "$SRC"
+  rmdir "$SRC" "$TGT" "$WORK" 2>/dev/null
+}
+trap cleanup EXIT
+
+# --- Quelle bestimmen -------------------------------------------------------
+say "Quelle pruefen"
+SRC_MAP=$(findmnt -no SOURCE / | sed 's/\[.*//')
+SRC_UUID=$(blkid -s UUID -o value "$SRC_MAP")
+SRC_DISK=$(cryptsetup status "$(basename "$SRC_MAP")" 2>/dev/null | awk '/device:/{print $2}')
+ok "laeuft von $SRC_DISK  (btrfs $SRC_UUID)"
+
+# --- Backup-Partition finden ------------------------------------------------
+say "Backup-Datentraeger suchen"
+BACKUP_PART=$(lsblk -rno NAME,PARTLABEL | awk '$2=="OMARCHY_BACKUP"{print "/dev/"$1; exit}')
+[[ -n $BACKUP_PART ]] || die "keine Partition mit PARTLABEL=OMARCHY_BACKUP gefunden - SSD angesteckt?"
+ok "gefunden: $BACKUP_PART"
+[[ $BACKUP_PART != "$SRC_DISK"* ]] || die "Backup liegt auf derselben Platte wie das laufende System"
+
+HOLDER=$(ls "/sys/class/block/$(basename "$BACKUP_PART")/holders/" 2>/dev/null | head -1 || true)
+if [[ -n $HOLDER ]]; then
+  DST_MAP=/dev/$HOLDER
+  ok "bereits entschluesselt"
+else
+  say "Entschluesseln - Passphrase noetig"
+  cryptsetup open "$BACKUP_PART" omarchy_backup
+  DST_MAP=/dev/mapper/omarchy_backup
+fi
+
+DST_UUID=$(blkid -s UUID -o value "$DST_MAP")
+[[ "$(blkid -s LABEL -o value "$DST_MAP")" == OMARCHY_BACKUP ]] \
+  || die "$DST_MAP traegt nicht das Label OMARCHY_BACKUP"
+[[ $DST_UUID != "$SRC_UUID" ]] \
+  || die "Quelle und Ziel sind dasselbe Dateisystem - laeufst du gerade vom Backup?"
+ok "Ziel-btrfs $DST_UUID"
+
+# --- Konsistenten Stand der Quelle einfrieren -------------------------------
+say "Read-only Snapshot der Quelle anlegen"
+mkdir -p "$SRC" "$TGT"
+mount -o subvolid=5 "$SRC_MAP" "$SRC"
+for s in "${SNAPS[@]}"; do
+  btrfs subvolume delete "$SRC/.refresh-$s" >/dev/null 2>&1 || true
+  btrfs subvolume snapshot -r "$SRC/$s" "$SRC/.refresh-$s" >/dev/null
+  ok "$s eingefroren"
+done
+sync
+
+# --- Backup mounten ---------------------------------------------------------
+say "Backup mounten"
+mount -o subvol=@,noatime,compress=zstd:3 "$DST_MAP" "$TGT"
+[[ -x $TGT/usr/bin/pacman ]] || die "Ziel sieht nicht nach Omarchy aus"
+mount --mkdir -o subvol=@home,noatime,compress=zstd:3 "$DST_MAP" "$TGT/home"
+
+# --- Abgleich ---------------------------------------------------------------
+# Verschachtelte Subvolumes (swap, .snapshots, Backups, var/log, var/cache)
+# liegen im Snapshot als leere Ordner vor und werden dadurch von selbst
+# uebersprungen. Die Ausschluesse sind nur doppelter Boden.
+RSYNC=(rsync -aHAX --delete --numeric-ids --info=progress2 $DRY
+       --exclude='/swap/***' --exclude='/.snapshots/***'
+       --exclude='/var/lib/portables/***' --exclude='/var/lib/machines/***'
+       --exclude='/var/log/***' --exclude='/var/cache/pacman/pkg/***')
+
+say "System abgleichen"
+"${RSYNC[@]}" "$SRC/.refresh-@/" "$TGT/"
+
+say "Benutzerdaten abgleichen"
+# ~/.cache sind ~590.000 Dateien und 11 GB, die sich jederzeit neu aufbauen.
+# Sie machen 87 % aller Dateien im Home aus und dominieren damit die Laufzeit,
+# ohne im Rettungsfall irgendeinen Wert zu haben.
+# --delete-excluded raeumt den beim ersten Klon mitgekommenen Cache wieder weg.
+"${RSYNC[@]}" --delete-excluded \
+  --exclude='/henri/Backups/***' \
+  --exclude='/henri/.cache/***' \
+  --exclude='/henri/.local/share/Trash/***' \
+  "$SRC/.refresh-@home/" "$TGT/home/"
+
+if [[ -n $DRY ]]; then
+  say "Probelauf beendet - nichts veraendert"; exit 0
+fi
+
+# --- Eigenstaendigkeit wiederherstellen -------------------------------------
+# Der Abgleich hat fstab und Bootkonfiguration der Quelle mitkopiert. Ohne
+# diesen Schritt wuerde das Backup beim Start die interne Platte entschluesseln
+# und von dort booten - es waere also nutzlos.
+say "Bootkonfiguration auf das Backup umschreiben"
+BOOT_PART=$(lsblk -rno NAME,PARTLABEL | awk '$2=="OMARCHY_BACKUP_EFI"{print "/dev/"$1; exit}')
+[[ -n $BOOT_PART ]] || die "ESP des Backups (PARTLABEL=OMARCHY_BACKUP_EFI) nicht gefunden"
+mount --mkdir "$BOOT_PART" "$TGT/boot"
+
+SRC_LUKS=$(blkid -s UUID -o value "$SRC_DISK")
+SRC_ESP=$(findmnt -no SOURCE /boot | xargs blkid -s UUID -o value)
+DST_LUKS=$(blkid -s UUID -o value "$BACKUP_PART")
+DST_ESP=$(blkid -s UUID -o value "$BOOT_PART")
+
+sed -i "s/$SRC_UUID/$DST_UUID/g; s/$SRC_ESP/$DST_ESP/g" "$TGT/etc/fstab"
+sed -i '/swapfile/d' "$TGT/etc/fstab"
+for f in /etc/crypttab.initramfs /etc/kernel/cmdline /etc/default/limine; do
+  [[ -f $TGT$f ]] && sed -i "s/$SRC_LUKS/$DST_LUKS/g" "$TGT$f"
+done
+# Das Backup hat kein Swapfile, also auch kein Ziel zum Aufwachen.
+rm -f "$TGT/etc/limine-entry-tool.d/resume.conf"
+
+if grep -rn "$SRC_LUKS\|$SRC_UUID\|$SRC_ESP" "$TGT/etc/" 2>/dev/null | grep -v '\.back'; then
+  die "oben stehende Dateien verweisen noch auf das laufende System"
+fi
+ok "LUKS $DST_LUKS / btrfs $DST_UUID / ESP $DST_ESP"
+
+# --- Bootloader -------------------------------------------------------------
+say "Bootloader-Dateien auffrischen"
+# Ohne --delete: die Kernel-Images des Backups bleiben stehen und werden
+# gleich ohnehin neu gebaut. Uebernommen werden nur Limine selbst und memtest.
+rsync -rlt --exclude='loader/random-seed' --exclude='limine_history/' /boot/ "$TGT/boot/"
+
+say "Kernel-Images neu bauen"
+# Omarchy hat keine mkinitcpio-Presets; der Bau laeuft ueber limine-mkinitcpio.
+arch-chroot "$TGT" limine-mkinitcpio
+arch-chroot "$TGT" limine-update
+
+say "Kontrolle"
+grep -q "$DST_LUKS" "$TGT/boot/limine.conf" \
+  || die "limine.conf des Backups zeigt nicht auf $DST_LUKS"
+ok "Backup entschluesselt beim Start sich selbst"
+[[ -f $TGT/boot/EFI/BOOT/BOOTX64.EFI ]] \
+  && ok "startet auch an fremden Rechnern" \
+  || printf '    \033[33m%s\033[0m\n' "kein \\EFI\\BOOT\\BOOTX64.EFI - nur mit NVRAM-Eintrag startbar"
+df -h "$TGT" | tail -1 | sed 's/^/    /'
+
+say "Fertig - Backup ist auf dem Stand von $(date '+%d.%m.%Y %H:%M')"
