@@ -278,7 +278,9 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
 ## 5. Performance-Regeln (smooth = keine Frame-Drops)
 
 - Keine teure Arbeit beim Animationsstart (Dateien lesen, Prozesse starten, große
-  Modelle bauen) — vorher laden oder nach Animationsende.
+  Modelle bauen) — vorher laden oder erst `Motion.settleDelay` (120 ms) nach dem
+  Öffnen starten, per `Timer { interval: Motion.settleDelay }`. Ein `fork` in den
+  ersten Frames kostet sichtbar Bildrate, auch wenn die Arbeit im Kind passiert.
 - Komplexe Ebenen während der Animation als Layer rendern (QML `layer.enabled`,
   CSS `will-change: transform, opacity` nur während der Animation).
 - Popups vorab instanziieren und nur ein-/ausblenden, statt sie bei jedem Öffnen neu zu bauen.

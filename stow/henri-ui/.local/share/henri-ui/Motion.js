@@ -47,6 +47,10 @@ var flashDuration = ms(70)    // menu item blink after a click (macOS)
 // Reveal waits for its window's first frame before animating; give up after this.
 var firstFrameTimeout = 400
 var tooltipDelay = 500
+// Expensive work (spawning processes, scanning directories, building large
+// models) waits this long after a surface opens, so no fork lands in the first
+// frames of its animation.
+var settleDelay = ms(120)
 // Super+Tab switcher: the strip only appears once Super+Tab is held this long,
 // a quick tap switches without flashing it (Cmd+Tab / Alt+Tab behaviour).
 var switcherDelay = 50

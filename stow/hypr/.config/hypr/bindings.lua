@@ -71,3 +71,13 @@ o.bind("SUPER + CTRL + W", "Wi-Fi", "omarchy-shell henri.control-center togglePa
 -- Ordner ~/Pictures/Wallpaper, Auswahl bleibt über Theme-Wechsel erhalten).
 hl.unbind("SUPER + CTRL + SPACE")
 o.bind("SUPER + CTRL + SPACE", "Wallpaper", "omarchy-shell -q wallpaper toggle")
+
+-- Spotlight (henri.menu). Omarchys Standard rief `omarchy-menu toggle` auf:
+-- bash → jq → bash → qs-IPC-Client, zusammen ~95 ms Prozessstart, bevor die
+-- Shell vom Tastendruck etwas merkte. Die Tasten gehen jetzt als Hyprland-
+-- Ereignis (custom>>menu …) direkt an das Plugin — kein Prozess, keine Latenz,
+-- wie beim Super+Tab-Switcher.
+hl.unbind("SUPER + SPACE")
+hl.unbind("SUPER + ALT + SPACE")
+o.bind("SUPER + SPACE", "Spotlight", hl.dsp.event("menu toggle root"))
+o.bind("SUPER + ALT + SPACE", "Apps menu", hl.dsp.event("menu toggle apps"))

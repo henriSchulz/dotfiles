@@ -1,6 +1,7 @@
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import QtQuick
 import qs.Commons
 import qs.Ui
@@ -47,6 +48,30 @@ Item {
   }
 
   function ping() { return "ok" }
+
+  // Super+Space kommt als Hyprland-Ereignis herein, nicht als Kommando:
+  // `omarchy-menu toggle` startete bash + jq + den qs-IPC-Client, zusammen
+  // ~95 ms, bevor die Shell vom Tastendruck überhaupt etwas mitbekam. Das
+  // Ereignis läuft über die ohnehin offene Event-Socket-Verbindung, also
+  // fängt die Karte im selben Moment an zu kommen (wie beim Super+Tab-
+  // Switcher). Der Umweg über shell.toggle() statt direkt openRoute() hält
+  // die Sichtbarkeits-Buchführung der Shell intakt.
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event.name !== "custom") return
+      var data = String(event.data)
+      if (data.indexOf("menu ") !== 0) return
+      var parts = data.slice(5).trim().split(/\s+/)
+      var verb = parts[0] || "toggle"
+      var route = parts[1] || "root"
+      var id = (root.manifest && root.manifest.id) ? root.manifest.id : "henri.menu"
+      var payload = JSON.stringify({ menu: route })
+      if (verb === "close") root.shell.hide(id)
+      else if (verb === "summon") root.shell.summon(id, payload)
+      else root.shell.toggle(id, payload)
+    }
+  }
 
   property string fontFamily: Style.font.menuFamily
   // JSONC menu definitions. The shell parses both at startup and merges
@@ -1474,16 +1499,29 @@ Item {
     selectedIndex = 0
     cursorActive = true
     root.disarmPointer()
-    root.evaluateGuards()
     opened = true
     rebuildDisplay()
     invalidateVolatileProvider(activeMenu)
     loadProviderForMenu(activeMenu)
-    // The shell may start before first-install packages have finished placing
-    // their icons. Refresh here even when the desktop entry list did not change.
-    if (root.appLibrary) root.appLibrary.refreshIcons()
+    // Guards and the icon rescan both fork (the guard batch is one `bash -lc`
+    // that runs ~150 `when:` commands). Starting them here put that fork into
+    // the first frames of the open animation; they answer asynchronously
+    // anyway, so they wait until the card is settled.
+    settleWork.restart()
 
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  Timer {
+    id: settleWork
+    interval: Motion.settleDelay
+    onTriggered: {
+      if (!root.opened) return
+      root.evaluateGuards()
+      // The shell may start before first-install packages have finished placing
+      // their icons. Refresh here even when the desktop entry list did not change.
+      if (root.appLibrary) root.appLibrary.refreshIcons()
+    }
   }
 
   function openDmenu(payload) {
