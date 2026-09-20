@@ -37,7 +37,7 @@ else
   warn "  1. mint one at appleid.apple.com → Sign-In and Security → App-Specific Passwords"
   warn "  2. secret-tool store --label=\"iCloud CalDAV\" \\"
   warn "       service icloud-caldav username $apple_id"
-  warn "  3. vdirsyncer discover && vdirsyncer sync"
+  warn "  3. vdirsyncer discover && vdirsyncer sync && vdirsyncer metasync"
 fi
 
 # Enabling is safe without the password: the timer simply logs failures until
