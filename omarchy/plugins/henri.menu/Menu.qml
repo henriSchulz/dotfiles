@@ -1751,12 +1751,14 @@ Item {
     mask: root.opened ? null : closingMask
     Region { id: closingMask }
 
-    // Launcher = full-screen surface: fade + scale from popoverFromScale on
-    // the gentle spring over Motion.slower; exit faster (0.7x, easeExit).
+    // Spotlight is a card over a scrim, not a full-screen composition like the
+    // overview: it follows the popover recipe (fade + scale from
+    // popoverFromScale on the smooth spring over Motion.slow), not the
+    // Motion.slower/gentle pair the overview uses. Exit faster (0.7x, easeExit).
     readonly property bool animating: cardScale.running || (card.opacity > 0 && card.opacity < 1)
     HUi.SpringValue {
       id: cardScale
-      preset: Motion.gentle
+      preset: Motion.smooth
       to: root.opened ? 1 : Motion.exitToScale
     }
     // The query as it looked while open, so the search line does not blank
@@ -1835,7 +1837,7 @@ Item {
       layer.smooth: true
       Behavior on opacity {
         NumberAnimation {
-          duration: root.opened ? Motion.slower : Motion.exit(Motion.slower)
+          duration: root.opened ? Motion.slow : Motion.exit(Motion.slow)
           easing.type: Easing.BezierSpline
           easing.bezierCurve: root.opened ? Motion.easeOut : Motion.easeExit
         }

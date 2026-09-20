@@ -107,7 +107,7 @@ erklären sie und müssen bei Änderungen mitgezogen werden.
 | `fast`     | 160 | Hover-*raus*, Farbwechsel, Icon-Crossfade, Tooltip |
 | `base`     | 240 | Menüs, Popover, Dropdowns, Toggles, kleine Größenwechsel |
 | `slow`     | 380 | Panels, Sheets, Seitenwechsel, Control-Center-Drill-in |
-| `slower`   | 520 | Vollbild: Overview, Mission Control, Launcher |
+| `slower`   | 520 | Vollbild-Umbau: Overview, Mission Control |
 | Exit       | ×0.7| Ausblenden = 0.7 × Einblenden-Dauer |
 
 ### Kurven (cubic-bezier)
@@ -191,9 +191,12 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
 - Rein: von der Bildschirmkante gleiten + faden, `gentle`. Raus: zurück zur Kante,
   schneller. Nachrückende Einträge gleiten nach (`smooth`).
 
-**Vollbild (Overview, Mission Control, Launcher)**
+**Vollbild-Umbau (Overview, Mission Control)**
 - Hintergrund dimmt/blurt per Opacity eines vorgerenderten Layers (Blur-Radius nie
-  animieren). Fenster/Kacheln skalieren von ihrer echten Position aus, `gentle`.
+  animieren). Fenster/Kacheln skalieren von ihrer echten Position aus, `gentle`/`slower`.
+- **Nur wo der ganze Bildschirm umgebaut wird.** Ein Launcher/Spotlight ist trotz
+  Vollbild-Fläche nur eine Karte über einem Scrim — der folgt dem Popover-Rezept
+  (`slow` + `smooth`). `slower` fühlt sich dort träge an.
 
 **Switcher (Super+Tab, wie Cmd/Alt+Tab)**
 - Streifen erscheint erst nach `Motion.switcherDelay` (50 ms) Halten; kurzes Antippen
