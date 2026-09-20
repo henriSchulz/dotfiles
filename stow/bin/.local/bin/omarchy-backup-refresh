@@ -29,6 +29,7 @@ die(){ printf '\n\033[1;31m!!! ABBRUCH: %s\033[0m\n' "$*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || exec sudo -- "$0" "$@"
 
 cleanup(){
+  local rc=$?
   set +e
   mountpoint -q "$TGT/boot" && umount "$TGT/boot"
   mountpoint -q "$TGT"      && umount -R "$TGT"
@@ -37,6 +38,9 @@ cleanup(){
   done
   mountpoint -q "$SRC" && umount "$SRC"
   rmdir "$SRC" "$TGT" "$WORK" 2>/dev/null
+  # Beim Aufraeumen duerfen Kommandos fehlschlagen, ohne dass das Skript
+  # dadurch einen Fehler meldet.
+  exit $rc
 }
 trap cleanup EXIT
 
@@ -92,7 +96,10 @@ mount --mkdir -o subvol=@home,noatime,compress=zstd:3 "$DST_MAP" "$TGT/home"
 # Verschachtelte Subvolumes (swap, .snapshots, Backups, var/log, var/cache)
 # liegen im Snapshot als leere Ordner vor und werden dadurch von selbst
 # uebersprungen. Die Ausschluesse sind nur doppelter Boden.
-RSYNC=(rsync -aHAX --delete --numeric-ids --info=progress2 $DRY
+# -S ist hier nicht optional: ~/.windows/data.img ist eine Sparse-Datei mit
+# 64 GB logischer Groesse bei 12 GB belegtem Platz. Ohne --sparse schreibt
+# rsync die Loecher als echte Nullen aus und sprengt damit das Backup.
+RSYNC=(rsync -aHAXS --delete --numeric-ids --info=progress2 $DRY
        --exclude='/swap/***' --exclude='/.snapshots/***'
        --exclude='/var/lib/portables/***' --exclude='/var/lib/machines/***'
        --exclude='/var/log/***' --exclude='/var/cache/pacman/pkg/***')
