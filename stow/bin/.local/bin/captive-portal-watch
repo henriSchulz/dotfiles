@@ -23,7 +23,7 @@ handle() {
     portal)
       [[ -n $opened ]] && return
       opened=1
-      notify-send -a "WLAN" "Anmeldung erforderlich" "$(nmcli -t -f NAME con show --active 2>/dev/null | grep -v '^lo$' | head -1)"
+      notify-send -a "Wi-Fi" "Sign-in required" "$(nmcli -t -f NAME con show --active 2>/dev/null | grep -v '^lo$' | head -1)"
       omarchy launch browser "$probe_url" >/dev/null 2>&1 &
       wait_for_login &
       ;;
