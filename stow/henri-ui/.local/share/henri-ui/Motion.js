@@ -36,6 +36,9 @@ var bouncy = spring(0.45, 0.75)   // rare, playful only
 
 // ── Choreography ───────────────────────────────────────────────────────────
 var pressScale = 0.97
+// A dragged item (reorderable tile, Spaces thumbnail) lifts to this scale while
+// held and settles back on drop with the snappy spring.
+var liftScale = 1.05
 var menuFromScale = 0.96
 var popoverFromScale = 0.95
 var exitToScale = 0.98

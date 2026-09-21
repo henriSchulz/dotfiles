@@ -177,6 +177,11 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
 - Neue Einträge: Höhe von 0 aufklappen (`smooth`) + Inhalt faden; Entfernen gespiegelt.
 - Erstes Erscheinen: Stagger 15 ms pro Eintrag, maximal 10 Einträge gestaffelt, Rest gleichzeitig.
 - Reorder: Einträge gleiten (`smooth`) an ihre neue Position, nie springen.
+- Drag-to-Reorder: das gehaltene Element hebt sich auf `Motion.liftScale` (1.05, `snappy`)
+  und klebt direkt am Zeiger — Versatz ab dem Aktivieren messen, damit es nicht um die
+  Drag-Schwelle springt. Nachbarn gleiten mit `smooth` aus dem Weg, Loslassen landet mit
+  `snappy` und der Wurfgeschwindigkeit im Slot. Beim Übernehmen nichts neu aufbauen
+  (Kacheln mit fester Identität + Reihenfolge-Array), sonst blitzt Inhalt leer auf.
 - Scrollen: kinetisch mit Rubber-Band-Overshoot am Rand (wo der Toolkit es kann).
 
 **Tooltip**
