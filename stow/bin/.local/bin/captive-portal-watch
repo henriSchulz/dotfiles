@@ -3,10 +3,18 @@
 # macOS does: NetworkManager already detects them (connectivity 'portal'),
 # Omarchy just never shows anything. Runs from autostart.lua.
 #
-# Opens a plain-http URL on purpose: HTTPS pages can't be redirected by the
-# portal, so a browser on the last tab just times out.
+# Asks for the portal's redirect itself and opens that URL: the browser can't
+# be handed the plain-http probe, Chromium upgrades it to https, which the
+# portal can't redirect.
 
 probe_url='http://ping.archlinux.org/nm-check.txt'
+fallback_url='http://neverssl.com'
+
+portal_url() {
+  local url
+  url=$(curl -s -m 5 -o /dev/null -w '%{redirect_url}' "$probe_url" 2>/dev/null)
+  echo "${url:-$fallback_url}"
+}
 opened=""
 
 # NM only re-checks every few minutes; poll after opening so the status bar
@@ -24,7 +32,7 @@ handle() {
       [[ -n $opened ]] && return
       opened=1
       notify-send -a "Wi-Fi" "Sign-in required" "$(nmcli -t -f NAME con show --active 2>/dev/null | grep -v '^lo$' | head -1)"
-      omarchy launch browser "$probe_url" >/dev/null 2>&1 &
+      omarchy launch browser "$(portal_url)" >/dev/null 2>&1 &
       wait_for_login &
       ;;
     full|none) opened="" ;;
