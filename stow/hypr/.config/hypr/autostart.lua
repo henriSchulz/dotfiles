@@ -11,3 +11,6 @@ o.launch_on_start("easyeffects-auto-bypass")
 
 -- Screenshots land in ~/Pictures/Screenshot instead of ~/Pictures.
 hl.env("OMARCHY_SCREENSHOT_DIR", os.getenv("HOME") .. "/Pictures/Screenshot")
+
+-- Captive portals (WIFIonICE, hotels): open the login page when NM detects one.
+o.launch_on_start("captive-portal-watch")
