@@ -224,6 +224,16 @@ Item {
       Quickshell.execDetached(["omarchy-brightness-display", arg])
       return
     }
+    // Held keys: the firmware repeats at only ~4 Hz (volume gets the keyboard's
+    // 40 Hz), so a press that follows the last one closely moves several
+    // steps. Every move still belongs to one event -- nothing runs on after
+    // the key is released. Near-simultaneous doubles count once.
+    var now = Date.now()
+    var gap = action === lastBrightAction ? now - lastBrightAt : 1e9
+    if (gap < dupWindow) return
+    lastBrightAction = action
+    lastBrightAt = now
+    if (gap < holdWindow) action += "*"
     if (reader.running) { pending = pending.concat([action]); return }
     if (!glow.running && !(open && kind === "brightness")) {
       pending = [action]
@@ -233,12 +243,21 @@ Item {
     stepBrightness(action)
   }
 
+  readonly property int holdSteps: 3
+  readonly property int holdWindow: 450   // ms: closer than this = key is held
+  readonly property int dupWindow: 40     // ms: firmware sometimes sends twice
+  property string lastBrightAction: ""
+  property real lastBrightAt: 0
+
   function stepBrightness(action) {
     var cur = brightLevel
     var dir = action.indexOf("up") === 0 ? 1 : -1
     var n = action.indexOf("fine") > 0 ? fineSteps : steps
+    var k = action.indexOf("*") > 0 ? holdSteps : 1
     show("brightness", cur)
-    brightLevel = stepped(cur, n, dir)
+    var next = cur
+    for (var i = 0; i < k; i++) next = stepped(next, n, dir)
+    brightLevel = next
     level = brightLevel
   }
 
@@ -339,10 +358,56 @@ Item {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             width: Style.space(22)
-            text: root.icon
+            text: root.kind === "brightness" ? "" : root.icon
             color: root.fg
             fontFamily: root.symbolFont
             fontSize: Style.font.iconLarge
+          }
+
+          // Brightness gets a drawn sun instead of the two SF glyphs: its rays
+          // grow from dots (sun.min) to long rays (sun.max) on the bar's own
+          // spring, so the icon changes with every step like the speaker waves.
+          Item {
+            id: sun
+            readonly property real size: Style.font.iconLarge
+            readonly property real v: Math.max(0, Math.min(1, fill.value))
+            readonly property real stroke: Math.max(1.5, size * 0.1)
+            readonly property real disc: size * 0.4
+            readonly property real rayStart: disc / 2 + size * 0.09
+            anchors.left: glyph.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: size
+            height: size
+            opacity: root.kind === "brightness" ? 1 : 0
+            Behavior on opacity {
+              NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+            }
+
+            Rectangle {
+              anchors.centerIn: parent
+              width: sun.disc
+              height: sun.disc
+              radius: width / 2
+              color: root.fg
+            }
+            Repeater {
+              model: 8
+              Item {
+                required property int index
+                anchors.fill: parent
+                rotation: index * 45
+                Rectangle {
+                  readonly property real len: sun.stroke + sun.size * 0.2 * sun.v
+                  x: (sun.size - width) / 2
+                  y: sun.size / 2 - sun.rayStart - len
+                  width: sun.stroke
+                  height: len
+                  radius: width / 2
+                  antialiasing: true
+                  color: root.fg
+                }
+              }
+            }
           }
 
           Rectangle {
