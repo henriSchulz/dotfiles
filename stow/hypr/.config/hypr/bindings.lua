@@ -102,3 +102,22 @@ o.bind("XF86MonBrightnessUp", "Brightness up", hl.dsp.event("osd brightness up")
 o.bind("XF86MonBrightnessDown", "Brightness down", hl.dsp.event("osd brightness down"), { locked = true, repeating = true })
 o.bind("ALT + XF86MonBrightnessUp", "Brightness up precise", hl.dsp.event("osd brightness up-fine"), { locked = true, repeating = true })
 o.bind("ALT + XF86MonBrightnessDown", "Brightness down precise", hl.dsp.event("osd brightness down-fine"), { locked = true, repeating = true })
+
+-- Super+Backspace in Files (Nautilus) = in den Papierkorb, wie Cmd+Backspace im
+-- Finder; in allen anderen Fenstern bleibt es Omarchys Transparenz-Umschalter.
+-- Nautilus bekommt Entf statt Backspace, damit der weitergereichte Tastendruck
+-- nicht wieder dieses Binding trifft; henri_files.py fängt Super+Entf ab
+-- (Entf allein ist ohnehin Nautilus' Papierkorb-Taste). Muster wie Omarchys
+-- Super+C/V (default/hypr/bindings/clipboard.lua).
+hl.unbind("SUPER + BACKSPACE")
+o.bind("SUPER + BACKSPACE", "Move to Trash (Files) / Toggle window transparency", function()
+  local window = hl.get_active_window()
+  if window and window.class == "org.gnome.Nautilus" then
+    hl.dispatch(hl.dsp.send_key_state({ mods = "", key = "Delete", state = "down" }))
+    hl.timer(function()
+      hl.dispatch(hl.dsp.send_key_state({ mods = "", key = "Delete", state = "up" }))
+    end, { timeout = 50, type = "oneshot" })
+  else
+    hl.dispatch(hl.dsp.exec_cmd("omarchy-hyprland-window-transparency-toggle"))
+  end
+end)

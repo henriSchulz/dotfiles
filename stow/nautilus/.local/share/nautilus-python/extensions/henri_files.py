@@ -7,6 +7,7 @@
 #    starts renaming instead of opening it (open = double-click, Ctrl+O or
 #    Alt+Down, as Cmd+O / Cmd+Down on the Mac). Return anywhere else (path
 #    bar, search, sidebar, dialogs) is left alone.
+#  * Super+Backspace moves the selection to the Trash (Cmd+Backspace).
 #  * Inline rename. Nautilus renames in a popover (title, entry, button,
 #    pointing at the item). It is turned into a bare field lying exactly over
 #    the file's name: no title, no button, no arrow, text where the name was,
@@ -88,6 +89,19 @@ MODIFIERS = (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK
 
 
 def _on_window_key(controller, keyval, _keycode, state):
+    # Super+Backspace = move to Trash (Cmd+Backspace). Hyprland owns that
+    # chord (window transparency); while Files is focused it forwards Delete
+    # instead (bindings.lua), which arrives with the held Super -- so both
+    # chords land here. Plain Delete is Nautilus's own Trash key anyway.
+    if keyval in (Gdk.KEY_BackSpace, Gdk.KEY_Delete) \
+            and state & MODIFIERS == Gdk.ModifierType.SUPER_MASK:
+        focus = controller.get_widget().get_focus()
+        if focus is None or isinstance(focus, Gtk.Editable):
+            return False
+        if _ancestor(focus, "NautilusFilesView") is None:
+            return False
+        focus.activate_action("view.move-to-trash", None)
+        return True
     if keyval not in RETURN_KEYS or state & MODIFIERS:
         return False
     window = controller.get_widget()
