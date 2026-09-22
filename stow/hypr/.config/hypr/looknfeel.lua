@@ -73,3 +73,6 @@ hl.layer_rule({ match = { namespace = "workspace-switcher" }, no_anim = true, an
 -- Hyprlands eigener Layer-Fade (layersIn, speed 4 = 400 ms) legte eine zweite
 -- Blende darüber: nach dem Tastendruck stand die Karte spürbar lange halb da.
 hl.layer_rule({ match = { namespace = "omarchy-menu" }, no_anim = true, animation = "none" })
+
+-- Lautstärke-/Helligkeits-HUD (henri.osd) blendet sich selbst ein und aus.
+hl.layer_rule({ match = { namespace = "henri-osd" }, no_anim = true, animation = "none" })

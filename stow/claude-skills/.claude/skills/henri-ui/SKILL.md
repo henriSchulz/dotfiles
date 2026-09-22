@@ -196,6 +196,14 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
 - Rein: von der Bildschirmkante gleiten + faden, `gentle`. Raus: zurück zur Kante,
   schneller. Nachrückende Einträge gleiten nach (`smooth`).
 
+**HUD (Lautstärke/Helligkeit, wie macOS)**
+- Karte oben rechts unter der Bar (Control-Center-Modul „Sound“/„Display“), klick-durch,
+  nie Fokus. Rein: Fade `base` + Scale vom Eck (`smooth`), raus: `slow×0.7` easeExit,
+  `Motion.hudHold` (1.5 s) nach dem letzten Tastendruck.
+- 16 Stufen, Alt = Viertelstufe. Balken gleitet mit `smooth`, bleibt bei Tasten-
+  wiederholung unterbrechbar. Helligkeit auf wahrnehmungsgleicher Kurve, das Backlight
+  selbst gleitet mit. Tasten per `hl.dsp.event`, kein Prozess pro Druck (`henri.osd`).
+
 **Vollbild-Umbau (Overview, Mission Control)**
 - Hintergrund dimmt/blurt per Opacity eines vorgerenderten Layers (Blur-Radius nie
   animieren). Fenster/Kacheln skalieren von ihrer echten Position aus, `gentle`/`slower`.

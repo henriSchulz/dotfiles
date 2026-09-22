@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.osd",
+  "name": "Volume & Brightness HUD",
+  "version": "1.0.0",
+  "author": "henri",
+  "description": "macOS-style volume and brightness HUD: 16 steps, instant keys, the level glides.",
+  "kinds": [
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

@@ -60,6 +60,8 @@ var switcherDelay = 50
 // On commit the strip drifts this far in the direction the workspaces slide,
 // so the overlay and the desktop read as one movement.
 var carryOffset = 24
+// Volume/brightness HUD: stays this long after the last key press (macOS).
+var hudHold = ms(1500)
 var tooltipGrace = 1000       // follow-up tooltips show instantly within this window
 // Rejected input (wrong password): one horizontal shake, 3 swings — the only
 // allowed wobble, like the macOS login field.

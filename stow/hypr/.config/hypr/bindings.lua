@@ -81,3 +81,24 @@ hl.unbind("SUPER + SPACE")
 hl.unbind("SUPER + ALT + SPACE")
 o.bind("SUPER + SPACE", "Spotlight", hl.dsp.event("menu toggle root"))
 o.bind("SUPER + ALT + SPACE", "Apps menu", hl.dsp.event("menu toggle apps"))
+
+-- Lautstärke/Helligkeit wie macOS (Plugin henri.osd): 16 Stufen, Alt = Viertel-
+-- stufe. Die Tasten gehen als Hyprland-Ereignis (custom>>osd …) direkt an das
+-- Plugin, das PipeWire bzw. die Hintergrundbeleuchtung im selben Frame setzt.
+-- Omarchys Weg (bash → pactl ×4 → jq → Shell-IPC pro Tastendruck, ~150 ms)
+-- ließ die Anzeige hinterherhinken und Tastenwiederholungen stauen.
+for _, k in ipairs({ "XF86AudioRaiseVolume", "XF86AudioLowerVolume", "XF86AudioMute",
+  "XF86MonBrightnessUp", "XF86MonBrightnessDown",
+  "ALT + XF86AudioRaiseVolume", "ALT + XF86AudioLowerVolume",
+  "ALT + XF86MonBrightnessUp", "ALT + XF86MonBrightnessDown" }) do
+  hl.unbind(k)
+end
+o.bind("XF86AudioRaiseVolume", "Volume up", hl.dsp.event("osd volume up"), { locked = true, repeating = true })
+o.bind("XF86AudioLowerVolume", "Volume down", hl.dsp.event("osd volume down"), { locked = true, repeating = true })
+o.bind("XF86AudioMute", "Mute", hl.dsp.event("osd volume mute"), { locked = true })
+o.bind("ALT + XF86AudioRaiseVolume", "Volume up precise", hl.dsp.event("osd volume up-fine"), { locked = true, repeating = true })
+o.bind("ALT + XF86AudioLowerVolume", "Volume down precise", hl.dsp.event("osd volume down-fine"), { locked = true, repeating = true })
+o.bind("XF86MonBrightnessUp", "Brightness up", hl.dsp.event("osd brightness up"), { locked = true, repeating = true })
+o.bind("XF86MonBrightnessDown", "Brightness down", hl.dsp.event("osd brightness down"), { locked = true, repeating = true })
+o.bind("ALT + XF86MonBrightnessUp", "Brightness up precise", hl.dsp.event("osd brightness up-fine"), { locked = true, repeating = true })
+o.bind("ALT + XF86MonBrightnessDown", "Brightness down precise", hl.dsp.event("osd brightness down-fine"), { locked = true, repeating = true })
