@@ -21,21 +21,20 @@ HUi.Surface {
   property var turns: []                    // [{question, answer}] — settled
   property string pendingQuestion: ""       // the turn being answered
   property string streamed: ""              // its answer so far
-  property string draft: ""                 // composer text
   property string note: ""                  // why an empty answer was empty
 
   property bool listening: false
   property bool transcribing: false
   property bool thinking: false
+  property string activity: ""              // what the agent is doing right now
+  property int elapsed: 0                   // seconds on the current turn
 
   property var levels: []
   property int barCount: 34
   property real sweep: 0
 
   // ── Output ──────────────────────────────────────────────────────────────
-  signal submitted()
   signal dismissed()
-  signal draftEdited(string text)
 
   // ── Shape ───────────────────────────────────────────────────────────────
   // Compact means "nothing but the composer": the surface stays the pill.
@@ -72,10 +71,11 @@ HUi.Surface {
     loops: Animation.Infinite
   }
 
-  readonly property string hint: listening ? "↵  send      Super A  stop      Esc  cancel"
+  readonly property string hint: listening ? "Super A  done      Esc  cancel"
     : transcribing ? "…"
-    : thinking ? "Working…"
-    : "↵  send      Super A  dictate      Esc  close"
+    : thinking ? (activity !== "" ? activity + "  ·  " + elapsed + " s"
+                                  : "thinking  ·  " + elapsed + " s")
+    : "Super A  talk      Esc  close"
 
   implicitHeight: body.height
 
@@ -241,93 +241,46 @@ HUi.Surface {
       }
     }
 
-    // ── Composer ──────────────────────────────────────────────────────────
+    // ── Voice row ─────────────────────────────────────────────────────────
+    // There is no text field: the key says when a question starts and when it
+    // ends, and ending it sends. So this row only reports -- microphone live
+    // while recording, the travelling sweep while the words are being made out
+    // or an answer is being written, a flat line when it is Henri's move.
     Item {
-      id: composer
+      id: voice
       width: parent.width
-      height: Math.max(card.rowHeight, input.implicitHeight + card.pad * 2)
+      height: card.rowHeight
 
       HUi.MicGlyph {
         id: mic
         anchors.left: parent.left
-        anchors.top: parent.top
-        anchors.topMargin: (card.rowHeight - height) / 2
+        anchors.verticalCenter: parent.verticalCenter
         height: Style.space(22)
         live: card.listening
       }
 
-      // Listening shows the waveform in the composer's place; the text takes
-      // over as soon as there are words. One crossfade, no layout jump.
       HUi.Waveform {
         anchors.left: mic.right
         anchors.leftMargin: Style.space(14)
-        anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.topMargin: (card.rowHeight - height) / 2
+        anchors.right: status.text !== "" ? status.left : parent.right
+        anchors.rightMargin: status.text !== "" ? Style.space(12) : 0
+        anchors.verticalCenter: parent.verticalCenter
         height: Style.space(28)
         levels: card.levels
         barCount: card.barCount
         live: card.listening
-        working: card.transcribing
+        working: card.transcribing || card.thinking
         sweep: card.sweep
-        opacity: (card.listening || card.transcribing) ? 1 : 0
-        Behavior on opacity {
-          NumberAnimation {
-            duration: Motion.fast
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: Motion.easeOut
-          }
-        }
       }
 
-      TextEdit {
-        id: input
-        anchors.left: mic.right
-        anchors.leftMargin: Style.space(14)
+      HUi.CrossfadeText {
+        id: status
         anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.topMargin: (card.rowHeight - Style.font.subtitle * 1.4) / 2
-        color: card.ink
-        font.family: Style.font.family
-        font.pixelSize: Style.font.subtitle
-        selectionColor: Color.accent
-        selectedTextColor: Motion.onColor(Color.accent)
-        wrapMode: TextEdit.Wrap
-        text: card.draft
-        opacity: (card.listening || card.transcribing) ? 0 : 1
-        // Stays enabled while the waveform is up: ↵ ends the recording, so the
-        // key has to reach this handler even when the field is invisible.
-        enabled: true
-        Behavior on opacity {
-          NumberAnimation {
-            duration: Motion.fast
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: Motion.easeOut
-          }
-        }
-
-        // The property is the source of truth; echoing every keystroke back
-        // through it would fight the cursor, so only real edits are reported.
-        onTextChanged: if (text !== card.draft) card.draftEdited(text)
-
-        Keys.onPressed: function (event) {
-          if (event.key === Qt.Key_Escape) {
-            card.dismissed()
-            event.accepted = true
-          } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                     && !(event.modifiers & Qt.ShiftModifier)) {
-            card.submitted()
-            event.accepted = true
-          }
-        }
-
-        Text {
-          anchors.fill: parent
-          text: card.status !== "" ? card.status : "Ask anything"
-          color: card.dimText
-          font: input.font
-          visible: input.text === "" && !card.listening && !card.transcribing
-        }
+        anchors.verticalCenter: parent.verticalCenter
+        horizontalAlignment: Text.AlignRight
+        text: card.status
+        color: card.dimText
+        fontSize: Style.font.body
       }
     }
 
@@ -349,6 +302,16 @@ HUi.Surface {
     }
   }
 
-  function focusInput() { input.forceActiveFocus() }
-  function caretToEnd() { input.cursorPosition = input.length }
+  // The card takes the keyboard while it is up, so Esc has to land somewhere
+  // now that the text field is gone.
+  focus: true
+  Keys.onPressed: function (event) {
+    if (event.key === Qt.Key_Escape) {
+      card.dismissed()
+      event.accepted = true
+    }
+  }
+
+  function focusInput() { card.forceActiveFocus() }
+  function caretToEnd() { }
 }

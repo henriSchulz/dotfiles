@@ -52,25 +52,43 @@ Item {
   property string note: ""
   property string status: ""
   property bool thinking: false
+
+  // A turn that is still running when the card closes keeps running -- agy has
+  // no cheap way to abort one, and killing the process would throw away the
+  // session. So the turn is abandoned instead: its events are ignored once the
+  // generation moves on, and `thinking` is cleared right away. Without that the
+  // flag stayed set, and send() returns early while it is, so ↵ silently did
+  // nothing for the rest of the session.
+  property int turnGeneration: 0
+  property int activeTurn: -1
+
+  // What the agent is doing right now, and for how long. With shell access a
+  // single question can be a dozen tool calls -- without this the card looks
+  // stuck for a minute when it is working perfectly.
+  property string activity: ""
+  property int elapsed: 0
+  property double turnStartedAt: 0
+  // Agy streams a step event for every tool call and every thought, so silence
+  // this long means it is wedged rather than busy. Generous on purpose: a real
+  // turn with a dozen commands in it is slow, but it is never quiet.
+  readonly property int stallMs: 90000
+  property double lastEventAt: 0
   // ↵ pressed while still recording: stop now, send as soon as the daemon
   // hands over the words. The turn is one gesture — speak, ↵ — with no stop
   // step in between and nothing to confirm.
   property bool sendOnArrival: false
 
+  // The key is the whole flow: it starts the recording and it ends it, and
+  // ending it sends. Henri decides where a question begins and ends -- no pause
+  // detection guessing at it, and no text field in between to confirm.
   function toggle() {
-    if (!open) openCard()
-    else if (listening) stopDictation()
-    else startDictation()
-  }
-
-  // ↵ from the card. Recording: end it and let the transcript go straight out.
-  // Otherwise: send what is in the composer.
-  function submit() {
-    if (listening) {
+    if (!open) {
+      openCard()
+    } else if (listening) {
       sendOnArrival = true
       stopDictation()
     } else if (!transcribing) {
-      send()
+      startDictation()
     }
   }
 
@@ -81,6 +99,7 @@ Item {
     draft = ""
     note = ""
     sendOnArrival = false
+    abandonTurn()
     open = true
     agentIdle.stop()
     startDictation()
@@ -89,8 +108,33 @@ Item {
   function close() {
     if (listening || transcribing) Quickshell.execDetached(["voxtype", "record", "cancel"])
     sendOnArrival = false
+    // A turn still running when the card closes is work nobody will read, and
+    // with shell access it is work that keeps running commands. Closing means
+    // stop -- the session is worth less than a wedged agent.
+    if (thinking) stopAgent()
+    abandonTurn()
     open = false
     agentIdle.restart()
+  }
+
+  // Take the agent down, and the tools it started with it: killing only agy
+  // would leave a `run_command` child behind holding the terminal it spawned.
+  // The next question starts a fresh process -- 6 s cold instead of 1.6 s warm,
+  // which is the right price for never being stuck.
+  function stopAgent() {
+    if (!agent.running) return
+    if (agent.processId) Quickshell.execDetached(["pkill", "-TERM", "-P", String(agent.processId)])
+    agent.running = false
+  }
+
+  // Stop waiting on whatever the agent is doing: the answer, if it still
+  // arrives, belongs to a card that is gone.
+  function abandonTurn() {
+    turnGeneration++
+    thinking = false
+    activity = ""
+    pendingQuestion = ""
+    streamed = ""
   }
 
   // ── Dictation ───────────────────────────────────────────────────────────
@@ -207,6 +251,21 @@ Item {
     }
   }
 
+  Timer {
+    running: root.thinking
+    interval: 1000
+    repeat: true
+    onTriggered: {
+      root.elapsed = Math.floor((Date.now() - root.turnStartedAt) / 1000)
+      if (Date.now() - root.lastEventAt > root.stallMs) {
+        root.stopAgent()
+        root.thinking = false
+        root.activity = ""
+        root.finishTurn("", "The agent stopped responding and was terminated.")
+      }
+    }
+  }
+
   // ── Sweep ───────────────────────────────────────────────────────────────
   property real sweep: 0
   NumberAnimation {
@@ -294,20 +353,55 @@ Item {
     var msg
     try { msg = JSON.parse(t) } catch (e) { return }
 
+    // Events from a turn the card stopped waiting on. The agent keeps working
+    // -- its answer just has nowhere to go, and must not leak into whatever is
+    // on screen now.
+    if (root.activeTurn !== root.turnGeneration) return
+    root.lastEventAt = Date.now()
+
     if (msg.event === "step_update") {
-      var d = msg.step_update ? msg.step_update.text_delta : ""
-      if (d) root.streamed += d
+      var step = msg.step_update || {}
+      if (step.tool_name) {
+        root.activity = step.state === "ACTIVE" ? root.toolLabel(step.tool_name) : ""
+      }
+      if (step.text_delta) root.streamed += step.text_delta
     } else if (msg.event === "result") {
       var r = msg.result || {}
       root.thinking = false
+      root.activity = ""
       root.finishTurn((r.response || root.streamed || "").trim(),
         r.status === "SUCCESS" ? "" : (r.error || "The turn failed."))
+    }
+  }
+
+  // The raw tool names are the agent's vocabulary, not Henri's.
+  function toolLabel(name) {
+    switch (name) {
+      case "run_command":
+      case "command_status":
+      case "send_command_input":      return "running a command"
+      case "view_file":
+      case "read_resource":           return "reading a file"
+      case "list_dir":                return "looking through a folder"
+      case "grep_search":
+      case "find_by_name":            return "searching"
+      case "search_web":              return "searching the web"
+      case "read_url_content":
+      case "open_browser_url":        return "opening a page"
+      case "write_to_file":
+      case "replace_file_content":
+      case "multi_replace_file_content":
+      case "sed_file":                return "editing a file"
+      case "invoke_subagent":
+      case "define_subagent":         return "delegating"
+      default:                        return name.replace(/_/g, " ")
     }
   }
 
   // Settle the in-flight turn into the list. An empty answer is the tool
   // auto-deny case, so the stderr line is what the card shows instead.
   function finishTurn(answer, failure) {
+    if (!root.open) return                 // the card it belonged to is gone
     var text = answer
     var why = ""
     if (text.length === 0) {
@@ -336,6 +430,12 @@ Item {
     root.pendingQuestion = q
     root.draft = ""
     root.thinking = true
+    root.turnGeneration++
+    root.activeTurn = root.turnGeneration
+    root.activity = ""
+    root.elapsed = 0
+    root.turnStartedAt = Date.now()
+    root.lastEventAt = Date.now()
     if (!agent.running) agent.running = true
     var content = q
     if (!root.preambleSent) {
@@ -435,19 +535,18 @@ Item {
       turns: root.turns
       pendingQuestion: root.pendingQuestion
       streamed: root.streamed
-      draft: root.draft
       note: root.note
       status: root.status
       listening: root.listening
       transcribing: root.transcribing
       thinking: root.thinking
+      activity: root.activity
+      elapsed: root.elapsed
       levels: root.levels
       barCount: root.barCount
       sweep: root.sweep
 
-      onSubmitted: root.submit()
       onDismissed: root.close()
-      onDraftEdited: function (text) { root.draft = text }
 
       transformOrigin: Item.Center
       scale: Motion.reduceMotion ? 1 : pop.value
