@@ -4,7 +4,7 @@
   "name": "Power",
   "version": "1.1.0",
   "author": "henri",
-  "description": "macOS-style battery menu: charge, battery size, time left, cycles and power draw up front; a charge or power graph from 15 min to 7 days and discharge statistics under History; power profile, Dell thermal modes, fans, power flow, charge mode and USB under Advanced",
+  "description": "macOS-style battery menu: charge, battery size, time left, cycles and power draw up front; a charge, power, voltage or current graph from 15 min to 7 days and discharge statistics under History; the power profile up front; fans, power flow, charge mode and USB under Advanced",
   "kinds": [
     "bar-widget"
   ],
@@ -70,7 +70,9 @@
         "label": "Battery history graph",
         "options": [
           "percent",
-          "watts"
+          "watts",
+          "volts",
+          "amps"
         ],
         "defaultValue": "percent"
       }

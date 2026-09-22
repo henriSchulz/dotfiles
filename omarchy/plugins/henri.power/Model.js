@@ -410,6 +410,8 @@ function parseHistoryCsv(raw, day) {
       pct: pct,
       wh: num(f[3]),
       w: num(f[4]),
+      v: num(f[5]),
+      a: num(f[6]),
       fullWh: num(f[7]),
       temp: num(f[8]),
       cycleWh: num(f[9])
@@ -491,8 +493,44 @@ function historyStats(points) {
     discharging: !!last && last.status === "Discharging",
     cycleWh: last && last.status === "Discharging" ? last.cycleWh : null,
     cycleStart: cycleStart,
-    lastW: last ? last.w : null
+    lastW: last ? last.w : null,
+    lastV: last ? last.v : null,
+    lastA: last ? last.a : null
   }
+}
+
+// ---- What the bars can show ---------------------------------------------
+//
+// `field` is the key on a bucket, `zero` whether the axis starts at zero.
+// A voltage axis does not: the pack only swings between about 7 and 8.5 V, so
+// a zero-based chart would stand every bar at nine tenths of the plot. It fits
+// the window's own range instead, and its bottom gridline names the value it
+// starts from, so the baseline is never read as zero.
+var HISTORY_MEAN_FIELDS = ["w", "v", "a"]
+
+var HISTORY_METRICS = [
+  { key: "percent", label: "Charge", unit: "%", field: "pct", decimals: 0, zero: true },
+  { key: "watts", label: "Power", unit: "W", field: "w", decimals: 1, zero: true },
+  { key: "volts", label: "Voltage", unit: "V", field: "v", decimals: 2, zero: false },
+  { key: "amps", label: "Current", unit: "A", field: "a", decimals: 2, zero: true }
+]
+var HISTORY_DEFAULT_METRIC = "percent"
+
+// A metric by key, or null. The IPC spellings ("power", "voltage", "current")
+// and the older "percentage" all land on their metric.
+var HISTORY_METRIC_ALIASES = {
+  charge: "percent", percentage: "percent", pct: "percent",
+  power: "watts", watt: "watts", w: "watts",
+  voltage: "volts", volt: "volts", v: "volts",
+  current: "amps", amp: "amps", ampere: "amps", a: "amps"
+}
+
+function historyMetric(key) {
+  var k = String(key === undefined || key === null ? "" : key).toLowerCase()
+  if (HISTORY_METRIC_ALIASES[k]) k = HISTORY_METRIC_ALIASES[k]
+  for (var i = 0; i < HISTORY_METRICS.length; i++)
+    if (HISTORY_METRICS[i].key === k) return HISTORY_METRICS[i]
+  return null
 }
 
 // The window cut into `count` equal slots for the bar chart. Each slot holds
@@ -509,6 +547,19 @@ function historyBuckets(points, now, hours, count) {
   var acc = []
   for (var i = 0; i < count; i++) acc.push(null)
   function slotOf(t) { return Math.min(count - 1, Math.floor((t - from) / slot)) }
+  function newSlot() {
+    return { n: 0, battery: 0, sum: { w: 0, v: 0, a: 0 }, cnt: { w: 0, v: 0, a: 0 }, pct: 0, t: 0 }
+  }
+  function addSample(a, p) {
+    a.n++
+    if (p.status === "Discharging") a.battery++
+    for (var i = 0; i < HISTORY_MEAN_FIELDS.length; i++) {
+      var key = HISTORY_MEAN_FIELDS[i], v = p[key]
+      if (v !== null && v !== undefined) { a.sum[key] += v; a.cnt[key]++ }
+    }
+    if (p.t >= a.t) { a.t = p.t; a.pct = p.pct }
+  }
+  function meanOf(a, key) { return a.cnt[key] > 0 ? a.sum[key] / a.cnt[key] : null }
   var prev = null
   var fill = []
   for (var j = 0; j < points.length; j++) {
@@ -519,17 +570,12 @@ function historyBuckets(points, now, hours, count) {
     if (prev && p.t - prev.t <= HISTORY_GAP_MS)
       for (var f = slotOf(prev.t) + 1; f < k; f++) fill.push({ k: f, p: prev })
     prev = p
-    var a = acc[k] || (acc[k] = { n: 0, battery: 0, wSum: 0, wN: 0, pct: 0, t: 0 })
-    a.n++
-    if (p.status === "Discharging") a.battery++
-    if (p.w !== null) { a.wSum += p.w; a.wN++ }
-    if (p.t >= a.t) { a.t = p.t; a.pct = p.pct }
+    addSample(acc[k] || (acc[k] = newSlot()), p)
   }
   for (var q = 0; q < fill.length; q++) {
     var e = fill[q]
     if (acc[e.k]) continue
-    acc[e.k] = { n: 1, battery: e.p.status === "Discharging" ? 1 : 0,
-      wSum: e.p.w !== null ? e.p.w : 0, wN: e.p.w !== null ? 1 : 0, pct: e.p.pct, t: e.p.t }
+    addSample(acc[e.k] = newSlot(), e.p)
   }
   return acc.map(function (a, idx) {
     if (!a) return null
@@ -538,7 +584,9 @@ function historyBuckets(points, now, hours, count) {
       t1: from + (idx + 1) * slot,
       pct: a.pct,
       battery: a.battery * 2 > a.n,
-      w: a.wN > 0 ? a.wSum / a.wN : null
+      w: meanOf(a, "w"),
+      v: meanOf(a, "v"),
+      a: meanOf(a, "a")
     }
   })
 }
@@ -579,14 +627,55 @@ function historyDays(now, hours) {
   return out
 }
 
-// Top of the power axis: the next round value above the highest bar.
+// The axis the bars of a metric are drawn against, as { min, max }. Charge is
+// always 0-100; power and current round up to the next step above the highest
+// bar; voltage fits the window (see the metric table). The steps are picked so
+// the middle gridline lands on a round value too.
+var HISTORY_WATT_STEPS = [5, 10, 20, 30, 40, 60, 80, 100, 150, 200, 300]
+var HISTORY_AMP_STEPS = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30]
+var HISTORY_VOLT_STEPS = [0.1, 0.2, 0.5, 1, 2, 5]
+// A battery with no logged voltage still needs an axis to draw against.
+var HISTORY_VOLT_FALLBACK = { min: 7, max: 9 }
+
+function historyAxis(bars, metricKey) {
+  var m = historyMetric(metricKey) || historyMetric(HISTORY_DEFAULT_METRIC)
+  if (m.key === "percent") return { min: 0, max: 100 }
+  var min = null, max = null
+  for (var i = 0; i < bars.length; i++) {
+    var b = bars[i]
+    if (!b) continue
+    var v = b[m.field]
+    if (v === null || v === undefined || !isFinite(v)) continue
+    if (min === null || v < min) min = v
+    if (max === null || v > max) max = v
+  }
+  if (m.zero) {
+    var steps = m.key === "amps" ? HISTORY_AMP_STEPS : HISTORY_WATT_STEPS
+    var top = max === null ? 0 : max
+    for (var j = 0; j < steps.length; j++) if (top <= steps[j]) return { min: 0, max: steps[j] }
+    return { min: 0, max: Math.ceil(top / steps[steps.length - 1]) * steps[steps.length - 1] }
+  }
+  if (min === null) return { min: HISTORY_VOLT_FALLBACK.min, max: HISTORY_VOLT_FALLBACK.max }
+  var step = HISTORY_VOLT_STEPS[HISTORY_VOLT_STEPS.length - 1]
+  for (var k = 0; k < HISTORY_VOLT_STEPS.length; k++)
+    if ((max - min) / HISTORY_VOLT_STEPS[k] <= 6) { step = HISTORY_VOLT_STEPS[k]; break }
+  var lo = Math.floor(min / step) * step
+  var hi = Math.ceil(max / step) * step
+  if (hi <= lo) hi = lo + step
+  // An even number of steps keeps the middle gridline on a round value; the
+  // extra step goes to whichever side already has more air, so the bars stay
+  // centred rather than hugging an edge.
+  if (Math.round((hi - lo) / step) % 2 === 1) {
+    if (min - lo >= hi - max) hi += step
+    else lo -= step
+  }
+  function round3(n) { return Math.round(n * 1000) / 1000 }
+  return { min: round3(lo), max: round3(hi) }
+}
+
+// Top of the power axis, kept for the callers that only ever meant watts.
 function historyWattScale(bars) {
-  var max = 0
-  for (var i = 0; i < bars.length; i++)
-    if (bars[i] && bars[i].w !== null && bars[i].w > max) max = bars[i].w
-  var steps = [5, 10, 20, 30, 40, 60, 80, 100, 150, 200, 300]
-  for (var j = 0; j < steps.length; j++) if (max <= steps[j]) return steps[j]
-  return Math.ceil(max / 100) * 100
+  return historyAxis(bars, "watts").max
 }
 
 // Time-axis marks inside [from, now]: the first round local step (5 min …
@@ -634,6 +723,10 @@ if (typeof module !== "undefined") {
     historyRange: historyRange,
     historyDays: historyDays,
     historyWattScale: historyWattScale,
+    historyAxis: historyAxis,
+    HISTORY_METRICS: HISTORY_METRICS,
+    HISTORY_DEFAULT_METRIC: HISTORY_DEFAULT_METRIC,
+    historyMetric: historyMetric,
     historyTicks: historyTicks,
     durationText: durationText,
     clampIndex: clampIndex,

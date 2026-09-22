@@ -148,6 +148,7 @@ check("parse: count", parsed.length, 6)
 check("parse: gap", parsed[2].gap, true)
 check("parse: time", parsed[0].t, new Date(2026, 8, 18, 10, 0, 0).getTime())
 check("parse: pct/w", [parsed[1].pct, parsed[1].w, parsed[1].fullWh], [79, 10, 33])
+check("parse: volts/amps", [parsed[1].v, parsed[1].a], [7.4, 1.3])
 
 const now = new Date(2026, 8, 18, 11, 2, 0).getTime()
 const win = Model.historyWindow(parsed, now, 24)
@@ -191,6 +192,13 @@ check("buckets: first", [bars[0].pct, bars[0].battery, bars[0].w], [75, true, 11
 check("buckets: empty slot", bars[1], null)
 check("buckets: plugged", [bars[2].pct, bars[2].battery], [60, false])
 
+const vaPts = [
+  { t: 10 * 60000, gap: false, status: "Discharging", pct: 80, w: 10, v: 7.4, a: 1.2 },
+  { t: 50 * 60000, gap: false, status: "Discharging", pct: 75, w: 12, v: 7.6, a: null }
+]
+const vaBars = Model.historyBuckets(vaPts, bNow, 3, 3)
+check("buckets: volt/amp means", [vaBars[0].v, vaBars[0].a], [7.5, 1.2])
+
 // remplissage entre deux échantillons consécutifs (créneaux de 20 s)
 const fPts = [
   { t: 0, gap: false, status: "Discharging", pct: 50, w: 8 },
@@ -206,6 +214,17 @@ const days = Model.historyDays(new Date(2026, 8, 22, 15), 72)
 check("days", days.map(d => d.name), ["akku-2026-09-19.csv", "akku-2026-09-20.csv", "akku-2026-09-21.csv", "akku-2026-09-22.csv"])
 check("watt scale", Model.historyWattScale([null, { w: 12.3 }, { w: null }]), 20)
 check("watt scale: empty", Model.historyWattScale([]), 5)
+
+// ---- métriques et axes ----
+check("metric: alias", Model.historyMetric("current").key, "amps")
+check("metric: legacy watts", Model.historyMetric("watts").label, "Power")
+check("metric: unknown", Model.historyMetric("ohms"), null)
+check("axis: charge", Model.historyAxis([], "percent"), { min: 0, max: 100 })
+check("axis: amps", Model.historyAxis([null, { a: 1.4 }, { a: null }], "amps"), { min: 0, max: 2 })
+// 7.03–8.53 V : pas de 0,5 V, un nombre pair de pas -> ligne du milieu à 8 V
+check("axis: volts fits the range", Model.historyAxis([{ v: 7.033 }, { v: 8.532 }], "volts"), { min: 7, max: 9 })
+check("axis: volts, no samples", Model.historyAxis([null], "volts"), { min: 7, max: 9 })
+check("axis: volts, flat", Model.historyAxis([{ v: 7.5 }, { v: 7.52 }], "volts"), { min: 7.4, max: 7.6 })
 const tNow = new Date(2026, 8, 22, 14, 7).getTime()
 const tk = Model.historyTicks(tNow - 15 * 60000, tNow, 6)
 check("ticks: 15 min", [tk.step, tk.ticks.length, new Date(tk.ticks[0]).getMinutes()], [5, 3, 55])

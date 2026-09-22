@@ -14,7 +14,8 @@ import "file:///home/henri/.local/share/henri-ui" as HUi
 // /usr/local/bin/dell-charge-limit) is unchanged; the popup is rebuilt.
 // It opens on the overview — charge, battery size, time left, cycles and
 // the current flow — and everything else sits under a collapsed "Advanced"
-// disclosure: power profile, thermal mode, fans, power flow, charge mode, USB.
+// disclosure: fans, power flow, charge mode, USB. The power profile sits on
+// the overview itself.
 Panel {
   id: root
   moduleName: "henri.power"
@@ -63,14 +64,21 @@ Panel {
   property var historyRange: Model.historyRange(Model.HISTORY_DEFAULT_RANGE)
   readonly property real historyHours: historyRange.hours
   readonly property int historyBarCount: historyRange.bars
-  // What the bars show: the charge level or the power draw.
-  property bool historyWatts: false
+  // What the bars show: charge, power, voltage or current. A plain key, synced
+  // in the handler for the same reason the range is (a binding on the settings
+  // object looped through the graph).
+  property string historyMetricKey: Model.HISTORY_DEFAULT_METRIC
+  readonly property var historyMetric: Model.historyMetric(historyMetricKey)
+    || Model.historyMetric(Model.HISTORY_DEFAULT_METRIC)
+  readonly property var historyMetricKeys: Model.HISTORY_METRICS.map(function (m) { return m.key })
+  readonly property var historyMetricLabels: Model.HISTORY_METRICS.map(function (m) { return m.label })
   function syncHistorySettings() {
     var r = Model.historyRange(setting("historyRange", "")) || Model.historyRange(setting("historyHours", ""))
       || Model.historyRange(Model.HISTORY_DEFAULT_RANGE)
     if (r !== historyRange) historyRange = r
-    var w = setting("historyMetric", "percent") === "watts"
-    if (w !== historyWatts) historyWatts = w
+    var m = Model.historyMetric(setting("historyMetric", Model.HISTORY_DEFAULT_METRIC))
+      || Model.historyMetric(Model.HISTORY_DEFAULT_METRIC)
+    if (m.key !== historyMetricKey) historyMetricKey = m.key
   }
   onSettingsChanged: syncHistorySettings()
   Component.onCompleted: syncHistorySettings()
@@ -95,12 +103,11 @@ Panel {
   readonly property bool dellWmiReady: dellSupported && dellStatus.hasWmi
   readonly property bool usbPowerShareReady: dellWmiReady && dellStatus.usbPowerShare !== ""
   readonly property bool typeCPowerReady: dellWmiReady && dellStatus.typeCPower !== ""
-  // Alienware laptops (and any whose helper reports them): the firmware's thermal
-  // modes, and the fans and temperatures the EC reports.
+  // Alienware laptops (and any whose helper reports them): the fans and
+  // temperatures the EC reports. The firmware's own thermal modes are not
+  // offered — the power profile is the single place to pick one.
   readonly property string brand: dellStatus !== null ? dellStatus.brand : "Dell"
   readonly property var thermal: dellStatus !== null ? dellStatus.thermal : null
-  readonly property var thermalModes: Model.thermalChoices(thermal)
-  readonly property bool thermalReady: thermal !== null && Model.thermalExtended(thermal)
   readonly property var fans: dellStatus !== null ? dellStatus.fans : []
   readonly property var fanNames: Model.fanNames(fans)
   readonly property var temps: dellStatus !== null ? dellStatus.temps : []
@@ -430,12 +437,7 @@ Panel {
     dellRun(["wmi", "TypeCPower", value])
   }
 
-  // ---------- Thermal mode and fan boost ----------
-
-  function setThermalProfile(name) {
-    if (thermal === null || name === thermal.profile) return
-    dellRun(["profile", name])
-  }
+  // ---------- Fan boost ----------
 
   // The slider speaks percent; the kernel takes 0-255 per fan.
   function setFanBoost(group, percent) {
@@ -593,9 +595,10 @@ Panel {
     saveHistorySetting("historyRange", r.key)
   }
 
-  function setHistoryWatts(on) {
-    if (on === historyWatts) return
-    saveHistorySetting("historyMetric", on ? "watts" : "percent")
+  function setHistoryMetric(key) {
+    var m = Model.historyMetric(key)
+    if (!m || m.key === historyMetricKey) return
+    saveHistorySetting("historyMetric", m.key)
   }
 
   // A longer range may need older files first; refreshHistory rebuilds
@@ -607,6 +610,21 @@ Panel {
 
   function historyWatt(w) {
     return w === null || w === undefined || !isFinite(w) ? "—" : w.toFixed(1) + " W"
+  }
+
+  // A bucket's value in the metric now on show, e.g. "9.2 W" or "7.53 V".
+  function historyValue(v, m) {
+    if (v === null || v === undefined || !isFinite(v)) return "—"
+    return v.toFixed(m.decimals) + " " + m.unit
+  }
+
+  // The same value on an axis, carrying only the decimals it needs, so the
+  // gridlines read "20 W", "2.5 W", "7.5 V" rather than "20.0 W".
+  function historyAxisLabel(v, m) {
+    if (v === null || v === undefined || !isFinite(v)) return "—"
+    var txt = Math.abs(v - Math.round(v)) < 1e-6 ? String(Math.round(v))
+      : v.toFixed(m.decimals).replace(/0+$/, "").replace(/\.$/, "")
+    return txt + " " + m.unit
   }
 
   function historyWh(wh) {
@@ -642,9 +660,10 @@ Panel {
     function togglePercentage() { root.togglePercentage() }
     // Opens the popup straight on the History section.
     function history() { root.open(); root.showHistoryPage() }
-    // History range (15m 30m 1h 3h 6h 12h 24h 3d 7d) and what the bars show.
+    // History range (15m 30m 1h 3h 6h 12h 24h 3d 7d) and what the bars show
+    // (percent watts volts amps, or charge power voltage current).
     function historyRange(key: string): void { root.setHistoryRange(key) }
-    function historyMetric(metric: string): void { root.setHistoryWatts(metric === "watts" || metric === "power") }
+    function historyMetric(metric: string): void { root.setHistoryMetric(metric) }
   }
 
   onOpenedChanged: {
@@ -903,23 +922,24 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      // Overview: → opens History, ↓ / ⏎ open Advanced. History: ← goes back,
+      // Overview: ←/→ walk the power profiles and ⏎ applies the one under the
+      // cursor; ↑ opens History, ↓ opens Advanced. History: ← goes back,
       // ⏎ opens the range menu (its own ↑ ↓ ⏎ Esc while open).
-      // Advanced: ←/→ walk the power profiles, ⏎ applies the one under the
-      // cursor. Esc goes back one page, and closes on the overview.
+      // Esc goes back one page, and closes on the overview.
       onMoveRequested: function(dx, dy) {
         if (root.historyShown) {
           if (rangeMenu.open) return
           if (dx < 0) root.closeSubPage()
           return
         }
-        if (root.advancedOpen) {
-          if (dx === 0) return
+        if (root.advancedOpen) return
+        if (dx !== 0) {
+          if (root.profiles.length === 0) return
           if (!root.cursorActive) { root.cursorActive = true; return }
           root.selectProfileByDelta(dx)
           return
         }
-        if (dx > 0 && root.showHistory) root.showHistoryPage()
+        if (dy < 0 && root.showHistory) root.showHistoryPage()
         else if (dy > 0) root.showAdvancedPage()
       }
       onActivateRequested: {
@@ -929,8 +949,9 @@ Panel {
           if (!rangeMenu.open) Qt.callLater(rangeMenu.show)
           return
         }
-        if (!root.advancedOpen) root.showAdvancedPage()
-        else if (root.cursorActive) root.activateSelectedProfile()
+        if (root.advancedOpen) return
+        if (root.cursorActive) root.activateSelectedProfile()
+        else root.showAdvancedPage()
       }
       onCloseRequested: rangeMenu.open ? rangeMenu.dismiss()
         : pages.depth > 1 ? root.closeSubPage() : root.close()
@@ -1050,6 +1071,26 @@ Panel {
           }
         }
 
+        // ---------- Power profile: the one control worth reaching without a drill-in ----------
+        HUi.Collapse {
+          width: parent.width
+          expanded: root.profiles.length > 0
+          Column {
+            width: parent.width
+            topPadding: root.blockGap
+            spacing: Style.space(6)
+            SectionLabel { text: "Power profile" }
+            Segmented {
+              width: parent.width
+              options: root.profiles
+              labels: root.profiles.map(function (p) { return root.profileLabel(p) })
+              current: root.activeProfile
+              cursorIndex: root.cursorActive ? root.profileIndex : -1
+              onPicked: function(value) { root.setProfile(value) }
+            }
+          }
+        }
+
         // ---------- Disclosures ----------
         Item { width: 1; height: Style.space(12) }
         Rectangle { width: parent.width; height: 1; color: root.hairline }
@@ -1114,55 +1155,13 @@ Panel {
             width: parent.width
             spacing: 0
 
-            // ---------- Power profile ----------
-            HUi.Collapse {
-              width: parent.width
-              expanded: root.profiles.length > 0
-              Column {
-                width: parent.width
-                topPadding: Style.space(8)
-                spacing: Style.space(6)
-                SectionLabel { text: "Power profile" }
-                Segmented {
-                  width: parent.width
-                  options: root.profiles
-                  labels: root.profiles.map(function (p) { return root.profileLabel(p) })
-                  current: root.activeProfile
-                  cursorIndex: root.cursorActive ? root.profileIndex : -1
-                  onPicked: function(value) { root.setProfile(value) }
-                }
-              }
-            }
-
-            // ---------- Thermal mode (firmware modes power-profiles-daemon cannot reach) ----------
-            HUi.Collapse {
-              width: parent.width
-              expanded: root.thermalReady
-              Column {
-                width: parent.width
-                topPadding: root.blockGap
-                spacing: Style.space(6)
-                SectionLabel { text: root.brand + " thermal mode" }
-                Segmented {
-                  width: parent.width
-                  options: root.thermalModes
-                  labels: root.thermalModes.map(function (m) { return Model.thermalLabel(String(m)) })
-                  columns: options.length <= 4 ? options.length : (options.length > 6 ? 4 : 3)
-                  current: root.thermal !== null ? root.thermal.profile : ""
-                  busy: root.dellBusy
-                  onPicked: function(value) { root.setThermalProfile(value) }
-                }
-                Caption { text: root.thermal !== null ? Model.thermalTip(String(root.thermal.profile)) : "" }
-              }
-            }
-
             // ---------- Fans and temperatures ----------
             HUi.Collapse {
               width: parent.width
               expanded: root.sensorsReady
               Column {
                 width: parent.width
-                topPadding: root.blockGap
+                topPadding: Style.space(8)
                 spacing: Style.space(8)
                 SectionLabel { text: "Fans & temperatures" }
 
@@ -1203,13 +1202,6 @@ Panel {
                     BoostSlider { group: "cpu"; title: "CPU fans boost" }
                     BoostSlider { group: "gpu"; title: "GPU fans boost" }
                   }
-                }
-
-                HUi.Collapse {
-                  width: parent.width
-                  expanded: root.fanBoostAvailable && root.thermalModes.indexOf("custom") >= 0
-                    && root.thermal !== null && root.thermal.profile !== "custom"
-                  Caption { text: "Pick Custom above to set the fan boost." }
                 }
               }
             }
@@ -1472,16 +1464,16 @@ Panel {
             Item {
               width: parent.width
               height: Math.max(historyTitle.implicitHeight, historyReadout.implicitHeight)
-              // What the bars show: charge level or power draw.
+              // What the bars show: charge, power, voltage or current.
               Segmented {
                 id: historyTitle
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                width: Style.space(132)
-                options: ["percent", "watts"]
-                labels: ["Charge", "Power"]
-                current: root.historyWatts ? "watts" : "percent"
-                onPicked: function(value) { root.setHistoryWatts(value === "watts") }
+                width: Style.space(212)
+                options: root.historyMetricKeys
+                labels: root.historyMetricLabels
+                current: root.historyMetric.key
+                onPicked: function(value) { root.setHistoryMetric(value) }
               }
               HUi.CrossfadeText {
                 id: historyReadout
@@ -1895,26 +1887,30 @@ Panel {
     }
   }
 
-  // Charge level (or power draw) over the history window as bars, like the
-  // macOS battery graph: 30–84 bars over the chosen range, each at the level
-  // it ended on (or its mean draw) — accent on battery, pale accent while
-  // plugged in, urgent at 20 % and below. Slots without samples (sleep,
-  // laptop off) stay empty. Gridlines at 0/50/100 % (or a round watt scale),
-  // round clock or day ticks; hovering a bar reads it out and dims the rest.
+  // The chosen metric over the history window as bars, like the macOS battery
+  // graph: 30–84 bars over the chosen range, each at the level it ended on (or
+  // its mean for the metered values) — accent on battery, pale accent while
+  // plugged in, urgent at 20 % and below on the charge view. Slots without
+  // samples (sleep, laptop off) stay empty. Three gridlines label the axis the
+  // model fitted to the metric, round clock or day ticks; hovering a bar reads
+  // it out and dims the rest.
   component HistoryGraph: Item {
     id: graph
     readonly property real gutter: gutterMetrics.advanceWidth + Style.space(8)
     readonly property real plotW: Math.max(1, width - gutter)
     readonly property real plotH: Style.space(88)
     readonly property real from: root.historyNow - root.historyHours * 3600000
-    readonly property bool watts: root.historyWatts
-    // Top of the power axis; the charge axis is always 0–100.
-    readonly property real wattMax: Model.historyWattScale(root.historyBars)
+    readonly property var metric: root.historyMetric
+    // The axis the bars stand on: 0–100 for charge, a round top for power and
+    // current, a fitted band for voltage.
+    readonly property var axis: Model.historyAxis(root.historyBars, metric.key)
+    readonly property real axisSpan: Math.max(1e-9, axis.max - axis.min)
     readonly property bool multiDay: root.historyHours > 24
+    function barValue(b) { return b ? b[metric.field] : null }
     function valueOf(b) {
-      if (!b) return 0
-      if (!watts) return b.pct / 100
-      return b.w !== null ? Math.min(1, b.w / wattMax) : 0
+      var v = barValue(b)
+      if (v === null || v === undefined || !isFinite(v)) return 0
+      return Math.max(0, Math.min(1, (v - axis.min) / axisSpan))
     }
     function stamp(t) { return multiDay ? Qt.formatDateTime(new Date(t), "ddd HH:mm") : root.clockText(t) }
     // Bars follow the built buckets, so a range switch never pairs the new
@@ -1926,21 +1922,23 @@ Panel {
     readonly property color pluggedInk: Util.alpha(Color.accent, 0.35)
     property int hoverIndex: -1
     readonly property var hoverBar: hoverIndex >= 0 ? root.historyBars[hoverIndex] || null : null
+    // Only the metric on show — four of them side by side would not fit next
+    // to the switcher, and the bar being pointed at is what is being asked.
     readonly property string readout: {
       var b = graph.hoverBar
-      if (b) {
-        var pct = b.pct + " %", w = b.w !== null ? root.historyWatt(b.w) : ""
-        return graph.stamp(b.t0) + "–" + root.clockText(b.t1) + " · "
-          + (graph.watts ? (w !== "" ? w + " · " : "") + pct : pct + (w !== "" ? " · " + w : ""))
-      }
+      // The slot's start, not its span: four labels leave the readout about
+      // 120 px, and the axis already says how wide a slot is.
+      if (b) return graph.stamp(b.t0) + " · " + root.historyValue(graph.barValue(b), graph.metric)
       var st = root.historyStats
       if (!st || !st.samples) return ""
-      return graph.watts ? "Now " + root.historyWatt(st.lastW)
-        : "Now " + Math.round(root.batteryFraction * 100) + " %"
+      if (graph.metric.key === "percent") return "Now " + Math.round(root.batteryFraction * 100) + " %"
+      return "Now " + root.historyValue(
+        graph.metric.key === "watts" ? st.lastW : graph.metric.key === "volts" ? st.lastV : st.lastA,
+        graph.metric)
     }
     implicitHeight: plotH + timeRow.height + Style.space(12) + legend.height
 
-    TextMetrics { id: gutterMetrics; font.family: Style.font.family; font.pixelSize: Style.font.caption; text: "100 %" }
+    TextMetrics { id: gutterMetrics; font.family: Style.font.family; font.pixelSize: Style.font.caption; text: "888 W" }
 
     function xOf(t) { return (t - from) / (root.historyHours * 3600000) * plotW }
     function yOf(pct) { return plotH - Math.max(0, Math.min(100, pct)) / 100 * plotH }
@@ -1966,7 +1964,7 @@ Panel {
         HUi.CrossfadeText {
           x: graph.plotW + Style.space(6)
           anchors.verticalCenter: parent.top
-          text: graph.watts ? Math.round(graph.wattMax * modelData / 100) + " W" : modelData + " %"
+          text: root.historyAxisLabel(graph.axis.min + graph.axisSpan * modelData / 100, graph.metric)
           color: root.dimText
           fontSize: Style.font.caption
         }
@@ -1985,7 +1983,8 @@ Panel {
         width: Math.max(1, Math.round(graph.slotW - graph.barGap))
         height: graph.plotH
         color: !bucket ? "transparent"
-          : (bucket.pct <= 20 && !graph.watts ? Color.urgent : (bucket.battery ? graph.batteryInk : graph.pluggedInk))
+          : (graph.metric.key === "percent" && bucket.pct <= 20 ? Color.urgent
+            : (bucket.battery ? graph.batteryInk : graph.pluggedInk))
         opacity: !bucket ? 0 : (graph.hoverIndex < 0 || graph.hoverIndex === index ? 1 : 0.45)
         transform: Scale {
           origin.y: graph.plotH
@@ -2184,7 +2183,7 @@ Panel {
 
     readonly property real inset: Style.space(2)
     readonly property int currentIndex: options.indexOf(current)
-    readonly property int labelSize: columns > 4 ? Style.font.caption : Style.font.bodySmall
+    readonly property int labelSize: columns > 3 ? Style.font.caption : Style.font.bodySmall
 
     implicitHeight: segGrid.implicitHeight + inset * 2
     opacity: busy ? Motion.disabledOpacity : 1
