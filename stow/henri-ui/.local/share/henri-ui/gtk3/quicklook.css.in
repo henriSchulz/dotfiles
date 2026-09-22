@@ -25,9 +25,17 @@
 @define-color headerbar_bg_color {{hui-bg}};
 @define-color headerbar_fg_color {{hui-fg}};
 @define-color borders alpha({{hui-fg}}, {{hairline}});
+/* Unfocused: the same surface, not Adwaita's warmer backdrop grey. */
+@define-color theme_unfocused_bg_color {{hui-bg}};
+@define-color theme_unfocused_base_color {{hui-view}};
+@define-color theme_unfocused_fg_color {{hui-fg}};
+@define-color theme_unfocused_text_color {{hui-fg}};
+@define-color theme_unfocused_selected_bg_color {{hui-accent}};
+@define-color theme_unfocused_selected_fg_color {{hui-on-accent}};
 
 window,
 window.background,
+window.background:backdrop,
 .titlebar,
 headerbar {
   background-color: {{hui-bg}};

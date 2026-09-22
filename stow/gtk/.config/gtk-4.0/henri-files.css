@@ -1,5 +1,6 @@
 /* Files (Nautilus) in the henri-ui style, built after the macOS Finder:
- * white content + toolbar, grey sidebar with accent icons, striped list,
+ * white content + toolbar, floating grey sidebar card with monochrome symbols
+ * and section headings, frameless thumbnails, striped list,
  * grey icon tile + accent name chip in the grid, NSMenu-style menus.
  * Every rule is scoped to Nautilus windows; all numbers come from
  * gtk-tokens.css (--dur-*, --radius-*, …) and colors from gtk-colors.css
@@ -115,7 +116,28 @@ window.nautilus-window tabbar tab {
 }
 window.nautilus-window tabbar tab:hover { transition-duration: var(--dur-instant); }
 
-/* ── Sidebar: grey selection, accent icons, 28 px rows ─────────────────── */
+/* ── Sidebar: a floating card like macOS 26 Finder ─────────────────────── */
+/* The window around it is the white content surface; the sidebar sits inset
+ * in it as a rounded light-grey card with a hairline and a soft shadow. */
+window.nautilus-window {
+  --sidebar-bg-color: var(--hui-bg);
+  --sidebar-backdrop-color: var(--hui-bg);
+  --sidebar-border-color: transparent;
+}
+window.nautilus-window .sidebar-pane {
+  margin: 8px 0 8px 8px;
+  border-radius: var(--radius-panel);
+  background-color: var(--hui-bg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--hui-fg) var(--hairline-alpha), transparent),
+              0 2px 10px color-mix(in srgb, black 8%, transparent);
+}
+window.nautilus-window .sidebar-pane,
+window.nautilus-window .sidebar-pane > * { border: none; }
+window.nautilus-window overlay-split-view,
+window.nautilus-window overlay-split-view > widget.content-pane { background-color: var(--hui-view); }
+
+/* Rows: 28 px, grey pill for hover/selection, monochrome symbols (Finder). */
+window.nautilus-window .navigation-sidebar { background: none; }
 window.nautilus-window .navigation-sidebar > row {
   min-height: var(--control-height);
   padding: 0 var(--menu-row-padding);
@@ -123,7 +145,9 @@ window.nautilus-window .navigation-sidebar > row {
   border-radius: var(--radius-row);
   transition: background-color var(--dur-fast) var(--ease-out);
 }
-window.nautilus-window .navigation-sidebar > row image { color: var(--hui-accent); }
+window.nautilus-window .navigation-sidebar > row image {
+  color: color-mix(in srgb, var(--hui-fg) 80%, transparent);
+}
 window.nautilus-window .navigation-sidebar > row:hover {
   background-color: color-mix(in srgb, var(--hui-fg) 5%, transparent);
   transition-duration: var(--dur-instant);
@@ -132,8 +156,28 @@ window.nautilus-window .navigation-sidebar > row:selected {
   background-color: color-mix(in srgb, var(--hui-fg) 10%, transparent);
   color: var(--hui-fg);
 }
-window.nautilus-window .navigation-sidebar > row:selected image { color: var(--hui-accent); }
+window.nautilus-window .navigation-sidebar > row:selected image { color: var(--hui-fg); }
+
+/* Section headings ("Favorites", "Locations") set by henri_files.py in place
+ * of Nautilus's separators. */
+window.nautilus-window .navigation-sidebar label.henri-sidebar-heading {
+  margin: 14px 0 4px 0;
+  padding: 0 calc(var(--radius-control) + var(--menu-row-padding));
+  font-size: 0.85em;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--hui-fg) var(--secondary-text-alpha), transparent);
+}
 window.nautilus-window .navigation-sidebar > separator { margin: 6px 16px; }
+
+/* ── Thumbnails: the picture itself, like Finder ────────────────────────── */
+/* Nautilus frames every thumbnail and puts a checkerboard behind transparent
+ * images. Finder shows the image as it is, with a soft shadow that follows
+ * its shape (a logo floats, a photo gets a thin shadow around its edge). */
+window.nautilus-window .view .thumbnail {
+  background: none;
+  box-shadow: none;
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, black 22%, transparent));
+}
 
 /* ── File views: accent selection (Nautilus forces grey) ───────────────── */
 window.nautilus-window .nautilus-list-view listview,

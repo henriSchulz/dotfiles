@@ -136,6 +136,11 @@ Sie läuft im Nautilus-Prozess und greift auf dessen GTK-Widgets zu:
   GIO, weil Nautilus' Accept asynchron sein kann).
 - **Menü-Symbole** vor jedem Eintrag (macOS 26): beim Öffnen jedes `GtkPopoverMenu`
   ein 16-px-Symbol vor das Label (`MENU_ICONS`, englische Labels).
+- **Sidebar wie macOS 26:** schwebende Karte (CSS `.sidebar-pane`), graue Symbole,
+  Abschnittsüberschriften („Favorites", „Locations") über eine eigene Header-Funktion
+  der Sidebar-`GtkListBox` (Abschnitt = `section-type`-Nick der Zeile).
+- **Vorschaubilder** ohne Rahmen/Schachbrett, mit formfolgendem `drop-shadow`
+  (`.view .thumbnail`); den 2-px-Eckenclip macht Nautilus fest im Code.
 - **Kontextmenü:** Copy Path, Open in Terminal, Open in Claude Code, New File ▸
   (Text, Markdown, ODF-Dokument/Tabelle/Präsentation, Skripte, HTML, JSON, CSV);
   neue Dateien werden markiert und gehen direkt ins Umbenennen.
@@ -144,7 +149,14 @@ Sie läuft im Nautilus-Prozess und greift auf dessen GTK-Widgets zu:
 `~/.local/share/henri-ui/gtk3/*.in` mit `{{token}}`-Platzhaltern, gerendert von
 `henri-ui-gtk-colors` (Tokens aus `gtk-tokens.css` + Theme-Farben) — z. B. zum
 GTK3-Theme `HenriQuickLook`, das nur Sushi bekommt (`GTK_THEME` in
-`~/.local/share/dbus-1/services/org.gnome.NautilusPreviewer.service`).
+`~/.local/share/dbus-1/services/org.gnome.NautilusPreviewer.service`). Dessen Starter
+`~/.local/lib/henri-quicklook/org.gnome.NautilusPreviewer` (Name muss so heißen: GJS
+findet Sushis Ressourcen über den Skriptnamen) patcht Sushi vor dem Start: helles
+Quelltext-Schema, Ordner-/Datei-Karte wie macOS (128-px-Icon, Größe/Anzahl, „Last
+modified"), Mindestgröße 160 statt 400. Quick Look testen ohne Fokus: temporäre
+Regel `hl.window_rule({ match = { class = "org.gnome.NautilusPreviewer" }, workspace =
+"special:huitest silent" })` per `hyprctl eval`, dann `gdbus call … ShowFile <uri> "" false ""`,
+danach `hyprctl reload`.
 
 Testen, ohne Henri zu stören: auf einem versteckten Spezial-Workspace öffnen und
 das Fenster direkt abgreifen:

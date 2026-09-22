@@ -16,7 +16,9 @@ imports.package.init({
     libdir: '/usr/lib',
 });
 
-imports.gi.versions.GtkSource = '4';
+// Sushi pins its libraries in ui/main.js, which loads only at the end; the
+// patches below load Sushi modules earlier, so pin the same versions first.
+pkg.require({Gdk: '3.0', GdkPixbuf: '2.0', Gtk: '3.0', GtkSource: '4', Pango: '1.0'});
 const GtkSource = imports.gi.GtkSource;
 
 const getScheme = GtkSource.StyleSchemeManager.prototype.get_scheme;
@@ -28,5 +30,87 @@ GtkSource.StyleSchemeManager.prototype.get_scheme = function (id) {
     }
     return getScheme.call(this, id);
 };
+
+// Folders and files without a viewer: the macOS Quick Look card -- a 128 px
+// icon beside the name (semibold), then "size, n items" and "Last modified:
+// Today at 14:28" in secondary text, all centred; Sushi shows a 256 px icon
+// with bold "Type / Size / Modified" captions hanging from the top.
+const {Gio, GLib, Gtk} = imports.gi;
+const Gettext = imports.gettext;
+const Fallback = imports.ui.fallbackRenderer.FallbackRenderer;
+const ICON_SIZE = 128;
+
+function modifiedText(info) {
+    const date = GLib.DateTime.new_from_timeval_local(info.get_modification_time());
+    const now = GLib.DateTime.new_now_local();
+    const day = d => d.format('%Y-%m-%d');
+    const time = date.format('%H:%M');
+    if (day(date) === day(now))
+        return `Today at ${time}`;
+    if (day(date) === day(now.add_days(-1)))
+        return `Yesterday at ${time}`;
+    return `${date.format('%-d %B %Y')} at ${time}`;
+}
+
+const esc = t => GLib.markup_escape_text(t, -1);
+
+Fallback.prototype._applyLabels = function (state) {
+    const info = state.fileInfo;
+    const isDir = info.get_file_type() === Gio.FileType.DIRECTORY;
+
+    this._titleLabel.set_markup(`<span weight="600" size="large">${esc(info.get_display_name())}</span>`);
+
+    if (isDir) {
+        this._typeLabel.hide();
+        const items = state.fileItems + state.directoryItems;
+        const text = state.totalSize > 0 || items > 0
+            ? `${GLib.format_size(state.totalSize)}, ${Gettext.ngettext('%d item', '%d items', items).format(items)}`
+            : state.loading ? 'Calculating…' : 'Empty Folder';
+        this._sizeLabel.set_text(text);
+    } else {
+        this._typeLabel.set_text(Gio.content_type_get_description(info.get_content_type()));
+        this._typeLabel.show();
+        this._sizeLabel.set_text(GLib.format_size(info.get_size()));
+    }
+    this._dateLabel.set_text(`Last modified: ${modifiedText(info)}`);
+
+    // The card already carries the name; the title bar stays empty (macOS).
+    const window = this.get_toplevel();
+    if (window && window.get_title && window.get_title())
+        window.set_title('');
+
+    // Once: centre the text block beside the icon, secondary text styling.
+    if (!this._henriLaidOut) {
+        this._henriLaidOut = true;
+        const vbox = this._titleLabel.get_parent().get_parent();
+        vbox.margin_top = 0;
+        vbox.margin_start = 4;
+        vbox.margin_end = 24;
+        vbox.spacing = 3;
+        vbox.valign = Gtk.Align.CENTER;
+        this.spacing = 16;
+        this.margin_start = 20;
+        this.margin_top = 12;
+        this.margin_bottom = 20;
+        for (const label of [this._typeLabel, this._sizeLabel, this._dateLabel])
+            label.get_style_context().add_class('dim-label');
+    }
+};
+
+Fallback.prototype._updateIcon = function (icon) {
+    const info = Gtk.IconTheme.get_default().lookup_by_gicon_for_scale(
+        icon, ICON_SIZE, this._image.scale_factor, Gtk.IconLookupFlags.FORCE_SIZE);
+    if (!info)
+        return;
+    try {
+        this._image.surface = info.load_surface(this._image.get_window());
+    } catch (e) {
+        logError(e, `Error loading surface for icon ${icon.to_string()}`);
+    }
+};
+
+// Sushi never makes a preview smaller than 400 x 400, so a folder card floated
+// in a big empty window. Quick Look sizes the window to what it shows.
+imports.util.constants.VIEW_MIN = 160;
 
 imports.package.run(imports.ui.main);

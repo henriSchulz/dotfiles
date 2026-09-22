@@ -128,6 +128,7 @@ def _hook_window(window):
     keys.connect("key-pressed", _on_window_key)
     window.add_controller(keys)
     window.connect("notify::focus-widget", _on_focus_changed)
+    GLib.idle_add(_hook_sidebar, window)
 
 
 def _hook_windows(model, position=0, _removed=0, added=None):
@@ -136,6 +137,66 @@ def _hook_windows(model, position=0, _removed=0, added=None):
         window = model.get_item(i)
         if _type_name(window) == "NautilusWindow":
             _hook_window(window)
+
+
+# ── sidebar headings ─────────────────────────────────────────────────────────
+# Finder labels its sidebar sections ("Favorites", "Locations"); Nautilus only
+# draws a line between them. Its list box gets our header function instead,
+# keyed by each row's section type (a private enum, read by its nick).
+
+SIDEBAR_HEADINGS = (
+    ("bookmark", "Favorites"),
+    ("cloud", "Cloud"),
+    ("mount", "Locations"),
+    ("network", "Network"),
+)
+
+
+def _section_nick(row):
+    try:
+        value = row.get_property("section-type")
+    except TypeError:
+        return ""
+    nick = getattr(value, "value_nick", None)
+    if nick:
+        return nick
+    pspec = row.find_property("section-type")
+    try:
+        return pspec.enum_class.__enum_values__[int(value)].value_nick
+    except (AttributeError, KeyError, ValueError):
+        return str(int(value))
+
+
+def _sidebar_header(row, before, *_args):
+    nick = _section_nick(row)
+    if before is not None and _section_nick(before) == nick:
+        row.set_header(None)
+        return
+    title = next((t for key, t in SIDEBAR_HEADINGS if key in nick), None)
+    if title is None:
+        # The first block (Home, Recent, Starred, ...) has no heading, like
+        # Finder's; an unknown later block keeps a plain separator.
+        row.set_header(None if before is None else Gtk.Separator())
+        return
+    label = Gtk.Label(label=title, xalign=0)
+    label.add_css_class("henri-sidebar-heading")
+    row.set_header(label)
+
+
+def _hook_sidebar(window, tries=50):
+    """The sidebar is built after the window appears: retry until it is."""
+    for widget in _walk(window):
+        if _type_name(widget) == "NautilusSidebar":
+            for child in _walk(widget):
+                if isinstance(child, Gtk.ListBox) and child.get_row_at_index(0) is not None:
+                    child.set_header_func(_sidebar_header)
+                    child.invalidate_headers()
+                    _dbg("sidebar headings", [_section_nick(child.get_row_at_index(i))
+                                              for i in range(3)])
+                    return False
+    if tries > 0:
+        GLib.timeout_add(100, _hook_sidebar, window, tries - 1)
+    return False
 
 
 # ── inline rename ────────────────────────────────────────────────────────────
