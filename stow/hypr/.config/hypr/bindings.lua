@@ -121,3 +121,25 @@ o.bind("SUPER + BACKSPACE", "Move to Trash (Files) / Toggle window transparency"
     hl.dispatch(hl.dsp.exec_cmd("omarchy-hyprland-window-transparency-toggle"))
   end
 end)
+
+-- Diktat (voxtype): die rechte Strg-Taste allein schaltet die Aufnahme um.
+-- Einmal tippen = Aufnahme läuft, nochmal tippen = Text wird getippt.
+-- Eine Taste, kein Akkord, rechte Hand — die linke bleibt frei.
+--
+-- Warum hier und nicht in voxtypes eigener Hotkey-Erkennung: die liest
+-- /dev/input direkt und braucht dafür Mitgliedschaft in der Gruppe "input".
+-- Die fehlt, deshalb hat voxtypes Standard-Hotkey (SCROLLLOCK, den das
+-- XPS 13 ohnehin nicht hat) nie ausgelöst. Über Hyprland geht es ohne root.
+--
+-- Nebenwirkung: Hyprland verbraucht den Tastendruck, die rechte Strg wirkt
+-- also nicht mehr als Modifikator. Linke Strg ist unberührt.
+-- Beide Varianten: ob Hyprland den CTRL-Modifikator beim Druck der Taste
+-- selbst schon gesetzt hat, haengt an der Reihenfolge im Compositor. Die
+-- Modmasken 0 und CTRL schliessen sich gegenseitig aus, es feuert also
+-- immer genau eine der beiden.
+o.bind("CTRL + Control_R", "Dictation toggle", "voxtype record toggle")
+o.bind("", "Control_R", "Dictation toggle", "voxtype record toggle")
+
+-- Verschrieben? `voxtype record cancel` wirft die laufende Aufnahme weg,
+-- ohne Text einzufuegen. Omarchys Standard SUPER+CTRL+X (Toggle) bleibt als
+-- zweiter Weg bestehen, F9 (halten) ebenfalls.
