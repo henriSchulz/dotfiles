@@ -100,6 +100,7 @@ ShellRoot {
         HUi.Button { id: plainBtn; text: "Plain"; onClicked: counter.value++ }
         HUi.Button { text: "Primary"; prominent: true; onClicked: counter.value++ }
         HUi.Button { icon: "󰐕"; onClicked: counter.value++ }
+        HUi.Button { text: "Delete"; prominent: true; danger: true; onClicked: counter.value++ }
         HUi.Button { text: "Disabled"; enabled: false }
         HUi.Toggle { id: toggle; anchors.verticalCenter: parent.verticalCenter; onToggled: function(on) { details.expanded = on } }
         HUi.CrossfadeText { id: counter; property int value: 0; text: "Klicks: " + value; anchors.verticalCenter: parent.verticalCenter }

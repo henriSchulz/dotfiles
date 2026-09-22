@@ -350,9 +350,12 @@ Item {
     "`hyprctl`. Config lives in ~/.config/omarchy/ and ~/.config/hypr/. Several files there " +
     "are symlinks into ~/Projects/dotfiles, so edit them in place — never with `sed -i`, " +
     "which replaces the symlink and silently unlinks the file from the repo.\n\n" +
-    "There is no confirmation step in this window: what you run, runs. For anything " +
-    "irreversible — deleting files, `git push`, killing processes, changing disks — do not " +
-    "do it straight away. Say exactly what you would run and let the next turn confirm it."
+    "Act directly. A guard sits in front of every tool: anything that could write, delete " +
+    "or change stops and asks Henri in a window on screen, and you get the result back as " +
+    "the tool either running or failing. Do not ask for confirmation in your answer as " +
+    "well — that is a second round for nothing, and he has already said yes or no by then. " +
+    "If a tool comes back denied, say so in one line and stop; do not look for another way " +
+    "round it."
 
   Process {
     id: agent
@@ -560,6 +563,65 @@ Item {
   // ── Card ────────────────────────────────────────────────────────────────
   HUi.SpringValue { id: pop; preset: Motion.gentle; to: root.open ? 1 : Motion.exitToScale }
 
+  // ── Permission window ───────────────────────────────────────────────────
+  HUi.SpringValue { id: sheetPop; preset: Motion.gentle; to: root.confirmRequest ? 1 : Motion.exitToScale }
+
+  PanelWindow {
+    id: guardWin
+    anchors { top: true; bottom: true; left: true; right: true }
+    visible: sheet.opacity > 0.001 || root.confirmRequest !== null
+    color: "transparent"
+
+    WlrLayershell.namespace: "henri-assistant-confirm"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: root.confirmRequest ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    exclusionMode: ExclusionMode.Ignore
+
+    // Scrim: everything behind it is out of play until this is answered.
+    Rectangle {
+      anchors.fill: parent
+      color: "black"
+      opacity: root.confirmRequest ? 0.35 : 0
+      Behavior on opacity {
+        NumberAnimation {
+          duration: root.confirmRequest ? Motion.slow : Motion.exit(Motion.slow)
+          easing.type: Easing.BezierSpline
+          easing.bezierCurve: root.confirmRequest ? Motion.easeOut : Motion.easeExit
+        }
+      }
+    }
+
+    Confirm {
+      id: sheet
+      anchors.centerIn: parent
+      request: root.confirmRequest
+      onAllowed: root.answerConfirm(true)
+      onCancelled: root.answerConfirm(false)
+
+      focus: true
+      Keys.onPressed: function (event) {
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+          root.answerConfirm(true)
+          event.accepted = true
+        } else if (event.key === Qt.Key_Escape) {
+          root.answerConfirm(false)
+          event.accepted = true
+        }
+      }
+
+      transformOrigin: Item.Center
+      scale: Motion.reduceMotion ? 1 : sheetPop.value
+      opacity: root.confirmRequest ? 1 : 0
+      Behavior on opacity {
+        NumberAnimation {
+          duration: root.confirmRequest ? Motion.slow : Motion.exit(Motion.slow)
+          easing.type: Easing.BezierSpline
+          easing.bezierCurve: root.confirmRequest ? Motion.easeOut : Motion.easeExit
+        }
+      }
+    }
+  }
+
   PanelWindow {
     id: win
     // No anchor on any edge: the surface sits in the middle of the screen.
@@ -573,7 +635,10 @@ Item {
     WlrLayershell.layer: WlrLayer.Overlay
     // A launcher-style surface: it exists to be typed into, so it takes the
     // keyboard while it is up and gives it straight back on Esc.
-    WlrLayershell.keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    // The permission window takes the keyboard while it is up, so the card
+    // gives it back -- two exclusive layers at once is one too many.
+    WlrLayershell.keyboardFocus: (root.open && !root.confirmRequest)
+      ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
 
     Panel {
@@ -592,10 +657,8 @@ Item {
       barCount: root.barCount
       sweep: root.sweep
 
-      confirmRequest: root.confirmRequest
+      confirming: root.confirmRequest !== null
       onDismissed: root.close()
-      onConfirmed: root.answerConfirm(true)
-      onRefused: root.answerConfirm(false)
 
       transformOrigin: Item.Center
       scale: Motion.reduceMotion ? 1 : pop.value

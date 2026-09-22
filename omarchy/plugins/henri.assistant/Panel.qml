@@ -35,17 +35,13 @@ HUi.Surface {
 
   // ── Output ──────────────────────────────────────────────────────────────
   signal dismissed()
-  signal confirmed()
-  signal refused()
-
-  // {id, tool, title, detail} while the guard is holding a tool call, null
-  // otherwise. Nothing the agent does that touches a file gets past this.
-  property var confirmRequest: null
-  readonly property bool confirming: confirmRequest !== null
+  // The permission window is its own surface (Confirm.qml); the card only
+  // needs to know that one is up, so it can leave the keyboard to it.
+  property bool confirming: false
 
   // ── Shape ───────────────────────────────────────────────────────────────
   // Compact means "nothing but the composer": the surface stays the pill.
-  readonly property bool compact: turns.length === 0 && pendingQuestion === "" && note === "" && !confirming
+  readonly property bool compact: turns.length === 0 && pendingQuestion === "" && note === ""
 
   role: "popups"
   kind: "panel"
@@ -78,7 +74,7 @@ HUi.Surface {
     loops: Animation.Infinite
   }
 
-  readonly property string hint: confirming ? "↵  allow      Esc  deny"
+  readonly property string hint: confirming ? "waiting for you"
     : listening ? "Super A  done      Esc  cancel"
     : transcribing ? "…"
     : thinking ? (activity !== "" ? activity + "  ·  " + elapsed + " s"
@@ -249,55 +245,6 @@ HUi.Surface {
       }
     }
 
-    // ── Confirmation ──────────────────────────────────────────────────────
-    // The agent is stopped inside its own tool call while this is up: the hook
-    // that put it here is blocking until an answer lands next to the request.
-    // Closing the card or waiting it out is a no -- the only safe default.
-    HUi.Collapse {
-      id: confirm
-      width: parent.width
-      expanded: card.confirming
-
-      Column {
-        width: confirm.width
-        spacing: Style.space(8)
-        topPadding: Style.space(4)
-        bottomPadding: Style.space(16)
-
-        Text {
-          width: parent.width
-          text: card.confirmRequest ? card.confirmRequest.title : ""
-          color: Color.urgent
-          font.family: Style.font.family
-          font.pixelSize: Style.font.subtitle
-          font.weight: Font.DemiBold
-          wrapMode: Text.Wrap
-        }
-
-        // The exact command or path, never a summary: what is confirmed has to
-        // be what runs.
-        Rectangle {
-          width: parent.width
-          height: detail.implicitHeight + Style.space(20)
-          radius: Style.space(Motion.radiusControl)
-          color: Util.alpha(card.ink, Motion.hoverAlpha)
-          Text {
-            id: detail
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: Style.space(10)
-            anchors.rightMargin: Style.space(10)
-            text: card.confirmRequest ? card.confirmRequest.detail : ""
-            color: card.ink
-            font.family: Style.font.family
-            font.pixelSize: Style.font.body
-            wrapMode: Text.WrapAnywhere
-          }
-        }
-      }
-    }
-
     // ── Voice row ─────────────────────────────────────────────────────────
     // There is no text field: the key says when a question starts and when it
     // ends, and ending it sends. So this row only reports -- microphone live
@@ -363,16 +310,7 @@ HUi.Surface {
   // now that the text field is gone.
   focus: true
   Keys.onPressed: function (event) {
-    if (card.confirming) {
-      if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-        card.confirmed()
-        event.accepted = true
-      } else if (event.key === Qt.Key_Escape) {
-        card.refused()
-        event.accepted = true
-      }
-      return
-    }
+    if (card.confirming) return            // the permission window has the keys
     if (event.key === Qt.Key_Escape) {
       card.dismissed()
       event.accepted = true
