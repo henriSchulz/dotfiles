@@ -1,0 +1,32 @@
+#!/usr/bin/gjs
+// Quick Look (GNOME Sushi) with henri-ui colors in text and code previews.
+//
+// Sushi hard-codes the "builder-dark" source-view scheme and prepends its own
+// style folder, so a user scheme can't replace it by id. This starts Sushi
+// exactly like /usr/lib/org.gnome.NautilusPreviewer does, but answers the
+// lookup of "builder-dark" with "henri-quicklook" (rendered from the Omarchy
+// theme by henri-ui-gtk-colors) when that scheme exists.
+// Named like the original on purpose: GJS finds Sushi's resources by the
+// script name. Started by ~/.local/share/dbus-1/services/org.gnome.NautilusPreviewer.service.
+
+imports.package.init({
+    name: 'sushi',
+    version: 'henri',
+    prefix: '/usr',
+    libdir: '/usr/lib',
+});
+
+imports.gi.versions.GtkSource = '4';
+const GtkSource = imports.gi.GtkSource;
+
+const getScheme = GtkSource.StyleSchemeManager.prototype.get_scheme;
+GtkSource.StyleSchemeManager.prototype.get_scheme = function (id) {
+    if (id === 'builder-dark') {
+        const scheme = getScheme.call(this, 'henri-quicklook');
+        if (scheme)
+            return scheme;
+    }
+    return getScheme.call(this, id);
+};
+
+imports.package.run(imports.ui.main);

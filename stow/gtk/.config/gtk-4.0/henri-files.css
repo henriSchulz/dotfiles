@@ -279,3 +279,59 @@ window.nautilus-window list.boxed-list {
 window.nautilus-window list.boxed-list > row {
   min-height: var(--control-height);
 }
+
+/* ── Inline rename (henri_files.py): Finder's field on top of the name ──── */
+/* The rename popover is stripped to its entry and laid over the file name,
+ * so the popover itself disappears: no surface, shadow, padding or pop-in. */
+window.nautilus-window popover.henri-inline-rename > contents {
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+  animation: none;
+}
+window.nautilus-window popover.henri-inline-rename entry.henri-inline-field {
+  min-height: 0;
+  padding: 1px 3px;
+  border-radius: var(--radius-chip);
+  background-color: var(--hui-view);
+  color: var(--hui-fg);
+  /* A border, not a shadow: the popup surface ends at the field's edge, so
+   * anything drawn outside it would be clipped. */
+  border: 1px solid color-mix(in srgb, var(--hui-accent) 70%, transparent);
+  box-shadow: none;
+  outline: none;
+  transition: none;
+}
+window.nautilus-window popover.henri-inline-rename entry.henri-inline-field > text > selection {
+  background-color: color-mix(in srgb, var(--hui-accent) 30%, transparent);
+  color: var(--hui-fg);
+}
+/* Validation feedback ("name already exists") as a small tag under the field. */
+window.nautilus-window popover.henri-inline-rename revealer > label {
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-chip);
+  background-color: var(--popover-bg-color);
+  box-shadow: 0 0 0 1px var(--border-color),
+              0 4px 12px color-mix(in srgb, black 15%, transparent);
+  font-size: 0.9em;
+}
+window.nautilus-window popover.henri-inline-rename > contents > box { min-width: 0; }
+/* The name under the field steps back while it is edited (Finder hides it). */
+window.nautilus-window label.henri-renaming,
+window.nautilus-window .nautilus-grid-view gridview > child:selected .icon-ui-labels-box > label.henri-renaming:not(.caption) {
+  background-color: transparent;
+  color: transparent;
+  transition: none;
+}
+
+/* Menu icons (henri_files.py): SF-style symbols before each label, macOS 26. */
+window.nautilus-window popover.menu modelbutton image.henri-menu-icon {
+  margin-right: 8px;
+  opacity: 0.85;
+}
+window.nautilus-window popover.menu modelbutton:hover image.henri-menu-icon,
+window.nautilus-window popover.menu modelbutton:selected image.henri-menu-icon {
+  opacity: 1;
+}

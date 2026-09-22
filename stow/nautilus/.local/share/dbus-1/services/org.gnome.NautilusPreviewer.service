@@ -1,0 +1,5 @@
+# Quick Look (GNOME Sushi) with the henri-ui GTK3 theme rendered by
+# henri-ui-gtk-colors. Overrides /usr/share/dbus-1/services/ for this user only.
+[D-BUS Service]
+Name=org.gnome.NautilusPreviewer
+Exec=/usr/bin/env GTK_THEME=HenriQuickLook /home/henri/.local/lib/henri-quicklook/org.gnome.NautilusPreviewer

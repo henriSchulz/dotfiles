@@ -123,6 +123,29 @@ Liste mit Zebra-Streifen und Akzent-Auswahl, Grid mit grauer Kachel + Akzent-Chi
 am Namen, NSMenu-Menüs (Highlight springt sofort). Icon-Größen per gsettings
 (Grid 64 px, Liste 16 px, `install/26-files-app.sh`).
 
+Verhalten (nicht nur Aussehen) kommt aus der nautilus-python-Erweiterung
+`~/.local/share/nautilus-python/extensions/henri_files.py` (stow-Paket `nautilus`).
+Sie läuft im Nautilus-Prozess und greift auf dessen GTK-Widgets zu:
+- **Enter = Umbenennen** (Finder), Öffnen = Doppelklick/Strg+O/Alt+↓.
+- **Inline-Umbenennen:** Nautilus' Rename-Popover wird auf ein nacktes Feld exakt
+  über dem Namen reduziert (`.henri-inline-rename`). Einhängen bei
+  `notify::pointing-to` — *vor* dem Aufklappen; die `show`-Emission-Hook läuft erst
+  nach der Platzierung. Das Popup ändert Größe/Lage nie mehr, sobald es offen ist
+  (GTK zentriert auf den Anker, Hyprland verschiebt offene Popups nicht) → festes
+  unsichtbares Popover, nur das Feld darin wächst. Klick daneben übernimmt (selbst per
+  GIO, weil Nautilus' Accept asynchron sein kann).
+- **Menü-Symbole** vor jedem Eintrag (macOS 26): beim Öffnen jedes `GtkPopoverMenu`
+  ein 16-px-Symbol vor das Label (`MENU_ICONS`, englische Labels).
+- **Kontextmenü:** Copy Path, Open in Terminal, Open in Claude Code, New File ▸
+  (Text, Markdown, ODF-Dokument/Tabelle/Präsentation, Skripte, HTML, JSON, CSV);
+  neue Dateien werden markiert und gehen direkt ins Umbenennen.
+
+**GTK3-Apps** (Quick Look = GNOME Sushi) können keine CSS-Variablen: Vorlagen in
+`~/.local/share/henri-ui/gtk3/*.in` mit `{{token}}`-Platzhaltern, gerendert von
+`henri-ui-gtk-colors` (Tokens aus `gtk-tokens.css` + Theme-Farben) — z. B. zum
+GTK3-Theme `HenriQuickLook`, das nur Sushi bekommt (`GTK_THEME` in
+`~/.local/share/dbus-1/services/org.gnome.NautilusPreviewer.service`).
+
 Testen, ohne Henri zu stören: auf einem versteckten Spezial-Workspace öffnen und
 das Fenster direkt abgreifen:
 
@@ -133,3 +156,10 @@ grim -T "$id" shot.png     # versteckte Fenster rendern träge: ggf. 2–5 s war
 nautilus -q
 ```
 Unfokussiert = `:backdrop`, dort wirkt alles etwas blasser.
+
+**Nie das Fenster fokussieren oder `wtype` schicken, während Henri arbeitet** — seine
+Tasten landen dann in Nautilus (2026-09-22: „xxxxxxx" in der Suche) und meine in
+seinen Fenstern. Interaktion stattdessen im Prozess auslösen: eine temporäre
+Test-Erweiterung (`zz_probe.py`, nach dem Start sofort wieder löschen) holt sich
+`sys.modules["henri_files"]` und ruft Funktionen/`activate_action("view.rename")`
+direkt auf; `nautilus --select <datei>` liefert eine Auswahl ohne Tastatur.

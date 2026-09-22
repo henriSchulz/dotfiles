@@ -4,8 +4,14 @@
 ~/.config/gtk-4.0/gtk.css imports the result, so stock GTK apps restyled with
 henri-ui (Files) follow the theme. Run by the theme-set hook; running GTK apps
 pick the new colors up on their next start.
+
+GTK3 has no CSS variables, so GTK3 stylesheets are templates instead:
+~/.local/share/henri-ui/gtk3/<name>.css.in is rendered with the same colors
+plus the gtk-tokens.css values into ~/.local/share/themes/<Theme>/gtk-3.0/
+gtk.css and friends (GTK3_TEMPLATES below). Quick Look (Sushi) runs with such a theme.
 """
 import os
+import re
 import tomllib
 from pathlib import Path
 
@@ -70,3 +76,58 @@ tmp.write_text(
     f" ({c.get('mode', 'light')}). Do not edit. */\n:root {{\n{body}\n}}\n"
 )
 tmp.replace(out)
+
+
+# ── GTK3 themes from templates ──────────────────────────────────────────────
+# template (in henri-ui/gtk3/) -> rendered file
+GTK3_TEMPLATES = {
+    "quicklook.css.in": home / ".local/share/themes/HenriQuickLook/gtk-3.0/gtk.css",
+    "quicklook-scheme.xml.in": home / ".local/share/gtksourceview-4/styles/henri-quicklook.xml",
+}
+henri_ui = home / ".local/share/henri-ui"
+
+
+def css_tokens(path):
+    try:
+        text = path.read_text()
+    except OSError:
+        return {}
+    return dict(re.findall(r"--([a-z0-9-]+):\s*([^;]+);", text))
+
+
+def fraction(value, default):
+    """'12%' -> '0.12' for GTK3's alpha()."""
+    m = re.match(r"\s*([0-9.]+)%", str(value))
+    return f"{float(m.group(1)) / 100:g}" if m else default
+
+
+values = dict(tokens)
+values.update(css_tokens(henri_ui / "gtk-tokens.css"))
+values["adwaita"] = "gtk-contained.css" if c.get("mode", "light") == "light" else "gtk-contained-dark.css"
+values["hairline"] = fraction(values.get("hairline-alpha"), "0.12")
+values["secondary"] = fraction(values.get("secondary-text-alpha"), "0.65")
+values["surface"] = fraction(tokens["hui-surface-alpha"], "0.97")
+# Plain theme colors too (muted, red, dark-foreground, ...), for syntax schemes.
+values.update({k.replace("_", "-"): v for k, v in c.items()
+               if isinstance(v, str) and v.startswith("#")})
+
+for name, target in GTK3_TEMPLATES.items():
+    template = henri_ui / "gtk3" / name
+    if not template.exists():
+        continue
+    missing = set()
+
+    def fill(m):
+        key = m.group(1)
+        if key not in values:
+            missing.add(key)
+            return m.group(0)
+        return values[key]
+
+    css = re.sub(r"\{\{([a-z0-9-]+)\}\}", fill, template.read_text())
+    if missing:
+        print(f"henri-ui-gtk-colors: {template.name}: unknown tokens {sorted(missing)}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(".tmp")
+    tmp.write_text(css)
+    tmp.replace(target)
