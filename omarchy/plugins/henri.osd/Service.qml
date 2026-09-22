@@ -13,6 +13,13 @@
 // invisible. The backlight itself glides between steps with the same spring
 // as the bar, so the screen fades instead of jumping.
 //
+// Extra dim. Below the old floor (1 % backlight) sit 4 more steps, split off
+// in the bar by a small gap: the backlight keeps going down toward a quarter
+// of the floor and a black click-through layer over the internal screen
+// darkens on top, following the same glide. Keys walk one grid over both
+// parts. The backlight value alone encodes how deep in the zone we are, so a
+// shell restart comes back at the same darkness.
+//
 // HUD. A card under the bar in the top-right corner, like Control Center's
 // Sound/Display module: fades in (scale from the corner), the bar glides with
 // the smooth spring and stays interruptible under key repeat, the card fades
@@ -50,7 +57,8 @@ Item {
   readonly property color trackColor: Util.alpha(fg, 0.14)
 
   readonly property string heading: kind === "volume" ? "Sound" : "Display"
-  readonly property string detail: kind === "volume" ? outputName(controlSink) : ""
+  readonly property string detail: kind === "volume" ? outputName(controlSink)
+    : (level < 0 ? "Extra Dim" : "")
   // Short output name like macOS ("Speakers", "HDMI 1", "AirPods Pro"): the
   // ALSA description is the whole chipset ("500 Series Chipset Family …"),
   // its nick is the port; Bluetooth devices carry their own name.
@@ -60,8 +68,8 @@ Item {
       return n.nickname === "Speaker" ? "Speakers" : n.nickname
     return n.description || n.nickname || ""
   }
+  // Volume only: brightness draws its own sun below.
   readonly property string icon: {
-    if (kind === "brightness") return sf(level < 0.5 ? 0x1001AC : 0x1001AE)
     if (muted || level <= 0) return sf(0x1002A3)
     if (level < 0.34) return sf(0x1002A5)
     if (level < 0.67) return sf(0x1002A7)
@@ -79,7 +87,7 @@ Item {
   }
 
   function show(what, from) {
-    if (!open || kind !== what) fill.snap(from)
+    if (!open || kind !== what) fill.snap(what === "brightness" ? toGrid(from) : from)
     kind = what
     open = true
     hold.restart()
@@ -142,10 +150,27 @@ Item {
   property string backlight: ""
   property real maxRaw: 0
   readonly property real floorFrac: 0.01    // level 0 still lights the panel (1 %)
-  function rawFor(l) { return Math.round(maxRaw * (floorFrac + (1 - floorFrac) * l * l)) }
+  // Extra dim: level runs on down to -1. One grid over both parts, dimSteps
+  // below 0 and steps above, each step the same width in the bar.
+  readonly property int dimSteps: 4
+  readonly property real minFrac: 0.0025    // backlight at level -1
+  readonly property real maxDim: 0.7        // black layer at level -1
+  readonly property int gridSteps: dimSteps + steps
+  function toGrid(l) { return (l < 0 ? l * dimSteps + dimSteps : dimSteps + l * steps) / gridSteps }
+  function fromGrid(x) {
+    var s = clamp(x) * gridSteps - dimSteps
+    return s < 0 ? s / dimSteps : s / steps
+  }
+  function rawFor(l) {
+    if (l < 0) return Math.max(1, Math.round(maxRaw * floorFrac * Math.pow(minFrac / floorFrac, -l)))
+    return Math.round(maxRaw * (floorFrac + (1 - floorFrac) * l * l))
+  }
   function levelFor(raw) {
     if (maxRaw <= 0) return 0
-    return Math.sqrt(clamp((raw / maxRaw - floorFrac) / (1 - floorFrac)))
+    var f = raw / maxRaw
+    if (f < floorFrac - 0.5 / maxRaw)
+      return -Math.min(1, Math.log(Math.max(f, 1 / maxRaw) / floorFrac) / Math.log(minFrac / floorFrac))
+    return Math.sqrt(clamp((f - floorFrac) / (1 - floorFrac)))
   }
 
   Process {
@@ -159,7 +184,7 @@ Item {
         root.maxRaw = parseInt(f[4], 10) || 0
         root.sentRaw = parseInt(f[2], 10)
         root.brightLevel = root.levelFor(root.sentRaw)
-        glow.snap(root.brightLevel)
+        glow.snap(root.toGrid(root.brightLevel))
       }
     }
   }
@@ -185,7 +210,7 @@ Item {
   function resync(raw) {
     if (isNaN(raw) || Math.abs(raw - rawFor(brightLevel)) <= maxRaw * 0.002) return
     brightLevel = levelFor(raw)
-    glow.snap(brightLevel)
+    glow.snap(toGrid(brightLevel))
     sentRaw = raw
   }
 
@@ -204,12 +229,14 @@ Item {
     id: glow
     preset: Motion.smooth
     epsilon: 0.0005
-    to: root.brightLevel
+    to: root.toGrid(root.brightLevel)
     onValueChanged: {
-      var raw = root.rawFor(value)
+      var raw = root.rawFor(root.fromGrid(value))
       if (raw !== root.sentRaw && writer.running) { root.sentRaw = raw; writer.write(root.backlight + " " + raw + "\n") }
     }
   }
+
+  readonly property real dimAlpha: maxDim * Math.max(0, -fromGrid(glow.value))
 
   function internalFocused() {
     var m = Hyprland.focusedMonitor
@@ -235,7 +262,7 @@ Item {
     lastBrightAction = action
     lastBrightAt = now
     var dir = action.indexOf("up") === 0 ? 1 : -1
-    var n = action.indexOf("fine") > 0 ? fineSteps : steps
+    var n = action.indexOf("fine") > 0 ? gridSteps * 4 : gridSteps
     if (gap < holdWindow && open && kind === "brightness") {
       holdN = n
       holdUntil = now + holdLinger
@@ -265,7 +292,7 @@ Item {
 
   function endHold() {
     holdDir = 0
-    brightLevel = clamp(Math.round(brightLevel * holdN) / holdN)
+    brightLevel = fromGrid(Math.round(toGrid(brightLevel) * holdN) / holdN)
     level = brightLevel
   }
 
@@ -274,19 +301,19 @@ Item {
     onTriggered: {
       if (Date.now() > root.holdUntil) { root.endHold(); return }
       var dt = Math.min(frameTime, 0.05)
-      var next = root.clamp(root.brightLevel + root.holdDir * root.holdRate / root.holdN * dt)
-      root.brightLevel = next
-      root.level = next
-      if (next <= 0 || next >= 1) root.endHold()
+      var g = root.clamp(root.toGrid(root.brightLevel) + root.holdDir * root.holdRate / root.gridSteps * dt)
+      root.brightLevel = root.fromGrid(g)
+      root.level = root.brightLevel
+      if (g <= 0 || g >= 1) root.endHold()
     }
   }
 
   function stepBrightness(action) {
     var cur = brightLevel
     var dir = action.indexOf("up") === 0 ? 1 : -1
-    var n = action.indexOf("fine") > 0 ? fineSteps : steps
+    var n = action.indexOf("fine") > 0 ? gridSteps * 4 : gridSteps
     show("brightness", cur)
-    brightLevel = stepped(cur, n, dir)
+    brightLevel = fromGrid(stepped(toGrid(cur), n, dir))
     level = brightLevel
   }
 
@@ -311,7 +338,34 @@ Item {
   }
 
   // ── HUD surface ─────────────────────────────────────────────────────────
-  HUi.SpringValue { id: fill; preset: Motion.smooth; to: root.level }
+  // Volume: the level. Brightness: the grid position (dim zone + main range).
+  HUi.SpringValue { id: fill; preset: Motion.smooth; to: root.split ? root.toGrid(root.level) : root.level }
+  readonly property bool split: kind === "brightness"
+  // The dim segment is full at 0 and empties toward -1; the main one fills 0…1.
+  readonly property real dimFill: split ? clamp(fill.value * gridSteps / dimSteps) : 0
+  readonly property real mainFill: split ? clamp((fill.value * gridSteps - dimSteps) / steps) : clamp(fill.value)
+
+  readonly property var internalScreen: {
+    var ss = Quickshell.screens
+    for (var i = 0; i < ss.length; i++) if (/^(eDP|LVDS|DSI)-/.test(ss[i].name)) return ss[i]
+    return null
+  }
+
+  // Extra-dim layer over the internal screen: click-through, only mapped
+  // while it darkens something.
+  PanelWindow {
+    screen: root.internalScreen
+    visible: root.internalScreen !== null && root.dimAlpha > 0.002
+    anchors { top: true; bottom: true; left: true; right: true }
+    color: "transparent"
+    WlrLayershell.namespace: "henri-osd-dim"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+    exclusionMode: ExclusionMode.Ignore
+    mask: Region {}
+
+    Rectangle { anchors.fill: parent; color: "black"; opacity: root.dimAlpha }
+  }
   HUi.SpringValue { id: pop; preset: Motion.smooth; to: root.open ? 1 : Motion.exitToScale }
 
   PanelWindow {
@@ -399,7 +453,7 @@ Item {
           Item {
             id: sun
             readonly property real size: Style.font.iconLarge
-            readonly property real v: Math.max(0, Math.min(1, fill.value))
+            readonly property real v: root.mainFill
             readonly property real stroke: Math.max(1.5, size * 0.1)
             readonly property real disc: size * 0.4
             readonly property real rayStart: disc / 2 + size * 0.09
@@ -439,25 +493,62 @@ Item {
             }
           }
 
-          Rectangle {
-            id: track
+          // Brightness splits the bar: a short extra-dim segment, a gap, then
+          // the normal range. Switching volume <-> brightness crossfades the
+          // two layouts instead of resizing anything.
+          Item {
+            id: bar
             anchors.left: glyph.right
             anchors.leftMargin: Style.space(8)
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             height: Style.space(6)
-            radius: height / 2
-            color: root.trackColor
 
-            Rectangle {
-              readonly property real v: Math.max(0, Math.min(1, fill.value))
-              height: parent.height
-              radius: parent.radius
-              width: parent.height + (parent.width - parent.height) * v
-              color: root.fg
-              // Below one step the capsule would only shrink to a dot: fade it
-              // instead, so 0 (and mute) reads as an empty track.
-              opacity: Math.min(1, v * root.steps)
+            readonly property real gap: Style.space(4)
+            readonly property real dimWidth: (width - gap) * root.dimSteps / root.gridSteps
+
+            component Capsule: Rectangle {
+              property real v: 0
+              property int stepCount: 1
+              property color fillColor: root.fg
+              height: bar.height
+              radius: height / 2
+              color: root.trackColor
+              Rectangle {
+                height: parent.height
+                radius: parent.radius
+                width: parent.height + (parent.width - parent.height) * parent.v
+                color: parent.fillColor
+                // Below one step the capsule would only shrink to a dot: fade it
+                // instead, so 0 (and mute) reads as an empty track.
+                opacity: Math.min(1, parent.v * parent.stepCount)
+              }
+            }
+
+            Capsule {
+              width: parent.width
+              v: root.mainFill
+              stepCount: root.steps
+              opacity: root.split ? 0 : 1
+              Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+            }
+
+            Item {
+              anchors.fill: parent
+              opacity: root.split ? 1 : 0
+              Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+              Capsule {
+                width: bar.dimWidth
+                v: root.dimFill
+                stepCount: root.dimSteps
+                fillColor: root.dimText
+              }
+              Capsule {
+                x: bar.dimWidth + bar.gap
+                width: bar.width - x
+                v: root.mainFill
+                stepCount: root.steps
+              }
             }
           }
         }
