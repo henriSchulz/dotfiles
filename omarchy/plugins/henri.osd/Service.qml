@@ -224,16 +224,26 @@ Item {
       Quickshell.execDetached(["omarchy-brightness-display", arg])
       return
     }
-    // Held keys: the firmware repeats at only ~4 Hz (volume gets the keyboard's
-    // 40 Hz), so a press that follows the last one closely moves several
-    // steps. Every move still belongs to one event -- nothing runs on after
-    // the key is released. Near-simultaneous doubles count once.
+    // Held keys: the firmware repeats only every ~245 ms (first repeat after
+    // ~490 ms), where volume gets the keyboard's 40 Hz. So once a repeat
+    // shows the key is held, the level runs on continuously like volume;
+    // every repeat keeps it running for another holdLinger, and when the
+    // repeats stop it settles on the nearest step.
     var now = Date.now()
     var gap = action === lastBrightAction ? now - lastBrightAt : 1e9
     if (gap < dupWindow) return
     lastBrightAction = action
     lastBrightAt = now
-    if (gap < holdWindow) action += "*"
+    var dir = action.indexOf("up") === 0 ? 1 : -1
+    var n = action.indexOf("fine") > 0 ? fineSteps : steps
+    if (gap < holdWindow && open && kind === "brightness") {
+      holdN = n
+      holdUntil = now + holdLinger
+      holdDir = dir
+      hold.restart()
+      return
+    }
+    if (holdDir !== 0) endHold()
     if (reader.running) { pending = pending.concat([action]); return }
     if (!glow.running && !(open && kind === "brightness")) {
       pending = [action]
@@ -243,21 +253,40 @@ Item {
     stepBrightness(action)
   }
 
-  readonly property int holdSteps: 3
-  readonly property int holdWindow: 450   // ms: closer than this = key is held
+  readonly property real holdRate: 12     // steps per second while held
+  readonly property int holdWindow: 600   // ms: a repeat this close = key is held
+  readonly property int holdLinger: 265   // ms: runs on after each repeat (they come every ~245)
   readonly property int dupWindow: 40     // ms: firmware sometimes sends twice
   property string lastBrightAction: ""
   property real lastBrightAt: 0
+  property int holdDir: 0
+  property int holdN: 16
+  property real holdUntil: 0
+
+  function endHold() {
+    holdDir = 0
+    brightLevel = clamp(Math.round(brightLevel * holdN) / holdN)
+    level = brightLevel
+  }
+
+  FrameAnimation {
+    running: root.holdDir !== 0
+    onTriggered: {
+      if (Date.now() > root.holdUntil) { root.endHold(); return }
+      var dt = Math.min(frameTime, 0.05)
+      var next = root.clamp(root.brightLevel + root.holdDir * root.holdRate / root.holdN * dt)
+      root.brightLevel = next
+      root.level = next
+      if (next <= 0 || next >= 1) root.endHold()
+    }
+  }
 
   function stepBrightness(action) {
     var cur = brightLevel
     var dir = action.indexOf("up") === 0 ? 1 : -1
     var n = action.indexOf("fine") > 0 ? fineSteps : steps
-    var k = action.indexOf("*") > 0 ? holdSteps : 1
     show("brightness", cur)
-    var next = cur
-    for (var i = 0; i < k; i++) next = stepped(next, n, dir)
-    brightLevel = next
+    brightLevel = stepped(cur, n, dir)
     level = brightLevel
   }
 
