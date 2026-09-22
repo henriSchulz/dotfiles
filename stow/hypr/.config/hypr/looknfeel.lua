@@ -76,7 +76,3 @@ hl.layer_rule({ match = { namespace = "omarchy-menu" }, no_anim = true, animatio
 
 -- Lautstärke-/Helligkeits-HUD (henri.osd) blendet sich selbst ein und aus.
 hl.layer_rule({ match = { namespace = "henri-osd" }, no_anim = true, animation = "none" })
-
--- Extra-dunkel-Ebene des HUD (henri.osd): schwarzer Layer über dem internen
--- Display, blendet selbst mit dem Backlight-Gleiten. Kein Hyprland-Fade.
-hl.layer_rule({ match = { namespace = "henri-osd-dim" }, no_anim = true, animation = "none" })
