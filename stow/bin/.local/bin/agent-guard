@@ -62,59 +62,191 @@ READ_ONLY_TOOLS = {
 }
 
 # First words of shell commands that cannot change anything by themselves.
-# Redirection and command substitution are handled separately, so `cat a > b`
-# never reaches this list.
+# Redirection is handled separately, so `cat a > b` never reaches this list.
+#
+# This list is long on purpose. A gate that asks about `df -h` teaches you to
+# hit Allow without reading, and then it is worse than no gate at all: the
+# question only means something if it is rare.
 READ_ONLY_COMMANDS = {
-    "cat", "head", "tail", "ls", "tree", "find", "grep", "rg", "ag",
-    "wc", "file", "stat", "du", "df", "free", "uname", "uptime", "date",
-    "id", "whoami", "pwd", "echo", "printf", "which", "type", "env",
-    "ps", "pgrep", "hostname", "lsblk", "lscpu", "lspci", "lsusb", "nproc",
-    "readlink", "realpath", "basename", "dirname", "getent", "locale",
-    "sort", "uniq", "cut", "tr", "column", "jq", "yq", "xxd", "strings",
-    "diff", "cmp", "md5sum", "sha256sum", "true", "false", "test", "seq",
+    # files and text
+    "cat", "bat", "head", "tail", "ls", "tree", "fd", "grep", "rg", "ag",
+    "wc", "file", "stat", "du", "df", "readlink", "realpath", "basename",
+    "dirname", "uniq", "cut", "tr", "column", "jq", "yq",
+    "xxd", "strings", "diff", "cmp", "md5sum", "sha256sum", "b2sum", "cksum",
+    "getfacl", "lsattr", "nl", "fold", "paste", "join", "comm", "rev", "expand",
+    # the machine
+    "uname", "uptime", "hostname", "hostnamectl", "date", "cal", "id", "whoami",
+    "groups", "who", "w", "last", "locale", "nproc", "free", "vmstat", "iostat",
+    "lscpu", "lspci", "lsusb", "lsblk", "lsmod", "modinfo", "blkid", "findmnt",
+    "dmesg", "sensors", "upower", "acpi", "getconf", "getent", "arch",
+    # processes
+    "ps", "pgrep", "pidof", "lsof", "pstree",
+    # network (reading only)
+    "ip", "ss", "nmcli", "iwctl", "dig", "host", "nslookup", "ping",
+    "traceroute", "resolvectl",
+    # packages and toolchains
+    "ldd", "nm", "objdump", "readelf", "fc-list", "fc-match",
+    "tldr", "man", "info", "whatis", "apropos",
+    # shell built-ins that only report
+    "echo", "printf", "which", "type", "command", "env", "printenv", "true",
+    "false", "test", "seq", "expr", "pwd", "sleep", "tty", "yes",
 }
 
-# Commands that are read-only only in some shapes.
+# Commands that only report in some shapes. The lambda gets the arguments.
+def _first(a, allowed):
+    return bool(a) and a[0] in allowed
+
+
 CONDITIONAL = {
-    "git": lambda a: bool(a) and a[0] in {
+    "git": lambda a: _first(a, {
         "status", "log", "diff", "show", "branch", "remote", "describe",
-        "rev-parse", "blame", "shortlog", "tag", "config",
-    } and "--edit" not in a,
-    "systemctl": lambda a: bool(a) and any(
-        x in a for x in ("status", "show", "is-active", "is-enabled",
-                         "list-units", "list-unit-files", "cat")
-    ),
-    "journalctl": lambda a: True,
-    "pacman": lambda a: bool(a) and a[0].startswith("-Q"),
+        "rev-parse", "blame", "shortlog", "tag", "ls-files", "ls-tree",
+        "cat-file", "for-each-ref", "reflog", "stash",
+    }) and "--edit" not in a and not (a[0] == "stash" and len(a) > 1 and a[1] != "list"),
+    # `git config x y` writes; only explicit reads pass.
+    "systemctl": lambda a: _first(a, {
+        "status", "show", "is-active", "is-enabled", "is-failed", "cat",
+        "list-units", "list-unit-files", "list-timers", "list-sockets",
+        "show-environment",
+    }) or (len(a) > 1 and a[0] == "--user" and _first(a[1:], {
+        "status", "show", "is-active", "is-enabled", "is-failed", "cat",
+        "list-units", "list-unit-files", "list-timers",
+    })),
+    "journalctl": lambda a: True,          # reads the log, cannot write to it
+    "loginctl": lambda a: _first(a, {"show", "list-sessions", "session-status",
+                                     "show-user", "list-users"}),
+    "timedatectl": lambda a: not a or _first(a, {"status", "show", "list-timezones"}),
+    "busctl": lambda a: _first(a, {"list", "status", "introspect", "get-property",
+                                   "tree", "monitor"}),
+    "pacman": lambda a: bool(a) and (a[0].startswith("-Q") or a[0].startswith("-Si")
+                                     or a[0].startswith("-Ss") or a[0].startswith("-Sl")),
+    "pactl": lambda a: _first(a, {"list", "info", "stat"}) or (
+        bool(a) and a[0].startswith("get-")),
+    "wpctl": lambda a: _first(a, {"status", "inspect", "get-volume"}),
+    "bluetoothctl": lambda a: _first(a, {"show", "devices", "info", "list"}),
     "hyprctl": lambda a: bool(a) and a[0] not in {
         "dispatch", "keyword", "reload", "setcursor", "output", "switchxkblayout",
-        "seterror", "setprop", "notify", "plugin",
+        "seterror", "setprop", "notify", "plugin", "kill",
     },
     "sed": lambda a: "-i" not in a and not any(x.startswith("-i") for x in a),
-    "awk": lambda a: True,   # writing needs a redirect, which is caught above
-    "voxtype": lambda a: bool(a) and a[0] in {"status", "info", "config"},
-    "omarchy": lambda a: bool(a) and a[0] in {"menu", "version", "help"},
+    "awk": lambda a: True,                 # writing needs a redirect, caught above
+    "curl": lambda a: not any(x in a for x in ("-o", "-O", "--output",
+                                               "--remote-name", "--create-dirs")),
+    "voxtype": lambda a: _first(a, {"status", "info"}) or (
+        a[:1] == ["config"] and "set" not in a and "unset" not in a),
+    "omarchy": lambda a: _first(a, {"version", "help"}),
+    "pip": lambda a: _first(a, {"list", "show", "freeze"}),
+    "npm": lambda a: _first(a, {"ls", "list", "view", "outdated"}),
+    "systemd-analyze": lambda a: True,
+    # An interpreter is only reporting when it is reporting its own version:
+    # `python3 -c "open('x','w')"` writes a file without a single shell
+    # metacharacter, so it can never be on the plain list.
+    "python3": lambda a: _first(a, {"--version", "-V"}),
+    "python": lambda a: _first(a, {"--version", "-V"}),
+    "node": lambda a: _first(a, {"--version", "-v"}),
+    "ruby": lambda a: _first(a, {"--version", "-v"}),
+    "perl": lambda a: _first(a, {"--version", "-v"}),
+    "go": lambda a: _first(a, {"version", "env", "list"}),
+    "rustc": lambda a: _first(a, {"--version", "-V"}),
+    "cargo": lambda a: _first(a, {"--version", "tree", "metadata", "search"}),
+    # `find` runs other programs and deletes on its own.
+    "find": lambda a: not any(
+        x in a for x in ("-delete", "-exec", "-execdir", "-ok", "-okdir",
+                         "-fprint", "-fprintf", "-fls")),
+    # `sort -o` writes its output to a file.
+    "sort": lambda a: "-o" not in a and not any(x.startswith("--output") for x in a),
 }
 
-# Anything that can send output somewhere, run a second command, or expand into
-# one. Present in the string at all -> the whole command gets asked about.
-DANGEROUS_SYNTAX = re.compile(r"[>;&`]|\$\(|\|\||<\(")
+# Writes somewhere, no matter what it is fed.
+WRITERS = {"tee", "dd", "sponge", "truncate", "install", "shred"}
+
+# Commands whose whole job is to put something on screen. When one of these
+# runs, the assistant card should get out of the way -- the thing that just
+# opened is what Henri wanted to look at. Recognising it here rather than
+# watching Hyprland for any new window is the difference between knowing and
+# guessing: windows open all the time that have nothing to do with the agent.
+LAUNCHERS = {"agent-session", "omarchy-launch-tui", "uwsm-app", "xdg-open",
+             "gtk-launch", "gio"}
+
+# Shell operators that end one command and start another.
+SEPARATORS = {"|", "||", "&&", ";", "&", "\n"}
+REDIRECTS = {">", ">>", "<", ">|", "<>", "&>", ">&"}
+SUBSTITUTION = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
 
 
-def command_is_read_only(line):
-    if not line or DANGEROUS_SYNTAX.search(line):
+def segments(line):
+    """Split a command line into its commands, the way a shell would.
+
+    Not with a regex: `grep -E 'i3|sway'` has pipes inside quotes, and cutting
+    on those turns a search pattern into fragments that look like unknown
+    commands. shlex with punctuation_chars tokenises operators while leaving
+    quoted strings whole, and treats newlines as the separators they are.
+    Returns (list of argv lists, saw_redirect) or (None, _) if it cannot tell.
+    """
+    lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    out, current, redirect = [], [], False
+    try:
+        for token in lexer:
+            if token in REDIRECTS or any(
+                    token.startswith(r) and token not in ("&&",) for r in (">", ">>")):
+                redirect = True
+                current = []                  # the target is not a command
+                continue
+            if token in SEPARATORS:
+                if current:
+                    out.append(current)
+                current = []
+                continue
+            current.append(token)
+    except ValueError:
+        return None, redirect                 # unbalanced quotes: do not guess
+    if current:
+        out.append(current)
+    return out, redirect
+
+
+def command_is_read_only(line, depth=0):
+    if not line or not line.strip() or depth > 3:
         return False
-    for stage in line.split("|"):
-        try:
-            parts = shlex.split(stage)
-        except ValueError:
-            return False                      # unbalanced quotes: do not guess
+
+    # Whatever a substitution expands to also runs, so it is checked as its own
+    # command and then taken out of the line.
+    while True:
+        m = SUBSTITUTION.search(line)
+        if not m:
+            break
+        inner = m.group(1) or m.group(2) or ""
+        if not command_is_read_only(inner, depth + 1):
+            return False
+        line = line[:m.start()] + " X " + line[m.end():]
+
+    # `2>/dev/null` and friends discard output; they are not a write.
+    line = re.sub(r"\d?>>?\s*/dev/null", " ", line)
+    line = re.sub(r"\d?>&\d", " ", line)
+
+    commands, redirect = segments(line)
+    if commands is None or redirect:
+        return False
+
+    for parts in commands:
         if not parts:
-            return False
-        # `FOO=bar cmd` and `sudo cmd` are never waved through
+            continue
         name = os.path.basename(parts[0])
-        if "=" in parts[0] or name in {"sudo", "pkexec", "doas", "su"}:
+        # `FOO=bar cmd` hides the real command; privilege escalation never passes.
+        if "=" in parts[0]:
             return False
+        if name in {"sudo", "pkexec", "doas", "su"}:
+            return False
+        if name == "env":
+            rest = [p for p in parts[1:] if "=" not in p]
+            if not rest:
+                continue
+            parts, name = rest, os.path.basename(rest[0])
+        if name in WRITERS:
+            return False
+        if name in {"cd", "pushd", "popd", "then", "do", "fi", "done", "else"}:
+            continue
         args = parts[1:]
         if name in READ_ONLY_COMMANDS:
             continue
@@ -123,6 +255,28 @@ def command_is_read_only(line):
             continue
         return False
     return True
+
+
+def note_launch(line):
+    """Drop a marker when a command opens something, for the card to close on."""
+    try:
+        parts = shlex.split(line)
+    except ValueError:
+        parts = line.split()
+    names = {os.path.basename(p) for p in parts[:1]}
+    for i, part in enumerate(parts):
+        if os.path.basename(part) in LAUNCHERS:
+            names.add(os.path.basename(part))
+        if os.path.basename(part) == "hyprctl" and "exec" in parts[i:]:
+            names.add("hyprctl")
+    if not names & (LAUNCHERS | {"hyprctl"}):
+        return
+    try:
+        os.makedirs(RUNTIME, exist_ok=True)
+        with open(os.path.join(RUNTIME, "launched"), "w") as fh:
+            fh.write(line[:400])
+    except OSError:
+        pass
 
 
 def describe(tool, args):
@@ -186,8 +340,14 @@ def main():
     if tool in READ_ONLY_TOOLS:
         reply("allow")
 
-    if tool == "run_command" and command_is_read_only(args.get("CommandLine", "")):
-        reply("allow")
+    if tool == "run_command":
+        line = args.get("CommandLine", "")
+        if command_is_read_only(line):
+            reply("allow")
+        if ask(tool, args):
+            note_launch(line)
+            reply("allow")
+        reply("deny", "Henri did not confirm this in the assistant window.")
 
     if ask(tool, args):
         reply("allow")

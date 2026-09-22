@@ -240,6 +240,19 @@ Item {
     }
   }
 
+  // agent-guard drops this when a command's job is to open something. The card
+  // is then in front of whatever just appeared, so it leaves.
+  FileView {
+    path: root.workDir + "/launched"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      Quickshell.execDetached(["rm", "-f", root.workDir + "/launched"])
+      if (root.open && !root.listening && !root.transcribing) root.close()
+    }
+  }
+
   function answerConfirm(allowed) {
     if (!root.confirmRequest) return
     if (!allowed) root.deniedTitle = root.confirmRequest.title || "that"
