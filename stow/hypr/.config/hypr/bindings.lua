@@ -138,7 +138,7 @@ end)
 -- Modmasken 0 und CTRL schliessen sich gegenseitig aus, es feuert also
 -- immer genau eine der beiden.
 o.bind("CTRL + Control_R", "Dictation toggle", "voxtype record toggle")
-o.bind("", "Control_R", "Dictation toggle", "voxtype record toggle")
+o.bind("Control_R", "Dictation toggle", "voxtype record toggle")
 
 -- Verschrieben? `voxtype record cancel` wirft die laufende Aufnahme weg,
 -- ohne Text einzufuegen. Omarchys Standard SUPER+CTRL+X (Toggle) bleibt als

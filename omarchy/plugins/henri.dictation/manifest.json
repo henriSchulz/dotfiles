@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.dictation",
+  "name": "Dictation HUD",
+  "version": "1.0.0",
+  "author": "henri",
+  "description": "macOS-style dictation panel: live waveform while voxtype listens, a settled sweep while it transcribes.",
+  "kinds": [
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

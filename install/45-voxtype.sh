@@ -45,6 +45,9 @@ run "$onnx" config set parakeet.model "$model"
 # group. Without it the built-in hotkey silently never fires, so the key is
 # bound in Hyprland instead (stow/hypr/.config/hypr/bindings.lua, Control_R).
 run "$onnx" config set hotkey.enabled false
+# The packaged GTK4 OSD is replaced by the henri.dictation shell plugin, which
+# draws on the Omarchy theme and the henri-ui components instead of its own.
+run "$onnx" config set osd.enabled false
 
 run systemctl --user daemon-reload
 run systemctl --user enable --now voxtype.service

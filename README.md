@@ -49,6 +49,7 @@ differences were committed:
 | `omarchy/plugins/henri.menu/` | 658-line divergence from built-in `omarchy.menu`, plus its own `FuzzySearch.js` |
 | `omarchy/menu.json` | `henri.menu` settings: `fileSearch.roots`, `exclude` (globs; `~/x` anchored to home), `defaultExcludes`, `hidden` — keeps tool and system folders out of the space-prefixed file search |
 | `omarchy/plugins/henri.idle/` | clone of `omarchy.idle` that launches the themed screensaver instead of the stock one |
+| `omarchy/plugins/henri.dictation/` | own plugin: the dictation panel. A pill at the bottom edge with a live waveform while voxtype listens and a travelling sweep while it transcribes; click-through, never takes focus. State comes from the daemon's state file, levels from `voxtype-audio-bridge`, so it is right whatever started the recording. Replaces voxtype's own GTK4 OSD, which brought its own palette and its own motion |
 | `omarchy/plugins/henri.bar/` | clone of `omarchy.bar`: translucent macOS-style menu bar; `required` props made plain so it loads as a plugin bar |
 | `omarchy/plugins/henri.workspaces/` | clone of `omarchy.workspaces` that shows only occupied workspaces |
 | `omarchy/plugins/henri.clock/` | clone of `omarchy.clock` with German day and month names in the bar and the calendar popup, which opens under the clock instead of centred |

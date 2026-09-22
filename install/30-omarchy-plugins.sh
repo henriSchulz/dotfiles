@@ -50,6 +50,8 @@ done
 #                 Omarchy logo in the bar's left corner
 #   henri.active-window — clone of omarchy.active-window, app name that opens
 #                 the app's settings (app-settings, `bin` stow package)
+#   henri.dictation — own plugin, the dictation panel that replaces voxtype's
+#                 own OSD (voxtype's is switched off in install/45-voxtype.sh)
 #   io.github.nipsen.dell-power — NIPSEN/omarchy-dell-power (MIT) with the
 #                 bar glyph swapped for the macOS battery (HUi.BatteryGlyph)
 for src in "$DOTFILES_ROOT"/omarchy/plugins/*/; do

@@ -76,3 +76,9 @@ hl.layer_rule({ match = { namespace = "omarchy-menu" }, no_anim = true, animatio
 
 -- Lautstärke-/Helligkeits-HUD (henri.osd) blendet sich selbst ein und aus.
 hl.layer_rule({ match = { namespace = "henri-osd" }, no_anim = true, animation = "none" })
+
+-- Diktat-Panel (henri.dictation) blendet sich selbst ein und aus, wie das
+-- Lautstärke-HUD. Blur dahinter wie bei der Menüleiste: die Karte ist fast
+-- deckend, der Weichzeichner trägt vor allem die runden Enden.
+hl.layer_rule({ match = { namespace = "henri-dictation" }, no_anim = true, animation = "none" })
+hl.layer_rule({ match = { namespace = "henri-dictation" }, blur = true, ignore_alpha = 0.3 })

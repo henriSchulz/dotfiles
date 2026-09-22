@@ -23,7 +23,7 @@
           "chargeLimitStep": 5,
           "historyHours": "24",
           "historyMetric": "percent",
-          "historyRange": "6h",
+          "historyRange": "3h",
           "showPercentage": true
         },
         {
@@ -56,6 +56,9 @@
     "screensaver": 300
   },
   "plugins": [
+    {
+      "id": "henri.dictation"
+    },
     {
       "id": "henri.missioncontrol"
     },
