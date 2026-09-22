@@ -249,7 +249,10 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
 7. **Liste ändert sich:** Neue Zeilen klappen auf + faden, entfernte klappen zu,
    Nachbarn gleiten nach (`smooth`).
 8. **Warten/Laden:** Unter 300 ms nichts anzeigen; danach dezenter Spinner/Fortschritt
-   per Fade. Inhalt, der ankommt, crossfadet den Platzhalter.
+   per Fade. Inhalt, der ankommt, crossfadet den Platzhalter. Denkt ein Agent, stehen
+   drei Punkte dort, wo der Text erscheinen wird, und pulsen nacheinander
+   (`Motion.thinkingCycle`, 1200 ms pro Runde — Herzschlag, keine Reaktion); das erste
+   Token blendet sie weg.
 9. **Fehler:** Feld rötet sich per Farb-Fade; bei falscher Eingabe (Passwort) ein
    kurzes horizontales Schütteln (3 Ausschläge, `Motion.shakeDistance` ±6 px, `Motion.shakeDuration` ~300 ms) — das einzige erlaubte
    „Wackeln“, wie bei macOS.

@@ -61,6 +61,17 @@ HUi.Surface {
 
   property string status: ""                // e.g. a recording that heard nothing
 
+  // Heartbeat for the thinking dots. Targeted rather than `NumberAnimation on
+  // pulse`, so the value is a plain property the probe can park.
+  property real pulse: 0
+  NumberAnimation {
+    target: card; property: "pulse"
+    running: card.thinking && card.streamed === ""
+    from: 0; to: 1
+    duration: Motion.thinkingCycle
+    loops: Animation.Infinite
+  }
+
   readonly property string hint: listening ? "↵  send      Super A  stop      Esc  cancel"
     : transcribing ? "…"
     : thinking ? "Working…"
@@ -158,6 +169,44 @@ HUi.Surface {
                 wrapMode: Text.Wrap
                 visible: text !== ""
               }
+              // Thinking: three dots where the answer will start, so the wait
+              // happens in the place the eye is already on. Each one rides the
+              // same heartbeat a fifth of a turn apart. Opacity and scale only.
+              Row {
+                id: dots
+                height: Style.font.subtitle * 1.4
+                spacing: Style.space(5)
+                visible: card.thinking && card.streamed === ""
+
+                Repeater {
+                  model: 3
+                  Item {
+                    required property int index
+                    width: Style.space(6)
+                    height: dots.height
+
+                    // A raised cosine: each dot swells once per turn, a fifth
+                    // of a turn behind the one before it.
+                    readonly property real phase: {
+                      var t = card.pulse - index * 0.2
+                      t = t - Math.floor(t)
+                      return 0.5 - 0.5 * Math.cos(t * 2 * Math.PI)
+                    }
+
+                    Rectangle {
+                      anchors.centerIn: parent
+                      width: parent.width
+                      height: width
+                      radius: width / 2
+                      color: card.ink
+                      opacity: Motion.disabledOpacity
+                        + (1 - Motion.disabledOpacity) * parent.phase
+                      scale: Motion.reduceMotion ? 1 : 0.8 + 0.2 * parent.phase
+                    }
+                  }
+                }
+              }
+
               Text {
                 width: parent.width
                 text: card.streamed

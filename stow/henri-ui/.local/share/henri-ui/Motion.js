@@ -62,6 +62,10 @@ var switcherDelay = 50
 var carryOffset = 24
 // Volume/brightness HUD: stays this long after the last key press (macOS).
 var hudHold = ms(1500)
+// One full cycle of a "thinking" indicator (the three pulsing dots while an
+// agent composes an answer). Slower than any transition on purpose: it is a
+// heartbeat, not a reaction, and at transition speed it reads as impatience.
+var thinkingCycle = ms(1200)
 var tooltipGrace = 1000       // follow-up tooltips show instantly within this window
 // Rejected input (wrong password): one horizontal shake, 3 swings — the only
 // allowed wobble, like the macOS login field.
