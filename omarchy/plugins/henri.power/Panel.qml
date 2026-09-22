@@ -49,25 +49,31 @@ Panel {
   property var historyPoints: []
   property var historyStats: null
   property var historyBars: []
-  // The same number of bars for every range: 5 min each over 6 h, 10 over
-  // 12 h, 20 over 24 h.
-  readonly property int historyBarCount: 72
   property real historyNow: 0
-  property string historyTodayText: ""
-  property string historyYesterdayText: ""
-  property string historyTodayName: ""
-  property string historyYesterdayName: ""
-  readonly property var historyRanges: [6, 12, 24]
+  // The daily CSVs the window touches (Model.historyDays), oldest first, and
+  // their text by file name. Parsed samples are cached per file and text
+  // length, so the 30 s refresh only re-parses the file that grew.
+  property var historyFiles: []
+  property var historyTexts: ({})
+  property var historyParsed: ({})
+  readonly property var historyRanges: Model.HISTORY_RANGES
   // A plain value, synced from the settings in a handler: a binding here fed
   // the graph's time axis straight from the settings object and looped.
-  property int historyHours: 6
-  function syncHistoryHours() {
-    var h = Number(setting("historyHours", 6))
-    h = historyRanges.indexOf(h) >= 0 ? h : 6
-    if (h !== historyHours) historyHours = h
+  // `historyHours` (6/12/24) is the older setting; it still picks the range.
+  property var historyRange: Model.historyRange(Model.HISTORY_DEFAULT_RANGE)
+  readonly property real historyHours: historyRange.hours
+  readonly property int historyBarCount: historyRange.bars
+  // What the bars show: the charge level or the power draw.
+  property bool historyWatts: false
+  function syncHistorySettings() {
+    var r = Model.historyRange(setting("historyRange", "")) || Model.historyRange(setting("historyHours", ""))
+      || Model.historyRange(Model.HISTORY_DEFAULT_RANGE)
+    if (r !== historyRange) historyRange = r
+    var w = setting("historyMetric", "percent") === "watts"
+    if (w !== historyWatts) historyWatts = w
   }
-  onSettingsChanged: syncHistoryHours()
-  Component.onCompleted: syncHistoryHours()
+  onSettingsChanged: syncHistorySettings()
+  Component.onCompleted: syncHistorySettings()
   readonly property bool showHistory: setting("showHistory", true) === true
   readonly property string historyDir: {
     var d = String(setting("historyDir", "") || "")
@@ -167,6 +173,7 @@ Panel {
 
   function closeSubPage() {
     cursorActive = false
+    rangeMenu.open = false
     if (pages.depth > 1) pages.pop()
   }
 
@@ -529,24 +536,43 @@ Panel {
     return "none"
   }
 
-  // Points at today's and yesterday's file; the FileViews load them on a
-  // path change, a reload() picks up the lines added since.
+  // Points at the daily files the window touches; their FileViews load on
+  // creation, a reload() of the two newest picks up the lines added since
+  // (older days no longer change).
   function refreshHistory() {
     if (!root.showHistory) return
-    var now = new Date()
-    var today = Model.historyFileName(now)
-    var yesterday = Model.historyFileName(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 12))
-    if (today === historyTodayName) todayFile.reload()
-    else historyTodayName = today
-    if (yesterday === historyYesterdayName) yesterdayFile.reload()
-    else historyYesterdayName = yesterday
+    var days = Model.historyDays(new Date(), historyHours)
+    var names = days.map(function (d) { return d.name }).join(",")
+    if (names !== historyFiles.map(function (d) { return d.name }).join(",")) {
+      historyFiles = days
+      return
+    }
+    for (var i = Math.max(0, historyFileViews.count - 2); i < historyFileViews.count; i++) {
+      var fv = historyFileViews.objectAt(i)
+      if (fv) fv.reload()
+    }
+  }
+
+  function setHistoryText(name, text) {
+    var t = Object.assign({}, historyTexts)
+    t[name] = text
+    historyTexts = t
+    Qt.callLater(rebuildHistory)
   }
 
   function rebuildHistory() {
     var now = new Date()
-    var yDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 12)
-    var samples = Model.parseHistoryCsv(historyYesterdayText, yDay)
-      .concat(Model.parseHistoryCsv(historyTodayText, now))
+    var samples = []
+    var cache = {}
+    for (var i = 0; i < historyFiles.length; i++) {
+      var f = historyFiles[i]
+      var text = historyTexts[f.name] || ""
+      var c = historyParsed[f.name]
+      if (!c || c.len !== text.length) c = { len: text.length, samples: Model.parseHistoryCsv(text, f.day) }
+      cache[f.name] = c
+      samples = samples.concat(c.samples)
+    }
+    historyParsed = cache
     historyNow = now.getTime()
     historyPoints = Model.historyWindow(samples, historyNow, historyHours)
     historyStats = Model.historyStats(historyPoints)
@@ -554,14 +580,30 @@ Panel {
   }
 
   // Remembered like the bar percentage: written back into the bar entry.
-  function setHistoryHours(hours) {
-    var h = Number(hours)
-    if (historyRanges.indexOf(h) < 0 || h === historyHours) return
-    root.settings = Object.assign({}, root.settings, { historyHours: String(h) })
+  function saveHistorySetting(key, value) {
+    var patch = {}
+    patch[key] = value
+    root.settings = Object.assign({}, root.settings, patch)
     if (root.bar && root.bar.shell) root.bar.shell.updateEntryInline(root.moduleName, root.settings)
   }
 
-  onHistoryHoursChanged: Qt.callLater(rebuildHistory)
+  function setHistoryRange(key) {
+    var r = Model.historyRange(key)
+    if (!r || r === historyRange) return
+    saveHistorySetting("historyRange", r.key)
+  }
+
+  function setHistoryWatts(on) {
+    if (on === historyWatts) return
+    saveHistorySetting("historyMetric", on ? "watts" : "percent")
+  }
+
+  // A longer range may need older files first; refreshHistory rebuilds
+  // once they are in (a shorter one rebuilds straight from what is loaded).
+  onHistoryRangeChanged: {
+    if (historyStats !== null) refreshHistory()
+    Qt.callLater(rebuildHistory)
+  }
 
   function historyWatt(w) {
     return w === null || w === undefined || !isFinite(w) ? "—" : w.toFixed(1) + " W"
@@ -600,6 +642,9 @@ Panel {
     function togglePercentage() { root.togglePercentage() }
     // Opens the popup straight on the History section.
     function history() { root.open(); root.showHistoryPage() }
+    // History range (15m 30m 1h 3h 6h 12h 24h 3d 7d) and what the bars show.
+    function historyRange(key: string): void { root.setHistoryRange(key) }
+    function historyMetric(metric: string): void { root.setHistoryWatts(metric === "watts" || metric === "power") }
   }
 
   onOpenedChanged: {
@@ -756,20 +801,16 @@ Panel {
 
   Timer { interval: 30000; running: root.opened && root.showHistory; repeat: true; onTriggered: root.refreshHistory() }
 
-  FileView {
-    id: todayFile
-    path: root.historyTodayName !== "" ? root.historyDir + "/" + root.historyTodayName : ""
-    printErrors: false
-    onLoaded: { root.historyTodayText = text(); Qt.callLater(root.rebuildHistory) }
-    onLoadFailed: { root.historyTodayText = ""; Qt.callLater(root.rebuildHistory) }
-  }
-
-  FileView {
-    id: yesterdayFile
-    path: root.historyYesterdayName !== "" ? root.historyDir + "/" + root.historyYesterdayName : ""
-    printErrors: false
-    onLoaded: { root.historyYesterdayText = text(); Qt.callLater(root.rebuildHistory) }
-    onLoadFailed: { root.historyYesterdayText = ""; Qt.callLater(root.rebuildHistory) }
+  Instantiator {
+    id: historyFileViews
+    model: root.historyFiles
+    delegate: FileView {
+      required property var modelData
+      path: root.historyDir + "/" + modelData.name
+      printErrors: false
+      onLoaded: root.setHistoryText(modelData.name, text())
+      onLoadFailed: root.setHistoryText(modelData.name, "")
+    }
   }
 
   Timer {
@@ -855,17 +896,20 @@ Panel {
     onVisibleChanged: {
       if (visible) return
       root.cursorActive = false
+      rangeMenu.open = false
       pages.pop(null, QQC.StackView.Immediate)
     }
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      // Overview: → opens History, ↓ / ⏎ open Advanced. History: ← goes back.
+      // Overview: → opens History, ↓ / ⏎ open Advanced. History: ← goes back,
+      // ⏎ opens the range menu (its own ↑ ↓ ⏎ Esc while open).
       // Advanced: ←/→ walk the power profiles, ⏎ applies the one under the
       // cursor. Esc goes back one page, and closes on the overview.
       onMoveRequested: function(dx, dy) {
         if (root.historyShown) {
+          if (rangeMenu.open) return
           if (dx < 0) root.closeSubPage()
           return
         }
@@ -879,11 +923,17 @@ Panel {
         else if (dy > 0) root.showAdvancedPage()
       }
       onActivateRequested: {
-        if (root.historyShown) return
+        if (root.historyShown) {
+          // After this key event: opened inside it, the menu took focus
+          // mid-delivery and the same ⏎ picked an entry.
+          if (!rangeMenu.open) Qt.callLater(rangeMenu.show)
+          return
+        }
         if (!root.advancedOpen) root.showAdvancedPage()
         else if (root.cursorActive) root.activateSelectedProfile()
       }
-      onCloseRequested: pages.depth > 1 ? root.closeSubPage() : root.close()
+      onCloseRequested: rangeMenu.open ? rangeMenu.dismiss()
+        : pages.depth > 1 ? root.closeSubPage() : root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
       HUi.PageStack {
@@ -1397,12 +1447,12 @@ Panel {
           iconFont: root.iconFont
           onBack: root.closeSubPage()
 
-          Segmented {
-            width: Style.space(132)
-            options: root.historyRanges.map(function (h) { return String(h) })
-            labels: root.historyRanges.map(function (h) { return h + " h" })
-            current: String(root.historyHours)
-            onPicked: function(value) { root.setHistoryHours(value) }
+          PopUpButton {
+            id: rangeButton
+            text: root.historyRange.short
+            open: rangeMenu.open
+            Accessible.name: "Time range"
+            onClicked: rangeMenu.open ? rangeMenu.dismiss() : rangeMenu.show()
           }
         }
 
@@ -1422,11 +1472,16 @@ Panel {
             Item {
               width: parent.width
               height: Math.max(historyTitle.implicitHeight, historyReadout.implicitHeight)
-              SectionLabel {
+              // What the bars show: charge level or power draw.
+              Segmented {
                 id: historyTitle
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Charge · last " + root.historyHours + " h"
+                width: Style.space(132)
+                options: ["percent", "watts"]
+                labels: ["Charge", "Power"]
+                current: root.historyWatts ? "watts" : "percent"
+                onPicked: function(value) { root.setHistoryWatts(value === "watts") }
               }
               HUi.CrossfadeText {
                 id: historyReadout
@@ -1472,6 +1527,78 @@ Panel {
                 : (root.historyStats.samples ? root.historyDischargeText : "No samples in " + root.historyDir)
             }
             Caption { visible: text !== ""; text: root.historyChargeText }
+          }
+        }
+
+        // Clicks beside the open range menu close it and go nowhere else
+        // (the popup's own outside-click handling covers other windows).
+        MouseArea {
+          anchors.fill: parent
+          z: 9
+          enabled: rangeMenu.open
+          visible: enabled
+          acceptedButtons: Qt.AllButtons
+          onPressed: rangeMenu.dismiss()
+        }
+
+        // Range picker: a menu dropping out of the header button. Its own
+        // outside-click grab stays off — a second focus grab on the popup
+        // window would clear the popup's grab and close the whole panel.
+        HUi.Reveal {
+          id: rangeMenu
+          kind: "menu"
+          origin: Item.TopRight
+          closeOnOutsideClick: false
+          z: 10
+          x: parent.width - root.pageInset - width + Style.space(4)
+          y: historyHeader.y + historyHeader.height / 2 + rangeButton.height / 2 + Style.space(4)
+          width: rangeSurface.implicitWidth
+          height: rangeSurface.implicitHeight
+
+          function show() {
+            var m = rangeList.model
+            for (var i = 0; i < m.length; i++) if (m[i].checked === true) rangeList.currentIndex = i
+            open = true
+          }
+          function dismiss() {
+            open = false
+            keyCatcher.forceActiveFocus()
+          }
+          onDismissRequested: dismiss()
+
+          HUi.Surface {
+            id: rangeSurface
+            anchors.fill: parent
+            role: "menu"
+            kind: "menu"
+            padding: Style.space(5)
+            implicitWidth: rangeList.implicitWidth + padding * 2
+            implicitHeight: rangeList.implicitHeight + padding * 2
+            HUi.MenuList {
+              id: rangeList
+              x: rangeSurface.contentLeftInset
+              y: rangeSurface.contentTopInset
+              width: parent.width - rangeSurface.contentLeftInset - rangeSurface.contentRightInset
+              minWidth: Style.space(140)
+              focus: rangeMenu.open
+              model: {
+                var cur = root.historyRange
+                var out = []
+                var list = root.historyRanges
+                for (var i = 0; i < list.length; i++) {
+                  // Minutes, hours, days — a separator between the groups.
+                  if (i > 0 && list[i].hours >= 1 !== list[i - 1].hours >= 1
+                      || i > 0 && list[i].hours > 24 !== list[i - 1].hours > 24)
+                    out.push({ separator: true })
+                  out.push({ text: list[i].label, checked: list[i] === cur, key: list[i].key })
+                }
+                return out
+              }
+              onActivated: function(index, entry) {
+                rangeMenu.dismiss()
+                root.setHistoryRange(entry.key)
+              }
+            }
           }
         }
       }
@@ -1768,18 +1895,32 @@ Panel {
     }
   }
 
-  // Charge level over the history window as bars, like the macOS battery
-  // graph: 72 bars over the chosen range, each at the level it ended on — accent on
-  // battery, pale accent while plugged in, urgent at 20 % and below. Slots
-  // without samples (sleep, laptop off) stay empty. Gridlines at 0/50/100 %,
-  // clock ticks every six hours; hovering a bar reads it out and dims the rest.
+  // Charge level (or power draw) over the history window as bars, like the
+  // macOS battery graph: 30–84 bars over the chosen range, each at the level
+  // it ended on (or its mean draw) — accent on battery, pale accent while
+  // plugged in, urgent at 20 % and below. Slots without samples (sleep,
+  // laptop off) stay empty. Gridlines at 0/50/100 % (or a round watt scale),
+  // round clock or day ticks; hovering a bar reads it out and dims the rest.
   component HistoryGraph: Item {
     id: graph
     readonly property real gutter: gutterMetrics.advanceWidth + Style.space(8)
     readonly property real plotW: Math.max(1, width - gutter)
     readonly property real plotH: Style.space(88)
     readonly property real from: root.historyNow - root.historyHours * 3600000
-    readonly property real slotW: plotW / root.historyBarCount
+    readonly property bool watts: root.historyWatts
+    // Top of the power axis; the charge axis is always 0–100.
+    readonly property real wattMax: Model.historyWattScale(root.historyBars)
+    readonly property bool multiDay: root.historyHours > 24
+    function valueOf(b) {
+      if (!b) return 0
+      if (!watts) return b.pct / 100
+      return b.w !== null ? Math.min(1, b.w / wattMax) : 0
+    }
+    function stamp(t) { return multiDay ? Qt.formatDateTime(new Date(t), "ddd HH:mm") : root.clockText(t) }
+    // Bars follow the built buckets, so a range switch never pairs the new
+    // count with the old data for a frame.
+    readonly property int barCount: Math.max(1, root.historyBars.length)
+    readonly property real slotW: plotW / barCount
     readonly property real barGap: Math.max(1, Math.round(slotW * 0.3))
     readonly property color batteryInk: Color.accent
     readonly property color pluggedInk: Util.alpha(Color.accent, 0.35)
@@ -1787,11 +1928,15 @@ Panel {
     readonly property var hoverBar: hoverIndex >= 0 ? root.historyBars[hoverIndex] || null : null
     readonly property string readout: {
       var b = graph.hoverBar
-      if (b) return root.clockText(b.t0) + "–" + root.clockText(b.t1) + " · " + b.pct + " %"
-        + (b.w !== null ? " · " + root.historyWatt(b.w) : "")
+      if (b) {
+        var pct = b.pct + " %", w = b.w !== null ? root.historyWatt(b.w) : ""
+        return graph.stamp(b.t0) + "–" + root.clockText(b.t1) + " · "
+          + (graph.watts ? (w !== "" ? w + " · " : "") + pct : pct + (w !== "" ? " · " + w : ""))
+      }
       var st = root.historyStats
       if (!st || !st.samples) return ""
-      return "Now " + Math.round(root.batteryFraction * 100) + " %"
+      return graph.watts ? "Now " + root.historyWatt(st.lastW)
+        : "Now " + Math.round(root.batteryFraction * 100) + " %"
     }
     implicitHeight: plotH + timeRow.height + Style.space(12) + legend.height
 
@@ -1800,24 +1945,17 @@ Panel {
     function xOf(t) { return (t - from) / (root.historyHours * 3600000) * plotW }
     function yOf(pct) { return plotH - Math.max(0, Math.min(100, pct)) / 100 * plotH }
 
-    // Six-hour clock marks inside the window.
-    readonly property var ticks: {
-      var now = root.historyNow
-      var start = graph.from
-      if (!(now > 0) || !isFinite(start) || start >= now) return []
-      // About four labels whatever the range: every 1, 3 or 6 hours. Every
-      // loop is bounded: a bad time must never hang the shell.
-      var step = root.historyHours <= 6 ? 1 : (root.historyHours <= 12 ? 3 : 6)
-      var d = new Date(start)
-      d.setMinutes(0, 0, 0)
-      for (var g = 0; g < 48 && (d.getTime() < start || d.getHours() % step !== 0); g++)
-        d.setHours(d.getHours() + 1)
-      var out = []
-      for (var t = d.getTime(); isFinite(t) && t <= now && out.length < 30; t += step * 3600000) out.push(t)
-      return out
+    // Round clock (or day) marks inside the window, at most six (seven days).
+    readonly property var tickInfo: Model.historyTicks(graph.from, root.historyNow, graph.multiDay ? 7 : 6)
+    readonly property var ticks: tickInfo.ticks
+    // Over several days a midnight mark names the day, the others the time.
+    function tickText(t) {
+      var d = new Date(t)
+      return graph.multiDay && d.getHours() === 0 && d.getMinutes() === 0 ? Qt.formatDate(d, "ddd") : root.clockText(t)
     }
 
-    // Gridlines and labels on the right.
+    // Gridlines and labels on the right; the labels crossfade when the axis
+    // switches between charge and power.
     Repeater {
       model: [100, 50, 0]
       Item {
@@ -1825,13 +1963,12 @@ Panel {
         y: Math.round(graph.yOf(modelData))
         width: graph.width
         Rectangle { width: graph.plotW; height: 1; color: root.hairline }
-        Text {
+        HUi.CrossfadeText {
           x: graph.plotW + Style.space(6)
           anchors.verticalCenter: parent.top
-          text: modelData + " %"
+          text: graph.watts ? Math.round(graph.wattMax * modelData / 100) + " W" : modelData + " %"
           color: root.dimText
-          font.family: Style.font.family
-          font.pixelSize: Style.font.caption
+          fontSize: Style.font.caption
         }
       }
     }
@@ -1839,7 +1976,7 @@ Panel {
     // Full-height bars scaled from the baseline: level changes and the first
     // fill animate as a transform, never as a layout change.
     Repeater {
-      model: root.historyBarCount
+      model: root.historyBars.length
       Rectangle {
         id: bar
         required property int index
@@ -1848,11 +1985,11 @@ Panel {
         width: Math.max(1, Math.round(graph.slotW - graph.barGap))
         height: graph.plotH
         color: !bucket ? "transparent"
-          : (bucket.pct <= 20 ? Color.urgent : (bucket.battery ? graph.batteryInk : graph.pluggedInk))
+          : (bucket.pct <= 20 && !graph.watts ? Color.urgent : (bucket.battery ? graph.batteryInk : graph.pluggedInk))
         opacity: !bucket ? 0 : (graph.hoverIndex < 0 || graph.hoverIndex === index ? 1 : 0.45)
         transform: Scale {
           origin.y: graph.plotH
-          yScale: bar.bucket ? Math.max(0.02, bar.bucket.pct / 100) : 0
+          yScale: bar.bucket ? Math.max(0.02, graph.valueOf(bar.bucket)) : 0
           Behavior on yScale { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
         }
         Behavior on opacity { NumberAnimation { duration: graph.hoverIndex >= 0 ? Motion.instant : Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
@@ -1867,7 +2004,7 @@ Panel {
       acceptedButtons: Qt.NoButton
       onExited: graph.hoverIndex = -1
       onPositionChanged: function(mouse) {
-        var i = Math.max(0, Math.min(root.historyBarCount - 1, Math.floor(mouse.x / graph.slotW)))
+        var i = Math.max(0, Math.min(graph.barCount - 1, Math.floor(mouse.x / graph.slotW)))
         graph.hoverIndex = root.historyBars[i] ? i : -1
       }
     }
@@ -1884,7 +2021,7 @@ Panel {
           required property var modelData
           readonly property real cx: graph.xOf(modelData)
           x: Math.max(0, Math.min(graph.plotW - width, cx - width / 2))
-          text: root.clockText(modelData)
+          text: graph.tickText(modelData)
           color: root.dimText
           font.family: Style.font.family
           font.pixelSize: Style.font.caption
@@ -1919,6 +2056,62 @@ Panel {
             font.pixelSize: Style.font.caption
           }
         }
+      }
+    }
+  }
+
+  // macOS pop-up button: the current value and a chevron on a soft fill;
+  // `open` keeps it pressed-looking while its menu is out.
+  component PopUpButton: HUi.Pressable {
+    id: pop
+    property string text: ""
+    property bool open: false
+    // Sized for the widest value, so switching never resizes it.
+    property string widest: "30 min"
+    implicitWidth: widestMetrics.advanceWidth + chevron.implicitWidth + popRow.spacing + Style.space(20)
+    implicitHeight: Style.space(Motion.controlHeight)
+    width: implicitWidth
+    height: implicitHeight
+    tint: root.fg
+    showFill: false
+    activeFocusOnTab: false
+
+    TextMetrics { id: widestMetrics; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall; font.weight: Font.DemiBold; text: pop.widest }
+
+    // The resting fill is the segmented track's wash; hover and press add
+    // the usual state alpha on top of it.
+    Rectangle {
+      anchors.fill: parent
+      radius: pop.radius
+      color: Util.alpha(root.fg, 0.07 + (pop.pressed || pop.open ? Motion.pressedAlpha : pop.hovered ? Motion.hoverAlpha : 0))
+      Behavior on color {
+        ColorAnimation {
+          duration: pop.hovered || pop.pressed ? Motion.instant : Motion.fast
+          easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+        }
+      }
+    }
+
+    Row {
+      id: popRow
+      anchors.centerIn: parent
+      spacing: Style.space(6)
+      HUi.CrossfadeText {
+        anchors.verticalCenter: parent.verticalCenter
+        text: pop.text
+        color: root.fg
+        fontSize: Style.font.bodySmall
+        fontWeight: Font.DemiBold
+      }
+      Text {
+        id: chevron
+        anchors.verticalCenter: parent.verticalCenter
+        text: "󰅀"
+        color: root.dimText
+        font.family: root.iconFont
+        font.pixelSize: Style.font.caption
+        rotation: pop.open ? 180 : 0
+        Behavior on rotation { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
       }
     }
   }

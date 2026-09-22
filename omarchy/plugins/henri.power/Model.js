@@ -490,29 +490,46 @@ function historyStats(points) {
     maxTemp: maxTemp,
     discharging: !!last && last.status === "Discharging",
     cycleWh: last && last.status === "Discharging" ? last.cycleWh : null,
-    cycleStart: cycleStart
+    cycleStart: cycleStart,
+    lastW: last ? last.w : null
   }
 }
 
 // The window cut into `count` equal slots for the bar chart. Each slot holds
 // the charge at its last sample (the level it ended on, like macOS), whether
 // it was spent mostly on battery or plugged in, and the mean power; a slot
-// without samples (sleep, laptop off) is null.
+// without samples (sleep, laptop off) is null. On the short ranges a slot is
+// about as long as the logger's 30 s interval, so a slot that falls between
+// two consecutive samples (no gap between them) takes the earlier one's values
+// instead of showing a hole.
 function historyBuckets(points, now, hours, count) {
   var span = hours * 3600 * 1000
   var from = now - span
   var slot = span / count
   var acc = []
   for (var i = 0; i < count; i++) acc.push(null)
+  function slotOf(t) { return Math.min(count - 1, Math.floor((t - from) / slot)) }
+  var prev = null
+  var fill = []
   for (var j = 0; j < points.length; j++) {
     var p = points[j]
-    if (p.gap || p.t < from || p.t > now) continue
-    var k = Math.min(count - 1, Math.floor((p.t - from) / slot))
+    if (p.gap) { prev = null; continue }
+    if (p.t < from || p.t > now) continue
+    var k = slotOf(p.t)
+    if (prev && p.t - prev.t <= HISTORY_GAP_MS)
+      for (var f = slotOf(prev.t) + 1; f < k; f++) fill.push({ k: f, p: prev })
+    prev = p
     var a = acc[k] || (acc[k] = { n: 0, battery: 0, wSum: 0, wN: 0, pct: 0, t: 0 })
     a.n++
     if (p.status === "Discharging") a.battery++
     if (p.w !== null) { a.wSum += p.w; a.wN++ }
     if (p.t >= a.t) { a.t = p.t; a.pct = p.pct }
+  }
+  for (var q = 0; q < fill.length; q++) {
+    var e = fill[q]
+    if (acc[e.k]) continue
+    acc[e.k] = { n: 1, battery: e.p.status === "Discharging" ? 1 : 0,
+      wSum: e.p.w !== null ? e.p.w : 0, wN: e.p.w !== null ? 1 : 0, pct: e.p.pct, t: e.p.t }
   }
   return acc.map(function (a, idx) {
     if (!a) return null
@@ -524,6 +541,76 @@ function historyBuckets(points, now, hours, count) {
       w: a.wN > 0 ? a.wSum / a.wN : null
     }
   })
+}
+
+// The ranges the History page offers. `bars` keeps a slot at 30 s or more
+// (the logger's interval) on the short ranges and near 72 on the long ones;
+// `days` is how many daily files the window can touch.
+var HISTORY_RANGES = [
+  { key: "15m", hours: 0.25, bars: 30, label: "15 minutes", short: "15 min" },
+  { key: "30m", hours: 0.5, bars: 60, label: "30 minutes", short: "30 min" },
+  { key: "1h", hours: 1, bars: 60, label: "1 hour", short: "1 h" },
+  { key: "3h", hours: 3, bars: 72, label: "3 hours", short: "3 h" },
+  { key: "6h", hours: 6, bars: 72, label: "6 hours", short: "6 h" },
+  { key: "12h", hours: 12, bars: 72, label: "12 hours", short: "12 h" },
+  { key: "24h", hours: 24, bars: 72, label: "24 hours", short: "24 h" },
+  { key: "3d", hours: 72, bars: 72, label: "3 days", short: "3 days" },
+  { key: "7d", hours: 168, bars: 84, label: "7 days", short: "7 days" }
+]
+var HISTORY_DEFAULT_RANGE = "6h"
+
+// A range by key; the old `historyHours` setting ("6", "12", "24") still maps.
+function historyRange(key) {
+  var k = String(key)
+  if (/^\d+$/.test(k)) k += "h"
+  for (var i = 0; i < HISTORY_RANGES.length; i++)
+    if (HISTORY_RANGES[i].key === k) return HISTORY_RANGES[i]
+  return null
+}
+
+// The daily files a window ending at `now` can touch, oldest first.
+function historyDays(now, hours) {
+  var n = Math.min(9, Math.ceil(hours / 24) + 1)
+  var out = []
+  for (var i = n - 1; i >= 0; i--) {
+    var day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i, 12)
+    out.push({ name: historyFileName(day), day: day })
+  }
+  return out
+}
+
+// Top of the power axis: the next round value above the highest bar.
+function historyWattScale(bars) {
+  var max = 0
+  for (var i = 0; i < bars.length; i++)
+    if (bars[i] && bars[i].w !== null && bars[i].w > max) max = bars[i].w
+  var steps = [5, 10, 20, 30, 40, 60, 80, 100, 150, 200, 300]
+  for (var j = 0; j < steps.length; j++) if (max <= steps[j]) return steps[j]
+  return Math.ceil(max / 100) * 100
+}
+
+// Time-axis marks inside [from, now]: the first round local step (5 min …
+// 1 day) that keeps it to `maxTicks` labels. Every loop is bounded.
+function historyTicks(from, now, maxTicks) {
+  if (!(now > from) || !isFinite(from)) return { step: 0, ticks: [] }
+  var minutes = (now - from) / 60000
+  var steps = [5, 10, 15, 30, 60, 120, 180, 360, 720, 1440, 2880]
+  var step = steps[steps.length - 1]
+  for (var i = 0; i < steps.length; i++)
+    if (minutes / steps[i] <= maxTicks) { step = steps[i]; break }
+  var d = new Date(from)
+  var mid = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  var m = Math.ceil((from - mid) / 60000 / step) * step
+  var out = []
+  for (var t = mid + m * 60000; t <= now && out.length < 40; t += step * 60000) {
+    // Day marks sit on local midnight, even across a DST change.
+    if (step >= 1440) {
+      var md = new Date(t)
+      if (md.getHours() !== 0) t = new Date(md.getFullYear(), md.getMonth(), md.getDate() + (md.getHours() > 12 ? 1 : 0)).getTime()
+    }
+    if (t >= from) out.push(t)
+  }
+  return { step: step, ticks: out }
 }
 
 function durationText(hours) {
@@ -542,6 +629,12 @@ if (typeof module !== "undefined") {
     historyWindow: historyWindow,
     historyStats: historyStats,
     historyBuckets: historyBuckets,
+    HISTORY_RANGES: HISTORY_RANGES,
+    HISTORY_DEFAULT_RANGE: HISTORY_DEFAULT_RANGE,
+    historyRange: historyRange,
+    historyDays: historyDays,
+    historyWattScale: historyWattScale,
+    historyTicks: historyTicks,
     durationText: durationText,
     clampIndex: clampIndex,
     selectProfileIndex: selectProfileIndex,

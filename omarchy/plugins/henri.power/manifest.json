@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "henri.power",
   "name": "Power",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "henri",
-  "description": "macOS-style battery menu: charge, battery size, time left, cycles and power draw up front; a 24 h charge graph and discharge statistics under History; power profile, Dell thermal modes, fans, power flow, charge mode and USB under Advanced",
+  "description": "macOS-style battery menu: charge, battery size, time left, cycles and power draw up front; a charge or power graph from 15 min to 7 days and discharge statistics under History; power profile, Dell thermal modes, fans, power flow, charge mode and USB under Advanced",
   "kinds": [
     "bar-widget"
   ],
@@ -21,7 +21,8 @@
       "chargeLimitStep": 5,
       "showHistory": true,
       "historyDir": "",
-      "historyHours": "6"
+      "historyRange": "6h",
+      "historyMetric": "percent"
     },
     "schema": [
       {
@@ -47,15 +48,31 @@
         "description": "Folder with the akku-YYYY-MM-DD.csv files. Empty: ~/Documents/akku-test/verlauf"
       },
       {
-        "key": "historyHours",
+        "key": "historyRange",
         "type": "enum",
-        "label": "Battery history range (hours)",
+        "label": "Battery history range",
         "options": [
-          "6",
-          "12",
-          "24"
+          "15m",
+          "30m",
+          "1h",
+          "3h",
+          "6h",
+          "12h",
+          "24h",
+          "3d",
+          "7d"
         ],
-        "defaultValue": "6"
+        "defaultValue": "6h"
+      },
+      {
+        "key": "historyMetric",
+        "type": "enum",
+        "label": "Battery history graph",
+        "options": [
+          "percent",
+          "watts"
+        ],
+        "defaultValue": "percent"
       }
     ]
   },

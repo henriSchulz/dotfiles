@@ -191,6 +191,27 @@ check("buckets: first", [bars[0].pct, bars[0].battery, bars[0].w], [75, true, 11
 check("buckets: empty slot", bars[1], null)
 check("buckets: plugged", [bars[2].pct, bars[2].battery], [60, false])
 
+// remplissage entre deux échantillons consécutifs (créneaux de 20 s)
+const fPts = [
+  { t: 0, gap: false, status: "Discharging", pct: 50, w: 8 },
+  { t: 60000, gap: false, status: "Discharging", pct: 49, w: 9 }
+]
+const fBars = Model.historyBuckets(fPts, 60000, 1 / 60, 3)
+check("buckets: filled", [fBars[1].pct, fBars[1].w], [50, 8])
+
+check("range: key", Model.historyRange("15m").hours, 0.25)
+check("range: legacy hours", Model.historyRange("12").key, "12h")
+check("range: unknown", Model.historyRange("5y"), null)
+const days = Model.historyDays(new Date(2026, 8, 22, 15), 72)
+check("days", days.map(d => d.name), ["akku-2026-09-19.csv", "akku-2026-09-20.csv", "akku-2026-09-21.csv", "akku-2026-09-22.csv"])
+check("watt scale", Model.historyWattScale([null, { w: 12.3 }, { w: null }]), 20)
+check("watt scale: empty", Model.historyWattScale([]), 5)
+const tNow = new Date(2026, 8, 22, 14, 7).getTime()
+const tk = Model.historyTicks(tNow - 15 * 60000, tNow, 6)
+check("ticks: 15 min", [tk.step, tk.ticks.length, new Date(tk.ticks[0]).getMinutes()], [5, 3, 55])
+const tw = Model.historyTicks(tNow - 168 * 3600000, tNow, 7)
+check("ticks: 7 days", [tw.step, tw.ticks.length, new Date(tw.ticks[0]).getHours()], [1440, 7, 0])
+
 if (failures > 0) {
   console.log("\n" + failures + " échec(s)")
   process.exit(1)

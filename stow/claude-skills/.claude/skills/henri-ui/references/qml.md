@@ -51,7 +51,7 @@ Eingabe-Test (echte Tasten-/Maus-Events: Esc, Pfeile, Drill-in-Zurück, Klick in
 | `HUi.Surface` | Material (Theme-Hintergrund, Haarlinie, Radius) | `role: popups\|menu\|tooltip\|notifications`, `kind: panel\|popover\|menu\|chip`, `padding`, `contentLeftInset`… (BorderSurface) |
 | `HUi.Pressable` | Basis alles Klickbaren | `clicked()`, `secondaryClicked()`, `tint`, `prominent`, `selected`, `showFill`, `pressScaleEnabled`, `contentColor`, `radius` |
 | `HUi.Button` | Standard-Button | `text`, `icon` (Glyph), `prominent`, + alles von Pressable |
-| `HUi.MenuList` | Komplettes macOS-Menü (Highlight sofort, kein Gleiten) | `model: [{text, icon, shortcut, enabled, danger, separator}]`, `activated(index, entry)`, `currentIndex`, `move()`, `activate()` |
+| `HUi.MenuList` | Komplettes macOS-Menü (Highlight sofort, kein Gleiten) | `model: [{text, icon, shortcut, enabled, danger, separator, checked}]` (`checked` → ✓-Spalte wie NSMenu), `activated(index, entry)`, `currentIndex`, `move()`, `activate()` |
 | `HUi.Highlight` | Auswahl-Form für eine Gruppe | `target: <Item>`, `glide` (true = gleitet: Tabs/Segmente/Sidebar; false = springt: Menüs/Hover-Listen) — selber Koordinatenraum wie die Targets |
 | `HUi.Toggle` | Schalter | `checked`, `toggled(bool)` |
 | `HUi.CrossfadeText` | Text/Zahl, die sich ändert | `text`, `color`, `fontSize`, `fontWeight`, `fontFamily` |
