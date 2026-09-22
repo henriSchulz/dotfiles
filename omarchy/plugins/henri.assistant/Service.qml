@@ -40,6 +40,7 @@ Item {
   readonly property string runtimeDir: Quickshell.env("XDG_RUNTIME_DIR") || "/run/user/1000"
   readonly property string workDir: runtimeDir + "/henri-assistant"
   readonly property string transcriptPath: workDir + "/turn.txt"
+  readonly property string askPath: workDir + "/ask.json"
   readonly property int agentIdleMs: 600000          // keep agy warm for 10 min
 
   // ── Window state ────────────────────────────────────────────────────────
@@ -51,6 +52,13 @@ Item {
   property string draft: ""
   property string note: ""
   property string status: ""
+  // What agent-guard is holding: {id, tool, title, detail}. The hook blocks
+  // inside the agent's tool call until an answer file appears, so this is a
+  // real stop, not a notice after the fact.
+  property var confirmRequest: null
+  // A turn that ends with nothing to say after a refusal ended that way
+  // because of the refusal -- say so instead of "No answer."
+  property string deniedTitle: ""
   property bool thinking: false
 
   // A turn that is still running when the card closes keeps running -- agy has
@@ -111,6 +119,7 @@ Item {
     // A turn still running when the card closes is work nobody will read, and
     // with shell access it is work that keeps running commands. Closing means
     // stop -- the session is worth less than a wedged agent.
+    if (confirmRequest) answerConfirm(false)   // closing is a no, not a maybe
     if (thinking) stopAgent()
     abandonTurn()
     open = false
@@ -206,6 +215,37 @@ Item {
       root.sendOnArrival = false
       root.status = "Nothing heard — Super A to try again"
     }
+  }
+
+  // agent-guard writes the request atomically (tmp + rename), so the file is
+  // either absent or complete -- there is no half-read state to guard against.
+  FileView {
+    path: root.askPath
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoadFailed: root.confirmRequest = null
+    onLoaded: {
+      var raw = (text() || "").trim()
+      if (raw.length === 0) { root.confirmRequest = null; return }
+      try {
+        root.confirmRequest = JSON.parse(raw)
+      } catch (e) {
+        root.confirmRequest = null
+        return
+      }
+      // A confirmation nobody can see is no confirmation: if the card was
+      // closed while the agent worked, it comes back for this.
+      if (!root.open) root.open = true
+    }
+  }
+
+  function answerConfirm(allowed) {
+    if (!root.confirmRequest) return
+    if (!allowed) root.deniedTitle = root.confirmRequest.title || "that"
+    var suffix = allowed ? ".allow" : ".deny"
+    Quickshell.execDetached(["touch", root.workDir + "/ask-" + root.confirmRequest.id + suffix])
+    root.confirmRequest = null
   }
 
   // ── Levels ──────────────────────────────────────────────────────────────
@@ -319,6 +359,9 @@ Item {
     command: ["agy", "--input-format", "stream-json", "--output-format", "stream-json", "-p="]
     running: false
     stdinEnabled: true
+    // agent-guard reads this: it gates the voice session and leaves the agy
+    // sessions Henri starts in a terminal to their own interactive review.
+    environment: ({ "HENRI_VOICE": "1" })
 
     stdout: SplitParser {
       splitMarker: "\n"
@@ -405,8 +448,10 @@ Item {
     var text = answer
     var why = ""
     if (text.length === 0) {
-      why = failure.length > 0 ? failure
-        : (root.lastError.length > 0 ? root.lastError : "No answer.")
+      why = root.deniedTitle.length > 0
+        ? "Stopped — you did not allow: " + root.deniedTitle
+        : (failure.length > 0 ? failure
+          : (root.lastError.length > 0 ? root.lastError : "No answer."))
     }
     if (root.pendingQuestion.length > 0 && text.length > 0) {
       var next = root.turns.slice()
@@ -425,6 +470,7 @@ Item {
     var q = root.draft.trim()
     if (q.length === 0 || root.thinking) return
     root.lastError = ""
+    root.deniedTitle = ""
     root.note = ""
     root.streamed = ""
     root.pendingQuestion = q
@@ -546,7 +592,10 @@ Item {
       barCount: root.barCount
       sweep: root.sweep
 
+      confirmRequest: root.confirmRequest
       onDismissed: root.close()
+      onConfirmed: root.answerConfirm(true)
+      onRefused: root.answerConfirm(false)
 
       transformOrigin: Item.Center
       scale: Motion.reduceMotion ? 1 : pop.value

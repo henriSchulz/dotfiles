@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""Pre-tool hook for Antigravity: nothing writes, deletes or changes a file
+until Henri has said yes in a window on screen.
+
+The voice assistant runs agy headless, where agy cannot prompt for permission
+itself -- so with `command(*)` allowed it would just do as it is told, and a
+misheard sentence is an executed command. The preamble in the plugin *asks* the
+agent to hold back on irreversible things, but a request to a model is not a
+control. This is the control: agy calls this hook before every tool, and a
+`deny` here means the tool never runs. Verified rather than assumed -- a denied
+`rm` left the file on disk.
+
+Contract (agy passes JSON on stdin, reads JSON on stdout):
+  in : {"toolCall": {"name": "run_command", "args": {...}}, "conversationId": …}
+  out: {"decision": "allow"|"deny", "reason": "…"}
+
+Scope: only the voice session, which sets HENRI_VOICE=1. Sessions Henri starts
+by hand in a terminal keep agy's own interactive review and are left alone --
+otherwise every one of them would ask twice.
+
+The decision itself is not made here. This writes a request into the runtime
+directory and waits for henri.assistant to put an answer next to it; the card
+draws the question and the keyboard answers it. No answer in ASK_TIMEOUT
+seconds is a no: the only safe way to fail is closed.
+"""
+import json
+import os
+import re
+import shlex
+import sys
+import time
+import uuid
+
+ASK_TIMEOUT = 120.0
+POLL = 0.1
+
+RUNTIME = os.path.join(
+    os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid()), "henri-assistant"
+)
+
+
+def reply(decision, reason=""):
+    out = {"decision": decision}
+    if reason:
+        out["reason"] = reason
+    sys.stdout.write(json.dumps(out) + "\n")
+    sys.exit(0)
+
+
+# Tools that only look. Everything absent from this set is asked about --
+# the list is the exception, not the rule, so a tool added by a future agy
+# release is gated by default rather than waved through.
+READ_ONLY_TOOLS = {
+    "view_file", "list_dir", "grep_search", "find_by_name",
+    "read_resource", "list_resources", "list_permissions",
+    "search_web", "read_url_content",
+    "list_browser_pages", "read_browser_page", "browser_get_dom",
+    "browser_get_network_request", "browser_list_network_requests",
+    "browser_scroll_dom", "capture_browser_console_logs",
+    "capture_browser_screenshot",
+    "command_status", "wait", "wait_5_seconds", "finish", "ask_question",
+}
+
+# First words of shell commands that cannot change anything by themselves.
+# Redirection and command substitution are handled separately, so `cat a > b`
+# never reaches this list.
+READ_ONLY_COMMANDS = {
+    "cat", "head", "tail", "ls", "tree", "find", "grep", "rg", "ag",
+    "wc", "file", "stat", "du", "df", "free", "uname", "uptime", "date",
+    "id", "whoami", "pwd", "echo", "printf", "which", "type", "env",
+    "ps", "pgrep", "hostname", "lsblk", "lscpu", "lspci", "lsusb", "nproc",
+    "readlink", "realpath", "basename", "dirname", "getent", "locale",
+    "sort", "uniq", "cut", "tr", "column", "jq", "yq", "xxd", "strings",
+    "diff", "cmp", "md5sum", "sha256sum", "true", "false", "test", "seq",
+}
+
+# Commands that are read-only only in some shapes.
+CONDITIONAL = {
+    "git": lambda a: bool(a) and a[0] in {
+        "status", "log", "diff", "show", "branch", "remote", "describe",
+        "rev-parse", "blame", "shortlog", "tag", "config",
+    } and "--edit" not in a,
+    "systemctl": lambda a: bool(a) and any(
+        x in a for x in ("status", "show", "is-active", "is-enabled",
+                         "list-units", "list-unit-files", "cat")
+    ),
+    "journalctl": lambda a: True,
+    "pacman": lambda a: bool(a) and a[0].startswith("-Q"),
+    "hyprctl": lambda a: bool(a) and a[0] not in {
+        "dispatch", "keyword", "reload", "setcursor", "output", "switchxkblayout",
+        "seterror", "setprop", "notify", "plugin",
+    },
+    "sed": lambda a: "-i" not in a and not any(x.startswith("-i") for x in a),
+    "awk": lambda a: True,   # writing needs a redirect, which is caught above
+    "voxtype": lambda a: bool(a) and a[0] in {"status", "info", "config"},
+    "omarchy": lambda a: bool(a) and a[0] in {"menu", "version", "help"},
+}
+
+# Anything that can send output somewhere, run a second command, or expand into
+# one. Present in the string at all -> the whole command gets asked about.
+DANGEROUS_SYNTAX = re.compile(r"[>;&`]|\$\(|\|\||<\(")
+
+
+def command_is_read_only(line):
+    if not line or DANGEROUS_SYNTAX.search(line):
+        return False
+    for stage in line.split("|"):
+        try:
+            parts = shlex.split(stage)
+        except ValueError:
+            return False                      # unbalanced quotes: do not guess
+        if not parts:
+            return False
+        # `FOO=bar cmd` and `sudo cmd` are never waved through
+        name = os.path.basename(parts[0])
+        if "=" in parts[0] or name in {"sudo", "pkexec", "doas", "su"}:
+            return False
+        args = parts[1:]
+        if name in READ_ONLY_COMMANDS:
+            continue
+        check = CONDITIONAL.get(name)
+        if check and check(args):
+            continue
+        return False
+    return True
+
+
+def describe(tool, args):
+    """One line for the card, and the detail under it."""
+    if tool == "run_command":
+        return "Run a command", args.get("CommandLine", "")
+    path = args.get("TargetFile") or args.get("AbsolutePath") or args.get("path") or ""
+    if tool in {"write_to_file", "create_file"}:
+        return "Write a file", path
+    if tool in {"replace_file_content", "multi_replace_file_content", "sed_file"}:
+        return "Change a file", path
+    if tool == "notebook_edit":
+        return "Change a notebook", path
+    return tool.replace("_", " "), path or json.dumps(args)[:400]
+
+
+def ask(tool, args):
+    os.makedirs(RUNTIME, exist_ok=True)
+    ident = uuid.uuid4().hex[:12]
+    title, detail = describe(tool, args)
+    request = os.path.join(RUNTIME, "ask.json")
+    allow = os.path.join(RUNTIME, "ask-%s.allow" % ident)
+    deny = os.path.join(RUNTIME, "ask-%s.deny" % ident)
+
+    tmp = request + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump({"id": ident, "tool": tool, "title": title, "detail": detail}, fh)
+    os.replace(tmp, request)                  # appears complete or not at all
+
+    deadline = time.time() + ASK_TIMEOUT
+    try:
+        while time.time() < deadline:
+            if os.path.exists(allow):
+                return True
+            if os.path.exists(deny):
+                return False
+            time.sleep(POLL)
+        return False                          # nobody answered: that is a no
+    finally:
+        for path in (allow, deny, request):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+    except Exception:
+        # A hook that cannot read its own input must not become a way through.
+        reply("deny", "henri-guard could not read the tool call.")
+
+    if os.environ.get("HENRI_VOICE") != "1":
+        reply("allow")                        # a terminal session reviews itself
+
+    call = payload.get("toolCall") or {}
+    tool = call.get("name") or ""
+    args = call.get("args") or {}
+
+    if tool in READ_ONLY_TOOLS:
+        reply("allow")
+
+    if tool == "run_command" and command_is_read_only(args.get("CommandLine", "")):
+        reply("allow")
+
+    if ask(tool, args):
+        reply("allow")
+    reply("deny", "Henri did not confirm this in the assistant window.")
+
+
+if __name__ == "__main__":
+    main()
