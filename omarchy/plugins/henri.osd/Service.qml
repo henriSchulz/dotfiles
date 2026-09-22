@@ -10,21 +10,15 @@
 // Steps. 16 per range like macOS; Alt (Option) moves a quarter step.
 // Brightness runs on a perceptual curve (squared), so every step looks like
 // the same change instead of the bottom steps being huge and the top ones
-// invisible.
-//
-// Holding. Volume keys come from the keyboard and Hyprland repeats them at
-// 40 Hz. The brightness keys come from firmware (ACPI/WMI), which repeats on
-// its own only every ~250 ms and sometimes reports each press twice from two
-// devices. So brightness drops those duplicates, counts each repeat of a
-// held key as two steps, and the backlight glides between steps with the
-// same spring as the bar -- the slow repeats melt into one continuous fade.
+// invisible. The backlight itself glides between steps with the same spring
+// as the bar, so the screen fades instead of jumping.
 //
 // Extra dim. Below the old floor (1 % backlight) sit 4 more steps, split off
 // in the bar by a small gap: the backlight keeps going down toward a quarter
 // of the floor and a black click-through layer over the internal screen
-// darkens on top, following the same glide. The backlight value
-// alone encodes how deep in the zone we are, so a shell restart comes back
-// at the same darkness.
+// darkens on top, following the same glide. Keys step exactly as above, one
+// grid over both parts. The backlight value alone encodes how deep in the
+// zone we are, so a shell restart comes back at the same darkness.
 //
 // HUD. A card under the bar in the top-right corner, like Control Center's
 // Sound/Display module: fades in (scale from the corner), the bar glides with
@@ -153,12 +147,11 @@ Item {
   }
 
   // ── Brightness (internal panel) ─────────────────────────────────────────
-  // Level runs from -1 (deepest extra dim) through 0 (the normal floor, 1 %
-  // backlight) to 1. Keys walk one grid over both parts: dimSteps below 0,
-  // steps above, each step the same width in the bar.
   property string backlight: ""
   property real maxRaw: 0
   readonly property real floorFrac: 0.01    // level 0 still lights the panel (1 %)
+  // Extra dim: level runs on down to -1. One grid over both parts, dimSteps
+  // below 0 and steps above, each step the same width in the bar.
   readonly property int dimSteps: 4
   readonly property real minFrac: 0.0025    // backlight at level -1
   readonly property real maxDim: 0.7        // black layer at level -1
@@ -197,15 +190,21 @@ Item {
   }
 
   // Someone else may have moved the backlight while the HUD was closed
-  // (Control Center slider, idle dimming). Like volume, a key press never
-  // waits for anything: the real value is picked up in the background while
-  // the HUD is closed (one tiny `cat` every 2 s), so the next press already
-  // starts from it. (FileView can't do this: it hands back a cached sysfs value.)
+  // (Control Center slider, idle dimming). The first press after that reads
+  // the real value (one tiny `cat`, never during a key-repeat run); presses
+  // that arrive meanwhile queue up and run in order once it is back.
+  // (FileView can't do this: it hands back a cached sysfs value.)
+  property var pending: []
   Process {
     id: reader
     command: ["cat", "/sys/class/backlight/" + root.backlight + "/actual_brightness"]
     stdout: StdioCollector {
-      onStreamFinished: if (!root.open && !glow.running) root.resync(parseInt(text, 10))
+      onStreamFinished: {
+        root.resync(parseInt(text, 10))
+        var queued = root.pending
+        root.pending = []
+        for (var i = 0; i < queued.length; i++) root.stepBrightness(queued[i])
+      }
     }
   }
   function resync(raw) {
@@ -216,21 +215,17 @@ Item {
     sentRaw = raw
   }
 
-  // One brightnessctl loop for the whole session, so a press never forks
-  // inside the shell. One brightnessctl takes ~14 ms; under key repeat the
-  // loop drops values that are already stale and only sets the newest, so
-  // the backlight never trails behind the keys.
+  // One brightnessctl loop for the whole session: the glide sends a value per
+  // frame, which must not mean a fork per frame inside the shell.
   Process {
     id: writer
     running: root.backlight !== ""
     stdinEnabled: true
-    command: ["bash", "-c", "while read -r d v; do while read -r -t 0 && read -r d v; do :; done; brightnessctl -q -d \"$d\" set \"$v\"; done"]
+    command: ["bash", "-c", "while read -r d v; do brightnessctl -q -d \"$d\" set \"$v\"; done"]
   }
 
-  property real brightLevel: 0        // where the backlight is heading (-1…1)
+  property real brightLevel: 0        // where the backlight is heading
   property int sentRaw: -1
-  // The glide runs on the grid position, so backlight and dim layer hand
-  // over at 0 without a kink.
   HUi.SpringValue {
     id: glow
     preset: Motion.smooth
@@ -243,13 +238,6 @@ Item {
   }
 
   readonly property real dimAlpha: maxDim * Math.max(0, -fromGrid(glow.value))
-
-  Timer {
-    interval: 2000
-    repeat: true
-    running: root.backlight !== "" && !root.open && !glow.running
-    onTriggered: if (!reader.running) reader.running = true
-  }
 
   function internalFocused() {
     var m = Hyprland.focusedMonitor
@@ -264,24 +252,21 @@ Item {
       Quickshell.execDetached(["omarchy-brightness-display", arg])
       return
     }
-    var now = Date.now()
-    var gap = action === lastBrightAction ? now - lastBrightAt : 1e9
-    if (gap < 15) return                  // same press reported by a second device
-    lastBrightAction = action
-    lastBrightAt = now
-    stepBrightness(action, gap < 400 ? 2 : 1)
+    if (reader.running) { pending = pending.concat([action]); return }
+    if (!glow.running && !(open && kind === "brightness")) {
+      pending = [action]
+      reader.running = true
+      return
+    }
+    stepBrightness(action)
   }
-  property string lastBrightAction: ""
-  property real lastBrightAt: 0
 
-  function stepBrightness(action, count) {
+  function stepBrightness(action) {
     var cur = brightLevel
     var dir = action.indexOf("up") === 0 ? 1 : -1
     var n = action.indexOf("fine") > 0 ? gridSteps * 4 : gridSteps
     show("brightness", cur)
-    var x = toGrid(cur)
-    for (var i = 0; i < count; i++) x = stepped(x, n, dir)
-    brightLevel = fromGrid(x)
+    brightLevel = fromGrid(stepped(toGrid(cur), n, dir))
     level = brightLevel
   }
 
