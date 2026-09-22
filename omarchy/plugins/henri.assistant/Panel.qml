@@ -44,29 +44,27 @@ HUi.Surface {
   role: "popups"
   kind: "panel"
 
-  HUi.SpringValue { id: w; preset: Motion.smooth; to: card.compact ? Style.space(340) : Style.space(560) }
+  HUi.SpringValue { id: w; preset: Motion.smooth; to: card.compact ? Style.space(520) : Style.space(720) }
   width: Motion.reduceMotion ? w.to : w.value
 
-  // The pill's `height / 2` and the panel corner are the same relation the
-  // dictation card uses; easing between them is what makes the pill *become*
-  // the card instead of being replaced by one.
-  radius: compact ? height / 2 : Style.space(Motion.radiusPanel)
-  Behavior on radius {
-    NumberAnimation {
-      duration: Motion.base
-      easing.type: Easing.BezierSpline
-      easing.bezierCurve: Motion.easeOut
-    }
-  }
+  // A card from the first frame, not the dictation pill grown up. Once the
+  // hint line is always there the compact state is two rows tall, and
+  // `height / 2` on that is a stadium, not a pill -- the shape would be
+  // fighting the content. The growth is carried by the width spring instead.
+  radius: Style.space(Motion.radiusPanel)
 
   readonly property color ink: Color.popups.text
   readonly property color dimText: Util.alpha(ink, Motion.secondaryTextAlpha)
-  readonly property real pad: Style.space(16)
+  readonly property real pad: Style.space(20)
+  // The composer row sets the compact card's height, so it is the pill.
+  readonly property real rowHeight: Style.space(60)
 
-  readonly property string hint: listening ? "Right Ctrl  stop"
+  property string status: ""                // e.g. a recording that heard nothing
+
+  readonly property string hint: listening ? "↵  send      Super A  stop      Esc  cancel"
     : transcribing ? "…"
     : thinking ? "Working…"
-    : "↵  send      Right Ctrl  dictate      Esc  close"
+    : "↵  send      Super A  dictate      Esc  close"
 
   implicitHeight: body.height
 
@@ -89,7 +87,7 @@ HUi.Surface {
 
       Item {
         width: conversation.width
-        implicitHeight: Math.min(scroll.contentHeight + card.pad * 2, Style.space(340))
+        implicitHeight: Math.min(scroll.contentHeight + card.pad * 2, Style.space(460))
 
         Flickable {
           id: scroll
@@ -126,7 +124,7 @@ HUi.Surface {
                   text: modelData.question
                   color: card.ink
                   font.family: Style.font.family
-                  font.pixelSize: Style.font.body
+                  font.pixelSize: Style.font.subtitle
                   font.weight: Font.DemiBold
                   wrapMode: Text.Wrap
                 }
@@ -135,7 +133,7 @@ HUi.Surface {
                   text: modelData.answer
                   color: card.ink
                   font.family: Style.font.family
-                  font.pixelSize: Style.font.body
+                  font.pixelSize: Style.font.subtitle
                   textFormat: Text.MarkdownText
                   wrapMode: Text.Wrap
                 }
@@ -155,7 +153,7 @@ HUi.Surface {
                 text: card.pendingQuestion
                 color: card.ink
                 font.family: Style.font.family
-                font.pixelSize: Style.font.body
+                font.pixelSize: Style.font.subtitle
                 font.weight: Font.DemiBold
                 wrapMode: Text.Wrap
                 visible: text !== ""
@@ -165,7 +163,7 @@ HUi.Surface {
                 text: card.streamed
                 color: card.ink
                 font.family: Style.font.family
-                font.pixelSize: Style.font.body
+                font.pixelSize: Style.font.subtitle
                 textFormat: Text.MarkdownText
                 wrapMode: Text.Wrap
                 visible: text !== ""
@@ -175,7 +173,7 @@ HUi.Surface {
                 text: card.note
                 color: card.dimText
                 font.family: Style.font.family
-                font.pixelSize: Style.font.bodySmall
+                font.pixelSize: Style.font.body
                 wrapMode: Text.Wrap
                 visible: text !== ""
               }
@@ -198,14 +196,14 @@ HUi.Surface {
     Item {
       id: composer
       width: parent.width
-      height: Math.max(Style.space(52), input.implicitHeight + card.pad * 2)
+      height: Math.max(card.rowHeight, input.implicitHeight + card.pad * 2)
 
       HUi.MicGlyph {
         id: mic
         anchors.left: parent.left
         anchors.top: parent.top
-        anchors.topMargin: (Style.space(52) - height) / 2
-        height: Style.space(20)
+        anchors.topMargin: (card.rowHeight - height) / 2
+        height: Style.space(22)
         live: card.listening
       }
 
@@ -216,8 +214,8 @@ HUi.Surface {
         anchors.leftMargin: Style.space(14)
         anchors.right: parent.right
         anchors.top: parent.top
-        anchors.topMargin: (Style.space(52) - height) / 2
-        height: Style.space(26)
+        anchors.topMargin: (card.rowHeight - height) / 2
+        height: Style.space(28)
         levels: card.levels
         barCount: card.barCount
         live: card.listening
@@ -239,16 +237,18 @@ HUi.Surface {
         anchors.leftMargin: Style.space(14)
         anchors.right: parent.right
         anchors.top: parent.top
-        anchors.topMargin: (Style.space(52) - Style.font.body * 1.4) / 2
+        anchors.topMargin: (card.rowHeight - Style.font.subtitle * 1.4) / 2
         color: card.ink
         font.family: Style.font.family
-        font.pixelSize: Style.font.body
+        font.pixelSize: Style.font.subtitle
         selectionColor: Color.accent
         selectedTextColor: Motion.onColor(Color.accent)
         wrapMode: TextEdit.Wrap
         text: card.draft
         opacity: (card.listening || card.transcribing) ? 0 : 1
-        enabled: !card.listening && !card.transcribing
+        // Stays enabled while the waveform is up: ↵ ends the recording, so the
+        // key has to reach this handler even when the field is invisible.
+        enabled: true
         Behavior on opacity {
           NumberAnimation {
             duration: Motion.fast
@@ -274,7 +274,7 @@ HUi.Surface {
 
         Text {
           anchors.fill: parent
-          text: "Ask anything"
+          text: card.status !== "" ? card.status : "Ask anything"
           color: card.dimText
           font: input.font
           visible: input.text === "" && !card.listening && !card.transcribing
@@ -283,25 +283,19 @@ HUi.Surface {
     }
 
     // ── Hint ──────────────────────────────────────────────────────────────
-    // Collapses with the conversation: the pill carries no instructions.
-    HUi.Collapse {
+    Item {
       width: parent.width
-      expanded: !card.compact
-
-      Item {
-        width: parent.width
-        implicitHeight: label.implicitHeight + Style.space(10)
-        HUi.CrossfadeText {
-          id: label
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.bottom: parent.bottom
-          anchors.bottomMargin: Style.space(10)
-          horizontalAlignment: Text.AlignRight
-          text: card.hint
-          color: card.dimText
-          fontSize: Style.font.bodySmall
-        }
+      implicitHeight: label.implicitHeight + Style.space(12)
+      HUi.CrossfadeText {
+        id: label
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: Style.space(12)
+        horizontalAlignment: Text.AlignRight
+        text: card.hint
+        color: card.dimText
+        fontSize: Style.font.body
       }
     }
   }

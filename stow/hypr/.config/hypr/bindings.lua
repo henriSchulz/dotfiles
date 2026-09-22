@@ -144,10 +144,15 @@ o.bind("Control_R", "Dictation toggle", "voxtype record toggle")
 -- ohne Text einzufuegen. Omarchys Standard SUPER+CTRL+X (Toggle) bleibt als
 -- zweiter Weg bestehen, F9 (halten) ebenfalls.
 
--- Sprach-Assistent (henri.assistant): SUPER + rechte Strg öffnet die Karte und
--- hört sofort zu, dieselbe Taste stoppt die Aufnahme, ↵ schickt die Frage an
--- Antigravity, Esc schließt. Dieselbe Stelle wie das Diktat, nur mit SUPER.
--- Beide Modmasken aus demselben Grund wie oben: je nachdem, ob Hyprland CTRL
--- beim Druck der Taste selbst schon gesetzt hat, feuert genau eine davon.
-o.bind("SUPER + Control_R", "Voice assistant", hl.dsp.event("assistant toggle"))
-o.bind("SUPER + CTRL + Control_R", "Voice assistant", hl.dsp.event("assistant toggle"))
+-- Sprach-Assistent (henri.assistant): SUPER+A öffnet die Karte und hört sofort
+-- zu, dieselbe Tastenkombination stoppt die Aufnahme und diktiert den nächsten
+-- Zug, ↵ schickt die Frage an Antigravity, Esc schließt.
+--
+-- Nicht auf SUPER + rechte Strg, obwohl das die naheliegende Stelle wäre: die
+-- rechte Strg ist selbst ein Modifikator, die Modifikatorlage ändert sich also
+-- mitten im Akkord und Hyprland wertet die Bindings dabei neu aus. Sobald SUPER
+-- vor der rechten Strg losgelassen wurde, passte das Diktat-Binding darunter
+-- (CTRL + Control_R) und dessen `voxtype record toggle` stoppte genau die
+-- Aufnahme, die der Assistent eine Zehntelsekunde vorher gestartet hatte.
+-- Eine gewöhnliche Buchstabentaste hat dieses Problem nicht.
+o.bind("SUPER + A", "Voice assistant", hl.dsp.event("assistant toggle"))

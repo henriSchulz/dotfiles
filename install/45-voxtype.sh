@@ -49,6 +49,11 @@ run "$onnx" config set hotkey.enabled false
 # draws on the Omarchy theme and the henri-ui components instead of its own.
 run "$onnx" config set osd.enabled false
 
+# Live partials while speaking (parakeet.streaming) stay off on purpose: the
+# only model that does cache-aware streaming is parakeet-unified-en-0.6b, which
+# is English-only. Turning it on with the multilingual model makes the daemon
+# refuse to initialise a transcriber at all.
+
 run systemctl --user daemon-reload
 run systemctl --user enable --now voxtype.service
 run systemctl --user restart voxtype.service

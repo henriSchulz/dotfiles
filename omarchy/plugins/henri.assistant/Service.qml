@@ -50,12 +50,28 @@ Item {
   property string streamed: ""
   property string draft: ""
   property string note: ""
+  property string status: ""
   property bool thinking: false
+  // ↵ pressed while still recording: stop now, send as soon as the daemon
+  // hands over the words. The turn is one gesture — speak, ↵ — with no stop
+  // step in between and nothing to confirm.
+  property bool sendOnArrival: false
 
   function toggle() {
     if (!open) openCard()
     else if (listening) stopDictation()
     else startDictation()
+  }
+
+  // ↵ from the card. Recording: end it and let the transcript go straight out.
+  // Otherwise: send what is in the composer.
+  function submit() {
+    if (listening) {
+      sendOnArrival = true
+      stopDictation()
+    } else if (!transcribing) {
+      send()
+    }
   }
 
   function openCard() {
@@ -64,6 +80,7 @@ Item {
     streamed = ""
     draft = ""
     note = ""
+    sendOnArrival = false
     open = true
     agentIdle.stop()
     startDictation()
@@ -71,6 +88,7 @@ Item {
 
   function close() {
     if (listening || transcribing) Quickshell.execDetached(["voxtype", "record", "cancel"])
+    sendOnArrival = false
     open = false
     agentIdle.restart()
   }
@@ -83,6 +101,7 @@ Item {
 
   function startDictation() {
     mine = true
+    status = ""
     Quickshell.execDetached(["voxtype", "record", "start",
       "--file=" + root.transcriptPath, "--no-osd"])
   }
@@ -116,6 +135,32 @@ Item {
       root.mine = false
       root.draft = root.draft.length > 0 ? root.draft + " " + said : said
       card.caretToEnd()
+      if (root.sendOnArrival) {
+        root.sendOnArrival = false
+        root.send()
+      }
+    }
+  }
+
+  // voxtype writes a sidecar next to the transcript for every finished
+  // recording: {"status":"empty","chars":0} when it heard nothing. Without
+  // watching it a silent recording leaves the card looking dead, which is
+  // exactly what hid the double-toggle bug in the first place.
+  FileView {
+    path: root.transcriptPath + ".done"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      var raw = (text() || "").trim()
+      Quickshell.execDetached(["rm", "-f", root.transcriptPath + ".done"])
+      if (raw.length === 0 || !root.mine) return
+      var done
+      try { done = JSON.parse(raw) } catch (e) { return }
+      if ((done.chars || 0) > 0) return      // the transcript watcher has it
+      root.mine = false
+      root.sendOnArrival = false
+      root.status = "Nothing heard — Super A to try again"
     }
   }
 
@@ -328,8 +373,8 @@ Item {
 
   PanelWindow {
     id: win
-    anchors { bottom: true }
-    margins { bottom: Style.space(48) }
+    // No anchor on any edge: the surface sits in the middle of the screen.
+    // It is the thing being used now, not a status readout in a corner.
     visible: card.opacity > 0.001 || root.open
     implicitWidth: card.width
     implicitHeight: card.height
@@ -349,6 +394,7 @@ Item {
       streamed: root.streamed
       draft: root.draft
       note: root.note
+      status: root.status
       listening: root.listening
       transcribing: root.transcribing
       thinking: root.thinking
@@ -356,11 +402,11 @@ Item {
       barCount: root.barCount
       sweep: root.sweep
 
-      onSubmitted: root.send()
+      onSubmitted: root.submit()
       onDismissed: root.close()
       onDraftEdited: function (text) { root.draft = text }
 
-      transformOrigin: Item.Bottom
+      transformOrigin: Item.Center
       scale: Motion.reduceMotion ? 1 : pop.value
       opacity: root.open ? 1 : 0
       Behavior on opacity {
