@@ -11,6 +11,29 @@ ShellRoot {
   id: shell
   property bool autotest: Quickshell.env("HUI_AUTOTEST") === "1"
 
+  // Sweep for the "working" waveform. Driven by a targeted animation rather
+  // than `NumberAnimation on …`: a value source owns its property even when
+  // stopped, so the self-test could not park it on a fixed value for the shot.
+  property real demoSweep: 0.5
+  NumberAnimation {
+    target: shell; property: "demoSweep"
+    running: !shell.autotest
+    from: -0.35; to: 1.35; duration: Motion.slower; loops: Animation.Infinite
+  }
+
+  // Speech-shaped levels for the waveform demos: syllables under a phrase
+  // envelope, so the bars are judged on something that looks like talking.
+  function speech(n) {
+    var out = []
+    for (var i = 0; i < n; i++) {
+      var t = i / n
+      var phrase = 0.55 + 0.45 * Math.sin(t * Math.PI * 1.3)
+      var syllable = Math.pow(Math.abs(Math.sin(t * Math.PI * 7)), 0.6)
+      out.push(Math.max(0, Math.min(1, phrase * syllable)))
+    }
+    return out
+  }
+
   FloatingWindow {
     id: win
     title: "Henri UI Gallery"
@@ -41,6 +64,34 @@ ShellRoot {
         HUi.BatteryGlyph { height: 12; level: 0.12 }
         HUi.BatteryGlyph { height: 36; level: 0.55; charging: true }
         HUi.BatteryGlyph { height: 36; level: 0.8; plugged: true }
+      }
+
+      // Voice: mic glyph (live · idle) and the waveform in its three looks.
+      // The levels are a fixed speech-shaped curve, so the self-test's
+      // screenshot is the same every run.
+      Row {
+        id: voice
+        spacing: 18
+        HUi.MicGlyph { height: 20; anchors.verticalCenter: parent.verticalCenter }
+        HUi.MicGlyph { height: 20; live: false; anchors.verticalCenter: parent.verticalCenter }
+        HUi.Waveform {
+          width: 150; height: 26
+          anchors.verticalCenter: parent.verticalCenter
+          levels: shell.speech(barCount)
+          live: true
+        }
+        HUi.Waveform {
+          width: 150; height: 26
+          anchors.verticalCenter: parent.verticalCenter
+          levels: shell.speech(barCount)
+        }
+        HUi.Waveform {
+          id: busyWave
+          width: 150; height: 26
+          anchors.verticalCenter: parent.verticalCenter
+          working: true
+          sweep: shell.demoSweep
+        }
       }
 
       // Buttons

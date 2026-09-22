@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.assistant",
+  "name": "Voice Assistant",
+  "version": "1.0.0",
+  "author": "henri",
+  "description": "Dictate a question into a macOS-style card; Antigravity answers in it.",
+  "kinds": [
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

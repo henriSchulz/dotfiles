@@ -82,3 +82,7 @@ hl.layer_rule({ match = { namespace = "henri-osd" }, no_anim = true, animation =
 -- deckend, der Weichzeichner trägt vor allem die runden Enden.
 hl.layer_rule({ match = { namespace = "henri-dictation" }, no_anim = true, animation = "none" })
 hl.layer_rule({ match = { namespace = "henri-dictation" }, blur = true, ignore_alpha = 0.3 })
+
+-- Assistenten-Karte (henri.assistant) blendet sich selbst ein, wie das Diktat.
+hl.layer_rule({ match = { namespace = "henri-assistant" }, no_anim = true, animation = "none" })
+hl.layer_rule({ match = { namespace = "henri-assistant" }, blur = true, ignore_alpha = 0.3 })

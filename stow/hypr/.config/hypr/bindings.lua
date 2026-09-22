@@ -143,3 +143,11 @@ o.bind("Control_R", "Dictation toggle", "voxtype record toggle")
 -- Verschrieben? `voxtype record cancel` wirft die laufende Aufnahme weg,
 -- ohne Text einzufuegen. Omarchys Standard SUPER+CTRL+X (Toggle) bleibt als
 -- zweiter Weg bestehen, F9 (halten) ebenfalls.
+
+-- Sprach-Assistent (henri.assistant): SUPER + rechte Strg öffnet die Karte und
+-- hört sofort zu, dieselbe Taste stoppt die Aufnahme, ↵ schickt die Frage an
+-- Antigravity, Esc schließt. Dieselbe Stelle wie das Diktat, nur mit SUPER.
+-- Beide Modmasken aus demselben Grund wie oben: je nachdem, ob Hyprland CTRL
+-- beim Druck der Taste selbst schon gesetzt hat, feuert genau eine davon.
+o.bind("SUPER + Control_R", "Voice assistant", hl.dsp.event("assistant toggle"))
+o.bind("SUPER + CTRL + Control_R", "Voice assistant", hl.dsp.event("assistant toggle"))

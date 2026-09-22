@@ -52,6 +52,9 @@ done
 #                 the app's settings (app-settings, `bin` stow package)
 #   henri.dictation — own plugin, the dictation panel that replaces voxtype's
 #                 own OSD (voxtype's is switched off in install/45-voxtype.sh)
+#   henri.assistant — own plugin, the voice assistant card: dictate a
+#                 question, Antigravity (`agy`, package antigravity-cli)
+#                 answers in it
 #   io.github.nipsen.dell-power — NIPSEN/omarchy-dell-power (MIT) with the
 #                 bar glyph swapped for the macOS battery (HUi.BatteryGlyph)
 for src in "$DOTFILES_ROOT"/omarchy/plugins/*/; do

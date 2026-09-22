@@ -28,7 +28,7 @@ danach gebaut wurden, automatisch mitziehen. Deshalb:
 | Datei | Für | Einbinden |
 |-------|-----|-----------|
 | `Motion.js` | QML-Plugins: Dauern, Kurven, Spring-Presets, Radien, Skalen | `import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion` |
-| `*.qml` (Reveal, Surface, Pressable, Button, MenuList, Highlight, Toggle, CrossfadeText, Collapse, PageStack, StaggerIn, SpringValue) | QML: fertige Komponenten — Katalog in `references/qml.md` | `import "file:///home/henri/.local/share/henri-ui" as HUi` |
+| `*.qml` (Reveal, Surface, Pressable, Button, MenuList, Highlight, Toggle, CrossfadeText, Collapse, PageStack, StaggerIn, SpringValue, MicGlyph, Waveform) | QML: fertige Komponenten — Katalog in `references/qml.md` | `import "file:///home/henri/.local/share/henri-ui" as HUi` |
 | `gallery/shell.qml` | Alle Komponenten live + Selbsttest | `quickshell -p ~/.local/share/henri-ui/gallery/shell.qml` |
 | `gtk.css` | GTK4/libadwaita-Apps | zur Laufzeit laden + FileMonitor |
 | `motion.css` | Web/Tauri/Electron | zur Laufzeit laden bzw. im Build aus der Quelle ziehen |

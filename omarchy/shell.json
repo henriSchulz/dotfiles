@@ -57,6 +57,9 @@
   },
   "plugins": [
     {
+      "id": "henri.assistant"
+    },
+    {
       "id": "henri.dictation"
     },
     {
