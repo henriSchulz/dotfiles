@@ -106,6 +106,8 @@ Item {
   property bool rowsLoaded: false
   property string activeMenu: "root"
   property string filterText: ""
+  // A stray multi-kilobyte clipboard must not be ranked against every row.
+  readonly property int maxPasteLength: 512
   property int selectedIndex: 0
   property bool cursorActive: false
   property int requestSerial: 0
@@ -1376,6 +1378,47 @@ Item {
     root.scheduleRebuild()
   }
 
+  // The filter is a plain string driven by keyCatcher, not a TextInput, so Qt
+  // gives us no paste of its own — Ctrl+V has to fetch the clipboard itself.
+  // wl-paste asks the compositor and is always current; Qt's own copy only
+  // sees the selection while the surface holds keyboard focus and otherwise
+  // hands back an empty (or stale) string, so it is the fallback, not the
+  // source.
+  function pasteFromClipboard() {
+    if (clipboardPasteProc.running) return
+    clipboardPasteProc.running = true
+  }
+
+  // Pasting appends at the caret, which always sits at the end of the filter.
+  // Newlines and tabs would read as blanks in a single-line field, and a
+  // leading blank switches the menu into file search, so collapse and trim.
+  function appendPastedText(text) {
+    if (!text) return
+    var flat = text.replace(/[\r\n\t\f\v]+/g, " ").trim()
+    if (!flat) return
+    if (flat.length > root.maxPasteLength) flat = flat.slice(0, root.maxPasteLength)
+    root.setFilter(root.filterText + flat)
+  }
+
+  Process {
+    id: clipboardPasteProc
+    property bool delivered: false
+    command: ["wl-paste", "--no-newline", "--type", "text/plain"]
+    onStarted: clipboardPasteProc.delivered = false
+    stdout: StdioCollector {
+      onStreamFinished: {
+        clipboardPasteProc.delivered = true
+        root.appendPastedText(clipboardPasteProc.stdout.text)
+      }
+    }
+    onExited: function(exitCode) {
+      // wl-paste missing, or an image-only / empty clipboard: try Qt's copy
+      // rather than swallow the keystroke.
+      if (exitCode !== 0 && !clipboardPasteProc.delivered)
+        root.appendPastedText(Quickshell.clipboardText)
+    }
+  }
+
   function setActiveMenu(id, pushHistory, fromPointer) {
     panel.freezeCardTop()
     if (!root.item(id)) id = "root"
@@ -1896,6 +1939,10 @@ Item {
             event.accepted = true
           } else if (event.key === Qt.Key_Tab && root.fileSearchActive) {
             root.completeFileSelection()
+            event.accepted = true
+          } else if ((event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier) && !(event.modifiers & (Qt.AltModifier | Qt.MetaModifier)))
+                     || (event.key === Qt.Key_Insert && event.modifiers === Qt.ShiftModifier)) {
+            root.pasteFromClipboard()
             event.accepted = true
           } else if (event.key === Qt.Key_Home) {
             if (displayModel.count > 0) {
