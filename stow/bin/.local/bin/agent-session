@@ -1,0 +1,114 @@
+#!/bin/bash
+# Start a coding-agent session in a terminal: in a directory, on a workspace,
+# optionally with an opening prompt.
+#
+#   agent-session --dir ~/Projects/rtl-lab --workspace 5 --prompt "bau mir eine app"
+#   agent-session --agent codex --dir ~/Projects/foo
+#
+# Why this exists rather than letting the assistant run shell commands: the
+# voice assistant (henri.assistant) reaches the system through an allow-rule
+# in ~/.gemini/antigravity-cli/settings.json, and the rule names *this script*
+# instead of a wildcard. The path from a spoken sentence to an executed command
+# has no confirmation step in that window -- Parakeet is good but it mishears,
+# and the difference between a bad prompt and a bad command is the whole point.
+# Everything this script will not do, the assistant cannot do.
+#
+# So: a fixed list of agents, a directory that has to exist inside $HOME, a
+# numeric workspace, and a prompt that is passed as one argv element and never
+# through a shell.
+set -euo pipefail
+
+agent=claude
+dir="$HOME"
+workspace=""
+prompt=""
+
+die() { printf 'agent-session: %s\n' "$1" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: agent-session [options]
+  --agent <claude|codex|agy>   which CLI to start (default: claude)
+  --dir <path>                 working directory, must exist inside $HOME
+  --workspace <n>              Hyprland workspace to open it on (default: current)
+  --prompt <text>              opening prompt handed to the agent
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --agent)     agent="${2:-}"; shift 2 ;;
+    --dir)       dir="${2:-}"; shift 2 ;;
+    --workspace) workspace="${2:-}"; shift 2 ;;
+    --prompt)    prompt="${2:-}"; shift 2 ;;
+    --agent=*)     agent="${1#*=}"; shift ;;
+    --dir=*)       dir="${1#*=}"; shift ;;
+    --workspace=*) workspace="${1#*=}"; shift ;;
+    --prompt=*)    prompt="${1#*=}"; shift ;;
+    -h|--help)   usage; exit 0 ;;
+    *)           die "unknown argument: $1" ;;
+  esac
+done
+
+case "$agent" in
+  claude|codex|agy) ;;
+  *) die "unknown agent '$agent' (claude, codex, agy)" ;;
+esac
+command -v "$agent" >/dev/null || die "$agent is not installed"
+
+# ~ and $HOME are spelled out by callers that cannot expand them themselves.
+dir="${dir/#\~\//$HOME/}"
+[[ $dir == "~" ]] && dir="$HOME"
+[[ -d $dir ]] || die "no such directory: $dir"
+dir="$(realpath -- "$dir")"
+# Keep the blast radius inside the home directory: a misheard path should not
+# be able to point a session at /etc or a mounted disk.
+[[ $dir == "$HOME" || $dir == "$HOME"/* ]] || die "directory is outside \$HOME: $dir"
+
+if [[ -n $workspace ]]; then
+  [[ $workspace =~ ^[0-9]{1,2}$ ]] || die "workspace must be a number: $workspace"
+fi
+
+# Each agent takes its opening prompt differently. Claude gets the same
+# --permission-mode as the SUPER+SHIFT+C binding, so a session started by voice
+# behaves like one started by hand.
+case "$agent" in
+  claude) cmd=(claude --permission-mode auto) ;;
+  codex)  cmd=(codex) ;;
+  agy)    cmd=(agy --mode accept-edits) ;;
+esac
+if [[ -n $prompt ]]; then
+  case "$agent" in
+    agy) cmd+=("-i=$prompt") ;;      # agy needs the value attached to the flag
+    *)   cmd+=("$prompt") ;;
+  esac
+fi
+
+launch=(omarchy-launch-tui --app-id=org.omarchy.agent "${cmd[@]}")
+
+if [[ -z $workspace ]]; then
+  cd "$dir"
+  exec "${launch[@]}"
+fi
+
+# Hyprland's exec goes through Omarchy's Lua config, and nesting a quoted
+# `bash -c` inside a Lua string inside a shell argument is three levels of
+# quoting that broke in practice -- the command silently never ran. So nothing
+# is nested: the launcher is written out as a one-shot script and Hyprland is
+# handed a single path. `silent` opens the session on that workspace without
+# dragging the screen along.
+runtime="${XDG_RUNTIME_DIR:-/tmp}/agent-session"
+mkdir -p "$runtime"
+starter="$(mktemp "$runtime/start.XXXXXX")"
+{
+  printf '#!/bin/bash\n'
+  printf 'rm -f -- %q\n' "$starter"          # one shot: gone before the agent starts
+  printf 'cd %q || exit 1\n' "$dir"
+  printf 'exec'
+  printf ' %q' "${launch[@]}"
+  printf '\n'
+} > "$starter"
+chmod 700 "$starter"
+
+hyprctl dispatch "hl.dsp.exec_cmd([==[[workspace $workspace silent] $starter]==])" >/dev/null
+printf 'started %s in %s on workspace %s\n' "$agent" "$dir" "$workspace"

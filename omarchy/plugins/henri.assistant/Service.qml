@@ -220,6 +220,41 @@ Item {
   // ── Agent ───────────────────────────────────────────────────────────────
   property string lastError: ""
 
+  // Sent once per agy process, glued in front of the first question. The agent
+  // otherwise arrives with nothing: it does not know the question was spoken
+  // rather than typed, that its answer lands in a small card instead of a
+  // terminal, or that starting a session on a given workspace has a script
+  // that already solves the part that is awkward to get right.
+  //
+  // Not in agy's own knowledge directory on purpose -- that would apply to
+  // every agy session, including the ones Henri starts by hand in a terminal,
+  // where none of this is true.
+  property bool preambleSent: false
+
+  readonly property string preamble:
+    "You are Henri's voice assistant on his Arch Linux / Omarchy desktop (Hyprland, Wayland).\n\n" +
+    "The question reached you as dictation through Parakeet, so proper nouns, paths and " +
+    "command names may be misheard. Prefer the reading that makes sense on this machine, " +
+    "act on it, and say what you assumed — do not ask a clarifying question unless acting " +
+    "on the wrong reading would be destructive.\n\n" +
+    "Your answer is drawn in a small card on screen, not in a terminal: a few sentences or " +
+    "a short list. No preamble, no restating the question. Answer in the language it was " +
+    "asked in.\n\n" +
+    "You may run commands. Two things to know:\n\n" +
+    "1. To open a coding agent in a terminal, use `agent-session` rather than assembling a " +
+    "terminal command yourself — putting one on a given Hyprland workspace with a given " +
+    "working directory does not work straightforwardly through Omarchy's Lua dispatch, and " +
+    "this script already handles it:\n" +
+    "     agent-session [--agent claude|codex|agy] [--dir <path>] [--workspace <n>] [--prompt <text>]\n" +
+    "   e.g. agent-session --dir ~/Projects/rtl-lab --workspace 5 --prompt \"bau mir eine app\"\n\n" +
+    "2. Desktop settings go through the `omarchy` CLI, live window-manager state through " +
+    "`hyprctl`. Config lives in ~/.config/omarchy/ and ~/.config/hypr/. Several files there " +
+    "are symlinks into ~/Projects/dotfiles, so edit them in place — never with `sed -i`, " +
+    "which replaces the symlink and silently unlinks the file from the repo.\n\n" +
+    "There is no confirmation step in this window: what you run, runs. For anything " +
+    "irreversible — deleting files, `git push`, killing processes, changing disks — do not " +
+    "do it straight away. Say exactly what you would run and let the next turn confirm it."
+
   Process {
     id: agent
     command: ["agy", "--input-format", "stream-json", "--output-format", "stream-json", "-p="]
@@ -238,9 +273,12 @@ Item {
       }
     }
 
-    onRunningChanged: if (!running && root.thinking) {
-      root.thinking = false
-      root.finishTurn("", "The agent stopped before answering.")
+    onRunningChanged: {
+      if (running) root.preambleSent = false
+      if (!running && root.thinking) {
+        root.thinking = false
+        root.finishTurn("", "The agent stopped before answering.")
+      }
     }
   }
 
@@ -299,9 +337,14 @@ Item {
     root.draft = ""
     root.thinking = true
     if (!agent.running) agent.running = true
+    var content = q
+    if (!root.preambleSent) {
+      content = root.preamble + "\n\n———\n\n" + q
+      root.preambleSent = true
+    }
     agent.write(JSON.stringify({
       event: "user",
-      message: { role: "user", content: q }
+      message: { role: "user", content: content }
     }) + "\n")
   }
 
