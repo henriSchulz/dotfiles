@@ -139,7 +139,7 @@ window.nautilus-window overlay-split-view > widget.content-pane { background-col
 /* Rows: 28 px, grey pill for hover/selection, monochrome symbols (Finder). */
 window.nautilus-window .navigation-sidebar { background: none; }
 window.nautilus-window .navigation-sidebar > row {
-  min-height: var(--control-height);
+  min-height: calc(var(--control-height) + 4px);
   padding: 0 var(--menu-row-padding);
   margin: 0 var(--radius-control);
   border-radius: var(--radius-row);
@@ -147,7 +147,13 @@ window.nautilus-window .navigation-sidebar > row {
 }
 window.nautilus-window .navigation-sidebar > row image {
   color: color-mix(in srgb, var(--hui-fg) 80%, transparent);
+  -gtk-icon-size: 18px;
 }
+/* A touch larger than the content text, like Finder's sidebar. */
+window.nautilus-window .navigation-sidebar > row label {
+  font-size: calc(var(--hui-font-size) + 1px);
+}
+window.nautilus-window .navigation-sidebar > row > revealer > box { border-spacing: 8px; }
 window.nautilus-window .navigation-sidebar > row:hover {
   background-color: color-mix(in srgb, var(--hui-fg) 5%, transparent);
   transition-duration: var(--dur-instant);
