@@ -10,13 +10,19 @@
 // Steps. 16 per range like macOS; Alt (Option) moves a quarter step.
 // Brightness runs on a perceptual curve (squared), so every step looks like
 // the same change instead of the bottom steps being huge and the top ones
-// invisible. Like volume, a press sets the new level at once (one write per
-// press); only the bar in the HUD glides.
+// invisible.
+//
+// Holding. Volume keys come from the keyboard and Hyprland repeats them at
+// 40 Hz. The brightness keys come from firmware (ACPI/WMI), which repeats on
+// its own only every ~250 ms and sometimes reports each press twice from two
+// devices. So brightness drops those duplicates, counts each repeat of a
+// held key as two steps, and the backlight glides between steps with the
+// same spring as the bar -- the slow repeats melt into one continuous fade.
 //
 // Extra dim. Below the old floor (1 % backlight) sit 4 more steps, split off
 // in the bar by a small gap: the backlight keeps going down toward a quarter
 // of the floor and a black click-through layer over the internal screen
-// darkens on top, set together with the backlight. The backlight value
+// darkens on top, following the same glide. The backlight value
 // alone encodes how deep in the zone we are, so a shell restart comes back
 // at the same darkness.
 //
@@ -185,32 +191,28 @@ Item {
         root.maxRaw = parseInt(f[4], 10) || 0
         root.sentRaw = parseInt(f[2], 10)
         root.brightLevel = root.levelFor(root.sentRaw)
+        glow.snap(root.toGrid(root.brightLevel))
       }
     }
   }
 
   // Someone else may have moved the backlight while the HUD was closed
-  // (Control Center slider, idle dimming). The first press after that reads
-  // the real value (one tiny `cat`, never during a key-repeat run); presses
-  // that arrive meanwhile queue up and run in order once it is back.
-  // (FileView can't do this: it hands back a cached sysfs value.)
-  property var pending: []
+  // (Control Center slider, idle dimming). Like volume, a key press never
+  // waits for anything: the real value is picked up in the background while
+  // the HUD is closed (one tiny `cat` every 2 s), so the next press already
+  // starts from it. (FileView can't do this: it hands back a cached sysfs value.)
   Process {
     id: reader
     command: ["cat", "/sys/class/backlight/" + root.backlight + "/actual_brightness"]
     stdout: StdioCollector {
-      onStreamFinished: {
-        root.resync(parseInt(text, 10))
-        var queued = root.pending
-        root.pending = []
-        for (var i = 0; i < queued.length; i++) root.stepBrightness(queued[i])
-      }
+      onStreamFinished: if (!root.open && !glow.running) root.resync(parseInt(text, 10))
     }
   }
   function resync(raw) {
     var tol = brightLevel < 0 || raw < maxRaw * floorFrac ? 1 : maxRaw * 0.002
     if (isNaN(raw) || Math.abs(raw - rawFor(brightLevel)) <= tol) return
     brightLevel = levelFor(raw)
+    glow.snap(toGrid(brightLevel))
     sentRaw = raw
   }
 
@@ -225,23 +227,27 @@ Item {
     command: ["bash", "-c", "while read -r d v; do while read -r -t 0 && read -r d v; do :; done; brightnessctl -q -d \"$d\" set \"$v\"; done"]
   }
 
-  property real brightLevel: 0        // current level (-1…1)
+  property real brightLevel: 0        // where the backlight is heading (-1…1)
   property int sentRaw: -1
-  function setBrightness(l) {
-    brightLevel = l
-    var raw = rawFor(l)
-    if (raw !== sentRaw && writer.running) { sentRaw = raw; writer.write(backlight + " " + raw + "\n") }
+  // The glide runs on the grid position, so backlight and dim layer hand
+  // over at 0 without a kink.
+  HUi.SpringValue {
+    id: glow
+    preset: Motion.smooth
+    epsilon: 0.0005
+    to: root.toGrid(root.brightLevel)
+    onValueChanged: {
+      var raw = root.rawFor(root.fromGrid(value))
+      if (raw !== root.sentRaw && writer.running) { root.sentRaw = raw; writer.write(root.backlight + " " + raw + "\n") }
+    }
   }
 
-  readonly property real dimAlpha: maxDim * Math.max(0, -brightLevel)
+  readonly property real dimAlpha: maxDim * Math.max(0, -fromGrid(glow.value))
 
-  // While extra-dimmed, notice when something else (Control Center slider,
-  // idle restore) moved the backlight, so the black layer doesn't stay on a
-  // bright screen.
   Timer {
-    interval: 1000
+    interval: 2000
     repeat: true
-    running: root.brightLevel < 0 && !root.open
+    running: root.backlight !== "" && !root.open && !glow.running
     onTriggered: if (!reader.running) reader.running = true
   }
 
@@ -258,21 +264,24 @@ Item {
       Quickshell.execDetached(["omarchy-brightness-display", arg])
       return
     }
-    if (reader.running) { pending = pending.concat([action]); return }
-    if (!(open && kind === "brightness")) {
-      pending = [action]
-      reader.running = true
-      return
-    }
-    stepBrightness(action)
+    var now = Date.now()
+    var gap = action === lastBrightAction ? now - lastBrightAt : 1e9
+    if (gap < 15) return                  // same press reported by a second device
+    lastBrightAction = action
+    lastBrightAt = now
+    stepBrightness(action, gap < 400 ? 2 : 1)
   }
+  property string lastBrightAction: ""
+  property real lastBrightAt: 0
 
-  function stepBrightness(action) {
+  function stepBrightness(action, count) {
     var cur = brightLevel
     var dir = action.indexOf("up") === 0 ? 1 : -1
     var n = action.indexOf("fine") > 0 ? gridSteps * 4 : gridSteps
     show("brightness", cur)
-    setBrightness(fromGrid(stepped(toGrid(cur), n, dir)))
+    var x = toGrid(cur)
+    for (var i = 0; i < count; i++) x = stepped(x, n, dir)
+    brightLevel = fromGrid(x)
     level = brightLevel
   }
 
