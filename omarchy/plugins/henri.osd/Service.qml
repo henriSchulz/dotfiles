@@ -10,15 +10,15 @@
 // Steps. 16 per range like macOS; Alt (Option) moves a quarter step.
 // Brightness runs on a perceptual curve (squared), so every step looks like
 // the same change instead of the bottom steps being huge and the top ones
-// invisible. The backlight itself glides between steps with the same spring
-// as the bar, so the screen fades instead of jumping.
+// invisible. Like volume, a press sets the new level at once (one write per
+// press); only the bar in the HUD glides.
 //
 // Extra dim. Below the old floor (1 % backlight) sit 4 more steps, split off
 // in the bar by a small gap: the backlight keeps going down toward a quarter
 // of the floor and a black click-through layer over the internal screen
-// fades in on top. Both follow the same glide, so crossing the gap is one
-// continuous fade. The backlight value alone encodes how deep in the zone we
-// are, so a shell restart comes back at the same darkness.
+// darkens on top, set together with the backlight. The backlight value
+// alone encodes how deep in the zone we are, so a shell restart comes back
+// at the same darkness.
 //
 // HUD. A card under the bar in the top-right corner, like Control Center's
 // Sound/Display module: fades in (scale from the corner), the bar glides with
@@ -185,7 +185,6 @@ Item {
         root.maxRaw = parseInt(f[4], 10) || 0
         root.sentRaw = parseInt(f[2], 10)
         root.brightLevel = root.levelFor(root.sentRaw)
-        glow.snap(root.toGrid(root.brightLevel))
       }
     }
   }
@@ -212,15 +211,13 @@ Item {
     var tol = brightLevel < 0 || raw < maxRaw * floorFrac ? 1 : maxRaw * 0.002
     if (isNaN(raw) || Math.abs(raw - rawFor(brightLevel)) <= tol) return
     brightLevel = levelFor(raw)
-    glow.snap(toGrid(brightLevel))
     sentRaw = raw
   }
 
-  // One brightnessctl loop for the whole session: the glide sends a value per
-  // frame, which must not mean a fork per frame inside the shell. One
-  // brightnessctl takes ~14 ms, longer than a frame, so the loop drops every
-  // value that is already stale and only sets the newest -- otherwise a held
-  // key builds a queue and the backlight trails behind the bar.
+  // One brightnessctl loop for the whole session, so a press never forks
+  // inside the shell. One brightnessctl takes ~14 ms; under key repeat the
+  // loop drops values that are already stale and only sets the newest, so
+  // the backlight never trails behind the keys.
   Process {
     id: writer
     running: root.backlight !== ""
@@ -228,22 +225,15 @@ Item {
     command: ["bash", "-c", "while read -r d v; do while read -r -t 0 && read -r d v; do :; done; brightnessctl -q -d \"$d\" set \"$v\"; done"]
   }
 
-  property real brightLevel: 0        // where the backlight is heading (-1…1)
+  property real brightLevel: 0        // current level (-1…1)
   property int sentRaw: -1
-  // The glide runs on the grid position, so backlight and dim layer hand
-  // over at 0 without a kink.
-  HUi.SpringValue {
-    id: glow
-    preset: Motion.smooth
-    epsilon: 0.0005
-    to: root.toGrid(root.brightLevel)
-    onValueChanged: {
-      var raw = root.rawFor(root.fromGrid(value))
-      if (raw !== root.sentRaw && writer.running) { root.sentRaw = raw; writer.write(root.backlight + " " + raw + "\n") }
-    }
+  function setBrightness(l) {
+    brightLevel = l
+    var raw = rawFor(l)
+    if (raw !== sentRaw && writer.running) { sentRaw = raw; writer.write(backlight + " " + raw + "\n") }
   }
 
-  readonly property real dimAlpha: maxDim * Math.max(0, -fromGrid(glow.value))
+  readonly property real dimAlpha: maxDim * Math.max(0, -brightLevel)
 
   // While extra-dimmed, notice when something else (Control Center slider,
   // idle restore) moved the backlight, so the black layer doesn't stay on a
@@ -251,7 +241,7 @@ Item {
   Timer {
     interval: 1000
     repeat: true
-    running: root.brightLevel < 0 && !glow.running && !root.open
+    running: root.brightLevel < 0 && !root.open
     onTriggered: if (!reader.running) reader.running = true
   }
 
@@ -269,7 +259,7 @@ Item {
       return
     }
     if (reader.running) { pending = pending.concat([action]); return }
-    if (!glow.running && !(open && kind === "brightness")) {
+    if (!(open && kind === "brightness")) {
       pending = [action]
       reader.running = true
       return
@@ -282,7 +272,7 @@ Item {
     var dir = action.indexOf("up") === 0 ? 1 : -1
     var n = action.indexOf("fine") > 0 ? gridSteps * 4 : gridSteps
     show("brightness", cur)
-    brightLevel = fromGrid(stepped(toGrid(cur), n, dir))
+    setBrightness(fromGrid(stepped(toGrid(cur), n, dir)))
     level = brightLevel
   }
 
