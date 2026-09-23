@@ -4,7 +4,7 @@
   "name": "Workspace Switcher",
   "version": "1.0.0",
   "author": "henri",
-  "description": "Windows-style Super+Tab: hold Super to see small live previews of all workspaces, Tab to pick one, release Super to switch.",
+  "description": "Windows-style Super+Tab: hold Super to see small live previews of all workspaces, most recently used first, Tab to pick one, release Super to switch.",
   "kinds": [
     "service"
   ],

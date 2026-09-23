@@ -3,7 +3,15 @@
 // Hold Super and press Tab: after a short moment a strip of live workspace
 // previews appears. Every further Tab (Shift+Tab goes back) moves the
 // selection. Letting go of Super switches to the selected workspace. A quick
-// tap switches straight to the next workspace without flashing the strip.
+// tap switches straight to the previous workspace without flashing the strip.
+//
+// Order is most recently used, like Cmd+Tab on a Mac, not by number: the
+// workspace you are on is leftmost, the one before it next, and so on. That is
+// what makes tapping Super+Tab bounce between the two you are working in --
+// numeric order sent you one workspace further every time and there was no
+// going back and forth. Pressing Tab again walks further into the past.
+// Workspaces the list has not seen yet (right after a shell restart) follow in
+// numeric order.
 //
 // Keys. Hyprland owns them (bindings.lua): SUPER+TAB, SUPER+SHIFT+TAB and the
 // SUPER_L release send `custom>>workspace-switcher <next|prev|commit>` on
@@ -44,6 +52,10 @@ Item {
   property int selected: 0
   // Index of the workspace that was active when the gesture started.
   property int origin: 0
+  // Workspace ids in most-recently-used order, newest first. Kept live from
+  // every workspace change while the shell runs -- Hyprland itself only
+  // remembers the single previous workspace, which is not enough to walk back.
+  property var mru: []
   // Direction of the last switch: +1 = to the right, -1 = to the left, 0 = none.
   property int travel: 0
 
@@ -65,13 +77,39 @@ Item {
     return Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1;
   }
 
+  function touch(id) {
+    if (!(id > 0))
+      return;
+    const next = [id];
+    const prev = root.mru;
+    for (let i = 0; i < prev.length && next.length < 32; i++)
+      if (prev[i] !== id)
+        next.push(prev[i]);
+    root.mru = next;
+  }
+
   function snapshot() {
-    const out = [];
+    const live = [];
     const all = Hyprland.workspaces.values || [];
     for (let i = 0; i < all.length; i++)
       if (all[i].id > 0)
-        out.push(all[i].id);
-    out.sort((a, b) => a - b);
+        live.push(all[i].id);
+    live.sort((a, b) => a - b);
+
+    const active = root.activeId();
+    const out = [];
+    // Where you are, then where you were, then further back.
+    if (live.indexOf(active) >= 0)
+      out.push(active);
+    for (let i = 0; i < root.mru.length; i++) {
+      const id = root.mru[i];
+      if (id !== active && live.indexOf(id) >= 0 && out.indexOf(id) < 0)
+        out.push(id);
+    }
+    // Never visited since the shell started: in numeric order, at the end.
+    for (let i = 0; i < live.length; i++)
+      if (out.indexOf(live[i]) < 0)
+        out.push(live[i]);
     return out;
   }
 
@@ -137,6 +175,19 @@ Item {
 
   Connections {
     target: Hyprland
+    // Not while a gesture runs: the strip is showing the order it started with,
+    // and the switch it hands out is the result, not new input. Recording it
+    // afterwards is what the next Super+Tab bounces back to.
+    function onFocusedWorkspaceChanged() {
+      if (!root.armed)
+        root.touch(root.activeId());
+    }
+  }
+
+  Component.onCompleted: root.touch(root.activeId())
+
+  Connections {
+    target: Hyprland
     function onRawEvent(event) {
       if (event.name !== "custom")
         return;
@@ -156,7 +207,7 @@ Item {
     function cancel(): string { return root.cancel() }
     function status(): string {
       return JSON.stringify({ armed: root.armed, shown: root.shown, ids: root.ids,
-                              selected: root.selected });
+                              selected: root.selected, mru: root.mru });
     }
   }
 
