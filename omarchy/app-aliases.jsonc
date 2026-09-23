@@ -1,0 +1,23 @@
+// Spotlight search words for your apps.
+//
+// Spotlight already knows an app's name, its GenericName and the Keywords its
+// .desktop file ships, plus a built-in table of synonyms living in
+// ~/.config/omarchy/plugins/henri.menu/AppAliases.js ("notes" finds Omawrite,
+// "photoshop" finds Pinta, "dateien" finds Files).
+//
+// This file adds your own on top. Every key is a desktop id without the
+// .desktop suffix (`obsidian`, `org.gnome.Nautilus`) or the app's visible name
+// ("Files"); every value is the list of words that should also find it. The
+// file is watched, so a save takes effect on the next keystroke.
+//
+// A word written with a leading "-" removes one of the built-in ones again:
+//
+//   {
+//     "obsidian": ["zweitgehirn", "tagebuch"],
+//     "com.github.PintaProject.Pinta": ["-photoshop"],
+//     "code": ["arbeit", "projekt"]
+//   }
+//
+// Whole-line // comments and trailing commas are fine; anything else is JSON.
+{
+}

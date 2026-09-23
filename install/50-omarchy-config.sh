@@ -26,6 +26,7 @@ files=(
   "omadock.json    644"
   "dock.json       644"
   "menu.json       644"
+  "app-aliases.jsonc  644"
   "defaults/agent  644"
   "hooks/theme-set.d/global-wallpaper  755"
   "hooks/theme-set.d/henri-ui-gtk-colors  755"

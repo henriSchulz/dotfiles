@@ -106,6 +106,12 @@ function scoreBookmark(query, bookmark) {
     { text: (bookmark.tags || []).join(" "), weight: 2 },
     { text: bookmark.link || "", weight: 1 },
   ];
+  // Aliases score one by one rather than as one joined string: only then can
+  // a synonym that *is* the query ("notes" on Omawrite) collect the exact
+  // match bonus, which is what puts the app it stands for on top. Weight sits
+  // below the title so a real app called Notes still wins.
+  var aliases = bookmark.aliases || [];
+  for (var a = 0; a < aliases.length; a++) fields.push({ text: aliases[a], weight: 4 });
   var total = 0;
   for (var i = 0; i < tokens.length; i++) {
     var best = -1;

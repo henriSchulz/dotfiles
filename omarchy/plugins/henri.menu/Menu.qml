@@ -7,6 +7,7 @@ import qs.Commons
 import qs.Ui
 import "MenuModel.js" as MenuModel
 import "FuzzySearch.js" as FuzzySearch
+import "AppAliases.js" as AppAliases
 import "/usr/share/omarchy/shell/services/AppSearch.js" as AppSearch
 import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
 import "file:///home/henri/.local/share/henri-ui" as HUi
@@ -574,6 +575,27 @@ Item {
       root.loadFallbackHides(root.fallbackConfiguredHides + "\n" + fallbackHidesOutput.text)
     }
   }
+  // ------------------------------------------------------------ app aliases
+  //
+  // Extra search words per application (AppAliases.js), so a query that is not
+  // the app's name still finds it. The user file is watched: adding a word
+  // there re-merges the app rows without a restart.
+  property var appAliasTable: AppAliases.defaultTable()
+  readonly property string appAliasPath: Quickshell.env("HOME") + "/.config/omarchy/app-aliases.jsonc"
+  function loadAppAliases(rawText) {
+    root.appAliasTable = AppAliases.tableFrom(rawText, MenuModel.stripJsonc)
+    if (root.providersLoaded["apps"]) root.mergeAppRows()
+  }
+  FileView {
+    id: appAliasFile
+    path: root.appAliasPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.loadAppAliases(text())
+    onFileChanged: appAliasFile.reload()
+    onLoadFailed: root.loadAppAliases("")
+  }
+
   FileView {
     id: searchEngineFile
     path: Quickshell.env("HOME") + "/.config/omarchy/menu.json"
@@ -882,10 +904,15 @@ Item {
       var appId = String(entry.id || "")
       if (!appId) continue
       var subtext = useLib ? root.appLibrary.entrySubtext(entry) : root.fallbackSubtext(entry)
+      var label = useLib ? root.appLibrary.entryName(entry) : root.fallbackName(entry)
       var aliases = subtext ? [subtext] : []
       try {
         if (entry.keywords && typeof entry.keywords.join === "function") aliases = aliases.concat(entry.keywords)
       } catch (e) { }
+      // Most .desktop files ship no Keywords at all, so words nobody would
+      // guess from the name ("notes" for Omawrite, "photoshop" for Pinta)
+      // come from AppAliases plus the user's own file.
+      aliases = AppAliases.dedupe(aliases.concat(AppAliases.aliasesFor(root.appAliasTable, appId, label)))
       appRows.push({
         id: "apps." + appId,
         parent: "apps",
@@ -893,7 +920,7 @@ Item {
         icon: "",
         appIcon: String(entry.icon || ""),
         appId: appId,
-        label: useLib ? root.appLibrary.entryName(entry) : root.fallbackName(entry),
+        label: label,
         title: "",
         target: "",
         description: subtext,
@@ -1083,9 +1110,13 @@ Item {
   function fuzzyBookmark(entry) {
     return {
       title: MenuModel.labelFor(entry, root.checkedResults),
-      domain: (entry.aliases || []).join(" "),
+      domain: "",
       tags: [entry.description || "", entry.appId || ""],
-      link: entry.id
+      link: entry.id,
+      // One field per alias instead of one joined string, so a synonym that
+      // is exactly the query ("notes" for Omawrite) earns the exact-match
+      // bonus and lifts its app to the top.
+      aliases: entry.aliases || []
     }
   }
   function fuzzyScore(entry, query) {
