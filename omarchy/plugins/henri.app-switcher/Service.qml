@@ -7,8 +7,9 @@
 // exactly what Cmd+Tab does on a Mac.
 //
 // Apps, not windows. Windows are grouped by their appId, and switching goes to
-// the app's most recently used window, wherever it lives; Hyprland follows it
-// to the right workspace on its own.
+// the app's most recently used window, wherever it lives -- on another
+// workspace the switch carries the workspace with it, out of the dock's
+// minimized parking spot it unminimizes.
 //
 // Keys. Hyprland owns them (bindings.lua): ALT+TAB, ALT+SHIFT+TAB and the
 // Alt_L release send `custom>>app-switcher <next|prev|commit>` on Hyprland's
@@ -198,30 +199,77 @@ Item {
       root.selected = (root.selected + dir + n) % n;
   }
 
-  // Wayland activation carries the switch; Hyprland follows the window to its
-  // workspace. The dispatch is only a fallback for a toplevel without a handle.
+  // The Hyprland handle behind a Wayland toplevel: it knows the workspace and
+  // the address, which the Wayland side does not expose.
+  function hyprFor(tl) {
+    const all = Hyprland.toplevels.values || [];
+    for (let i = 0; i < all.length; i++)
+      if (all[i].wayland === tl)
+        return all[i];
+    return null;
+  }
+
+  // Everything interpolated into a dispatch is checked for shape first: under
+  // the Lua parser a dispatch string is code, not a command with arguments.
+  function address(handle) {
+    let v = String((handle && handle.address) || "").trim().toLowerCase();
+    if (v.slice(0, 2) === "0x")
+      v = v.slice(2);
+    return /^[0-9a-f]{4,16}$/.test(v) ? "0x" + v : "";
+  }
+
+  function workspaceTarget(ws) {
+    if (!ws)
+      return "";
+    const name = String(ws.name || "");
+    return name !== "" ? name : String(ws.id);
+  }
+
+  function luaString(value) {
+    return String(value === null || value === undefined ? "" : value)
+      .replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+  }
+
+  function dispatch(lua, legacy) {
+    Hyprland.dispatch(Hyprland.usingLua ? lua : legacy);
+  }
+
+  // Switching has to carry the window's workspace with it. Wayland activation
+  // alone only hands over focus -- it does not follow the window to another
+  // workspace, which made every app outside the current one look dead. The
+  // focus dispatcher does both in one step, so it is the main path and
+  // activation only steps in when there is no address to dispatch on.
   function activate(item) {
     if (!item)
       return;
-    try {
-      if (item.window && typeof item.window.activate === "function") {
-        item.window.activate();
-        return;
+    const handle = root.hyprFor(item.window);
+    const addr = root.address(handle);
+    const ws = handle ? handle.workspace : null;
+    const wsName = ws ? String(ws.name || "") : "";
+
+    // Minimized windows are parked on a special workspace (that is how the
+    // dock minimizes). Switching to one unminimizes it onto the workspace the
+    // user is on, like clicking a minimized app in the macOS Dock -- opening
+    // the special workspace instead would be a different thing entirely.
+    if (addr && wsName.indexOf("special") === 0) {
+      const here = root.workspaceTarget(Hyprland.focusedWorkspace);
+      if (here) {
+        root.dispatch("hl.dsp.window.move({ window = \"address:" + addr + "\", workspace = \""
+                        + root.luaString(here) + "\", follow = false })",
+                      "movetoworkspacesilent " + here + ",address:" + addr);
       }
-    } catch (e) {}
-    const all = Hyprland.toplevels.values || [];
-    for (let i = 0; i < all.length; i++) {
-      if (all[i].wayland !== item.window)
-        continue;
-      const o = all[i].lastIpcObject;
-      const addr = o ? String(o.address || "") : "";
-      if (!/^0x[0-9a-f]{4,16}$/.test(addr))
-        return;
-      Hyprland.dispatch(Hyprland.usingLua
-        ? "hl.dsp.focus({ window = \"address:" + addr + "\" })"
-        : "focuswindow address:" + addr);
+    }
+
+    if (addr) {
+      root.dispatch("hl.dsp.focus({ window = \"address:" + addr + "\" })",
+                    "focuswindow address:" + addr);
       return;
     }
+
+    try {
+      if (item.window && typeof item.window.activate === "function")
+        item.window.activate();
+    } catch (e) {}
   }
 
   function finish(doSwitch) {

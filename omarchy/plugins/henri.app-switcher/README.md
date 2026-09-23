@@ -23,8 +23,16 @@ same hand movement.
 ## Apps, not windows
 
 Windows are grouped by their `appId`, so an app with five windows is one icon.
-Switching goes to that app's most recently used window, wherever it lives;
-Hyprland follows it to the right workspace on its own.
+Switching goes to that app's most recently used window, wherever it lives:
+
+* **on another workspace** the switch carries the workspace with it. Wayland
+  activation alone only hands over focus and does not follow the window, which
+  made every app outside the current workspace look dead — so the switch goes
+  through Hyprland's focus dispatcher on the window address, which does both.
+* **minimized** (the dock parks minimized windows on `special:minimized`) it is
+  moved back onto the workspace you are on and focused, the way clicking a
+  minimized app in the macOS Dock unminimizes it. Opening the special workspace
+  instead would be a different thing entirely.
 
 The order is the switcher's own most-recently-used list, fed by every focus
 change while the shell runs. Hyprland's `focusHistoryID` only arrives with an
