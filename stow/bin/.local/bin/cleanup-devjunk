@@ -1,0 +1,255 @@
+#!/usr/bin/env bash
+# cleanup-devjunk — remove regenerable build artefacts from a source tree.
+#
+# Dry-run by default. Nothing is deleted without --apply.
+# Version control data (.git, .svn) is never touched.
+
+set -euo pipefail
+
+STAGE=1
+APPLY=0
+ASSUME_YES=0
+MACJUNK=0
+SHOW_SIZE=1
+ROOT="."
+
+usage() {
+	cat <<'EOF'
+Usage: cleanup-devjunk [OPTIONS] [PATH]
+
+Removes regenerable development artefacts. Dry-run unless --apply is given.
+PATH defaults to the current directory.
+
+Options:
+  -s, --stage N   How aggressive to be (default: 1)
+                    1  caches and dependencies: node_modules, .next,
+                       __pycache__, .mypy_cache, .pytest_cache, .ruff_cache,
+                       .tox, .turbo, .parcel-cache, .gradle, Pods, DerivedData
+                    2  stage 1 + Python virtualenvs (verified via pyvenv.cfg)
+                    3  stage 2 + build/dist/out of JS projects (verified via a
+                       sibling package.json)
+  -m, --macjunk   Also remove macOS residue: ._* AppleDouble files, .DS_Store
+      --apply     Actually delete. Without it, only report.
+  -y, --yes       Skip the confirmation prompt (requires --apply)
+      --no-size   Skip size measurement (much faster on exFAT/USB)
+  -h, --help      Show this help
+
+Never touched: .git, .svn, and any directory named env/venv without a
+pyvenv.cfg (those are usually testbench or source directories, not virtualenvs).
+
+Examples:
+  cleanup-devjunk ~/Projects                    # report what stage 1 would free
+  cleanup-devjunk -s 2 --apply ~/Projects       # delete caches + virtualenvs
+  cleanup-devjunk -s 3 -m --no-size --apply .   # full sweep, no size report
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	-s | --stage)
+		STAGE="${2:-}"
+		shift 2
+		;;
+	-m | --macjunk)
+		MACJUNK=1
+		shift
+		;;
+	--apply)
+		APPLY=1
+		shift
+		;;
+	-y | --yes)
+		ASSUME_YES=1
+		shift
+		;;
+	--no-size)
+		SHOW_SIZE=0
+		shift
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	-*)
+		echo "cleanup-devjunk: unknown option: $1" >&2
+		usage >&2
+		exit 2
+		;;
+	*)
+		ROOT="$1"
+		shift
+		;;
+	esac
+done
+
+[[ "$STAGE" =~ ^[123]$ ]] || {
+	echo "cleanup-devjunk: --stage must be 1, 2 or 3" >&2
+	exit 2
+}
+[[ -d "$ROOT" ]] || {
+	echo "cleanup-devjunk: not a directory: $ROOT" >&2
+	exit 2
+}
+((APPLY)) || ASSUME_YES=0
+
+ROOT="$(cd "$ROOT" && pwd -P)"
+
+# Directories we refuse to descend into or delete, under any stage.
+PRUNE_NAMES=(.git .svn .hg .Trash-1000 .Spotlight-V100 .fseventsd "System Volume Information" "\$RECYCLE.BIN")
+
+CACHE_NAMES=(node_modules .next __pycache__ .mypy_cache .pytest_cache .ruff_cache .tox .turbo .parcel-cache .gradle Pods DerivedData)
+VENV_NAMES=(venv .venv env .env virtualenv)
+BUILD_NAMES=(build dist out)
+
+# Build a find name-expression (-name a -o -name b ...) into the array EXPR.
+build_expr() {
+	EXPR=()
+	local first=1 n
+	for n in "$@"; do
+		if ((first)); then
+			EXPR+=(-name "$n")
+			first=0
+		else
+			EXPR+=(-o -name "$n")
+		fi
+	done
+}
+
+build_expr "${PRUNE_NAMES[@]}"
+PRUNE_EXPR=("${EXPR[@]}")
+
+# collect NAME... — print matching directories as a NUL-separated list,
+# pruning so we never descend into a directory we already matched.
+collect() {
+	build_expr "$@"
+	find "$ROOT" \
+		-type d \( "${PRUNE_EXPR[@]}" \) -prune -o \
+		-type d \( "${EXPR[@]}" \) -print0 -prune 2>/dev/null
+}
+
+targets=()
+
+while IFS= read -r -d '' d; do targets+=("$d"); done < <(collect "${CACHE_NAMES[@]}")
+
+skipped_venv=()
+if ((STAGE >= 2)); then
+	while IFS= read -r -d '' d; do
+		if [[ -f "$d/pyvenv.cfg" ]]; then
+			targets+=("$d")
+		else
+			skipped_venv+=("$d")
+		fi
+	done < <(collect "${VENV_NAMES[@]}")
+fi
+
+skipped_build=()
+if ((STAGE >= 3)); then
+	while IFS= read -r -d '' d; do
+		if [[ -f "$(dirname "$d")/package.json" ]]; then
+			targets+=("$d")
+		else
+			skipped_build+=("$d")
+		fi
+	done < <(collect "${BUILD_NAMES[@]}")
+fi
+
+macfiles=()
+if ((MACJUNK)); then
+	while IFS= read -r -d '' f; do macfiles+=("$f"); done < <(
+		find "$ROOT" \
+			-type d \( "${PRUNE_EXPR[@]}" \) -prune -o \
+			-type f \( -name '._*' -o -name '.DS_Store' \) -print0 2>/dev/null
+	)
+fi
+
+if ((${#targets[@]} == 0 && ${#macfiles[@]} == 0)); then
+	echo "Nothing to clean under $ROOT (stage $STAGE)."
+	exit 0
+fi
+
+rel() { printf '%s' "${1#"$ROOT"/}"; }
+
+human() {
+	awk -v b="$1" 'BEGIN {
+		if (b >= 1073741824) printf "%.2f GB", b / 1073741824
+		else if (b >= 1048576) printf "%.1f MB", b / 1048576
+		else printf "%d KB", int(b / 1024)
+	}'
+}
+
+total=0
+echo "Root:  $ROOT"
+echo "Stage: $STAGE"
+if ((MACJUNK)); then echo "       + macOS residue"; fi
+echo
+
+if ((SHOW_SIZE)); then
+	echo "Measuring sizes (slow on exFAT/USB)..."
+	sized=()
+	for d in "${targets[@]}"; do
+		sz=$(du -sb "$d" 2>/dev/null | cut -f1) || sz=0
+		[[ -n "$sz" ]] || sz=0
+		total=$((total + sz))
+		sized+=("$sz"$'\t'"$d")
+	done
+	if ((${#sized[@]})); then
+		printf '%s\n' "${sized[@]}" | sort -rn | while IFS=$'\t' read -r sz d; do
+			printf '  %10s  %s\n' "$(human "$sz")" "$(rel "$d")"
+		done
+	fi
+else
+	for d in "${targets[@]}"; do printf '  %s\n' "$(rel "$d")"; done
+fi
+
+echo
+echo "${#targets[@]} directories"
+if ((SHOW_SIZE)); then echo "Reclaimable: $(human "$total")"; fi
+if ((${#macfiles[@]})); then echo "${#macfiles[@]} macOS residue files"; fi
+
+if ((${#skipped_venv[@]})); then
+	echo
+	echo "Skipped — named like a virtualenv but has no pyvenv.cfg (probably real source):"
+	for d in "${skipped_venv[@]}"; do printf '  %s\n' "$(rel "$d")"; done
+fi
+if ((${#skipped_build[@]})); then
+	echo
+	echo "Skipped — build/dist/out without a sibling package.json (probably real source):"
+	for d in "${skipped_build[@]}"; do printf '  %s\n' "$(rel "$d")"; done
+fi
+
+if ((!APPLY)); then
+	echo
+	echo "Dry run. Re-run with --apply to delete."
+	exit 0
+fi
+
+if ((!ASSUME_YES)); then
+	echo
+	read -r -p "Delete these ${#targets[@]} directories? [y/N] " reply
+	[[ "$reply" == [yY] ]] || {
+		echo "Aborted."
+		exit 1
+	}
+fi
+
+echo
+failed=0
+for d in "${targets[@]}"; do
+	rm -rf -- "$d" || {
+		echo "  failed: $(rel "$d")" >&2
+		failed=$((failed + 1))
+	}
+done
+if ((${#macfiles[@]})); then
+	for f in "${macfiles[@]}"; do rm -f -- "$f" || failed=$((failed + 1)); done
+fi
+
+msg="Deleted ${#targets[@]} directories"
+if ((${#macfiles[@]})); then msg="$msg and ${#macfiles[@]} files"; fi
+echo "$msg."
+if ((SHOW_SIZE)); then echo "Freed roughly $(human "$total")."; fi
+if ((failed)); then
+	echo "$failed item(s) could not be removed." >&2
+	exit 1
+fi
+exit 0
