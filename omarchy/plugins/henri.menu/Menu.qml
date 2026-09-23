@@ -1824,11 +1824,21 @@ Item {
   }
   PanelWindow {
     id: panel
-    // Stays mapped until the card has faded out (henri-ui: nothing vanishes
-    // without a transition). While closing it no longer takes keyboard or
-    // pointer input, so a launched app gets focus and clicks immediately.
-    visible: root.rowsLoaded && (root.opened || card.opacity > 0)
-    anchors { top: true; bottom: true; left: true; right: true }
+    // The layer surface is never torn down, only resized: one pixel in the
+    // top-left corner while closed, full screen while the card is on screen.
+    // Creating it from scratch cost ~60 ms of every open -- ten times the QML
+    // work behind it -- and that was the whole of the felt delay. Leaving it
+    // full screen instead would swallow Hyprland's focus grab and break
+    // click-outside-to-close for every other popup.
+    //
+    // It stays full screen until the card has faded out (henri-ui: nothing
+    // vanishes without a transition). While closing it takes neither keyboard
+    // nor pointer input, so a launched app gets focus and clicks immediately.
+    readonly property bool showing: root.opened || card.opacity > 0
+    visible: root.rowsLoaded
+    anchors { top: true; left: true; bottom: panel.showing; right: panel.showing }
+    implicitWidth: 1
+    implicitHeight: 1
     color: "transparent"
     WlrLayershell.namespace: "omarchy-menu"
     WlrLayershell.layer: WlrLayer.Overlay
@@ -1848,6 +1858,20 @@ Item {
       preset: Motion.smooth
       to: root.opened ? 1 : Motion.exitToScale
     }
+    // Only the exit is animated, and it runs as its own animation rather than
+    // as a Behavior with a duration that switches on root.opened: when
+    // `opened` flips, that duration binding is not guaranteed to be
+    // re-evaluated before the opacity change is intercepted, so the card kept
+    // fading IN over the exit curve -- 0.4 s of nothing much, then a ramp.
+    NumberAnimation {
+      id: cardFadeOut
+      target: card
+      property: "opacity"
+      to: 0
+      duration: Motion.exit(Motion.slow)
+      easing.type: Easing.BezierSpline
+      easing.bezierCurve: Motion.easeExit
+    }
     // The query as it looked while open, so the search line does not blank
     // out during the exit fade (closing clears filterText right away).
     property string shownFilter: ""
@@ -1861,7 +1885,8 @@ Item {
     Connections {
       target: root
       function onOpenedChanged() {
-        if (!root.opened) return
+        if (!root.opened) { cardFadeOut.start(); return }
+        cardFadeOut.stop()
         // Opening is instant, so the card is already at full size; a reopen
         // mid-exit snaps back to 1 instead of springing there.
         if (card.opacity < 0.01) {
@@ -1869,6 +1894,7 @@ Item {
           panel.cardTop = -1
           panel.maxRowsHeight = -1
         }
+        card.opacity = 1
       }
     }
 
@@ -1915,21 +1941,14 @@ Item {
       y: panel.effectiveCardTop
       color: root.background
       borderSpec: root.borderSpec
-      opacity: root.opened ? 1 : 0
+      // Set, not bound: onOpenedChanged owns it (instant in, animated out).
+      opacity: 0
       scale: cardScale.value
       transformOrigin: Item.Top
       // Composite as one layer while animating, so the rows do not show
       // through each other at partial opacity.
       layer.enabled: panel.animating
       layer.smooth: true
-      Behavior on opacity {
-        // 0 on the way in: Spotlight is there the frame it is asked for.
-        NumberAnimation {
-          duration: root.opened ? 0 : Motion.exit(Motion.slow)
-          easing.type: Easing.BezierSpline
-          easing.bezierCurve: Motion.easeExit
-        }
-      }
       topPadding: root.contentMargin
       bottomPadding: root.contentMargin
       leftPadding: 0
