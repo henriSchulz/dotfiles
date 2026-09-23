@@ -58,8 +58,10 @@ hl.config({
 -- Vibrancy for the shell's own surfaces: the bar and every menu-style panel
 -- run translucent in shell.*.toml, so give them something to blur.
 hl.layer_rule({ match = { namespace = "omarchy-bar" }, blur = true, ignore_alpha = 0.1 })
+-- Spotlight (namespace omarchy-menu) is deliberately left out: Henri wants it
+-- to come up with no background blur.
 hl.layer_rule({
-  match = { namespace = "^(omarchy-menu|omarchy-image-selector|omarchy-emojis|omarchy-clipboard|omarchy-keyboard-panel)$" },
+  match = { namespace = "^(omarchy-image-selector|omarchy-emojis|omarchy-clipboard|omarchy-keyboard-panel)$" },
   blur = true,
   ignore_alpha = 0.1,
 })

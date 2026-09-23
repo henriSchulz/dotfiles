@@ -1807,9 +1807,10 @@ Item {
     Region { id: closingMask }
 
     // Spotlight is a card over a scrim, not a full-screen composition like the
-    // overview: it follows the popover recipe (fade + scale from
-    // popoverFromScale on the smooth spring over Motion.slow), not the
-    // Motion.slower/gentle pair the overview uses. Exit faster (0.7x, easeExit).
+    // overview. Henri wants it to appear with no animation at all: opening is
+    // a single frame (opacity 0 -> 1, scale already at 1, scrim with it).
+    // Closing keeps the popover exit (fade + scale to exitToScale, 0.7x,
+    // easeExit) so nothing vanishes without a transition.
     readonly property bool animating: cardScale.running || (card.opacity > 0 && card.opacity < 1)
     HUi.SpringValue {
       id: cardScale
@@ -1830,10 +1831,10 @@ Item {
       target: root
       function onOpenedChanged() {
         if (!root.opened) return
-        // Only a fully closed card starts from the small pose; reopening
-        // mid-exit just turns around.
+        // Opening is instant, so the card is already at full size; a reopen
+        // mid-exit snaps back to 1 instead of springing there.
         if (card.opacity < 0.01) {
-          cardScale.snap(Motion.popoverFromScale)
+          cardScale.snap(1)
           panel.cardTop = -1
           panel.maxRowsHeight = -1
         }
@@ -1891,10 +1892,11 @@ Item {
       layer.enabled: panel.animating
       layer.smooth: true
       Behavior on opacity {
+        // 0 on the way in: Spotlight is there the frame it is asked for.
         NumberAnimation {
-          duration: root.opened ? Motion.slow : Motion.exit(Motion.slow)
+          duration: root.opened ? 0 : Motion.exit(Motion.slow)
           easing.type: Easing.BezierSpline
-          easing.bezierCurve: root.opened ? Motion.easeOut : Motion.easeExit
+          easing.bezierCurve: Motion.easeExit
         }
       }
       topPadding: root.contentMargin
