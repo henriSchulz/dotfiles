@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""Render a sheet of GTK4 widgets to a PNG, without anything showing on screen.
+
+For checking GTK styling (gtk-4.0/gtk.css, the experimental macOS mode, a
+theme switch) while the desktop is in use: the window is mapped — GTK renders
+nothing otherwise — but Hyprland parks it on a hidden special workspace with
+no focus, so it never appears and never steals the keyboard.
+
+  henri-gtk-preview [out.png]      default: ~/Downloads/gtk-preview.png
+"""
+import subprocess
+import sys
+from pathlib import Path
+
+import gi
+gi.require_version("Gtk", "4.0")
+gi.require_version("Gsk", "4.0")
+from gi.repository import GLib, Gsk, Gtk  # noqa: E402
+
+TITLE = "henri-gtk-preview"
+WIDTH, HEIGHT = 720, 430
+
+out = Path(sys.argv[1] if len(sys.argv) > 1
+           else Path.home() / "Downloads/gtk-preview.png")
+
+
+def park():
+    """Keep the window off screen and out of the focus stack."""
+    rules = [f"keyword windowrulev2 {r},title:^({TITLE})$" for r in
+             ("workspace special:gtkpreview silent", "noinitialfocus", "noanim")]
+    subprocess.run(["hyprctl", "--batch", " ; ".join(rules)],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def sheet():
+    """One of most things worth looking at: chrome, controls, list, sidebar."""
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+
+    head = Gtk.HeaderBar()
+    head.set_title_widget(Gtk.Label(label="Documents"))
+    head.pack_start(Gtk.Button(icon_name="go-previous-symbolic"))
+    head.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic"))
+    head.pack_end(Gtk.Button(icon_name="edit-find-symbolic"))
+    box.append(head)
+
+    body = Gtk.Box()
+    side = Gtk.ListBox()
+    side.add_css_class("navigation-sidebar")
+    for name in ("Home", "Recent", "Starred", "Trash"):
+        row = Gtk.ListBoxRow()
+        row.set_child(Gtk.Label(label=name, xalign=0))
+        side.append(row)
+    side.select_row(side.get_row_at_index(0))
+    body.append(side)
+
+    col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+    col.set_hexpand(True)
+    for edge in ("top", "bottom", "start", "end"):
+        getattr(col, f"set_margin_{edge}")(16)
+
+    buttons = Gtk.Box(spacing=8)
+    for label, css in (("Suggested", "suggested-action"), ("Cancel", None),
+                       ("Destructive", "destructive-action")):
+        b = Gtk.Button(label=label)
+        if css:
+            b.add_css_class(css)
+        buttons.append(b)
+    col.append(buttons)
+
+    controls = Gtk.Box(spacing=12)
+    switch = Gtk.Switch()
+    switch.set_active(True)
+    switch.set_valign(Gtk.Align.CENTER)
+    controls.append(switch)
+    check = Gtk.CheckButton(label="Checkbox")
+    check.set_active(True)
+    controls.append(check)
+    radio = Gtk.CheckButton(label="Radio")
+    radio.set_group(Gtk.CheckButton())
+    radio.set_active(True)
+    controls.append(radio)
+    col.append(controls)
+
+    entry = Gtk.Entry()
+    entry.set_placeholder_text("Search documents")
+    col.append(entry)
+
+    scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+    scale.set_value(40)
+    col.append(scale)
+
+    progress = Gtk.ProgressBar()
+    progress.set_fraction(0.6)
+    col.append(progress)
+
+    rows = Gtk.ListBox()
+    rows.add_css_class("boxed-list")
+    for name, on in (("Wi-Fi", True), ("Bluetooth", False)):
+        row = Gtk.ListBoxRow()
+        line = Gtk.Box(spacing=8)
+        line.set_margin_top(8)
+        line.set_margin_bottom(8)
+        line.set_margin_start(12)
+        line.set_margin_end(12)
+        label = Gtk.Label(label=name, xalign=0)
+        label.set_hexpand(True)
+        toggle = Gtk.Switch()
+        toggle.set_active(on)
+        toggle.set_valign(Gtk.Align.CENTER)
+        line.append(label)
+        line.append(toggle)
+        row.set_child(line)
+        rows.append(row)
+    col.append(rows)
+
+    body.append(col)
+    box.append(body)
+    return box
+
+
+def main():
+    park()
+
+    win = Gtk.Window()
+    win.set_title(TITLE)
+    win.set_default_size(WIDTH, HEIGHT)
+    win.set_child(sheet())
+    win.present()
+
+    # Let mapping, styling and layout settle before the snapshot.
+    ctx = GLib.MainContext.default()
+    deadline = GLib.get_monotonic_time() + 2_000_000
+    while GLib.get_monotonic_time() < deadline:
+        if ctx.pending():
+            ctx.iteration(False)
+        elif win.get_mapped():
+            break
+
+    child = win.get_child()
+    child.measure(Gtk.Orientation.HORIZONTAL, -1)
+    child.allocate(WIDTH, HEIGHT, -1, None)
+    snapshot = Gtk.Snapshot()
+    Gtk.WidgetPaintable.new(child).snapshot(snapshot, WIDTH, HEIGHT)
+    node = snapshot.to_node()
+    if node is None:
+        sys.exit("henri-gtk-preview: nothing was rendered")
+
+    renderer = Gsk.CairoRenderer()
+    renderer.realize(None)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    renderer.render_texture(node, None).save_to_png(str(out))
+    renderer.unrealize()
+    win.destroy()
+    # The rules were set at runtime; a reload drops them again.
+    subprocess.run(["hyprctl", "reload"], stdout=subprocess.DEVNULL,
+                   stderr=subprocess.DEVNULL)
+    print(out)
+
+
+if __name__ == "__main__":
+    main()

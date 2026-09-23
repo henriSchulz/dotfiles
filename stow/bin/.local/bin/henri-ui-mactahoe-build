@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""Build the MacTahoe GTK4 theme, recolored to the active Omarchy theme.
+
+Feeds the experimental macOS mode (see henri-ui-experimental). Nothing here
+touches a running system: the result is a stylesheet in the state directory
+that ~/.config/gtk-4.0/gtk.css only pulls in while the mode is switched on.
+
+  source  ~/.local/state/henri-ui/vendor/src   (git clone, never committed)
+  output  ~/.local/state/henri-ui/vendor/mactahoe/{gtk.css,assets,windows-assets}
+
+Upstream is https://github.com/vinceliuice/MacTahoe-gtk-theme (MIT). It ships
+a fixed macOS palette; the few SCSS variables everything else derives from are
+patched to the active Omarchy theme before compiling, so a theme switch still
+carries through. Motion and radii are left as upstream wrote them — seeing
+MacTahoe as it really is, is the point of the experiment. Anything loaded
+after this file in ~/.config/gtk-4.0/gtk.css still wins, so the henri-ui
+app styles (Files) keep their own look.
+
+Needs a Sass compiler: sassc, or dart-sass via npx (no install required).
+"""
+import os
+import shutil
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+REPO = "https://github.com/vinceliuice/MacTahoe-gtk-theme.git"
+
+home = Path.home()
+theme_dir = home / ".local/state/omarchy/current/theme"
+state = Path(os.environ.get("XDG_STATE_HOME", home / ".local/state")) / "henri-ui"
+vendor = state / "vendor"
+src = vendor / "src"
+out = vendor / "mactahoe"
+
+
+def run(cmd, **kw):
+    return subprocess.run(cmd, check=True, **kw)
+
+
+def fetch():
+    """Clone once, then fast-forward. --depth 1 keeps it small."""
+    if (src / ".git").is_dir():
+        run(["git", "-C", str(src), "fetch", "--depth", "1", "origin", "HEAD"],
+            stdout=subprocess.DEVNULL)
+        run(["git", "-C", str(src), "reset", "--hard", "FETCH_HEAD"],
+            stdout=subprocess.DEVNULL)
+    else:
+        src.parent.mkdir(parents=True, exist_ok=True)
+        run(["git", "clone", "--depth", "1", REPO, str(src)])
+
+
+def load(name):
+    try:
+        with open(theme_dir / name, "rb") as f:
+            return tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+
+
+def mix(a, b, ratio):
+    """ratio 0 -> a, 1 -> b. Plain sRGB, same as GTK's own mix()."""
+    def parts(h):
+        h = h.lstrip("#")
+        return [int(h[i:i + 2], 16) for i in (0, 2, 4)]
+    return "#%02x%02x%02x" % tuple(
+        round(x + (y - x) * ratio) for x, y in zip(parts(a), parts(b)))
+
+
+def patch(path, replacements):
+    """Replace whole `$name: …;` definitions, keeping the rest of the file."""
+    lines = path.read_text().splitlines(keepends=True)
+    done = set()
+    for i, line in enumerate(lines):
+        for name, value in replacements.items():
+            if name in done or not line.startswith(f"${name}:"):
+                continue
+            lines[i] = f"${name}: {value};\n"
+            done.add(name)
+    missing = set(replacements) - done
+    if missing:
+        sys.exit(f"henri-ui-mactahoe-build: {path.name}: "
+                 f"did not find {sorted(missing)} — upstream changed")
+    path.write_text("".join(lines))
+
+
+def sass(scss, css):
+    """sassc if it is installed, else dart-sass through npx."""
+    if shutil.which("sassc"):
+        run(["sassc", "-M", "-t", "expanded", str(scss), str(css)])
+        return
+    if not shutil.which("npx"):
+        sys.exit("henri-ui-mactahoe-build: needs sassc or npx (dart-sass)")
+    run(["npx", "-y", "sass", "--no-source-map", "--style=expanded",
+         "--quiet", "--silence-deprecation=import,slash-div,global-builtin,"
+         "color-functions,mixed-decls,legacy-js-api",
+         str(scss), str(css)], cwd=src)
+
+
+def main():
+    fetch()
+
+    c = load("colors.toml")
+    dark = c.get("mode", "light") != "light"
+    variant = "Dark" if dark else "Light"
+
+    bg = c.get("background", "#f5f5f7")
+    fg = c.get("foreground", "#1d1d1f")
+    accent = c.get("accent", "#0071e3")
+    # Content areas are white in light mode (macOS/Finder), the plain
+    # background in dark — the same call henri-ui-gtk-colors makes for --hui-view.
+    base = "#ffffff" if not dark else bg
+    backdrop = c.get("dark_background", bg)
+
+    sass_dir = src / "src/sass"
+    # The stylesheets import these two by their -temp names; upstream's
+    # installer generates them the same way.
+    shutil.copy(sass_dir / "_theme-options.scss", sass_dir / "_theme-options-temp.scss")
+    shutil.copy(sass_dir / "_gtk-base.scss", sass_dir / "_gtk-base-temp.scss")
+
+    patch(sass_dir / "_colors-palette.scss", {"theme_color_default": accent})
+    patch(sass_dir / "_colors.scss", {
+        "base_color": base,
+        "bg_color": bg,
+        "backdrop_color": backdrop,
+        "fg_color": fg,
+        "text_color": fg,
+        # Upstream's two softer text tones, at the same distance from the
+        # foreground it uses, but mixed against this theme's background.
+        "alt_fg_color": mix(fg, bg, 0.14),
+        "hint_fg_color": mix(fg, bg, 0.26),
+    })
+
+    out.mkdir(parents=True, exist_ok=True)
+    built = out / "gtk.css"
+    sass(src / f"src/main/gtk-4.0/gtk-{variant}.scss", built)
+
+    # Assets sit next to the stylesheet: its url()s are relative to it.
+    assets = src / "src/assets/gtk"
+    for target in (out / "assets", out / "windows-assets"):
+        shutil.rmtree(target, ignore_errors=True)
+    shutil.copytree(assets / "common-assets/assets", out / "assets")
+    shutil.copytree(assets / "scalable", out / "assets/scalable")
+    shutil.copytree(assets / "windows-assets/titlebutton", out / "windows-assets")
+
+    head = subprocess.run(["git", "-C", str(src), "rev-parse", "--short", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+    built.write_text(
+        f"/* MacTahoe {variant} ({head}), recolored to the Omarchy theme by\n"
+        " * henri-ui-mactahoe-build. Generated — do not edit.\n"
+        " * Upstream: https://github.com/vinceliuice/MacTahoe-gtk-theme (MIT) */\n"
+        + built.read_text())
+    print(f"henri-ui-mactahoe-build: wrote {built} (MacTahoe {variant} {head})")
+
+
+if __name__ == "__main__":
+    main()
