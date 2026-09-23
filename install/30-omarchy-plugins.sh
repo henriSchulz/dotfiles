@@ -52,6 +52,8 @@ done
 #                 the app's settings (app-settings, `bin` stow package)
 #   henri.dictation — own plugin, the dictation panel that replaces voxtype's
 #                 own OSD (voxtype's is switched off in install/45-voxtype.sh)
+#   henri.app-switcher — own plugin, macOS-style Cmd+Tab on Alt+Tab:
+#                 a row of app icons, one per app, most recently used first
 #   henri.assistant — own plugin, the voice assistant card: dictate a
 #                 question, Antigravity (`agy`, package antigravity-cli)
 #                 answers in it

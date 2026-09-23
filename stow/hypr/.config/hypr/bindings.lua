@@ -156,3 +156,27 @@ o.bind("Control_R", "Dictation toggle", "voxtype record toggle")
 -- Aufnahme, die der Assistent eine Zehntelsekunde vorher gestartet hatte.
 -- Eine gewöhnliche Buchstabentaste hat dieses Problem nicht.
 o.bind("SUPER + A", "Voice assistant", hl.dsp.event("assistant toggle"))
+
+-- App-Switcher wie ⌘+Tab am Mac (Plugin henri.app-switcher): Alt halten und Tab
+-- zeigt eine Reihe von App-Symbolen, zuletzt benutzte zuerst; jedes weitere Tab
+-- wählt die nächste App, Loslassen von Alt wechselt, Esc bricht ab. Kurzes
+-- Antippen springt direkt zur vorherigen App, ohne dass die Reihe aufblitzt.
+--
+-- Warum Alt und nicht Fn: Fn wird auf dem XPS im Tastatur-Controller selbst
+-- verarbeitet und erreicht den Kernel nie als eigene Taste (nachgemessen: Fn+Tab
+-- sendet exakt denselben Code wie Tab allein), ist für Hyprland also nicht
+-- bindbar. Alt liegt dafür genau dort, wo am Mac ⌘ liegt — links neben der
+-- Leertaste. Ersetzt Omarchys "Focus on next window"/"Reveal active window on
+-- top", die beide auf ALT+TAB lagen und Fenster statt Apps durchschalteten.
+--
+-- Die Tasten gehen als Hyprland-Ereignis (custom>>app-switcher …) direkt an das
+-- Plugin: kein Prozess pro Taste, also keine Latenz und immer in Reihenfolge.
+hl.unbind("ALT + TAB")
+hl.unbind("ALT + SHIFT + TAB")
+o.bind("ALT + TAB", "App switcher", hl.dsp.event("app-switcher next"))
+o.bind("ALT + SHIFT + TAB", "App switcher (previous)", hl.dsp.event("app-switcher prev"))
+o.bind("ALT + ESCAPE", "App switcher (cancel)", hl.dsp.event("app-switcher cancel"))
+-- transparent: Nach Alt+Tab sperrt ("shadowt") Hyprland alle Bindings auf der
+-- noch gedrückten Alt-Taste — ohne das Flag feuert das Loslassen nie.
+o.bind("ALT + Alt_L", nil, hl.dsp.event("app-switcher commit"), { release = true, transparent = true })
+o.bind("ALT + SHIFT + Alt_L", nil, hl.dsp.event("app-switcher commit"), { release = true, transparent = true })

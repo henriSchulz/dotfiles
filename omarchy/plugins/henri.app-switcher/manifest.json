@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.app-switcher",
+  "name": "App Switcher",
+  "version": "1.0.0",
+  "author": "henri",
+  "description": "macOS-style Cmd+Tab on Alt+Tab: hold Alt to see a row of app icons, Tab to pick, release Alt to switch. Groups windows by app, most recently used first.",
+  "kinds": [
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

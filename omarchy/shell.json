@@ -22,8 +22,8 @@
           "id": "henri.power",
           "chargeLimitStep": 5,
           "historyHours": "24",
-          "historyMetric": "percent",
-          "historyRange": "3h",
+          "historyMetric": "amps",
+          "historyRange": "6h",
           "showPercentage": true
         },
         {
@@ -77,6 +77,9 @@
     },
     {
       "id": "henri.workspace-switcher"
+    },
+    {
+      "id": "henri.app-switcher"
     },
     {
       "id": "henri.background"
