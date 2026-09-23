@@ -692,6 +692,13 @@ Item {
     var full = rows * root.gridCellHeight + (rows - 1) * root.rowSpacing
     return Math.min(full, root.availableRowsHeight())
   }
+  // Spotlight opens as the search line alone: with nothing typed the root menu
+  // shows no rows at all, not even the "nothing here yet" placeholder, and the
+  // card is exactly as tall as its header. Everything is still one query away,
+  // and a submenu (or a dmenu prompt) lists its rows as before.
+  readonly property bool blankRoot: !root.dmenuActive && !root.fileSearchActive
+    && root.activeMenu === "root" && root.filterText.trim().length === 0
+
   readonly property string emptyStateText: {
     if (root.fileSearchActive)
       return root.fileQuery ? "No files matching “" + root.fileQuery + "”" : "Searching…"
@@ -713,10 +720,10 @@ Item {
   property int cardWidth: Math.min(root.dmenuActive
     ? Style.space(Math.max(root.dmenuWidth, root.spotlightMinDmenuWidth))
     : Style.space(root.isAppsGrid ? root.spotlightGridWidth : root.spotlightWidth), panel.width - Style.gapsOut * 2)
-  property int visibleRowsHeight: root.dmenuActive ? dmenuRowListHeight(layoutSerial, displayModel.count, filterText) : (root.isAppsGrid ? root.gridRowsHeight() : rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider))
+  property int visibleRowsHeight: root.blankRoot ? 0 : (root.dmenuActive ? dmenuRowListHeight(layoutSerial, displayModel.count, filterText) : (root.isAppsGrid ? root.gridRowsHeight() : rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)))
   property int cardHeight: root.dmenuActive
     ? Math.min(contentMargin * 2 + headerHeight + (mode === "input" ? 0 : contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
-    : Math.min(contentMargin * 2 + headerHeight + contentSpacing + visibleRowsHeight, panel.height - Style.gapsOut * 2)
+    : Math.min(contentMargin * 2 + headerHeight + (root.blankRoot ? 0 : contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
 
   function finishRequest(selection) {
     if (!root.requestActive || !root.doneFile) {
@@ -1315,7 +1322,7 @@ Item {
           section: ""
         })
       }
-    } else {
+    } else if (!root.blankRoot) {
       for (var j = 0; j < root.itemOrder.length; j++) {
         var child = root.item(root.itemOrder[j])
         if (!child || child.parent !== active) continue
@@ -1604,6 +1611,10 @@ Item {
     onTriggered: {
       if (!root.opened) return
       root.evaluateGuards()
+      // Nothing is listed until the first keystroke, so the app rows are built
+      // now rather than on that keystroke. This one is native (no fork), so it
+      // does not queue behind the guard batch.
+      root.loadProviderForMenu("apps")
       // The shell may start before first-install packages have finished placing
       // their icons. Refresh here even when the desktop entry list did not change.
       if (root.appLibrary) root.appLibrary.refreshIcons()
@@ -1915,7 +1926,9 @@ Item {
     function freezeCardTop() {
       if (visible && cardTop < 0) {
         cardTop = effectiveCardTop
-        maxRowsHeight = root.visibleRowsHeight
+        // Frozen at 0 the blank root would cap every later result list to
+        // nothing; with no starting list there is no ceiling to keep.
+        maxRowsHeight = root.blankRoot ? -1 : root.visibleRowsHeight
       }
     }
     onVisibleChanged: if (!visible) { cardTop = -1; maxRowsHeight = -1 }
@@ -2509,7 +2522,7 @@ Item {
           Column {
             anchors.centerIn: parent
             spacing: Style.space(8)
-            visible: displayModel.count === 0 && root.mode !== "input"
+            visible: displayModel.count === 0 && root.mode !== "input" && !root.blankRoot
 
             Text {
               text: "󰈉"
