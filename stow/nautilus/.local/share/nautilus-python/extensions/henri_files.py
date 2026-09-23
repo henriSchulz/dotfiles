@@ -4,9 +4,10 @@
 # can reach Nautilus's own GTK widgets:
 #
 #  * Return renames, like Finder. With a file selected in the view, Return
-#    starts renaming instead of opening it (open = double-click, Ctrl+O or
-#    Alt+Down, as Cmd+O / Cmd+Down on the Mac). Return anywhere else (path
-#    bar, search, sidebar, dialogs) is left alone.
+#    starts renaming instead of opening it. Ctrl+Return opens the selection
+#    (as do double-click, Ctrl+O and Alt+Down, like Cmd+O / Cmd+Down on the
+#    Mac). Return anywhere else (path bar, search, sidebar, dialogs) is left
+#    alone.
 #  * Super+Backspace moves the selection to the Trash (Cmd+Backspace).
 #  * Inline rename. Nautilus renames in a popover (title, entry, button,
 #    pointing at the item). It is turned into a bare field lying exactly over
@@ -101,6 +102,19 @@ def _on_window_key(controller, keyval, _keycode, state):
         if _ancestor(focus, "NautilusFilesView") is None:
             return False
         focus.activate_action("view.move-to-trash", None)
+        return True
+    # Ctrl+Return = open the selection. Plain Return renames (below), so the
+    # opening key is the one the hand is already on -- Nautilus's own Ctrl+O
+    # and Alt+Down keep working. Folders open in place, files in their app.
+    if keyval in RETURN_KEYS \
+            and state & MODIFIERS == Gdk.ModifierType.CONTROL_MASK:
+        focus = controller.get_widget().get_focus()
+        if focus is None or isinstance(focus, Gtk.Editable):
+            return False
+        if _ancestor(focus, "NautilusFilesView") is None:
+            return False
+        _dbg("ctrl+return -> open")
+        focus.activate_action("view.open-with-default-application", None)
         return True
     if keyval not in RETURN_KEYS or state & MODIFIERS:
         return False
