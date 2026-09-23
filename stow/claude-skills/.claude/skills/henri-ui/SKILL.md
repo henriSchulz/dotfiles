@@ -277,7 +277,8 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
 - **Text auf Farbflächen** (Primär-Button, Auswahl): `Motion.onColor(fläche)` wählt
   Weiß/Schwarz nach Kontrast (Blau `#0071e3` → Weiß 4.7 : 1).
 - **Radien:** Fenster/Panels 14, Popover/Menüs 10, Buttons/Felder 8, Menü-Einträge 6,
-  kleine Chips 5. Konzentrisch: innerer Radius = äußerer − Innenabstand.
+  kleine Chips 5, Kapseln (Toolbar-Gruppen, Segment-Umschalter) `pill` = 999.
+  Konzentrisch: innerer Radius = äußerer − Innenabstand.
 - **Material:** Menüs, Popover und Panels fast deckend (Hintergrund-Alpha ~0.97, Henri: durchscheinender Inhalt „sieht komisch aus“) + Blur hinter
   der Fläche (Hyprland-`layerrule blur` bzw. Compositor), dünne Haarlinie
   1 px `foreground` @ α 0.10, weicher Schatten (y 8, blur 24, α 0.18–0.25).

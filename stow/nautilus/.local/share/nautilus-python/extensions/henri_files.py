@@ -16,13 +16,16 @@
 #    commits (Finder) -- Nautilus would throw the edit away.
 #  * Menus like macOS 26: a symbol before every item, and submenus open beside
 #    the menu on hover instead of sliding in on a click.
+#  * A toolbar of capsules, like the Finder's: back and forward share one,
+#    the view switcher becomes a grid/list segmented control, and the view
+#    menu, search and the current folder menu each get their own pill.
 #  * Context menu extras: Copy Path, Open in Terminal, Open in Claude Code, and
 #    New File > (text, Markdown, document/spreadsheet/presentation, scripts,
 #    web page, JSON, CSV) on the folder background; a new file is selected
 #    and goes straight into renaming, like Finder's New Folder.
 #
-# Styles live in ~/.config/gtk-4.0/henri-files.css (.henri-inline-rename,
-# .henri-menu-icon). Set HENRI_FILES_DEBUG=1 for a trace on stdout.
+# Styles live in ~/.config/gtk-4.0/henri-files.css (.henri-cluster,
+# .henri-segment, .henri-pill, .henri-inline-rename, .henri-menu-icon). Set HENRI_FILES_DEBUG=1 for a trace on stdout.
 
 import os
 import shutil
@@ -143,6 +146,7 @@ def _hook_window(window):
     window.add_controller(keys)
     window.connect("notify::focus-widget", _on_focus_changed)
     GLib.idle_add(_hook_sidebar, window)
+    GLib.idle_add(_hook_toolbar, window)
 
 
 def _hook_windows(model, position=0, _removed=0, added=None):
@@ -210,6 +214,154 @@ def _hook_sidebar(window, tries=50):
                     return False
     if tries > 0:
         GLib.timeout_add(100, _hook_sidebar, window, tries - 1)
+    return False
+
+
+# ── toolbar clusters ─────────────────────────────────────────────────────────
+# macOS 26 groups the Finder toolbar into capsules: back|forward in one, the
+# view switcher as a segmented control, and single controls as their own pill.
+# Nautilus ships a split button that only toggles between grid and list, so it
+# is hidden and rebuilt as two segments bound to its own action plus a menu
+# button carrying its menu. Styles: .henri-cluster / .henri-segment /
+# .henri-pill in henri-files.css.
+
+# slot.files-view-mode takes the view id (2 = grid, 1 = list); a toggle button
+# bound to it lights up on its own while that view is shown.
+VIEW_MODES = ((2, "view-grid-symbolic", "Icon View"),
+              (1, "view-list-symbolic", "List View"))
+VIEW_OPTIONS_ICON = "view-sort-descending-symbolic"
+PILL_ICONS = ("nautilus-folder-search-symbolic", "sidebar-show-symbolic",
+              "edit-find-symbolic", "folder-new-symbolic")
+
+
+def _view_segments():
+    """The grid/list segmented control, like Finder's view switcher."""
+    box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+    box.add_css_class("henri-cluster")
+    box.add_css_class("henri-segmented")
+    for mode, icon, tooltip in VIEW_MODES:
+        segment = Gtk.ToggleButton(icon_name=icon, tooltip_text=tooltip)
+        segment.add_css_class("henri-segment")
+        segment.set_action_name("slot.files-view-mode")
+        segment.set_action_target_value(GLib.Variant("u", mode))
+        box.append(segment)
+    return box
+
+
+# The split button is an Adwaita widget and this extension never imports Adw,
+# so it arrives as a plain GObject: read its properties by name.
+def _menu_model_of(split):
+    """The split button carries its menu either directly or in its popover."""
+    model = split.get_property("menu-model")
+    if model is not None:
+        return model
+    popover = split.get_property("popover")
+    return popover.get_menu_model() if isinstance(popover, Gtk.PopoverMenu) else None
+
+
+def _view_options(split):
+    """The view menu as its own pill with a chevron (Finder's "group by")."""
+    button = Gtk.MenuButton(icon_name=VIEW_OPTIONS_ICON, tooltip_text="View Options")
+    button.set_always_show_arrow(True)
+    button.add_css_class("henri-pill")
+    button.set_valign(Gtk.Align.CENTER)
+
+    def sync(*_args):
+        popover = split.get_property("popover")
+        if popover is not None and not getattr(popover, "_henri_synced", False):
+            popover._henri_synced = True
+            popover.connect("notify::menu-model", sync)
+        button.set_menu_model(_menu_model_of(split))
+
+    # Grid and list hand the split button different menus; follow whichever it
+    # holds, so the pill always opens the menu for the view on screen.
+    split.connect("notify::menu-model", sync)
+    split.connect("notify::popover", sync)
+    sync()
+    return button
+
+
+def _keep_hidden(widget, _pspec):
+    if widget.get_visible():
+        widget.set_visible(False)
+
+
+CLUSTER_GAP = 8
+
+
+def _space_out(widget):
+    """Capsules stand apart in the toolbar, not shoulder to shoulder."""
+    box = widget.get_parent() if widget is not None else None
+    if isinstance(box, Gtk.Stack):
+        box = box.get_parent()
+    if isinstance(box, Gtk.Box) and box.get_spacing() < CLUSTER_GAP:
+        box.set_spacing(CLUSTER_GAP)
+
+
+def _make_pill(widget):
+    """A single control as its own capsule -- centred, never stretched."""
+    widget.add_css_class("henri-pill")
+    widget.set_valign(Gtk.Align.CENTER)
+
+
+def _cluster_history(controls):
+    """Back and forward share one capsule, parted by a hairline."""
+    box = controls.get_first_child()
+    if box is None or "henri-cluster" in box.get_css_classes():
+        return
+    _space_out(controls)
+    box.add_css_class("henri-cluster")
+    back = box.get_first_child()
+    if back is not None and not isinstance(back.get_next_sibling(), Gtk.Separator):
+        box.insert_child_after(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), back)
+
+
+def _cluster_views(controls):
+    """Replace the split button with segments + a view options pill."""
+    parent = controls.get_parent()
+    split = next((w for w in _walk(controls) if _type_name(w) == "AdwSplitButton"), None)
+    if parent is None or split is None or getattr(controls, "_henri_segments", False):
+        return
+    controls._henri_segments = True
+    _space_out(controls)
+    segments = _view_segments()
+    options = _view_options(split)
+    parent.insert_child_after(segments, controls)
+    parent.insert_child_after(options, segments)
+    # In a narrow window Nautilus hides the toolbar's view controls and shows
+    # the ones in the action bar at the bottom; ours follow their own copy.
+    for widget in (segments, options):
+        controls.bind_property("visible", widget, "visible",
+                               GObject.BindingFlags.SYNC_CREATE)
+    split.set_visible(False)
+    split.connect("notify::visible", _keep_hidden)
+
+
+def _hook_toolbar(window, tries=50):
+    """The toolbar is built with the window; retry until its parts exist."""
+    history = [w for w in _walk(window) if _type_name(w) == "NautilusHistoryControls"]
+    views = [w for w in _walk(window) if _type_name(w) == "NautilusViewControls"]
+    if not history or not views:
+        if tries > 0:
+            GLib.timeout_add(100, _hook_toolbar, window, tries - 1)
+        return False
+    for controls in history:
+        _cluster_history(controls)
+    for controls in views:
+        _cluster_views(controls)
+    # Single controls (search, sidebar, new folder, the current folder menu)
+    # become pills of their own, so the toolbar reads as a row of capsules.
+    for widget in _walk(window):
+        if isinstance(widget, (Gtk.Button, Gtk.MenuButton)) \
+                and widget.get_icon_name() in PILL_ICONS:
+            _make_pill(widget)
+            _space_out(widget)
+    pathbar = next((w for w in _walk(window) if _type_name(w) == "NautilusPathBar"), None)
+    if pathbar is not None:
+        for widget in _walk(pathbar):
+            if isinstance(widget, Gtk.MenuButton):
+                _make_pill(widget)
+    _dbg("toolbar clusters", len(history), len(views))
     return False
 
 

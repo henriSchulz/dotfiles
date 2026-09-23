@@ -1,6 +1,7 @@
 /* Quick Look (GNOME Sushi, GTK3) in the henri-ui style, after macOS Quick Look:
  * one calm surface in the theme's background, a flat title bar with the file
- * name, a pill "Open With …" button, soft window shadow and 14 px corners.
+ * name, round close and "Open with" glyphs on the left, a soft window shadow
+ * and 14 px corners.
  *
  * TEMPLATE — henri-ui-gtk-colors renders it into
  * ~/.local/share/themes/HenriQuickLook/gtk-3.0/gtk.css, filling the {{…}} placeholders from
@@ -108,18 +109,25 @@ button:backdrop {
   color: alpha({{hui-fg}}, {{secondary}});
 }
 
-/* Close button: a small round glyph button, not a filled pill. */
+/* Close and "Open with ..." sit together top left as two round glyphs on a
+ * quiet fill, the way Quick Look shows them. */
 headerbar button.titlebutton,
-headerbar button.titlebutton.close {
-  min-width: 24px;
-  min-height: 24px;
+headerbar button.titlebutton.close,
+headerbar button.henri-round {
+  min-width: 26px;
+  min-height: 26px;
   padding: 0;
-  margin: 0 0 0 6px;
-  border-radius: 999px;
-  background-color: transparent;
+  margin: 0 4px 0 0;
+  border-radius: {{radius-pill}};
+  background-color: alpha({{hui-fg}}, 0.08);
 }
-headerbar button.titlebutton:hover {
-  background-color: alpha({{hui-fg}}, 0.10);
+headerbar button.titlebutton:hover,
+headerbar button.henri-round:hover {
+  background-color: alpha({{hui-fg}}, 0.16);
+}
+headerbar button.titlebutton:backdrop,
+headerbar button.henri-round:backdrop {
+  background-color: alpha({{hui-fg}}, 0.06);
 }
 
 /* Media / document toolbars floating over the preview (Sushi uses .osd). */
@@ -142,11 +150,11 @@ toolbar.osd {
 }
 .osd scale trough {
   background-color: alpha({{hui-fg}}, 0.14);
-  border-radius: 999px;
+  border-radius: {{radius-pill}};
 }
 .osd scale highlight {
   background-color: {{hui-fg}};
-  border-radius: 999px;
+  border-radius: {{radius-pill}};
 }
 .osd scale slider {
   background-color: {{hui-view}};

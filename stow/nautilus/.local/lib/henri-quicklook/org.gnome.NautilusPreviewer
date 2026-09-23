@@ -32,7 +32,7 @@ GtkSource.StyleSchemeManager.prototype.get_scheme = function (id) {
 };
 
 // Folders and files without a viewer: the macOS Quick Look card -- a 128 px
-// icon beside the name (semibold), then "size, n items" and "Last modified:
+// icon beside the name (semibold), then "size, n items" and "Last modified
 // Today at 14:28" in secondary text, all centred; Sushi shows a 256 px icon
 // with bold "Type / Size / Modified" captions hanging from the top.
 const {Gio, GLib, Gtk} = imports.gi;
@@ -72,7 +72,7 @@ Fallback.prototype._applyLabels = function (state) {
         this._typeLabel.show();
         this._sizeLabel.set_text(GLib.format_size(info.get_size()));
     }
-    this._dateLabel.set_text(`Last modified: ${modifiedText(info)}`);
+    this._dateLabel.set_text(`Last modified ${modifiedText(info)}`);
 
     // The card already carries the name; the title bar stays empty (macOS).
     const window = this.get_toplevel();
@@ -107,6 +107,44 @@ Fallback.prototype._updateIcon = function (icon) {
     } catch (e) {
         logError(e, `Error loading surface for icon ${icon.to_string()}`);
     }
+};
+
+// Title bar like macOS Quick Look: the close button sits top left, and the
+// "open with" button beside it as a round glyph showing the app's own icon,
+// its name in the tooltip. Sushi packs a wide "Open With Files" pill right.
+const OPEN_ICON = 'document-open-symbolic';
+const MainWindow = imports.ui.mainWindow.MainWindow;
+
+MainWindow.prototype._updateTitlebar = function () {
+    if (!this._henriTitlebar) {
+        this._henriTitlebar = true;
+        this._titlebar.set_decoration_layout('close:');
+        this._titlebar.remove(this._openButton);
+        this._titlebar.pack_start(this._openButton);
+        const child = this._openButton.get_child();
+        if (child)
+            this._openButton.remove(child);
+        // Without this the button stretches over the whole title bar height.
+        this._openButton.valign = Gtk.Align.CENTER;
+        this._openButton.get_style_context().add_class('henri-round');
+        this._henriIcon = new Gtk.Image({visible: true});
+        this._openButton.add(this._henriIcon);
+    }
+
+    let label = 'Open';
+    let icon = null;
+    try {
+        const app = this.file.query_default_handler(null);
+        label = `Open With ${app.get_display_name()}`;
+        icon = app.get_icon();
+    } catch (e) {
+        // No handler (or no access to them under flatpak): the plain verb.
+    }
+    this._openButton.set_tooltip_text(label);
+    if (icon)
+        this._henriIcon.set_from_gicon(icon, Gtk.IconSize.MENU);
+    else
+        this._henriIcon.set_from_icon_name(OPEN_ICON, Gtk.IconSize.MENU);
 };
 
 // Sushi never makes a preview smaller than 400 x 400, so a folder card floated

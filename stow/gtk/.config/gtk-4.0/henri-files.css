@@ -81,6 +81,68 @@ window.nautilus-window headerbar button { min-height: var(--control-height); min
 window.nautilus-window .sidebar-pane headerbar { background: none; box-shadow: none; }
 window.nautilus-window .sidebar-pane headerbar windowtitle { opacity: 0; }
 
+/* ── Toolbar capsules (henri_files.py) ─────────────────────────────────────
+ * macOS 26 groups the Finder toolbar into capsules: back|forward share one,
+ * the view switcher is a segmented control, and single controls (view menu,
+ * search, current folder menu) each sit in their own pill. The fill is a
+ * shade of the foreground, so every theme keeps working. */
+window.nautilus-window .henri-cluster,
+window.nautilus-window button.henri-pill,
+window.nautilus-window menubutton.henri-pill {
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background-color: color-mix(in srgb, var(--hui-fg) 8%, transparent);
+  transition: background-color var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+/* Inside a capsule the buttons carry no surface of their own. */
+window.nautilus-window .henri-cluster button,
+window.nautilus-window menubutton.henri-pill > button {
+  min-height: var(--control-height);
+  min-width: calc(var(--control-height) + 6px);
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background-color: transparent;
+  box-shadow: none;
+}
+window.nautilus-window .henri-cluster > separator {
+  margin: 9px 1px;
+  background-color: color-mix(in srgb, var(--hui-fg) var(--hairline-alpha), transparent);
+}
+/* Hover has to sit above the headerbar's own fill, which is the pill's shade. */
+window.nautilus-window headerbar .henri-cluster button:hover,
+window.nautilus-window headerbar menubutton.henri-pill > button:hover,
+window.nautilus-window headerbar button.henri-pill:hover,
+window.nautilus-window .henri-cluster button:hover,
+window.nautilus-window button.henri-pill:hover {
+  background-color: color-mix(in srgb, var(--hui-fg) 16%, transparent);
+  transition-duration: var(--dur-instant);
+}
+/* The chosen segment is a lighter knob, like macOS — not the accent. */
+window.nautilus-window headerbar .henri-segmented > button:checked,
+window.nautilus-window headerbar menubutton.henri-pill > button:checked,
+window.nautilus-window .henri-segmented > button:checked,
+window.nautilus-window menubutton.henri-pill > button:checked {
+  background-color: color-mix(in srgb, var(--hui-fg) 18%, transparent);
+  box-shadow: 0 1px 2px color-mix(in srgb, black 20%, transparent);
+  color: var(--hui-fg);
+}
+/* Search switched on is the one lit control, like a Finder toolbar toggle. */
+window.nautilus-window headerbar button.henri-pill:checked,
+window.nautilus-window button.henri-pill:checked {
+  background-color: var(--hui-menu-selected-bg);
+  color: var(--hui-menu-selected-fg);
+  box-shadow: none;
+}
+/* The chevron beside the view menu icon. */
+/* A pill with a chevron needs room for both, like Finder's group-by. */
+window.nautilus-window menubutton.henri-pill > button {
+  padding: 0 4px;
+}
+window.nautilus-window menubutton.henri-pill > button > box {
+  border-spacing: 3px;
+}
+
 /* Path bar reads like Finder's window title: no pill, the folder name bold,
  * its parents as quiet secondary crumbs that fill on hover. */
 window.nautilus-window .nautilus-pathbar {
@@ -193,7 +255,9 @@ window.nautilus-window .nautilus-network-view listview {
   --accent-color: var(--hui-accent);
 }
 
-/* List: contiguous rows with Finder's zebra stripes, selection = accent + white. */
+/* List: contiguous rows with Finder's zebra stripes; the selected row takes
+ * the theme's own selection pair (blue with white text in cupertino), the
+ * same one the menus use. */
 window.nautilus-window .nautilus-list-view columnview > listview { border-spacing: 0; padding-top: 4px; }
 window.nautilus-window .nautilus-list-view columnview > listview > row:nth-child(even) {
   background-color: color-mix(in srgb, var(--hui-fg) 3%, transparent);
@@ -211,12 +275,12 @@ window.nautilus-window .nautilus-network-view listview > row:hover {
 }
 window.nautilus-window .nautilus-list-view columnview > listview > row:selected,
 window.nautilus-window .nautilus-network-view listview > row:selected {
-  background-color: var(--hui-accent);
-  color: var(--hui-on-accent);
+  background-color: var(--hui-menu-selected-bg);
+  color: var(--hui-menu-selected-fg);
 }
 window.nautilus-window .nautilus-list-view columnview > listview > row:selected .dim-label,
 window.nautilus-window .nautilus-list-view columnview > listview > row:selected label {
-  color: var(--hui-on-accent);
+  color: var(--hui-menu-selected-fg);
 }
 /* Column header like Finder: secondary text, hairline column separators. */
 window.nautilus-window .nautilus-list-view columnview > header {
@@ -254,8 +318,8 @@ window.nautilus-window .nautilus-grid-view .icon-ui-labels-box > label {
               color var(--dur-fast) var(--ease-out);
 }
 window.nautilus-window .nautilus-grid-view gridview > child:selected .icon-ui-labels-box > label:not(.caption) {
-  background-color: var(--hui-accent);
-  color: var(--hui-on-accent);
+  background-color: var(--hui-menu-selected-bg);
+  color: var(--hui-menu-selected-fg);
 }
 
 window.nautilus-window rubberband {

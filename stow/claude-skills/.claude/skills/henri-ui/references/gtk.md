@@ -119,9 +119,23 @@ Apps, deren Code wir nicht haben, bekommen den Stil über `~/.config/gtk-4.0/gtk
 
 Files ist nach dem macOS-Finder gebaut: weißer Inhalt + Toolbar (52 px, Haarlinie),
 graue Sidebar mit Akzent-Icons und grauer Auswahl, Pfadleiste als Fenstertitel,
-Liste mit Zebra-Streifen und Akzent-Auswahl, Grid mit grauer Kachel + Akzent-Chip
-am Namen, NSMenu-Menüs (Highlight springt sofort). Icon-Größen per gsettings
+Liste mit Zebra-Streifen und der Theme-Auswahlfarbe (`--hui-menu-selected-*`, in
+cupertino Blau mit weißem Text), Grid mit grauer Kachel + Auswahl-Chip am Namen,
+NSMenu-Menüs (Highlight springt sofort). Icon-Größen per gsettings
 (Grid 64 px, Liste 16 px, `install/26-files-app.sh`).
+
+Die Toolbar ist wie in macOS 26 in **Kapseln** gruppiert (`--radius-pill`,
+Füllung `foreground` @ 8 %, Hover 16 %, gewähltes Segment 18 % + weicher
+Schatten): `.henri-cluster` ist eine Kapsel mit mehreren Knöpfen (Zurück |
+Vorwärts, durch eine Haarlinie getrennt; der Ansichts-Umschalter als
+Segment-Control), `.henri-pill` ein einzelner Knopf als Kapsel (Suche,
+Sidebar-Toggle, Ordnermenü, Ansichtsmenü mit Chevron). Gebaut werden sie in
+`henri_files.py` (`_hook_toolbar`), weil Nautilus nur einen Split-Button für
+Grid/Liste hat: der wird versteckt und durch zwei Segmente auf
+`slot.files-view-mode` (2 = Grid, 1 = Liste) plus einen Menü-Knopf mit seinem
+Menü ersetzt. Die Segmente hängen per `bind_property` an der Sichtbarkeit der
+originalen `NautilusViewControls`, damit im schmalen Fenster nur die Kopie in
+der ActionBar erscheint.
 
 Verhalten (nicht nur Aussehen) kommt aus der nautilus-python-Erweiterung
 `~/.local/share/nautilus-python/extensions/henri_files.py` (stow-Paket `nautilus`).
@@ -153,7 +167,9 @@ GTK3-Theme `HenriQuickLook`, das nur Sushi bekommt (`GTK_THEME` in
 `~/.local/lib/henri-quicklook/org.gnome.NautilusPreviewer` (Name muss so heißen: GJS
 findet Sushis Ressourcen über den Skriptnamen) patcht Sushi vor dem Start: helles
 Quelltext-Schema, Ordner-/Datei-Karte wie macOS (128-px-Icon, Größe/Anzahl, „Last
-modified"), Mindestgröße 160 statt 400. Quick Look testen ohne Fokus: temporäre
+modified"), Titelleiste wie Quick Look (Schließen links, daneben der runde
+„Open with"-Knopf mit dem Icon der Standard-App, `.henri-round`),
+Mindestgröße 160 statt 400. Quick Look testen ohne Fokus: temporäre
 Regel `hl.window_rule({ match = { class = "org.gnome.NautilusPreviewer" }, workspace =
 "special:huitest silent" })` per `hyprctl eval`, dann `gdbus call … ShowFile <uri> "" false ""`,
 danach `hyprctl reload`.

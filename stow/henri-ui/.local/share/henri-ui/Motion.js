@@ -98,6 +98,7 @@ var radiusPopover = 10
 var radiusControl = 8
 var radiusRow = 6
 var radiusChip = 5
+var radiusPill = 999   // capsules: toolbar clusters, segmented controls
 var hairlineAlpha = 0.10
 
 // ── Size (Apple HIG, desktop) ──────────────────────────────────────────────
