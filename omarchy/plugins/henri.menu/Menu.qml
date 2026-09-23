@@ -10,7 +10,6 @@ import "FuzzySearch.js" as FuzzySearch
 import "AppAliases.js" as AppAliases
 import "/usr/share/omarchy/shell/services/AppSearch.js" as AppSearch
 import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
-import "file:///home/henri/.local/share/henri-ui" as HUi
 
 Item {
   id: root
@@ -1842,10 +1841,9 @@ Item {
     // full screen instead would swallow Hyprland's focus grab and break
     // click-outside-to-close for every other popup.
     //
-    // It stays full screen until the card has faded out (henri-ui: nothing
-    // vanishes without a transition). While closing it takes neither keyboard
-    // nor pointer input, so a launched app gets focus and clicks immediately.
-    readonly property bool showing: root.opened || card.opacity > 0
+    // Closed it takes neither keyboard nor pointer input, so the app the card
+    // just launched has focus and accepts clicks in the same frame.
+    readonly property bool showing: root.opened
     visible: root.rowsLoaded
     anchors { top: true; left: true; bottom: panel.showing; right: panel.showing }
     implicitWidth: 1
@@ -1858,33 +1856,16 @@ Item {
     mask: root.opened ? null : closingMask
     Region { id: closingMask }
 
-    // Spotlight is a card over a scrim, not a full-screen composition like the
-    // overview. Henri wants it to appear with no animation at all: opening is
-    // a single frame (opacity 0 -> 1, scale already at 1, scrim with it).
-    // Closing keeps the popover exit (fade + scale to exitToScale, 0.7x,
-    // easeExit) so nothing vanishes without a transition.
-    readonly property bool animating: cardScale.running || (card.opacity > 0 && card.opacity < 1)
-    HUi.SpringValue {
-      id: cardScale
-      preset: Motion.smooth
-      to: root.opened ? 1 : Motion.exitToScale
-    }
-    // Only the exit is animated, and it runs as its own animation rather than
-    // as a Behavior with a duration that switches on root.opened: when
-    // `opened` flips, that duration binding is not guaranteed to be
-    // re-evaluated before the opacity change is intercepted, so the card kept
-    // fading IN over the exit curve -- 0.4 s of nothing much, then a ramp.
-    NumberAnimation {
-      id: cardFadeOut
-      target: card
-      property: "opacity"
-      to: 0
-      duration: Motion.exit(Motion.slow)
-      easing.type: Easing.BezierSpline
-      easing.bezierCurve: Motion.easeExit
-    }
-    // The query as it looked while open, so the search line does not blank
-    // out during the exit fade (closing clears filterText right away).
+    // Spotlight neither appears nor disappears with a transition: both
+    // directions are a single frame. That is Henri's explicit call for this
+    // one surface and overrides the henri-ui rule that nothing vanishes
+    // without one -- a launcher is asked for and dismissed dozens of times a
+    // day, and every frame between the key and the card reads as lag. So
+    // there is no fade, no scale and no spring here at all, and nothing that
+    // needs compositing to a layer.
+    //
+    // The query as it looked while open, kept because closing clears
+    // filterText and the search line must not blank out first.
     property string shownFilter: ""
     Binding {
       target: panel
@@ -1896,16 +1877,10 @@ Item {
     Connections {
       target: root
       function onOpenedChanged() {
-        if (!root.opened) { cardFadeOut.start(); return }
-        cardFadeOut.stop()
-        // Opening is instant, so the card is already at full size; a reopen
-        // mid-exit snaps back to 1 instead of springing there.
-        if (card.opacity < 0.01) {
-          cardScale.snap(1)
-          panel.cardTop = -1
-          panel.maxRowsHeight = -1
-        }
-        card.opacity = 1
+        if (!root.opened) return
+        // Every open starts from the centered pose.
+        panel.cardTop = -1
+        panel.maxRowsHeight = -1
       }
     }
 
@@ -1933,7 +1908,7 @@ Item {
     }
     onVisibleChanged: if (!visible) { cardTop = -1; maxRowsHeight = -1 }
 
-    // Scrim fades with the card (opacity only, never blur).
+    // The scrim comes and goes with the card (opacity only, never blur).
     Rectangle {
       anchors.fill: parent
       color: root.scrim
@@ -1954,14 +1929,7 @@ Item {
       y: panel.effectiveCardTop
       color: root.background
       borderSpec: root.borderSpec
-      // Set, not bound: onOpenedChanged owns it (instant in, animated out).
-      opacity: 0
-      scale: cardScale.value
-      transformOrigin: Item.Top
-      // Composite as one layer while animating, so the rows do not show
-      // through each other at partial opacity.
-      layer.enabled: panel.animating
-      layer.smooth: true
+      opacity: root.opened ? 1 : 0
       topPadding: root.contentMargin
       bottomPadding: root.contentMargin
       leftPadding: 0
