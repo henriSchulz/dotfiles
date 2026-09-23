@@ -31,14 +31,14 @@ GtkSource.StyleSchemeManager.prototype.get_scheme = function (id) {
     return getScheme.call(this, id);
 };
 
-// Folders and files without a viewer: the macOS Quick Look card -- a 128 px
+// Folders and files without a viewer: the macOS Quick Look card -- a 192 px
 // icon beside the name (semibold), then "size, n items" and "Last modified
 // Today at 14:28" in secondary text, all centred; Sushi shows a 256 px icon
 // with bold "Type / Size / Modified" captions hanging from the top.
 const {Gio, GLib, Gtk} = imports.gi;
 const Gettext = imports.gettext;
 const Fallback = imports.ui.fallbackRenderer.FallbackRenderer;
-const ICON_SIZE = 128;
+const ICON_SIZE = 192;
 
 function modifiedText(info) {
     const date = GLib.DateTime.new_from_timeval_local(info.get_modification_time());
@@ -58,7 +58,7 @@ Fallback.prototype._applyLabels = function (state) {
     const info = state.fileInfo;
     const isDir = info.get_file_type() === Gio.FileType.DIRECTORY;
 
-    this._titleLabel.set_markup(`<span weight="600" size="large">${esc(info.get_display_name())}</span>`);
+    this._titleLabel.set_markup(`<span weight="600" size="x-large">${esc(info.get_display_name())}</span>`);
 
     if (isDir) {
         this._typeLabel.hide();
@@ -85,13 +85,13 @@ Fallback.prototype._applyLabels = function (state) {
         const vbox = this._titleLabel.get_parent().get_parent();
         vbox.margin_top = 0;
         vbox.margin_start = 4;
-        vbox.margin_end = 24;
-        vbox.spacing = 3;
+        vbox.margin_end = 32;
+        vbox.spacing = 4;
         vbox.valign = Gtk.Align.CENTER;
-        this.spacing = 16;
-        this.margin_start = 20;
-        this.margin_top = 12;
-        this.margin_bottom = 20;
+        this.spacing = 20;
+        this.margin_start = 24;
+        this.margin_top = 16;
+        this.margin_bottom = 28;
         for (const label of [this._typeLabel, this._sizeLabel, this._dateLabel])
             label.get_style_context().add_class('dim-label');
     }

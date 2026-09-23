@@ -86,3 +86,10 @@ hl.layer_rule({ match = { namespace = "henri-dictation" }, blur = true, ignore_a
 -- Assistenten-Karte (henri.assistant) blendet sich selbst ein, wie das Diktat.
 hl.layer_rule({ match = { namespace = "henri-assistant" }, no_anim = true, animation = "none" })
 hl.layer_rule({ match = { namespace = "henri-assistant" }, blur = true, ignore_alpha = 0.3 })
+
+-- Quick Look (GNOME Sushi): Hyprland maps the window at a size of its own and
+-- only a frame later gets the preview's real size, so the default pop-in
+-- (87 %) reads as the card shrinking into place. Starting the pop-in from
+-- almost nothing hides that correction: the preview grows out of the file,
+-- like macOS.
+hl.window_rule({ match = { class = "org.gnome.NautilusPreviewer" }, float = true, animation = "popin 10%" })
