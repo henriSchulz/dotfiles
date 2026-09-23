@@ -541,11 +541,18 @@ Panel {
       onStreamFinished: root.applyHwStat(text)
     }
   }
+  // The summary sits on the main page now, so the first sample must not fork a
+  // process into the opening animation (henri-ui §5) — the tile shows the values
+  // from the last time the panel was open until the settled sample arrives.
+  Timer {
+    interval: Motion.settleDelay
+    running: root.opened
+    onTriggered: root.refreshHardware()
+  }
   Timer {
     interval: 2000
     repeat: true
     running: root.opened
-    triggeredOnStart: true
     onTriggered: root.refreshHardware()
   }
 
@@ -2214,6 +2221,56 @@ Panel {
         }
       }
 
+      // Hardware: CPU load, memory and temperature at a glance.
+      Tile {
+        revealIndex: 7
+        width: root.panelWidth
+        height: Style.space(52)
+        hoverable: true
+        onClicked: root.showPage("hardware")
+
+        Circle {
+          id: hwCircle
+          anchors.left: parent.left
+          anchors.leftMargin: Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          icon: root.sf(0x1009D3)
+          onClicked: root.showPage("hardware")
+        }
+        Column {
+          anchors.left: hwCircle.right
+          anchors.leftMargin: Style.space(8)
+          anchors.right: hwChevron.left
+          anchors.verticalCenter: parent.verticalCenter
+          Text {
+            width: parent.width
+            text: "Hardware"
+            color: root.fg
+            font.family: Style.font.family
+            font.pixelSize: Style.font.subtitle
+            font.weight: Font.DemiBold
+          }
+          HUi.CrossfadeText {
+            width: parent.width
+            visible: root.hwSummary !== ""
+            text: root.hwSummary
+            color: root.hw.temp >= 80 ? root.tempColor(root.hw.temp) : root.dimText
+            fontSize: Style.font.bodySmall
+            elide: Text.ElideRight
+          }
+        }
+        Text {
+          id: hwChevron
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(14)
+          anchors.verticalCenter: parent.verticalCenter
+          text: root.sf(0x10018A)
+          color: root.dimText
+          font.family: root.symbolFont
+          font.pixelSize: Style.font.icon
+        }
+      }
+
       // Advanced: rarely used controls, folded away like macOS disclosure sections.
       Item {
         id: advancedHeader
@@ -2313,60 +2370,9 @@ Panel {
             }
           }
 
-          // Hardware: CPU load, memory and temperature at a glance.
-          Tile {
-            revealIndex: 9
-            width: root.panelWidth
-            height: Style.space(52)
-            hoverable: true
-            onClicked: root.showPage("hardware")
-
-            Circle {
-              id: hwCircle
-              anchors.left: parent.left
-              anchors.leftMargin: Style.space(10)
-              anchors.verticalCenter: parent.verticalCenter
-              icon: root.sf(0x1009D3)
-              onClicked: root.showPage("hardware")
-            }
-            Column {
-              anchors.left: hwCircle.right
-              anchors.leftMargin: Style.space(8)
-              anchors.right: hwChevron.left
-              anchors.verticalCenter: parent.verticalCenter
-              Text {
-                width: parent.width
-                text: "Hardware"
-                color: root.fg
-                font.family: Style.font.family
-                font.pixelSize: Style.font.subtitle
-                font.weight: Font.DemiBold
-              }
-              Text {
-                width: parent.width
-                visible: text !== ""
-                text: root.hwSummary
-                color: root.hw.temp >= 80 ? root.tempColor(root.hw.temp) : root.dimText
-                font.family: Style.font.family
-                font.pixelSize: Style.font.bodySmall
-                elide: Text.ElideRight
-              }
-            }
-            Text {
-              id: hwChevron
-              anchors.right: parent.right
-              anchors.rightMargin: Style.space(14)
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.sf(0x10018A)
-              color: root.dimText
-              font.family: root.symbolFont
-              font.pixelSize: Style.font.icon
-            }
-          }
-
           // Bottom row, like "Edit Controls" on macOS.
           Tile {
-            revealIndex: 10
+            revealIndex: 9
             width: root.panelWidth
             height: Style.space(40)
             hoverable: true
