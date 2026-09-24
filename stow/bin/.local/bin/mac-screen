@@ -58,7 +58,9 @@ else
 fi
 echo "mac-screen: ${ROUTE:-$HOST} -> $HOST"
 
+VIEWER=""
 cleanup() {
+    [ -n "$VIEWER" ] && kill "$VIEWER" 2>/dev/null
     ssh -S "$CTL" -O exit "$MAC_USER@$HOST" 2>/dev/null || true
     rm -f "$CTL"
 }
@@ -81,6 +83,11 @@ set -- -SecurityTypes VncAuth -passwd "$PASSFILE" \
 
 # Quality high and compression low on purpose: the cable has bandwidth to spare
 # and latency is what matters, so there is nothing to gain from squeezing.
-# Not exec'd: that would replace this shell, and the cleanup trap above with
-# it, leaving the tunnel behind to hold the port against the next run.
-vncviewer "$@" "127.0.0.1:$LPORT"
+# Backgrounded and waited on, rather than run in the foreground: a shell
+# waiting on a foreground child defers its traps until that child is done, so a
+# signal here would clean up nothing and leave the tunnel holding the port. The
+# viewer also has to be killed by name in cleanup, because the signal that
+# interrupts the wait never reaches it.
+vncviewer "$@" "127.0.0.1:$LPORT" &
+VIEWER=$!
+wait "$VIEWER"
