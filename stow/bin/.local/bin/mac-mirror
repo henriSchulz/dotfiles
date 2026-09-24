@@ -1,0 +1,48 @@
+#!/bin/sh
+# Receive the screenless MacBook's display over AirPlay.
+#
+#   mac-mirror            # wait for the Mac to pick this machine
+#   mac-mirror -fs        # open fullscreen
+#   mac-mirror -n NAME    # advertise under a different name
+#
+# Then on the Mac: Control Centre, Screen Mirroring, pick this machine.
+#
+# AirPlay rather than VNC, and the difference is not a matter of tuning. VNC
+# sends changed rectangles and assumes whoever watches also moves the pointer,
+# so it transmits no cursor at all -- measured, not guessed -- and every moving
+# thing costs a fresh comparison in software. AirPlay sends the composited
+# picture through the Mac's hardware encoder as video: the cursor is in it
+# because it is part of the image, and movement is what the format is for.
+#
+# mac-screen is still the way in when this machine has to reach the Mac rather
+# than wait for it -- at a login window, say, where nobody can pick anything.
+
+set -e
+
+NAME=${MAC_MIRROR_NAME:-$(hostname)}
+SINK=${MAC_MIRROR_SINK:-waylandsink}
+
+command -v uxplay >/dev/null || {
+    echo "mac-mirror: uxplay is not installed (yay -S uxplay)" >&2
+    exit 1
+}
+
+# -p pins the ports so the firewall can name them. Without that they are
+# chosen at random and the stream is silently dropped, which looks exactly like
+# a Mac that connects and then spins forever -- UDP 7011 carries part of the
+# video and is easy to miss when opening only the obvious ones.
+if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "^Status: active"; then
+    ufw status | grep -q "7000:7100/udp" || cat >&2 <<'NOTE'
+mac-mirror: the firewall has no rule for AirPlay's UDP ports. The Mac will
+connect and then load forever. Open them for the routes you use, for instance:
+
+  sudo ufw allow in on mac0 to any port 7000:7100 proto udp
+  sudo ufw allow in on mac0 to any port 6000:6100 proto udp
+  sudo ufw allow in on mac0 to any port 7000:7100 proto tcp
+  sudo ufw allow in on mac0 to any port 5353 proto udp
+
+NOTE
+fi
+
+echo "mac-mirror: advertising as \"$NAME\" -- pick it in Screen Mirroring on the Mac"
+exec uxplay -n "$NAME" -p -vs "$SINK" "$@"
