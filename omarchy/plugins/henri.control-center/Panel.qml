@@ -74,6 +74,7 @@ Panel {
     && Number(padStream.last_packet || 0) > 0
     && Date.now() / 1000 - Number(padStream.last_packet) < 3
   readonly property string padTransport: padStream.transport || ""
+  readonly property bool padButton: padStream.button === "1"
   readonly property string padSubtitle: !padBridgeUp ? "Off"
     : padStreaming ? (padTransport !== "" ? "Over " + padTransport : "Connected")
     : padTransport !== "" ? "Idle \u00b7 " + padTransport
@@ -3364,8 +3365,9 @@ Panel {
         UsageHeader {
           width: padPage.innerWidth
           title: "Connection"
-          value: root.padStreaming ? (root.padTransport !== "" ? root.padTransport : "Connected")
-            : root.padBridgeUp ? "Idle" : "Off"
+          value: (root.padStreaming ? (root.padTransport !== "" ? root.padTransport : "Connected")
+            : root.padBridgeUp ? "Idle" : "Off")
+            + (root.padButton ? " \u00b7 click" : "")
           valueColor: root.padStreaming ? Color.accent : root.dimText
         }
         Text {
@@ -3406,6 +3408,7 @@ Panel {
           Stat { width: padPage.cellWidth; label: "Route"; value: root.padTransport !== "" ? root.padTransport : "--" }
           Stat { width: padPage.cellWidth; label: "Source"; value: root.padStream.source || "--" }
           Stat { width: padPage.cellWidth; label: "Fingers"; value: root.padStreaming ? String(root.padStream.contacts || 0) : "--" }
+          Stat { width: padPage.cellWidth; label: "Button"; value: !root.padStreaming ? "--" : root.padButton ? "Pressed" : "Released" }
           Stat { width: padPage.cellWidth; label: "Frames"; value: root.padStream.frames || "--" }
         }
       }
