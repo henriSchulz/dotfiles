@@ -2,14 +2,22 @@
 """Render a sheet of GTK4 widgets to a PNG, without anything showing on screen.
 
 For checking GTK styling (gtk-4.0/gtk.css, the experimental macOS mode, a
-theme switch) while the desktop is in use: the window is mapped — GTK renders
-nothing otherwise — but Hyprland parks it on a hidden special workspace with
-no focus, so it never appears and never steals the keyboard.
+theme switch) while the desktop is in use. GTK renders nothing until the
+compositor maps the window, so a temporary headless output is created and the
+window opens there: mapped, but on no real screen and unfocusable. The picture
+is taken in-process with a widget snapshot — Hyprland composites only layers
+(bar, wallpaper) on a headless output, never the windows, so grim would come
+back with an empty desktop.
 
   henri-gtk-preview [out.png]      default: ~/Downloads/gtk-preview.png
+
+Only this sheet of stock widgets, not arbitrary apps: the snapshot has to
+happen inside the process being styled.
 """
+import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import gi
@@ -24,12 +32,47 @@ out = Path(sys.argv[1] if len(sys.argv) > 1
            else Path.home() / "Downloads/gtk-preview.png")
 
 
+def hypr(*args, parse=False):
+    out = subprocess.run(["hyprctl", *(["-j"] if parse else []), *args],
+                         capture_output=True, text=True)
+    return json.loads(out.stdout) if parse else out.stdout
+
+
+def monitors():
+    return {m["name"]: m for m in hypr("monitors", "all", parse=True)}
+
+
 def park():
-    """Keep the window off screen and out of the focus stack."""
-    rules = [f"keyword windowrulev2 {r},title:^({TITLE})$" for r in
-             ("workspace special:gtkpreview silent", "noinitialfocus", "noanim")]
-    subprocess.run(["hyprctl", "--batch", " ; ".join(rules)],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    """A headless output to map the window on, plus rules that pin it there.
+
+    A hidden special workspace is not enough: Hyprland never maps a window on
+    one, and an unmapped widget snapshots to nothing.
+    """
+    before = set(monitors())
+    subprocess.run(["hyprctl", "output", "create", "headless"],
+                   stdout=subprocess.DEVNULL)
+    for _ in range(60):
+        new = set(monitors()) - before
+        if new:
+            name = new.pop()
+            x = max((m["x"] + m["width"] for m in monitors().values()), default=0)
+            subprocess.run(["hyprctl", "keyword", "monitor",
+                            f"{name},1280x800@60,{x}x0,1"], stdout=subprocess.DEVNULL)
+            ws = (monitors()[name].get("activeWorkspace") or {}).get("id")
+            rules = [f"keyword windowrulev2 {r},title:^({TITLE})$" for r in
+                     (f"workspace {ws} silent", "noinitialfocus", "nofocus", "noanim")]
+            subprocess.run(["hyprctl", "--batch", " ; ".join(rules)],
+                           stdout=subprocess.DEVNULL)
+            time.sleep(0.3)
+            return name
+        time.sleep(0.1)
+    sys.exit("henri-gtk-preview: Hyprland did not create a headless output")
+
+
+def unpark(monitor):
+    subprocess.run(["hyprctl", "output", "remove", monitor], stdout=subprocess.DEVNULL)
+    # The window rules were set at runtime; a reload drops them again.
+    subprocess.run(["hyprctl", "reload"], stdout=subprocess.DEVNULL)
 
 
 def sheet():
@@ -119,8 +162,14 @@ def sheet():
 
 
 def main():
-    park()
+    monitor = park()
+    try:
+        render()
+    finally:
+        unpark(monitor)
 
+
+def render():
     win = Gtk.Window()
     win.set_title(TITLE)
     win.set_default_size(WIDTH, HEIGHT)
@@ -151,9 +200,6 @@ def main():
     renderer.render_texture(node, None).save_to_png(str(out))
     renderer.unrealize()
     win.destroy()
-    # The rules were set at runtime; a reload drops them again.
-    subprocess.run(["hyprctl", "reload"], stdout=subprocess.DEVNULL,
-                   stderr=subprocess.DEVNULL)
     print(out)
 
 
