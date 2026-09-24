@@ -4,7 +4,7 @@
   "name": "Control Center",
   "version": "1.0.0",
   "author": "henri",
-  "description": "macOS-style Control Center: Wi-Fi, Bluetooth, AirDrop (LocalSend), Focus, Night Shift, Stay Awake, display and sound sliders, and Now Playing in one popup",
+  "description": "macOS-style Control Center: Wi-Fi, Bluetooth, AirDrop (LocalSend), the Mac's trackpad and screen, display and sound sliders, and Now Playing in one popup",
   "kinds": [
     "bar-widget"
   ],

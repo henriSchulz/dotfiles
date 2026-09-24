@@ -14,10 +14,9 @@ import "file:///home/henri/.local/share/henri-ui" as HUi
 
 // macOS-style Control Center. Everything here drives the same backends the
 // stock panels use (Quickshell.Networking, Bluetooth, Pipewire, the shell's
-// notification/nightlight/idle/media services, omarchy-brightness-display),
-// so state stays in sync with the bar icons and the detail panels. Clicking a
-// tile's round icon toggles it; clicking its label opens the stock detail
-// panel, like the chevron in macOS.
+// media service, omarchy-brightness-display), so state stays in sync with the
+// bar icons and the detail panels. Clicking a tile's round icon toggles it;
+// clicking its label opens the stock detail panel, like the chevron in macOS.
 Panel {
   id: root
   moduleName: "henri.control-center"
@@ -177,7 +176,11 @@ Panel {
   // ---- Detail pages. Like macOS, a tile's label swaps the grid for a list
   //      inside the same popup ("main" | "wifi" | "bluetooth" | "sound" | "hardware").
   property string page: "main"
-  function showPage(name) { page = name }
+  function showPage(name) {
+    // Opening the outputs list is the moment the plug state has to be current.
+    if (name === "sound" && !sinkPortProc.running) sinkPortProc.running = true
+    page = name
+  }
 
   // ---- Motion. `detailPage` keeps the last detail page mounted while it
   //      slides out, `revealed` drives the staggered tile entrance on open,
@@ -551,7 +554,37 @@ Panel {
     return "󰂯"
   }
 
-  // Sound outputs.
+  // Sound outputs. PipeWire keeps a sink for every HDMI/DisplayPort output of
+  // the card whether or not anything is plugged into it, and the node itself
+  // carries no hint of that -- the plug state lives on the device's routes,
+  // which Quickshell does not expose. pactl reports it per sink, so ask it and
+  // drop the sinks whose every port is unplugged.
+  property var unavailableSinks: ({})
+
+  Process {
+    id: sinkPortProc
+    command: ["pactl", "-f", "json", "list", "sinks"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var gone = ({})
+        try {
+          var list = JSON.parse(String(text || "[]"))
+          for (var i = 0; i < list.length; i++) {
+            var ports = list[i].ports || []
+            if (ports.length === 0) continue   // no ports at all: not a plug question
+            var reachable = false
+            for (var j = 0; j < ports.length; j++) {
+              if (String(ports[j].availability || "") !== "not available") reachable = true
+            }
+            if (!reachable) gone[list[i].name] = true
+          }
+        } catch (e) {}
+        root.unavailableSinks = gone
+      }
+    }
+  }
+
   readonly property var sinkRows: {
     var rows = []
     var nodes = Pipewire.nodes ? Pipewire.nodes.values : []
@@ -559,6 +592,8 @@ Panel {
       var n = nodes[i]
       if (!n || !n.isSink || n.isStream || !n.audio) continue
       if (n.name === "easyeffects_sink") continue
+      // Never hide what sound is actually playing out of.
+      if (unavailableSinks[n.name] && !(sink !== null && n.id === sink.id)) continue
       var props = n.properties || {}
       rows.push({
         id: n.id,
@@ -653,20 +688,13 @@ Panel {
 
   // ---- Services owned by the shell
   // Plugins only get narrow first-party proxies now (serviceFor is limited to
-  // the caller's own services); omarchy.idle resolves to the henri.idle clone.
+  // the caller's own services).
   function service(id) {
     return shell && typeof shell.firstPartyServiceFor === "function"
       ? shell.firstPartyServiceFor(id) : null
   }
-  readonly property var notifications: opened ? service("omarchy.notifications") : null
-  readonly property var nightlight: opened ? service("omarchy.nightlight") : null
-  readonly property var idle: opened ? service("omarchy.idle") : null
   readonly property var media: opened ? service("omarchy.media") : null
   readonly property var player: media ? media.activePlayer : null
-
-  readonly property bool dnd: notifications ? notifications.doNotDisturb : false
-  readonly property bool nightOn: nightlight ? nightlight.enabled : false
-  readonly property bool stayAwake: idle ? idle.stayAwake : false
 
   // ---- AirPods, through the librepods daemon (AirPodsService.qml). While
   //      they are connected the Sound tile becomes theirs and drills into
@@ -781,6 +809,7 @@ Panel {
 
   function refresh() {
     if (!stateProc.running) stateProc.running = true
+    if (!sinkPortProc.running) sinkPortProc.running = true
     if (!localsendProc.running) localsendProc.running = true
     if (!tilingProc.running) tilingProc.running = true
     if (!experimentalProc.running && !experimentalBusy) experimentalProc.running = true
@@ -1175,39 +1204,6 @@ Panel {
       anchors.rightMargin: lrowButton.width + Style.space(6)
       cursorShape: Qt.PointingHandCursor
       onClicked: lrow.details()
-    }
-  }
-
-  // Small square tile: centred icon circle with a caption underneath.
-  component SmallTile: Tile {
-    id: small
-    property string icon: ""
-    property bool on: false
-    property string title: ""
-    hoverable: true
-    width: Math.floor((root.colWidth - root.gap) / 2)
-    height: Style.space(82)
-
-    Column {
-      anchors.centerIn: parent
-      width: parent.width - Style.space(8)
-      spacing: Style.space(5)
-      Circle {
-        anchors.horizontalCenter: parent.horizontalCenter
-        icon: small.icon
-        on: small.on
-        onClicked: small.clicked()
-      }
-      Text {
-        width: parent.width
-        horizontalAlignment: Text.AlignHCenter
-        text: small.title
-        color: root.fg
-        font.family: Style.font.family
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
-        maximumLineCount: 2
-      }
     }
   }
 
@@ -2072,19 +2068,26 @@ Panel {
       Behavior on opacity { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
       Behavior on x { enabled: root.heightAnimated; NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
-      // Top block: connectivity on the left, Focus + small toggles on the right.
+      // Top block, two columns of equal height: what the machine talks to on
+      // the left, what it borrows from the Mac on the right.
       Row {
+        id: topRow
         spacing: root.gap
+        readonly property int tileHeight:
+          Math.max(connectivity.implicitHeight, macGroup.implicitHeight) + Style.space(20)
 
         Tile {
           revealIndex: 0
           width: root.colWidth
-          height: connectivity.implicitHeight + Style.space(20)
+          height: topRow.tileHeight
 
           Column {
             id: connectivity
-            anchors.fill: parent
-            anchors.margins: Style.space(10)
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: Style.space(10)
+            anchors.rightMargin: Style.space(10)
+            anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(4)
 
             ToggleRow {
@@ -2126,6 +2129,25 @@ Panel {
               }
               onDetails: { root.close(); root.run("omarchy-launch-or-focus localsend 'setsid -f localsend'") }
             }
+          }
+        }
+
+        // The Mac side of the desk: its trackpad and its screen, the two
+        // things this machine borrows over the cable.
+        Tile {
+          revealIndex: 1
+          width: root.colWidth
+          height: topRow.tileHeight
+
+          Column {
+            id: macGroup
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: Style.space(10)
+            anchors.rightMargin: Style.space(10)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(4)
+
             ToggleRow {
               width: parent.width
               icon: root.sf(0x100EA4)
@@ -2153,52 +2175,10 @@ Panel {
             }
           }
         }
-
-        Column {
-          spacing: root.gap
-
-          Tile {
-            revealIndex: 1
-            width: root.colWidth
-            height: Style.space(52)
-            hoverable: true
-            onClicked: if (root.notifications) root.notifications.setDoNotDisturb(!root.dnd)
-
-            ToggleRow {
-              anchors.fill: parent
-              anchors.leftMargin: Style.space(10)
-              anchors.rightMargin: Style.space(6)
-              icon: root.sf(0x1001BA)
-              on: root.dnd
-              title: "Focus"
-              subtitle: root.dnd ? "Do Not Disturb" : ""
-              onToggled: if (root.notifications) root.notifications.setDoNotDisturb(!root.dnd)
-              onDetails: if (root.notifications) root.notifications.setDoNotDisturb(!root.dnd)
-            }
-          }
-
-          Row {
-            spacing: root.gap
-            SmallTile {
-              revealIndex: 2
-              icon: root.sf(0x1001B4)
-              on: root.nightOn
-              title: "Night Shift"
-              onClicked: if (root.nightlight) root.nightlight.setNightlight(!root.nightOn)
-            }
-            SmallTile {
-              revealIndex: 3
-              icon: root.sf(0x1017B5)
-              on: root.stayAwake
-              title: "Stay Awake"
-              onClicked: if (root.idle) root.idle.setIdleEnabled(root.stayAwake)
-            }
-          }
-        }
       }
 
       SliderTile {
-        revealIndex: 4
+        revealIndex: 2
         visible: root.brightnessAvailable || root.displays.length > 0
         heading: "Display"
         icon: root.sf(root.brightness < 40 ? 0x1001AC : 0x1001AE)
@@ -2323,7 +2303,7 @@ Panel {
       }
 
       SliderTile {
-        revealIndex: 5
+        revealIndex: 3
         visible: root.sink !== null
         heading: root.airpodsActive ? root.airpodsName : "Sound"
         headingGlyph: root.airpodsActive ? airpodsGlyph : null
@@ -2342,7 +2322,7 @@ Panel {
 
       // Now Playing — only while an MPRIS player has a track.
       Tile {
-        revealIndex: 6
+        revealIndex: 4
         id: nowPlaying
         readonly property bool playing: root.player ? root.player.isPlaying === true : false
         visible: root.player !== null
@@ -2450,7 +2430,7 @@ Panel {
 
       // Hardware: CPU load, memory and temperature at a glance.
       Tile {
-        revealIndex: 7
+        revealIndex: 5
         width: root.panelWidth
         height: Style.space(52)
         hoverable: true
@@ -2552,7 +2532,7 @@ Panel {
 
           // Tiling layout for the active workspace.
           Tile {
-            revealIndex: 8
+            revealIndex: 6
             width: root.panelWidth
             height: tilingColumn.implicitHeight + Style.space(20)
 
@@ -2600,7 +2580,7 @@ Panel {
           // Experiments: things that are being tried out and can be switched
           // straight back off, like the macOS look for GTK apps.
           Tile {
-            revealIndex: 9
+            revealIndex: 7
             width: root.panelWidth
             height: Style.space(40)
             hoverable: true
@@ -2654,7 +2634,7 @@ Panel {
 
           // Bottom row, like "Edit Controls" on macOS.
           Tile {
-            revealIndex: 10
+            revealIndex: 8
             width: root.panelWidth
             height: Style.space(40)
             hoverable: true
