@@ -1,40 +1,41 @@
 #!/usr/bin/env python3
-"""Render a sheet of GTK4 widgets to a PNG, without anything showing on screen.
+"""Screenshot GTK widgets or a whole app without anything showing on screen.
 
 For checking GTK styling (gtk-4.0/gtk.css, the experimental macOS mode, a
-theme switch) while the desktop is in use. GTK renders nothing until the
-compositor maps the window, so a temporary headless output is created and the
-window opens there: mapped, but on no real screen and unfocusable. The picture
-is taken in-process with a widget snapshot — Hyprland composites only layers
-(bar, wallpaper) on a headless output, never the windows, so grim would come
-back with an empty desktop.
+theme switch) while the desktop is in use.
 
-  henri-gtk-preview [out.png]          GTK4, default ~/Downloads/gtk-preview.png
-  henri-gtk-preview --gtk3 [out.png]   GTK3 (the whole gtk-theme, so evince,
-                                       GTK3 dialogs, Chromium's file chooser)
+  henri-gtk-preview [out.png]                  GTK4 widget sheet
+  henri-gtk-preview --gtk3 [out.png]           GTK3 widget sheet
+  henri-gtk-preview --app nautilus [out.png]   a real app
 
-GTK3 is the easy half: it still has Gtk.OffscreenWindow, so no output and no
-window rules are needed at all. Only this sheet of stock widgets, not
-arbitrary apps: the snapshot has to happen inside the process being styled.
+Default output: ~/Downloads/gtk-preview.png
+
+How it stays off screen: Hyprland gets a throwaway headless output and the
+app is launched onto that output's workspace. Two things are easy to get
+wrong here:
+
+  * `hyprctl keyword windowrulev2 …` does nothing on this machine — the Lua
+    config has no legacy parser ("keyword can't work with non-legacy
+    parsers"), and hyprctl says so on stdout without failing, so the window
+    quietly opens on whatever the user is looking at. Rules go through
+    `hyprctl eval "hl.exec_cmd(cmd, { workspace = '<id> silent' })"`, which
+    also scopes them to this one launch, so there is nothing to undo.
+  * `grim -o HEADLESS-n` comes back with an empty desktop: Hyprland
+    composites only layer surfaces (bar, wallpaper) on a headless output,
+    never the windows. Capture the toplevel itself with `grim -T <stableId>`.
+
+GTK3 needs none of this — it still has Gtk.OffscreenWindow.
 """
 import json
+import os
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 TITLE = "henri-gtk-preview"
-WIDTH, HEIGHT = 720, 430
+WIDTH, HEIGHT = 760, 460
 DEFAULT_OUT = Path.home() / "Downloads/gtk-preview.png"
-
-
-def gtk4():
-    """Imported late — the GTK3 sheet in this file needs the other version."""
-    global GLib, Gsk, Gtk
-    import gi
-    gi.require_version("Gtk", "4.0")
-    gi.require_version("Gsk", "4.0")
-    from gi.repository import GLib, Gsk, Gtk
 
 
 def hypr(*args, parse=False):
@@ -43,45 +44,56 @@ def hypr(*args, parse=False):
     return json.loads(out.stdout) if parse else out.stdout
 
 
-def monitors():
-    return {m["name"]: m for m in hypr("monitors", "all", parse=True)}
-
-
-def park():
-    """A headless output to map the window on, plus rules that pin it there.
-
-    A hidden special workspace is not enough: Hyprland never maps a window on
-    one, and an unmapped widget snapshots to nothing.
-    """
-    before = set(monitors())
+def make_output():
+    """A headless monitor and the workspace Hyprland gives it."""
+    before = {m["name"] for m in hypr("monitors", "all", parse=True)}
     subprocess.run(["hyprctl", "output", "create", "headless"],
                    stdout=subprocess.DEVNULL)
     for _ in range(60):
-        new = set(monitors()) - before
+        mons = {m["name"]: m for m in hypr("monitors", "all", parse=True)}
+        new = set(mons) - before
         if new:
             name = new.pop()
-            x = max((m["x"] + m["width"] for m in monitors().values()), default=0)
-            subprocess.run(["hyprctl", "keyword", "monitor",
-                            f"{name},1280x800@60,{x}x0,1"], stdout=subprocess.DEVNULL)
-            ws = (monitors()[name].get("activeWorkspace") or {}).get("id")
-            rules = [f"keyword windowrulev2 {r},title:^({TITLE})$" for r in
-                     (f"workspace {ws} silent", "noinitialfocus", "nofocus", "noanim")]
-            subprocess.run(["hyprctl", "--batch", " ; ".join(rules)],
-                           stdout=subprocess.DEVNULL)
-            time.sleep(0.3)
-            return name
+            ws = (mons[name].get("activeWorkspace") or {}).get("id")
+            if ws:
+                return name, ws
         time.sleep(0.1)
     sys.exit("henri-gtk-preview: Hyprland did not create a headless output")
 
 
-def unpark(monitor):
-    subprocess.run(["hyprctl", "output", "remove", monitor], stdout=subprocess.DEVNULL)
-    # The window rules were set at runtime; a reload drops them again.
-    subprocess.run(["hyprctl", "reload"], stdout=subprocess.DEVNULL)
+def launch(command, ws, size=None):
+    """Start a command straight onto that workspace, never on a real screen."""
+    opts = [f"workspace = '{ws} silent'", "float = true"]
+    if size:
+        opts.append(f"size = '{size}'")
+    lua = "hl.exec_cmd('{}', {{ {} }})".format(
+        command.replace("\\", "\\\\").replace("'", "\\'"), ", ".join(opts))
+    result = hypr("eval", lua).strip()
+    if not result.startswith("ok"):
+        sys.exit(f"henri-gtk-preview: Hyprland refused the launch: {result}")
 
 
-def sheet():
-    """One of most things worth looking at: chrome, controls, list, sidebar."""
+def wait_for_window(ws, match, timeout):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for c in hypr("clients", parse=True):
+            if c["workspace"]["id"] != ws or not c["mapped"]:
+                continue
+            if match.lower() in f"{c['class']} {c['title']}".lower():
+                return c
+        time.sleep(0.15)
+    return None
+
+
+# ── the widget sheets ───────────────────────────────────────────────────────
+
+def gtk4_sheet(out):
+    """Runs in the child, on the headless workspace, and snapshots itself."""
+    import gi
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Gsk", "4.0")
+    from gi.repository import GLib, Gsk, Gtk
+
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
 
     head = Gtk.HeaderBar()
@@ -137,10 +149,6 @@ def sheet():
     scale.set_value(40)
     col.append(scale)
 
-    progress = Gtk.ProgressBar()
-    progress.set_fraction(0.6)
-    col.append(progress)
-
     rows = Gtk.ListBox()
     rows.add_css_class("boxed-list")
     for name, on in (("Wi-Fi", True), ("Bluetooth", False)):
@@ -163,7 +171,36 @@ def sheet():
 
     body.append(col)
     box.append(body)
-    return box
+
+    win = Gtk.Window()
+    win.set_title(TITLE)
+    win.set_default_size(WIDTH, HEIGHT)
+    win.set_child(box)
+    win.present()
+
+    # GTK draws nothing until the compositor maps the window; the parent put
+    # it somewhere invisible, so waiting for that is safe.
+    ctx = GLib.MainContext.default()
+    deadline = GLib.get_monotonic_time() + 5_000_000
+    while GLib.get_monotonic_time() < deadline:
+        if ctx.pending():
+            ctx.iteration(False)
+        elif win.get_mapped():
+            break
+
+    box.measure(Gtk.Orientation.HORIZONTAL, -1)
+    box.allocate(WIDTH, HEIGHT, -1, None)
+    snapshot = Gtk.Snapshot()
+    Gtk.WidgetPaintable.new(box).snapshot(snapshot, WIDTH, HEIGHT)
+    node = snapshot.to_node()
+    if node is None:
+        sys.exit("henri-gtk-preview: nothing was rendered")
+
+    renderer = Gsk.CairoRenderer()
+    renderer.realize(None)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    renderer.render_texture(node, None).save_to_png(str(out))
+    renderer.unrealize()
 
 
 def gtk3_sheet(out):
@@ -209,54 +246,76 @@ def gtk3_sheet(out):
         Gtk.main_iteration()
     out.parent.mkdir(parents=True, exist_ok=True)
     win.get_pixbuf().savev(str(out), "png", [], [])
-    print(out)
+
+
+# ── the three modes ─────────────────────────────────────────────────────────
+
+def shoot_sheet(out):
+    """Render the GTK4 sheet in a child parked on the headless output."""
+    monitor, ws = make_output()
+    try:
+        if out.exists():
+            out.unlink()
+        launch(f"{sys.executable} {__file__} --sheet-child {out}", ws)
+        deadline = time.monotonic() + 25
+        while time.monotonic() < deadline:
+            if out.exists() and out.stat().st_size:
+                print(out)
+                return
+            time.sleep(0.2)
+        sys.exit("henri-gtk-preview: the sheet never wrote its picture")
+    finally:
+        subprocess.run(["hyprctl", "output", "remove", monitor],
+                       stdout=subprocess.DEVNULL)
+
+
+def shoot_app(command, out, wait=20, settle=2.0):
+    """Run a real app on the headless output and capture its toplevel."""
+    name = Path(command.split()[0]).name
+    monitor, ws = make_output()
+    client = None
+    try:
+        launch(command, ws, size="1100 720")
+        client = wait_for_window(ws, name, wait)
+        if not client:
+            sys.exit(f"henri-gtk-preview: no {name} window on the headless output")
+        time.sleep(settle)
+
+        handle = client.get("stableId") or client["address"]
+        out.parent.mkdir(parents=True, exist_ok=True)
+        grim = subprocess.run(["grim", "-T", str(handle), str(out)],
+                              capture_output=True, text=True)
+        if grim.returncode:
+            sys.exit(f"henri-gtk-preview: grim failed: {grim.stderr.strip()}")
+        print(out)
+    finally:
+        if client:
+            try:
+                os.kill(client["pid"], 15)
+            except (OSError, KeyError, ProcessLookupError):
+                pass
+        subprocess.run(["hyprctl", "output", "remove", monitor],
+                       stdout=subprocess.DEVNULL)
 
 
 def main():
-    if "--gtk3" in sys.argv:
-        sys.argv.remove("--gtk3")
-        return gtk3_sheet(Path(sys.argv[1] if len(sys.argv) > 1 else DEFAULT_OUT))
-    monitor = park()
-    try:
-        render()
-    finally:
-        unpark(monitor)
+    argv = sys.argv[1:]
 
+    if argv and argv[0] == "--sheet-child":
+        return gtk4_sheet(Path(argv[1]))
 
-def render():
-    gtk4()
-    out = Path(sys.argv[1] if len(sys.argv) > 1 else DEFAULT_OUT)
-    win = Gtk.Window()
-    win.set_title(TITLE)
-    win.set_default_size(WIDTH, HEIGHT)
-    win.set_child(sheet())
-    win.present()
+    if argv and argv[0] == "--app":
+        if len(argv) < 2:
+            sys.exit("henri-gtk-preview: --app needs a command")
+        return shoot_app(argv[1], Path(argv[2]) if len(argv) > 2 else DEFAULT_OUT)
 
-    # Let mapping, styling and layout settle before the snapshot.
-    ctx = GLib.MainContext.default()
-    deadline = GLib.get_monotonic_time() + 2_000_000
-    while GLib.get_monotonic_time() < deadline:
-        if ctx.pending():
-            ctx.iteration(False)
-        elif win.get_mapped():
-            break
+    if argv and argv[0] == "--gtk3":
+        out = Path(argv[1]) if len(argv) > 1 else DEFAULT_OUT
+        gtk3_sheet(out)
+        print(out)
+        return
 
-    child = win.get_child()
-    child.measure(Gtk.Orientation.HORIZONTAL, -1)
-    child.allocate(WIDTH, HEIGHT, -1, None)
-    snapshot = Gtk.Snapshot()
-    Gtk.WidgetPaintable.new(child).snapshot(snapshot, WIDTH, HEIGHT)
-    node = snapshot.to_node()
-    if node is None:
-        sys.exit("henri-gtk-preview: nothing was rendered")
-
-    renderer = Gsk.CairoRenderer()
-    renderer.realize(None)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    renderer.render_texture(node, None).save_to_png(str(out))
-    renderer.unrealize()
-    win.destroy()
-    print(out)
+    shoot_sheet(Path(argv[0]) if argv else DEFAULT_OUT)
 
 
 if __name__ == "__main__":
