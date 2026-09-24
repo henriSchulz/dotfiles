@@ -2,6 +2,7 @@
   "bar": {
     "position": "top",
     "transparent": true,
+    "lockLayout": true,
     "centerAnchor": "",
     "layout": {
       "left": [

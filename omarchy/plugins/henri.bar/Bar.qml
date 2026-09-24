@@ -46,10 +46,15 @@ Item {
     position: "top",
     transparent: false,
     centerAnchor: "omarchy.clock",
+    lockLayout: false,
     layout: { left: [], center: [], right: [] }
   })
   property var layoutConfig: fallbackBarConfig.layout
   property string centerAnchor: ""
+  // Locks the bar against pointer edits: no dragging widgets into a new order
+  // and no dragging the bar itself to another screen edge. The omarchy bar
+  // commands and shell.json still change the layout; only the gestures go away.
+  property bool lockLayout: false
   property bool requestedTransparent: false
   property bool useTransparentForeground: false
   property bool transparent: false
@@ -376,6 +381,7 @@ Item {
     position = normalizePosition(config.position)
     setRequestedTransparency(config.transparent === true)
     centerAnchor = Util.canonicalWidgetId(config.centerAnchor || "")
+    lockLayout = config.lockLayout === true
 
     // layoutEntries feeds plain JS arrays to the module Repeaters, and QML
     // cannot diff those: reassigning layoutConfig rebuilds every widget on
@@ -1465,7 +1471,7 @@ Item {
     pressAndHoldInterval: 200
 
     function startDrag(x, y) {
-      if (dragging) return
+      if (dragging || root.lockLayout) return
       dragging = true
       root.beginBarMove(root.targetWindow(gestureArea))
       var scenePoint = gestureArea.mapToItem(null, x, y)
@@ -1724,7 +1730,8 @@ Item {
       property bool suppressClick: false
       property real pressedX: 0
       property real pressedY: 0
-      readonly property bool canReorder: root.shell && typeof root.shell.mutateShellConfig === "function"
+      readonly property bool canReorder: !root.lockLayout
+        && root.shell && typeof root.shell.mutateShellConfig === "function"
       readonly property real dragThreshold: Style.space(4)
 
       anchors.fill: parent
