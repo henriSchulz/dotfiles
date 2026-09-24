@@ -1105,6 +1105,79 @@ Panel {
     }
   }
 
+  // Like ToggleRow, but for something you open rather than switch on. The
+  // circle still carries the state, because knowing whether the mirror is
+  // live is worth a glance -- it just is not the control any more. Opening a
+  // window is an action, and an action wants a button.
+  component LaunchRow: Item {
+    id: lrow
+    property string icon: ""
+    property bool on: false
+    property string title: ""
+    property string subtitle: ""
+    property string action: "Open"
+    signal launched()
+    signal details()
+    implicitHeight: Style.space(38)
+
+    Circle {
+      id: lrowCircle
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      icon: lrow.icon
+      on: lrow.on
+      onClicked: lrow.launched()
+    }
+    Column {
+      anchors.left: lrowCircle.right
+      anchors.leftMargin: Style.space(8)
+      anchors.right: lrowButton.left
+      anchors.rightMargin: Style.space(6)
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: 0
+      Text {
+        width: parent.width
+        text: lrow.title
+        color: root.fg
+        font.family: Style.font.family
+        font.pixelSize: Style.font.subtitle
+        font.weight: Font.DemiBold
+        elide: Text.ElideRight
+      }
+      Text {
+        width: parent.width
+        text: lrow.subtitle
+        visible: text !== ""
+        color: root.dimText
+        font.family: Style.font.family
+        font.pixelSize: Style.font.bodySmall
+        elide: Text.ElideRight
+      }
+    }
+    // Icon only, and squarely for room: a worded button leaves about ninety
+    // pixels for the title in a tile this narrow, and "Mac Screen" does not
+    // fit in ninety pixels. Icon-only controls owe the reader a name, and
+    // there is no tooltip anywhere in this panel to give them one, so the
+    // accessible name carries it.
+    HUi.Button {
+      id: lrowButton
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      icon: root.sf(0x100C13)
+      fontFamily: root.symbolFont
+      Accessible.role: Accessible.Button
+      Accessible.name: lrow.action + " " + lrow.title
+      onClicked: lrow.launched()
+    }
+    MouseArea {
+      anchors.fill: parent
+      anchors.leftMargin: lrowCircle.width + Style.space(4)
+      anchors.rightMargin: lrowButton.width + Style.space(6)
+      cursorShape: Qt.PointingHandCursor
+      onClicked: lrow.details()
+    }
+  }
+
   // Small square tile: centred icon circle with a caption underneath.
   component SmallTile: Tile {
     id: small
@@ -2064,18 +2137,18 @@ Panel {
                 : "systemctl --user start mtbridge")
               onDetails: root.showPage("trackpad")
             }
-            ToggleRow {
+            LaunchRow {
               width: parent.width
               icon: root.sf(0x1008B9)
               on: root.screenOn
               title: "Mac Screen"
               subtitle: root.screenSubtitle
-              // Stopped by its own pid rather than by name: more than one
-              // viewer could be running, and the one this panel started is
-              // the one it may end.
-              onToggled: root.run(root.screenOn
-                ? "kill " + (root.screenState.pid || 0)
-                : "setsid -f mac-stream >/dev/null 2>&1")
+              action: root.screenOn ? "Show" : "Open"
+              // Already running means raise the window it is in, not start a
+              // second one. Closing it is what closing a window is for; the
+              // detail page has the switch for when it is on another
+              // workspace.
+              onLaunched: { root.close(); root.run("omarchy-launch-or-focus gst-launch-1.0 'setsid -f mac-stream'") }
               onDetails: root.showPage("screen")
             }
           }
@@ -3380,11 +3453,6 @@ Panel {
       PageHeader {
         visible: root.detailPage === "screen"
         title: "Mac Screen"
-        showSwitch: true
-        checked: root.screenOn
-        onToggled: root.run(root.screenOn
-          ? "kill " + (root.screenState.pid || 0)
-          : "setsid -f mac-stream >/dev/null 2>&1")
       }
       Separator { visible: root.detailPage === "screen" }
       Column {
@@ -3418,6 +3486,22 @@ Panel {
             : root.padLinkUp
               ? "Cable is up. Turning this on opens the mirror."
               : "No cable. It will fall back to Wi-Fi, which costs delay and drops frames."
+        }
+
+        Row {
+          spacing: Style.space(6)
+          HUi.Button {
+            text: root.screenOn ? "Show window" : "Open mirror"
+            prominent: !root.screenOn
+            onClicked: { root.close(); root.run("omarchy-launch-or-focus gst-launch-1.0 'setsid -f mac-stream'") }
+          }
+          HUi.Button {
+            visible: root.screenOn
+            text: "Close"
+            // By pid from the status file, not by name: more than one viewer
+            // may be running and only the one that wrote this file is ours.
+            onClicked: root.run("kill " + (root.screenState.pid || 0))
+          }
         }
 
         Separator { width: screenPage.innerWidth }
