@@ -1,0 +1,375 @@
+#!/bin/sh
+# Turn the Mac's screen mirroring on or off, from here.
+#
+#   mac-airplay on       # mirror the Mac onto this machine
+#   mac-airplay off
+#   mac-airplay status
+#
+# The Mac has no screen to press "Screen Mirroring" on, which is the whole
+# problem this solves: Control Centre is driven from this side instead, through
+# mt-runner.app (see mac-run).
+#
+# Control Centre exposes no device names, only identifiers carrying each
+# receiver's AirPlay device ID -- a MAC address. mac-mirror therefore pins
+# uxplay to a fixed one rather than letting it take whichever interface the
+# stream runs over; otherwise the entry to press would move whenever the route
+# changes, which is exactly when nobody can look.
+
+set -e
+
+DEV=${MAC_AIRPLAY_ID:-02:4D:54:42:52:01}
+ACTION=${1:-status}
+case "$ACTION" in
+    on|off|status) ;;
+    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "mac-airplay: expected on, off or status" >&2; exit 2 ;;
+esac
+
+# Lower case: Control Centre writes the device ID in lower case, and
+# AppleScript's "ends with" is case insensitive anyway, but the two should
+# agree on sight.
+DEVLC=$(printf '%s' "$DEV" | tr 'A-Z' 'a-z')
+
+# Everything happens inside one run. The Control Centre popover empties itself
+# the moment it loses focus, so a script that opens it, returns, and comes back
+# for the buttons finds nothing there.
+#
+# The tree is walked by hand rather than with `entire contents`, which returns
+# an empty list often enough on this panel to look like the control is gone.
+mac-run "$(cat <<APPLESCRIPT
+on hasId(root_, wanted)
+	tell application "System Events"
+		try
+			repeat with c in (UI elements of root_)
+				set el to contents of c
+				try
+					if ((value of attribute "AXIdentifier" of el) as text) is wanted then return true
+				end try
+				if my hasId(el, wanted) then return true
+			end repeat
+		end try
+		return false
+	end tell
+end hasId
+
+on findById(root_, wanted)
+	tell application "System Events"
+		try
+			repeat with c in (UI elements of root_)
+				set el to contents of c
+				try
+					if ((value of attribute "AXIdentifier" of el) as text) is wanted then return el
+				end try
+				set r to my findById(el, wanted)
+				if r is not missing value then return r
+			end repeat
+		end try
+		return missing value
+	end tell
+end findById
+
+on ccIcon()
+	tell application "System Events" to tell process "ControlCenter" to return first menu bar item of menu bar 1 whose description is "Control Center"
+end ccIcon
+
+-- Not simply "window 1". An AirPlay session in progress gives Control Centre a
+-- second, full-screen window on the receiver, and a dismissed popover can
+-- linger as a third with nothing in it. Pick the window by what it contains.
+-- The grid also loads lazily: it can take several seconds for the tiles to
+-- exist, and asking too early looks exactly like the panel not being there.
+on ccPanel()
+	repeat 3 times
+		tell application "System Events"
+			tell process "ControlCenter"
+				repeat 4 times
+					repeat with i from 1 to (count of windows)
+						if my hasId(window i, "screen-mirroring-device-list") then return window i
+						if my hasId(window i, "controlcenter-screen-mirroring") then return window i
+					end repeat
+					try
+						perform action "AXPress" of my ccIcon()
+					end try
+					delay 4
+				end repeat
+			end tell
+		end tell
+		-- Control Centre can get stuck showing an empty popover that neither
+		-- the icon nor escape will close. Nothing recovers it from the
+		-- outside; restarting it does, and it comes straight back.
+		try
+			do shell script "killall ControlCenter"
+		end try
+		delay 6
+	end repeat
+	return missing value
+end ccPanel
+
+on deviceList()
+	set w to my ccPanel()
+	if w is missing value then return missing value
+	set dl to my findById(w, "screen-mirroring-device-list")
+	if dl is not missing value then return dl
+	set tile to my findById(w, "controlcenter-screen-mirroring")
+	if tile is missing value then return missing value
+	tell application "System Events" to perform action "AXPress" of tile
+	repeat 20 times
+		delay 0.75
+		set w to my ccPanel()
+		if w is missing value then exit repeat
+		set dl to my findById(w, "screen-mirroring-device-list")
+		if dl is not missing value then return dl
+	end repeat
+	return missing value
+end deviceList
+
+-- Once connected the receiver's row stops being a checkbox and becomes a
+-- disclosure triangle, a line of status text and a pair of buttons, all
+-- carrying the same identifier. The text is the readable part.
+on receiverState(dl)
+	tell application "System Events"
+		repeat with c in (UI elements of dl)
+			set el to contents of c
+			try
+				if ((value of attribute "AXIdentifier" of el) as text) ends with "$DEVLC" then
+					if (role of el) is "AXStaticText" then return ((value of el) as text)
+				end if
+			end try
+		end repeat
+		return "disconnected"
+	end tell
+end receiverState
+
+on receiverToggle(dl)
+	tell application "System Events"
+		repeat with c in (UI elements of dl)
+			set el to contents of c
+			try
+				if (role of el) is "AXCheckBox" and ((value of attribute "AXIdentifier" of el) as text) ends with "$DEVLC" then return el
+			end try
+		end repeat
+		return missing value
+	end tell
+end receiverToggle
+
+-- Choosing to mirror raises a question in two shapes. First a panel of three
+-- unlabelled tiles -- whole screen, one window, second desktop -- with cancel
+-- and confirm beneath them. Confirming leaves a bar across the top of the
+-- screen asking once more. The bar is not exposed to scripting at all, so it
+-- is answered with Return, its blue button being the default.
+on buttonsOf(root_, acc)
+	tell application "System Events"
+		try
+			repeat with c in (UI elements of root_)
+				set el to contents of c
+				try
+					if (role of el) is "AXButton" then set end of acc to el
+				end try
+				set acc to my buttonsOf(el, acc)
+			end repeat
+		end try
+		return acc
+	end tell
+end buttonsOf
+
+on answerChooser()
+	tell application "System Events"
+		if not (exists process "ControlCenterHelper") then return false
+		tell process "ControlCenterHelper"
+			if (count of windows) is 0 then return false
+			set w to window 1
+		end tell
+	end tell
+	set btns to my buttonsOf(w, {})
+	set tiles to {}
+	set acts to {}
+	tell application "System Events"
+		repeat with b in btns
+			try
+				set {bw, bh} to (size of b)
+				if bh > 80 then
+					set end of tiles to b
+				else
+					set end of acts to b
+				end if
+			end try
+		end repeat
+		if (count of acts) is 0 then return false
+		if (count of tiles) > 0 then
+			set chosen to item 1 of tiles
+			set chosenX to 100000
+			repeat with t in tiles
+				set {tx, ty} to (position of t)
+				if tx < chosenX then
+					set chosenX to tx
+					set chosen to t
+				end if
+			end repeat
+			perform action "AXPress" of chosen
+			delay 1.5
+		end if
+		set okBtn to item 1 of acts
+		set okW to -1
+		repeat with a in acts
+			set {aw, ah} to (size of a)
+			if aw > okW then
+				set okW to aw
+				set okBtn to a
+			end if
+		end repeat
+		perform action "AXPress" of okBtn
+	end tell
+	return true
+end answerChooser
+
+-- True while the receiver is showing the placeholder rather than the Mac's
+-- screen. It is the only honest sign that mirroring has actually started.
+on shieldUp()
+	tell application "System Events"
+		tell process "ControlCenter"
+			repeat with i from 1 to (count of windows)
+				try
+					if ((title of window i) as text) contains "shield" then return true
+				end try
+			end repeat
+		end tell
+	end tell
+	return false
+end shieldUp
+
+on rowButtons(dl)
+	set acc to {}
+	tell application "System Events"
+		repeat with c in (UI elements of dl)
+			set el to contents of c
+			try
+				if (role of el) is "AXButton" and ((value of attribute "AXIdentifier" of el) as text) ends with "$DEVLC" then set end of acc to el
+			end try
+		end repeat
+	end tell
+	return acc
+end rowButtons
+
+on closeCC()
+	tell application "System Events"
+		tell process "ControlCenter"
+			repeat 3 times
+				if (count of windows) is 0 then return
+				perform action "AXPress" of my ccIcon()
+				delay 0.6
+			end repeat
+		end tell
+	end tell
+end closeCC
+
+set want to "$ACTION"
+
+-- A chooser left open blocks Control Centre entirely, so clear it first.
+if my answerChooser() then delay 4
+
+set dl to my deviceList()
+if dl is missing value then return "ERROR: Control Center never showed the receiver list"
+set nowState to my receiverState(dl)
+
+if want is "status" then
+	set sh to my shieldUp()
+	my closeCC()
+	if nowState is "disconnected" then return "off"
+	if sh then return "connected, not mirroring yet"
+	return "on"
+end if
+
+if want is "off" then
+	if nowState is "disconnected" then
+		my closeCC()
+		return "off (already)"
+	end if
+	-- When connected the row has no checkbox any more; the right-hand of its
+	-- two buttons is what lets go of the receiver.
+	set rowBtns to my rowButtons(dl)
+	if (count of rowBtns) is 0 then
+		my closeCC()
+		return "ERROR: nothing in the receiver's row will disconnect it"
+	end if
+	set tog to item 1 of rowBtns
+	set tx to -1
+	tell application "System Events"
+		repeat with b in rowBtns
+			set {bx, byy} to (position of b)
+			if bx > tx then
+				set tx to bx
+				set tog to b
+			end if
+		end repeat
+		perform action "AXPress" of tog
+	end tell
+	delay 4
+	set dl to my deviceList()
+	if dl is missing value then return "ERROR: Control Center went away before this could be checked"
+	set nowState to my receiverState(dl)
+	my closeCC()
+	if nowState is "disconnected" then return "off"
+	return "ERROR: still connected (" & nowState & ")"
+end if
+
+-- want is "on"
+if nowState is "disconnected" then
+	set tog to my receiverToggle(dl)
+	if tog is missing value then
+		my closeCC()
+		return "ERROR: the receiver is not offered in Control Center"
+	end if
+	tell application "System Events" to perform action "AXPress" of tog
+	repeat 20 times
+		delay 1
+		set dl to my deviceList()
+		if dl is not missing value then
+			if my receiverState(dl) is not "disconnected" then exit repeat
+		end if
+	end repeat
+end if
+
+set dl to my deviceList()
+if dl is missing value then return "ERROR: Control Center went away while connecting"
+if my receiverState(dl) is "disconnected" then
+	my closeCC()
+	return "ERROR: the receiver did not connect"
+end if
+
+-- Connected is not yet mirroring: the Mac shows a placeholder and waits to be
+-- told what to send. The left of the row's two buttons is the mirror choice.
+if my shieldUp() then
+	set rowBtns to my rowButtons(dl)
+	if (count of rowBtns) is 0 then
+		my closeCC()
+		return "ERROR: connected, but nothing offers to mirror"
+	end if
+	set mirrorBtn to item 1 of rowBtns
+	set mx to 100000
+	tell application "System Events"
+		repeat with b in rowBtns
+			set {bx, byy} to (position of b)
+			if bx < mx then
+				set mx to bx
+				set mirrorBtn to b
+			end if
+		end repeat
+		perform action "AXPress" of mirrorBtn
+	end tell
+	repeat 16 times
+		delay 1.5
+		if my answerChooser() then exit repeat
+	end repeat
+	-- Then the bar along the top, which only the keyboard can reach.
+	repeat 8 times
+		delay 1.5
+		if not (my shieldUp()) then exit repeat
+		tell application "System Events" to key code 36
+	end repeat
+end if
+
+set stillShield to my shieldUp()
+my closeCC()
+if stillShield then return "connected, but the Mac is still asking what to show"
+return "on"
+APPLESCRIPT
+)"

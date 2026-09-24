@@ -1,11 +1,13 @@
 #!/bin/sh
 # Receive the screenless MacBook's display over AirPlay.
 #
-#   mac-mirror            # wait for the Mac to pick this machine
+#   mac-mirror            # receive, and tell the Mac to start mirroring
+#   mac-mirror --wait     # only receive; the Mac starts it
 #   mac-mirror -fs        # open fullscreen
 #   mac-mirror -n NAME    # advertise under a different name
 #
-# Then on the Mac: Control Centre, Screen Mirroring, pick this machine.
+# There is nothing to press on the Mac -- that is the point -- so this asks it
+# to start mirroring itself, through mac-airplay. --wait leaves that out.
 #
 # AirPlay rather than VNC, and the difference is not a matter of tuning. VNC
 # sends changed rectangles and assumes whoever watches also moves the pointer,
@@ -21,6 +23,23 @@ set -e
 
 NAME=${MAC_MIRROR_NAME:-$(hostname)}
 SINK=${MAC_MIRROR_SINK:-waylandsink}
+# A fixed device ID, because that is the only handle Control Centre gives the
+# receiver: its entry is named after the AirPlay device ID and nothing else.
+# Left alone, uxplay takes the MAC of whichever interface it binds to, so the
+# entry would move between cable and Wi-Fi. A locally administered address
+# (the 02: prefix) cannot collide with real hardware.
+DEVICE_ID=${MAC_AIRPLAY_ID:-02:4D:54:42:52:01}
+export MAC_AIRPLAY_ID=$DEVICE_ID
+
+AUTO=1
+ARGS=""
+for a in "$@"; do
+    case "$a" in
+        --wait|--no-auto) AUTO=0 ;;
+        *) ARGS="$ARGS $a" ;;
+    esac
+done
+set -- $ARGS
 
 command -v uxplay >/dev/null || {
     echo "mac-mirror: uxplay is not installed (yay -S uxplay)" >&2
@@ -44,5 +63,39 @@ connect and then load forever. Open them for the routes you use, for instance:
 NOTE
 fi
 
-echo "mac-mirror: advertising as \"$NAME\" -- pick it in Screen Mirroring on the Mac"
-exec uxplay -n "$NAME" -p -vs "$SINK" "$@"
+echo "mac-mirror: advertising as \"$NAME\" (device $DEVICE_ID)"
+
+# -nc keeps the video window when a session ends. The Mac connects without
+# having decided between mirroring and extending, and choosing tears the
+# session down and builds a new one immediately -- which used to race uxplay's
+# renderer teardown against its own restart and segfault it every time.
+RECEIVER="uxplay -n $NAME -p -m $DEVICE_ID -nc -vs $SINK"
+
+if [ "$AUTO" = 0 ]; then
+    echo "mac-mirror: waiting -- pick it in Screen Mirroring on the Mac"
+    exec $RECEIVER "$@"
+fi
+
+$RECEIVER "$@" &
+UXPLAY=$!
+# Kill the receiver whatever ends this script, or a half-finished start leaves
+# a process holding the AirPlay ports and the next run advertises nothing.
+trap 'kill "$UXPLAY" 2>/dev/null || true' EXIT INT TERM
+
+# The Mac cannot be told to mirror to something it has not discovered yet, and
+# discovery is mDNS: a second or two, sometimes longer on Wi-Fi.
+sleep 3
+if ! kill -0 "$UXPLAY" 2>/dev/null; then
+    echo "mac-mirror: uxplay exited straight away -- are the ports already in use?" >&2
+    exit 1
+fi
+
+echo "mac-mirror: asking the Mac to start mirroring ..."
+if STATE=$(mac-airplay on 2>&1); then
+    echo "mac-mirror: $STATE"
+else
+    echo "mac-mirror: could not start it from here -- $STATE" >&2
+    echo "mac-mirror: still receiving; start it on the Mac, or run mac-airplay on" >&2
+fi
+
+wait "$UXPLAY"

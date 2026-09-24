@@ -1,0 +1,74 @@
+#!/bin/sh
+# Run an AppleScript on the Mac, from here.
+#
+#   mac-run 'tell application "System Events" to return name of first process'
+#   mac-run -f script.applescript
+#   echo '...' | mac-run -
+#
+# Not the same as `ssh mac osascript`. Anything that touches the user interface
+# needs the Accessibility grant, and macOS only gives that to a process in the
+# login session -- an SSH command is not one and never will be, whatever is
+# ticked in System Settings. So the script is handed to mt-runner.app, which
+# does live in that session, and the answer comes back through a file.
+#
+# Build the app once with macos/runner/build.sh in the mt-bridge repo, then
+# grant it Accessibility.
+
+set -e
+
+MAC_USER=${MAC_USER:-henrischulz}
+MAC_CABLE=${MAC_CABLE:-10.55.0.2}
+MAC_WIFI=${MAC_WIFI:-192.168.178.126}
+APP=${MAC_RUN_APP:-'$HOME/Applications/mt-runner.app'}
+REMOTE_DIR='$HOME/.config/mt-bridge'
+TIMEOUT=${MAC_RUN_TIMEOUT:-45}
+
+die() { echo "mac-run: $*" >&2; exit 1; }
+
+SCRIPT=""
+case "$1" in
+    -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -f|--file) [ -n "$2" ] || die "--file needs a path"; SCRIPT=$(cat "$2") ;;
+    -)         SCRIPT=$(cat) ;;
+    "")        die "nothing to run (try --help)" ;;
+    *)         SCRIPT=$1 ;;
+esac
+
+reachable() { timeout 2 sh -c "echo > /dev/tcp/$1/22" 2>/dev/null; }
+
+if [ -n "$MAC_RUN_HOST" ]; then
+    HOST=$MAC_RUN_HOST
+elif reachable "$MAC_CABLE"; then
+    HOST=$MAC_CABLE
+elif reachable "$MAC_WIFI"; then
+    HOST=$MAC_WIFI
+else
+    die "the Mac answers on neither $MAC_CABLE nor $MAC_WIFI"
+fi
+
+# The script travels on stdin rather than in the argument list: it is arbitrary
+# text with quotes in it, and it would have to survive two shells intact.
+printf '%s' "$SCRIPT" | ssh -o ConnectTimeout=5 "$MAC_USER@$HOST" "
+set -e
+mkdir -p $REMOTE_DIR
+cat > $REMOTE_DIR/runner.applescript
+rm -f $REMOTE_DIR/runner.out
+open -a \"$APP\"
+i=0
+while [ \$i -lt $((TIMEOUT * 4)) ]; do
+    [ -f $REMOTE_DIR/runner.out ] && break
+    sleep 0.25
+    i=\$((i + 1))
+done
+if [ -f $REMOTE_DIR/runner.out ]; then
+    cat $REMOTE_DIR/runner.out
+    echo
+else
+    echo 'mac-run: no answer -- is mt-runner.app built and allowed?' >&2
+    # A run that never finishes is nearly always the app sitting behind a
+    # permission dialog that nobody can see. Leaving it there would block
+    # every Apple Event on the Mac, so it does not get to stay.
+    pkill -f 'mt-runner[.]app' 2>/dev/null || true
+    exit 3
+fi
+"
