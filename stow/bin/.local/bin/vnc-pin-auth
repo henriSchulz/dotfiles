@@ -1,27 +1,61 @@
 #!/usr/bin/env python3
-"""Offer a VNC client exactly one security type, and relay everything else.
+"""Handle the VNC handshake for a client that cannot, and relay the rest.
 
-macOS Screen Sharing lists its own schemes first: 30, 33, 36, then 2, then 35.
-libvncclient -- which is what Remmina and anything else built on it uses --
-takes the first entry in that list and never reaches the one it can actually
-complete, so the connection dies at "could not authenticate" with a perfectly
-good password.
+Two things make macOS Screen Sharing awkward for Linux viewers:
 
-There is no client option to pin the choice, so this pins it from the other
-side: the server's list is rewritten to hold only VncAuth before the client
-sees it. Nothing else is touched. The password never passes through here --
-the client still does its own challenge and response with the server, byte for
-byte, so this holds no secret and cannot weaken the exchange.
+  * It lists its own security schemes first -- 30, 33, 36, then 2 -- and
+    libvncclient, which most viewers are built on, takes the first entry and
+    never reaches the one it can finish. It then reports "could not
+    authenticate" on a perfectly good password.
 
-    vnc-pin-auth [--listen PORT] [--target HOST:PORT]
+  * A viewer that keeps the password only for the lifetime of a connection
+    fails every reconnect after the Mac sleeps or the service restarts.
+
+So the handshake happens here instead. This end authenticates against the Mac
+with the stored password and offers the client the None scheme, which every
+viewer handles and which needs nothing remembered. Nothing is weakened by
+that: this listens on the loopback only, and the hop to the Mac is an SSH
+tunnel either way.
+
+    vnc-pin-auth [--listen PORT] [--target HOST:PORT] [--passwd FILE]
 """
 import argparse
+import os
 import socket
 import socketserver
+import struct
 import sys
 import threading
 
-VNC_AUTH = 2
+try:
+    from cryptography.hazmat.decrepit.ciphers.algorithms import TripleDES
+except ImportError:  # cryptography < 43
+    from cryptography.hazmat.primitives.ciphers.algorithms import TripleDES
+from cryptography.hazmat.primitives.ciphers import Cipher, modes
+
+SEC_NONE, SEC_VNCAUTH = 1, 2
+
+# VNC's DES uses each key byte's bits in reverse order, and single DES is
+# TripleDES with the same key three times.
+_REVERSED = bytes(int(format(b, "08b")[::-1], 2) for b in range(256))
+# The fixed key vncpasswd files are obfuscated with. It is public, and storing
+# a password this way protects it from a glance, not from anyone determined.
+_STORE_KEY = bytes([23, 82, 107, 6, 35, 78, 88, 7])
+
+
+def _des(key8, block, decrypt=False):
+    key = bytes(_REVERSED[b] for b in key8)
+    ctx = Cipher(TripleDES(key * 3), modes.ECB())
+    op = ctx.decryptor() if decrypt else ctx.encryptor()
+    return op.update(block) + op.finalize()
+
+
+def load_password(path):
+    with open(path, "rb") as f:
+        stored = f.read(8)
+    if len(stored) != 8:
+        raise ValueError(f"{path} is not a vncpasswd file")
+    return _des(_STORE_KEY, stored, decrypt=True)
 
 
 def read_exactly(sock, n):
@@ -35,7 +69,7 @@ def read_exactly(sock, n):
 
 
 def pump(src, dst):
-    """Relay until either side closes, then close both so the other pump ends."""
+    """Relay until either side closes, then shut both so the other pump ends."""
     try:
         while True:
             data = src.recv(65536)
@@ -52,48 +86,56 @@ def pump(src, dst):
                 pass
 
 
+def authenticate(server, password):
+    """Version, security type and challenge, as a client would do them."""
+    version = read_exactly(server, 12)
+    server.sendall(b"RFB 003.008\n")
+
+    count = read_exactly(server, 1)[0]
+    if count == 0:
+        reason_len = struct.unpack(">I", read_exactly(server, 4))[0]
+        raise ConnectionError(read_exactly(server, reason_len).decode("utf-8", "replace"))
+    offered = read_exactly(server, count)
+    if SEC_VNCAUTH not in offered:
+        raise ConnectionError(f"no VncAuth on offer, got {list(offered)}")
+    server.sendall(bytes([SEC_VNCAUTH]))
+
+    challenge = read_exactly(server, 16)
+    key = (password + b"\0" * 8)[:8]
+    server.sendall(_des(key, challenge[:8]) + _des(key, challenge[8:]))
+
+    result = struct.unpack(">I", read_exactly(server, 4))[0]
+    if result != 0:
+        raise ConnectionError("the Mac rejected the password")
+    return version
+
+
 class Handler(socketserver.BaseRequestHandler):
     def handle(self):
         client = self.request
-        target_host, target_port = self.server.target
+        host, port = self.server.target
         try:
-            server = socket.create_connection((target_host, target_port), timeout=10)
+            server = socket.create_connection((host, port), timeout=10)
         except OSError as e:
-            print(f"vnc-pin-auth: cannot reach {target_host}:{target_port}: {e}",
-                  file=sys.stderr)
+            print(f"vnc-pin-auth: cannot reach {host}:{port}: {e}", file=sys.stderr)
             return
 
         try:
-            # Protocol version, both directions, untouched.
-            client.sendall(read_exactly(server, 12))
-            server.sendall(read_exactly(client, 12))
+            authenticate(server, self.server.password)
 
-            # The one substitution: whatever the server offers, the client is
-            # shown VncAuth and nothing else.
-            count = read_exactly(server, 1)[0]
-            if count == 0:
-                # A zero count means the server is refusing with a reason
-                # string; pass that through so the client can report it.
-                client.sendall(b"\x00")
-                pump(server, client)
-                return
-            offered = read_exactly(server, count)
-            if VNC_AUTH not in offered:
-                print("vnc-pin-auth: server does not offer VncAuth, offered "
-                      f"{list(offered)}", file=sys.stderr)
-                client.sendall(b"\x00")
-                return
-            client.sendall(bytes([1, VNC_AUTH]))
-
-            chosen = read_exactly(client, 1)
-            if chosen[0] != VNC_AUTH:
-                print(f"vnc-pin-auth: client chose {chosen[0]}, expected {VNC_AUTH}",
+            # The client is told the truthful version but an easy scheme.
+            client.sendall(b"RFB 003.008\n")
+            read_exactly(client, 12)
+            client.sendall(bytes([1, SEC_NONE]))
+            chosen = read_exactly(client, 1)[0]
+            if chosen != SEC_NONE:
+                print(f"vnc-pin-auth: client chose {chosen}, expected {SEC_NONE}",
                       file=sys.stderr)
                 return
-            server.sendall(chosen)
+            # 3.8 sends a SecurityResult even for None.
+            client.sendall(struct.pack(">I", 0))
 
-            # From here the challenge, the response and the whole session are
-            # none of this program's business.
+            # ClientInit onwards belongs to the two of them.
             t = threading.Thread(target=pump, args=(server, client), daemon=True)
             t.start()
             pump(client, server)
@@ -113,11 +155,20 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--listen", type=int, default=5902)
     ap.add_argument("--target", default="127.0.0.1:5901")
+    ap.add_argument("--passwd",
+                    default=os.path.expanduser("~/.config/mt-bridge/vncpass"))
     args = ap.parse_args()
+
+    try:
+        password = load_password(args.passwd)
+    except OSError as e:
+        sys.exit(f"vnc-pin-auth: {e}\n"
+                 f"  create it with the password set on the Mac: vncpasswd {args.passwd}")
 
     host, _, port = args.target.rpartition(":")
     srv = Server(("127.0.0.1", args.listen), Handler)
     srv.target = (host or "127.0.0.1", int(port))
+    srv.password = password
     print(f"vnc-pin-auth: 127.0.0.1:{args.listen} -> {srv.target[0]}:{srv.target[1]}",
           flush=True)
     try:
