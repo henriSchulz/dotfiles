@@ -3399,7 +3399,7 @@ Panel {
           Stat { width: padPage.cellWidth; label: "Link"; value: root.padLinkUp ? "Up" : "Down" }
           Stat { width: padPage.cellWidth; label: "Interface"; value: root.padLink["interface"] || "--" }
           Stat { width: padPage.cellWidth; label: "Address"; value: root.padLink.address || "--" }
-          Stat { width: padPage.cellWidth; label: "Frames in"; value: root.padLink.rx_frames || "--" }
+          Stat { width: padPage.cellWidth; label: "Ethernet in"; value: root.padLink.rx_frames || "--" }
         }
 
         Separator { width: padPage.innerWidth }
@@ -3413,7 +3413,7 @@ Panel {
           Stat { width: padPage.cellWidth; label: "Source"; value: root.padStream.source || "--" }
           Stat { width: padPage.cellWidth; label: "Fingers"; value: root.padStreaming ? String(root.padStream.contacts || 0) : "--" }
           Stat { width: padPage.cellWidth; label: "Button"; value: !root.padStreaming ? "--" : root.padButton ? "Pressed" : "Released" }
-          Stat { width: padPage.cellWidth; label: "Frames"; value: root.padStream.frames || "--" }
+          Stat { width: padPage.cellWidth; label: "Touch frames"; value: root.padStream.frames || "--" }
         }
 
         Separator { width: padPage.innerWidth }
@@ -3445,9 +3445,8 @@ Panel {
           color: root.dimText
           font.family: Style.font.family
           font.pixelSize: Style.font.caption
-          text: "Keys map by position, so this machine's layout decides the "
-            + "character. The two hotkeys stay on the Mac, so there is always "
-            + "a way back."
+          text: "Keys map by position: this machine's layout decides the "
+            + "character. Both hotkeys stay on the Mac."
         }
       }
     }
