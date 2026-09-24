@@ -1,26 +1,37 @@
 #!/usr/bin/env python3
 """Handle the VNC handshake for a client that cannot, and relay the rest.
 
-Two things make macOS Screen Sharing awkward for Linux viewers:
+Connecting to macOS Screen Sharing from Linux runs into three things at once:
 
-  * It lists its own security schemes first -- 30, 33, 36, then 2 -- and
-    libvncclient, which most viewers are built on, takes the first entry and
-    never reaches the one it can finish. It then reports "could not
-    authenticate" on a perfectly good password.
+  * Which account you use decides what you see. The plain VNC password is not
+    tied to anyone, so macOS opens a session of its own and shows a login
+    window -- while the Mac's real desktop carries on elsewhere. Authenticating
+    as the user who is already at the console attaches to that session, which
+    is what mirroring a screen means.
 
-  * A viewer that keeps the password only for the lifetime of a connection
-    fails every reconnect after the Mac sleeps or the service restarts.
+  * Apple's scheme is the only one that carries a user name, and no scaling
+    viewer speaks it: they are built on libvncclient, which does not implement
+    it. The one viewer that does cannot scale.
 
-So the handshake happens here instead. This end authenticates against the Mac
-with the stored password and offers the client the None scheme, which every
-viewer handles and which needs nothing remembered. Nothing is weakened by
-that: this listens on the loopback only, and the hop to the Mac is an SSH
-tunnel either way.
+  * A viewer that keeps its password only for the life of a connection fails
+    every reconnect after the Mac sleeps.
 
-    vnc-pin-auth [--listen PORT] [--target HOST:PORT] [--passwd FILE]
+So the handshake happens here. This end authenticates as the console user and
+offers the viewer the None scheme, which every viewer handles and which needs
+nothing remembered. That leaves the viewer free to be chosen for what it draws
+rather than for what it can negotiate.
+
+Nothing is weakened: this listens on the loopback only, and the hop to the Mac
+is an SSH tunnel either way.
+
+    vnc-pin-auth [--listen PORT] [--target HOST:PORT]
+                 [--user NAME] [--macpass FILE] [--vncpass FILE]
 """
 import argparse
+import getpass
+import hashlib
 import os
+import secrets
 import socket
 import socketserver
 import struct
@@ -31,9 +42,9 @@ try:
     from cryptography.hazmat.decrepit.ciphers.algorithms import TripleDES
 except ImportError:  # cryptography < 43
     from cryptography.hazmat.primitives.ciphers.algorithms import TripleDES
-from cryptography.hazmat.primitives.ciphers import Cipher, modes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-SEC_NONE, SEC_VNCAUTH = 1, 2
+SEC_NONE, SEC_VNCAUTH, SEC_APPLE_DH = 1, 2, 30
 
 # VNC's DES uses each key byte's bits in reverse order, and single DES is
 # TripleDES with the same key three times.
@@ -86,9 +97,46 @@ def pump(src, dst):
                 pass
 
 
-def authenticate(server, password):
-    """Version, security type and challenge, as a client would do them."""
-    version = read_exactly(server, 12)
+def _vnc_auth(server, password):
+    challenge = read_exactly(server, 16)
+    key = (password + b"\0" * 8)[:8]
+    server.sendall(_des(key, challenge[:8]) + _des(key, challenge[8:]))
+
+
+def _apple_auth(server, user, password):
+    """Apple's Diffie-Hellman scheme, the only one that carries a user name.
+
+    The server names a generator and a modulus, both ends derive a shared
+    secret, and its MD5 is the AES key that the credentials travel under. The
+    credential block is 128 bytes -- user in the first 64, password in the
+    second, each null-terminated -- and the rest is random so that two logins
+    with the same password do not produce the same ciphertext.
+    """
+    generator = struct.unpack(">H", read_exactly(server, 2))[0]
+    key_len = struct.unpack(">H", read_exactly(server, 2))[0]
+    modulus = int.from_bytes(read_exactly(server, key_len), "big")
+    peer_key = int.from_bytes(read_exactly(server, key_len), "big")
+
+    private = int.from_bytes(secrets.token_bytes(key_len), "big")
+    public = pow(generator, private, modulus)
+    shared = pow(peer_key, private, modulus)
+    aes_key = hashlib.md5(shared.to_bytes(key_len, "big")).digest()
+
+    block = bytearray(secrets.token_bytes(128))
+    u, pw = user.encode()[:63], password[:63]
+    block[0:len(u)] = u
+    block[len(u)] = 0
+    block[64:64 + len(pw)] = pw
+    block[64 + len(pw)] = 0
+
+    enc = Cipher(algorithms.AES(aes_key), modes.ECB()).encryptor()
+    server.sendall(enc.update(bytes(block)) + enc.finalize()
+                   + public.to_bytes(key_len, "big"))
+
+
+def authenticate(server, creds):
+    """Version and security type, then whichever scheme carries the account."""
+    read_exactly(server, 12)
     server.sendall(b"RFB 003.008\n")
 
     count = read_exactly(server, 1)[0]
@@ -96,18 +144,22 @@ def authenticate(server, password):
         reason_len = struct.unpack(">I", read_exactly(server, 4))[0]
         raise ConnectionError(read_exactly(server, reason_len).decode("utf-8", "replace"))
     offered = read_exactly(server, count)
-    if SEC_VNCAUTH not in offered:
-        raise ConnectionError(f"no VncAuth on offer, got {list(offered)}")
-    server.sendall(bytes([SEC_VNCAUTH]))
 
-    challenge = read_exactly(server, 16)
-    key = (password + b"\0" * 8)[:8]
-    server.sendall(_des(key, challenge[:8]) + _des(key, challenge[8:]))
+    # Apple's scheme first: it is the one that says who is connecting, and
+    # therefore the one that lands on the desktop already in use rather than
+    # on a fresh session with a login window.
+    if creds.user and creds.macpass and SEC_APPLE_DH in offered:
+        server.sendall(bytes([SEC_APPLE_DH]))
+        _apple_auth(server, creds.user, creds.macpass)
+    elif creds.vncpass and SEC_VNCAUTH in offered:
+        server.sendall(bytes([SEC_VNCAUTH]))
+        _vnc_auth(server, creds.vncpass)
+    else:
+        raise ConnectionError(f"nothing usable on offer: {list(offered)}")
 
     result = struct.unpack(">I", read_exactly(server, 4))[0]
     if result != 0:
-        raise ConnectionError("the Mac rejected the password")
-    return version
+        raise ConnectionError("the Mac rejected the credentials")
 
 
 class Handler(socketserver.BaseRequestHandler):
@@ -121,7 +173,7 @@ class Handler(socketserver.BaseRequestHandler):
             return
 
         try:
-            authenticate(server, self.server.password)
+            authenticate(server, self.server.creds)
 
             # The client is told the truthful version but an easy scheme.
             client.sendall(b"RFB 003.008\n")
@@ -151,25 +203,82 @@ class Server(socketserver.ThreadingTCPServer):
     daemon_threads = True
 
 
+class Credentials:
+    """What to log in as, and what to fall back to.
+
+    The account password is held in memory for the life of this process, so a
+    reconnect after the Mac sleeps needs no one present. It is read from a file
+    only if you put one there; otherwise it is asked for once at startup, which
+    keeps it off the disk entirely.
+    """
+
+    def __init__(self, user, macpass, vncpass):
+        self.user = user
+        self.macpass = macpass
+        self.vncpass = vncpass
+
+
+def read_secret_file(path):
+    # "-" means stdin: the launcher asks once and pipes it in, so the account
+    # password never has to sit on the disk at all.
+    if path == "-":
+        data = sys.stdin.buffer.readline().rstrip(b"\r\n")
+        return data or None
+    if not path or not os.path.exists(path):
+        return None
+    st = os.stat(path)
+    if st.st_mode & 0o077:
+        print(f"vnc-pin-auth: {path} is readable by others; chmod 600 it",
+              file=sys.stderr)
+    with open(path, "rb") as f:
+        return f.read().rstrip(b"\r\n")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--listen", type=int, default=5902)
     ap.add_argument("--target", default="127.0.0.1:5901")
-    ap.add_argument("--passwd",
-                    default=os.path.expanduser("~/.config/mt-bridge/vncpass"))
+    ap.add_argument("--user", default=os.environ.get("MAC_USER", ""))
+    ap.add_argument("--macpass",
+                    default=os.path.expanduser("~/.config/mt-bridge/macpass"),
+                    help="file holding the Mac account password, or - for stdin")
+    ap.add_argument("--vncpass",
+                    default=os.path.expanduser("~/.config/mt-bridge/vncpass"),
+                    help="vncpasswd file, used only if there is no account")
+    ap.add_argument("--no-prompt", action="store_true",
+                    help="fail rather than asking for a password")
     args = ap.parse_args()
 
+    macpass = read_secret_file(args.macpass)
+    if args.user and not macpass and not args.no_prompt and sys.stdin.isatty():
+        try:
+            macpass = getpass.getpass(
+                f"Mac password for {args.user} (kept in memory only): ").encode()
+        except (EOFError, KeyboardInterrupt):
+            macpass = None
+
+    vncpass = None
     try:
-        password = load_password(args.passwd)
-    except OSError as e:
-        sys.exit(f"vnc-pin-auth: {e}\n"
-                 f"  create it with the password set on the Mac: vncpasswd {args.passwd}")
+        stored = read_secret_file(args.vncpass)
+        if stored:
+            vncpass = _des(_STORE_KEY, stored[:8], decrypt=True)
+    except (OSError, ValueError):
+        pass
+
+    if not (args.user and macpass) and not vncpass:
+        sys.exit("vnc-pin-auth: no credentials.\n"
+                 "  Either put the Mac account password in "
+                 f"{args.macpass} (chmod 600) and pass --user,\n"
+                 f"  or create {args.vncpass} with vncpasswd -- but note that the\n"
+                 "  VNC password is tied to no account, so macOS answers it with a\n"
+                 "  session of its own instead of the desktop already in use.")
 
     host, _, port = args.target.rpartition(":")
     srv = Server(("127.0.0.1", args.listen), Handler)
     srv.target = (host or "127.0.0.1", int(port))
-    srv.password = password
-    print(f"vnc-pin-auth: 127.0.0.1:{args.listen} -> {srv.target[0]}:{srv.target[1]}",
+    srv.creds = Credentials(args.user, macpass, vncpass)
+    how = f"as {args.user}" if (args.user and macpass) else "with the VNC password"
+    print(f"vnc-pin-auth: 127.0.0.1:{args.listen} -> {srv.target[0]}:{srv.target[1]}, {how}",
           flush=True)
     try:
         srv.serve_forever()

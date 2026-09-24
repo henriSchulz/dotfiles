@@ -33,6 +33,7 @@ LPORT=${MAC_SCREEN_PORT:-5901}
 # The filter sits between the scaling viewer and the tunnel; see below.
 FPORT=${MAC_SCREEN_FILTER_PORT:-5902}
 CONFDIR=${XDG_CONFIG_HOME:-$HOME/.config}/mt-bridge
+MACPASS=${MAC_SCREEN_MACPASS:-$CONFDIR/macpass}
 PASSFILE=${MAC_SCREEN_PASS:-$CONFDIR/vncpass}
 PROFILE=$CONFDIR/mac-screen.remmina
 CTL=$(mktemp -u "${XDG_RUNTIME_DIR:-/tmp}/mac-screen.XXXXXX")
@@ -110,9 +111,23 @@ else
     # so it picks one it cannot finish and fails with "could not authenticate"
     # on a perfectly good password. There is no client option to pin the
     # choice, so it is pinned from the other side.
-    vnc-pin-auth --listen "$FPORT" --target "127.0.0.1:$LPORT" >/dev/null 2>&1 &
+    # Which account is used decides what is shown: the plain VNC password is
+    # tied to nobody, so macOS answers it with a session of its own and a login
+    # window, while the desktop you are actually using carries on elsewhere.
+    # Logging in as the console user attaches to that desktop instead.
+    if [ -f "$MACPASS" ]; then
+        vnc-pin-auth --listen "$FPORT" --target "127.0.0.1:$LPORT" \
+                     --user "$MAC_USER" --macpass "$MACPASS" >/dev/null 2>&1 &
+    else
+        printf 'Mac password for %s (not stored, kept in memory): ' "$MAC_USER" >&2
+        stty -echo 2>/dev/null; read -r MACPW; stty echo 2>/dev/null; echo >&2
+        printf '%s\n' "$MACPW" | vnc-pin-auth --listen "$FPORT" \
+                     --target "127.0.0.1:$LPORT" --user "$MAC_USER" \
+                     --macpass - >/dev/null 2>&1 &
+        MACPW=
+    fi
     FILTER=$!
-    sleep 0.3
+    sleep 0.5
 
     # 4 is viewport fullscreen, 1 an ordinary window. Mirroring a screen means
     # filling this one: tiled beside two terminals the desktop ends up a
