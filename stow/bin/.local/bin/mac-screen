@@ -1,11 +1,16 @@
 #!/bin/sh
-# Show the screenless MacBook's display on this machine.
+# Use this machine as a display for the screenless MacBook.
 #
-#   mac-screen            # the whole Mac screen, fitted to the window
+#   mac-screen            # the Mac's screen, filling this one
+#   mac-screen --control  # also send keyboard and mouse to the Mac
 #   mac-screen --crisp    # unscaled, 1:1 pixels, scroll to see the rest
 #   mac-screen --window   # in a window rather than filling the screen
 #   mac-screen --wifi     # force the wireless route
 #   mac-screen --cable
+#
+# This is a screen, not a remote control: the session is view-only unless you
+# ask otherwise. The Mac is driven from the Mac, and a stray click over here
+# should not land over there.
 #
 # The Mac renders more pixels than this screen has, so the default viewer is
 # the one that can scale: the point is to mirror the whole desktop, not to
@@ -34,14 +39,16 @@ CTL=$(mktemp -u "${XDG_RUNTIME_DIR:-/tmp}/mac-screen.XXXXXX")
 
 CRISP=0
 WINDOWED=0
+CONTROL=0
 FORCE=""
 for a in "$@"; do
     case "$a" in
         --crisp|--tiger) CRISP=1 ;;
         -w|--window) WINDOWED=1 ;;
+        --control) CONTROL=1 ;;
         --wifi)  FORCE=$MAC_WIFI ;;
         --cable) FORCE=$MAC_CABLE ;;
-        -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     esac
 done
 
@@ -92,7 +99,9 @@ if [ "$CRISP" -eq 1 ]; then
     # Pinned to VncAuth: this viewer also speaks Apple's DH scheme and prefers
     # it, but that one asks for the Mac account interactively, which turns a
     # launcher into a dialog. The tunnel is what secures this connection.
-    vncviewer -SecurityTypes VncAuth -passwd "$PASSFILE" \
+    VO=1
+    [ "$CONTROL" -eq 1 ] && VO=0
+    vncviewer -SecurityTypes VncAuth -passwd "$PASSFILE" -ViewOnly=$VO \
               -QualityLevel 9 -CompressLevel 2 -Shared=1 -ReconnectOnError=0 \
               "127.0.0.1:$LPORT" &
 else
@@ -110,6 +119,8 @@ else
     # thumbnail, which is not a mirror of anything.
     VIEWMODE=4
     [ "$WINDOWED" -eq 1 ] && VIEWMODE=1
+    VIEWONLY=1
+    [ "$CONTROL" -eq 1 ] && VIEWONLY=0
 
     mkdir -p "$CONFDIR"
     # Rewritten every run so the port always matches. The password is left for
@@ -127,6 +138,7 @@ scale_quality=3
 quality=9
 colordepth=32
 showcursor=1
+viewonly=$VIEWONLY
 disableserverinput=0
 viewmode=$VIEWMODE
 window_maximize=1
