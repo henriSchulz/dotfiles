@@ -75,6 +75,8 @@ Panel {
     && Date.now() / 1000 - Number(padStream.last_packet) < 3
   readonly property string padTransport: padStream.transport || ""
   readonly property bool padButton: padStream.button === "1"
+  readonly property bool padKeyboard: padStream.keyboard === "1"
+  readonly property int padKeysHeld: Number(padStream.keys_held || 0)
   readonly property string padSubtitle: !padBridgeUp ? "Off"
     : padStreaming ? (padTransport !== "" ? "Over " + padTransport : "Connected")
     : padTransport !== "" ? "Idle \u00b7 " + padTransport
@@ -3368,6 +3370,8 @@ Panel {
           value: (root.padStreaming ? (root.padTransport !== "" ? root.padTransport : "Connected")
             : root.padBridgeUp ? "Idle" : "Off")
             + (root.padButton ? " \u00b7 click" : "")
+            + (root.padKeysHeld > 0 ? " \u00b7 " + root.padKeysHeld + " key"
+               + (root.padKeysHeld === 1 ? "" : "s") : "")
           valueColor: root.padStreaming ? Color.accent : root.dimText
         }
         Text {
@@ -3410,6 +3414,40 @@ Panel {
           Stat { width: padPage.cellWidth; label: "Fingers"; value: root.padStreaming ? String(root.padStream.contacts || 0) : "--" }
           Stat { width: padPage.cellWidth; label: "Button"; value: !root.padStreaming ? "--" : root.padButton ? "Pressed" : "Released" }
           Stat { width: padPage.cellWidth; label: "Frames"; value: root.padStream.frames || "--" }
+        }
+
+        Separator { width: padPage.innerWidth }
+
+        ListLabel { text: "Keyboard" }
+        Grid {
+          columns: 2
+          columnSpacing: Style.space(16)
+          rowSpacing: Style.space(2)
+          Stat {
+            width: padPage.cellWidth
+            label: "Device"
+            value: root.padKeyboard ? "Present" : "Off"
+          }
+          Stat {
+            width: padPage.cellWidth
+            label: "Held"
+            value: root.padBridgeUp ? String(root.padKeysHeld) : "--"
+          }
+          Stat {
+            width: padPage.cellWidth
+            label: "Key events"
+            value: root.padStream.key_events || "--"
+          }
+        }
+        Text {
+          width: padPage.innerWidth
+          wrapMode: Text.WordWrap
+          color: root.dimText
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+          text: "Keys map by position, so this machine's layout decides the "
+            + "character. The two hotkeys stay on the Mac, so there is always "
+            + "a way back."
         }
       }
     }
