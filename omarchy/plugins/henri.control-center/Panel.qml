@@ -56,6 +56,70 @@ Panel {
   readonly property int panelWidth: Style.space(340)
   readonly property int colWidth: Math.floor((panelWidth - gap) / 2)
 
+  // ---- Trackpad bridge (mt-bridge): a MacBook's trackpad arriving over a
+  // USB-C cable, or over Wi-Fi when the cable is out. Both daemons keep a
+  // small status file and this watches those, because polling them with
+  // processes would cost frames at exactly the moment the panel opens.
+  property var padLink: ({})
+  property var padStream: ({})
+  // Freshness is a comparison against the clock, and a binding cannot notice
+  // time passing by itself. Mentioning padTick makes these re-evaluate when
+  // the timer below bumps it; the comparison itself is always true.
+  property int padTick: 0
+  readonly property bool padLinkUp: padLink.state === "up"
+  readonly property bool padBridgeUp: padTick >= 0
+    && Number(padStream.updated || 0) > 0
+    && Date.now() / 1000 - Number(padStream.updated) < 4
+  readonly property bool padStreaming: padBridgeUp
+    && Number(padStream.last_packet || 0) > 0
+    && Date.now() / 1000 - Number(padStream.last_packet) < 3
+  readonly property string padTransport: padStream.transport || ""
+  readonly property string padSubtitle: !padBridgeUp ? "Off"
+    : padStreaming ? (padTransport !== "" ? "Over " + padTransport : "Connected")
+    : padTransport !== "" ? "Idle \u00b7 " + padTransport
+    : padLinkUp ? "Cable ready" : "Waiting for the Mac"
+
+  function padParse(text) {
+    var out = {}
+    var lines = String(text || "").split("\n")
+    for (var i = 0; i < lines.length; i++) {
+      var eq = lines[i].indexOf("=")
+      if (eq > 0) out[lines[i].substring(0, eq)] = lines[i].substring(eq + 1)
+    }
+    return out
+  }
+
+  FileView {
+    id: padLinkFile
+    path: "/run/mt-bridge/link"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.padLink = root.padParse(text())
+  }
+  FileView {
+    id: padStreamFile
+    path: Quickshell.env("XDG_RUNTIME_DIR") + "/mt-bridge/status"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.padStream = root.padParse(text())
+  }
+  Timer {
+    // Both files vanish with their services, and a watch cannot follow a file
+    // that is not there, so re-read while the panel is open. Reading a file is
+    // cheap; this is deliberately not a process.
+    running: root.opened
+    interval: 1000
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: {
+      root.padTick++
+      padLinkFile.reload()
+      padStreamFile.reload()
+    }
+  }
+
   // ---- Wi-Fi
   readonly property var wifiDevice: {
     var devices = Networking.devices ? Networking.devices.values : []
@@ -1965,6 +2029,17 @@ Panel {
               }
               onDetails: { root.close(); root.run("omarchy-launch-or-focus localsend 'setsid -f localsend'") }
             }
+            ToggleRow {
+              width: parent.width
+              icon: root.sf(0x100EA4)
+              on: root.padStreaming
+              title: "Trackpad"
+              subtitle: root.padSubtitle
+              onToggled: root.run(root.padBridgeUp
+                ? "systemctl --user stop mtbridge"
+                : "systemctl --user start mtbridge")
+              onDetails: root.showPage("trackpad")
+            }
           }
         }
 
@@ -3258,6 +3333,80 @@ Panel {
           topPadding: Style.space(2)
           Stat { width: hwPage.cellWidth; label: "Free"; value: root.formatBytesGB(root.hw.diskTotal - root.hw.diskUsed) }
           Stat { width: hwPage.cellWidth; label: "Uptime"; value: root.hw.uptime > 0 ? root.formatUptime(root.hw.uptime) : "--" }
+        }
+      }
+
+      // Trackpad — where the MacBook's trackpad is coming in, and over which
+      // route. Read only except for the receiver switch: the cable link comes
+      // and goes with the cable, which is not this panel's to decide.
+      PageHeader {
+        visible: root.detailPage === "trackpad"
+        title: "Trackpad"
+        showSwitch: true
+        checked: root.padBridgeUp
+        onToggled: root.run(root.padBridgeUp
+          ? "systemctl --user stop mtbridge"
+          : "systemctl --user start mtbridge")
+      }
+      Separator { visible: root.detailPage === "trackpad" }
+      Column {
+        id: padPage
+        visible: root.detailPage === "trackpad"
+        width: root.panelWidth
+        leftPadding: Style.space(6)
+        rightPadding: Style.space(6)
+        topPadding: Style.space(4)
+        bottomPadding: Style.space(6)
+        spacing: Style.space(6)
+        readonly property int innerWidth: root.panelWidth - Style.space(12)
+        readonly property int cellWidth: Math.floor((innerWidth - Style.space(16)) / 2)
+
+        UsageHeader {
+          width: padPage.innerWidth
+          title: "Connection"
+          value: root.padStreaming ? (root.padTransport !== "" ? root.padTransport : "Connected")
+            : root.padBridgeUp ? "Idle" : "Off"
+          valueColor: root.padStreaming ? Color.accent : root.dimText
+        }
+        Text {
+          width: padPage.innerWidth
+          wrapMode: Text.WordWrap
+          color: root.dimText
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+          text: !root.padBridgeUp
+              ? "The receiver is not running."
+            : root.padStreaming
+              ? "Fingers are arriving from " + (root.padStream.source || "the Mac") + "."
+            : root.padLinkUp
+              ? "Cable is up and the receiver is waiting. Press Control-Option-Command-T on the Mac."
+              : "No cable. Plug the MacBook in, or let it fall back to Wi-Fi."
+        }
+
+        Separator { width: padPage.innerWidth }
+
+        ListLabel { text: "Cable" }
+        Grid {
+          columns: 2
+          columnSpacing: Style.space(16)
+          rowSpacing: Style.space(2)
+          Stat { width: padPage.cellWidth; label: "Link"; value: root.padLinkUp ? "Up" : "Down" }
+          Stat { width: padPage.cellWidth; label: "Interface"; value: root.padLink["interface"] || "--" }
+          Stat { width: padPage.cellWidth; label: "Address"; value: root.padLink.address || "--" }
+          Stat { width: padPage.cellWidth; label: "Frames in"; value: root.padLink.rx_frames || "--" }
+        }
+
+        Separator { width: padPage.innerWidth }
+
+        ListLabel { text: "Stream" }
+        Grid {
+          columns: 2
+          columnSpacing: Style.space(16)
+          rowSpacing: Style.space(2)
+          Stat { width: padPage.cellWidth; label: "Route"; value: root.padTransport !== "" ? root.padTransport : "--" }
+          Stat { width: padPage.cellWidth; label: "Source"; value: root.padStream.source || "--" }
+          Stat { width: padPage.cellWidth; label: "Fingers"; value: root.padStreaming ? String(root.padStream.contacts || 0) : "--" }
+          Stat { width: padPage.cellWidth; label: "Frames"; value: root.padStream.frames || "--" }
         }
       }
     }
