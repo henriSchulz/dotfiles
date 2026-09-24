@@ -1,10 +1,9 @@
 #!/bin/sh
 # Use this machine as a display for the screenless MacBook.
 #
-#   mac-screen            # the Mac's screen, filling this one
+#   mac-screen            # the Mac's screen, pixel for pixel
+#   mac-screen --scaled   # fit a screen larger than this one into the window
 #   mac-screen --control  # also send keyboard and mouse to the Mac
-#   mac-screen --rich     # full colour depth, slower to follow
-#   mac-screen --crisp    # unscaled, 1:1 pixels, scroll to see the rest
 #   mac-screen --window   # in a window rather than filling the screen
 #   mac-screen --wifi     # force the wireless route
 #   mac-screen --cable
@@ -13,11 +12,12 @@
 # ask otherwise. The Mac is driven from the Mac, and a stray click over here
 # should not land over there.
 #
-# The Mac renders more pixels than this screen has, so the default viewer is
-# the one that can scale: the point is to mirror the whole desktop, not to
-# inspect a corner of it. --crisp uses TigerVNC instead, which cannot scale but
-# shows real pixels, and is the better choice once the Mac's own resolution
-# fits here.
+# Set the Mac's own resolution to something that fits here -- macres on the Mac
+# does that -- and no scaling is needed at all. That is the arrangement this
+# assumes: it is cheaper for the Mac, which then captures and encodes a third
+# of the pixels a Retina mode costs, and it draws the cursor properly, which a
+# scaling viewer built on libvncclient cannot. --scaled is the fallback for a
+# Mac whose screen is bigger than this one.
 #
 # macOS Screen Sharing only offers Apple's own authentication schemes by
 # default, so the legacy VNC password is enabled on the Mac instead. That
@@ -39,7 +39,7 @@ PASSFILE=${MAC_SCREEN_PASS:-$CONFDIR/vncpass}
 PROFILE=$CONFDIR/mac-screen.remmina
 CTL=$(mktemp -u "${XDG_RUNTIME_DIR:-/tmp}/mac-screen.XXXXXX")
 
-CRISP=0
+SCALED=0
 WINDOWED=0
 CONTROL=0
 # Fast by default: mirroring a Retina screen means the Mac captures and encodes
@@ -50,10 +50,9 @@ FAST=1
 FORCE=""
 for a in "$@"; do
     case "$a" in
-        --crisp|--tiger) CRISP=1 ;;
+        --scaled) SCALED=1 ;;
         -w|--window) WINDOWED=1 ;;
         --control) CONTROL=1 ;;
-        --fast) FAST=1 ;;
         --rich|--quality) FAST=0 ;;
         --wifi)  FORCE=$MAC_WIFI ;;
         --cable) FORCE=$MAC_CABLE ;;
@@ -116,68 +115,49 @@ ssh -f -N -M -S "$CTL" -o ExitOnForwardFailure=yes -o ConnectTimeout=5 \
     -L "$LPORT:127.0.0.1:5900" "$MAC_USER@$HOST" \
     || die "could not open the tunnel (is port $LPORT already in use?)"
 
-if [ "$CRISP" -eq 1 ]; then
-    [ -f "$PASSFILE" ] || die "no password file at $PASSFILE
-  create one with the password set on the Mac (8 characters, no more):
-    mkdir -p $CONFDIR && vncpasswd $PASSFILE"
-    # Pinned to VncAuth: this viewer also speaks Apple's DH scheme and prefers
-    # it, but that one asks for the Mac account interactively, which turns a
-    # launcher into a dialog. The tunnel is what secures this connection.
+# Both viewers go through the filter: it logs in as the console user, which is
+# what puts this on the desktop already in use rather than on a session of its
+# own, and hands over a connection that needs no negotiating.
+if [ -f "$MACPASS" ]; then
+    vnc-pin-auth --listen "$FPORT" --target "127.0.0.1:$LPORT" \
+                 --user "$MAC_USER" --macpass "$MACPASS" >/dev/null 2>&1 &
+else
+    printf 'Mac password for %s (not stored, kept in memory): ' "$MAC_USER" >&2
+    stty -echo 2>/dev/null; read -r MACPW; stty echo 2>/dev/null; echo >&2
+    printf '%s\n' "$MACPW" | vnc-pin-auth --listen "$FPORT" \
+                 --target "127.0.0.1:$LPORT" --user "$MAC_USER" \
+                 --macpass - >/dev/null 2>&1 &
+    MACPW=
+fi
+FILTER=$!
+sleep 0.5
+
+if [ "$SCALED" -eq 0 ]; then
     VO=1
     [ "$CONTROL" -eq 1 ] && VO=0
-    vncviewer -SecurityTypes VncAuth -passwd "$PASSFILE" -ViewOnly=$VO \
-              -QualityLevel 9 -CompressLevel 2 -Shared=1 -ReconnectOnError=0 \
-              "127.0.0.1:$LPORT" &
+    FS=0
+    [ "$WINDOWED" -eq 0 ] && FS=1
+    # AlwaysCursor draws something where the pointer is even when the server
+    # reports an invisible one, so the cursor never simply goes missing.
+    # FullscreenSystemKeys off: in fullscreen the viewer otherwise grabs the
+    # keyboard, and a window that only shows a picture has no business
+    # swallowing this machine's own shortcuts.
+    vncviewer -SecurityTypes None -ViewOnly=$VO -FullScreen=$FS \
+              -FullscreenSystemKeys=0 -AlwaysCursor=1 \
+              -QualityLevel 9 -CompressLevel 1 \
+              -Shared=1 -ReconnectOnError=0 "127.0.0.1:$FPORT" &
 else
-    # libvncclient, which the scaling viewer is built on, takes the first
-    # security type the server lists -- and macOS lists its own schemes first,
-    # so it picks one it cannot finish and fails with "could not authenticate"
-    # on a perfectly good password. There is no client option to pin the
-    # choice, so it is pinned from the other side.
-    # Which account is used decides what is shown: the plain VNC password is
-    # tied to nobody, so macOS answers it with a session of its own and a login
-    # window, while the desktop you are actually using carries on elsewhere.
-    # Logging in as the console user attaches to that desktop instead.
-    if [ -f "$MACPASS" ]; then
-        vnc-pin-auth --listen "$FPORT" --target "127.0.0.1:$LPORT" \
-                     --user "$MAC_USER" --macpass "$MACPASS" >/dev/null 2>&1 &
-    else
-        printf 'Mac password for %s (not stored, kept in memory): ' "$MAC_USER" >&2
-        stty -echo 2>/dev/null; read -r MACPW; stty echo 2>/dev/null; echo >&2
-        printf '%s\n' "$MACPW" | vnc-pin-auth --listen "$FPORT" \
-                     --target "127.0.0.1:$LPORT" --user "$MAC_USER" \
-                     --macpass - >/dev/null 2>&1 &
-        MACPW=
-    fi
-    FILTER=$!
-    sleep 0.5
+    mkdir -p "$CONFDIR"
 
-    # 4 is viewport fullscreen, 1 an ordinary window. Mirroring a screen means
-    # filling this one: tiled beside two terminals the desktop ends up a
-    # thumbnail, which is not a mirror of anything.
-    VIEWMODE=4
-    [ "$WINDOWED" -eq 1 ] && VIEWMODE=1
     VIEWONLY=1
     [ "$CONTROL" -eq 1 ] && VIEWONLY=0
-
-    # showcursor is off on purpose. With it on the viewer draws the Mac's
-    # cursor wherever the local pointer happens to be, which in a view-only
-    # mirror is nowhere near where the Mac's cursor actually is -- so it simply
-    # vanishes. Off, the Mac draws it into the picture, which is where it
-    # belongs for something being watched rather than driven.
-    #
-    # Quality against latency: a mirrored Retina screen is a great many pixels
-    # to capture and encode, and that is where the delay comes from rather than
-    # the link. --fast trades colour depth for a picture that keeps up.
+    VIEWMODE=4
+    [ "$WINDOWED" -eq 1 ] && VIEWMODE=1
     SCALEQ=1; QUALITY=9; DEPTH=32
     if [ "$FAST" -eq 1 ]; then
         SCALEQ=0; QUALITY=5; DEPTH=16
     fi
 
-    mkdir -p "$CONFDIR"
-    # Rewritten every run so the port always matches. The password is left for
-    # Remmina to hold: it keeps it in the keyring once you tick "save", and
-    # writing it here would mean storing it in plain text next to the profile.
     cat > "$PROFILE" <<PROFILEEOF
 [remmina]
 name=MacBook
