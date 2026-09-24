@@ -1,0 +1,86 @@
+#!/bin/sh
+# Show the screenless MacBook's display on this machine.
+#
+#   mac-screen              # cable if it answers, otherwise Wi-Fi
+#   mac-screen --wifi       # force the wireless route
+#   mac-screen --fullscreen
+#
+# macOS Screen Sharing only offers Apple's own authentication schemes, which no
+# Linux VNC client speaks, so the legacy VNC password is enabled on the Mac
+# instead. That scheme is DES from 1998 and worth nothing on its own -- so the
+# connection is not made to it directly: it goes through an SSH tunnel keyed to
+# this machine, and VNC only ever sees localhost.
+
+set -e
+
+MAC_USER=${MAC_USER:-henrischulz}
+MAC_CABLE=${MAC_CABLE:-10.55.0.2}
+MAC_WIFI=${MAC_WIFI:-192.168.178.126}
+LPORT=${MAC_SCREEN_PORT:-5901}
+PASSFILE=${MAC_SCREEN_PASS:-$HOME/.config/mt-bridge/vncpass}
+CTL=$(mktemp -u "${XDG_RUNTIME_DIR:-/tmp}/mac-screen.XXXXXX")
+
+FULLSCREEN=0
+FORCE=""
+for a in "$@"; do
+    case "$a" in
+        -f|--fullscreen) FULLSCREEN=1 ;;
+        --wifi)  FORCE=$MAC_WIFI ;;
+        --cable) FORCE=$MAC_CABLE ;;
+        -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    esac
+done
+
+die() { echo "mac-screen: $*" >&2; exit 1; }
+
+[ -f "$PASSFILE" ] || die "no password file at $PASSFILE
+  create one with the password set on the Mac (8 characters, no more):
+    mkdir -p $(dirname "$PASSFILE") && vncpasswd $PASSFILE"
+
+reachable() {
+    # A short TCP probe rather than ping: what matters is that sshd answers,
+    # not that the address exists.
+    timeout 2 sh -c "echo > /dev/tcp/$1/22" 2>/dev/null
+}
+
+if [ -n "$FORCE" ]; then
+    HOST=$FORCE
+    reachable "$HOST" || die "$HOST does not answer on port 22"
+elif reachable "$MAC_CABLE"; then
+    HOST=$MAC_CABLE
+    ROUTE="cable"
+elif reachable "$MAC_WIFI"; then
+    HOST=$MAC_WIFI
+    ROUTE="Wi-Fi"
+else
+    die "the Mac answers on neither $MAC_CABLE nor $MAC_WIFI
+  is it awake, and is the cable in? check: systemctl status ncmlink"
+fi
+echo "mac-screen: ${ROUTE:-$HOST} -> $HOST"
+
+cleanup() {
+    ssh -S "$CTL" -O exit "$MAC_USER@$HOST" 2>/dev/null || true
+    rm -f "$CTL"
+}
+trap cleanup EXIT INT TERM
+
+# ExitOnForwardFailure so a port already in use fails here, loudly, instead of
+# leaving the viewer to connect to whatever else is listening on it.
+ssh -f -N -M -S "$CTL" -o ExitOnForwardFailure=yes -o ConnectTimeout=5 \
+    -L "$LPORT:127.0.0.1:5900" "$MAC_USER@$HOST" \
+    || die "could not open the tunnel (is port $LPORT free?)"
+
+# Pinned to VncAuth: this viewer also speaks Apple's DH scheme and prefers it,
+# but that one wants the Mac account interactively, which turns a launcher into
+# a dialog. The tunnel is what secures this connection, so the weaker scheme
+# costs nothing here.
+set -- -SecurityTypes VncAuth -passwd "$PASSFILE" \
+       -QualityLevel 9 -CompressLevel 2 \
+       -Shared=1 -ReconnectOnError=0
+[ "$FULLSCREEN" -eq 1 ] && set -- "$@" -FullScreen
+
+# Quality high and compression low on purpose: the cable has bandwidth to spare
+# and latency is what matters, so there is nothing to gain from squeezing.
+# Not exec'd: that would replace this shell, and the cleanup trap above with
+# it, leaving the tunnel behind to hold the port against the next run.
+vncviewer "$@" "127.0.0.1:$LPORT"
