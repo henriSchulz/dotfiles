@@ -802,8 +802,9 @@ Panel {
 
   // ---- Experiments. `henri-ui-experimental` owns the flag on disk; the panel
   // only reads and flips it, so the CLI and this switch can never disagree.
-  // Switching on may compile the theme first, which takes a moment — the
-  // switch stays busy until the helper reports the state it ended up in.
+  // The flag lives in henri-ui/Experimental.js, which henri-ui-sync watches:
+  // a second or two after the switch it restarts the shell and this panel goes
+  // with it. That restart is what makes the new tokens take hold.
   property bool experimentalOn: false
   property bool experimentalBusy: false
 
@@ -3105,9 +3106,9 @@ Panel {
         ListLabel { text: "Appearance" }
         SwitchRow {
           title: "macOS Mode"
-          caption: root.experimentalBusy ? "Building the theme …"
-            : root.experimentalOn ? "On — apps show it when they next start"
-            : "Style GTK apps after macOS (MacTahoe)"
+          caption: root.experimentalBusy ? "Switching …"
+            : root.experimentalOn ? "On — Tahoe shapes across the shell"
+            : "Round the shell the way macOS Tahoe is"
           checked: root.experimentalOn
           onToggled: function(on) { root.setExperimental(on) }
         }
@@ -3119,8 +3120,9 @@ Panel {
             x: Style.space(12)
             y: Style.space(4)
             width: root.panelWidth - Style.space(24)
-            text: "Uses the MacTahoe theme, rebuilt in your Omarchy colours. "
-              + "Apps styled by henri-ui keep their own look."
+            text: "Swaps the henri-ui corner radii and control sizes for Tahoe's, "
+              + "everywhere at once. The shell restarts a moment after the switch, "
+              + "so this panel will blink."
             wrapMode: Text.WordWrap
             color: root.dimText
             font.family: Style.font.family

@@ -30,6 +30,7 @@ danach gebaut wurden, automatisch mitziehen. Deshalb:
 | `Motion.js` | QML-Plugins: Dauern, Kurven, Spring-Presets, Radien, Skalen | `import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion` |
 | `*.qml` (Reveal, Surface, Pressable, Button, MenuList, Highlight, Toggle, CrossfadeText, Collapse, PageStack, StaggerIn, SpringValue, MicGlyph, Waveform) | QML: fertige Komponenten — Katalog in `references/qml.md` | `import "file:///home/henri/.local/share/henri-ui" as HUi` |
 | `gallery/shell.qml` | Alle Komponenten live + Selbsttest | `quickshell -p ~/.local/share/henri-ui/gallery/shell.qml` |
+| `Experimental.js` | **Experimenteller macOS-Modus**: ein Flag + eine Tabelle mit Tahoe-Werten (Radien, Control-Höhen), die `Motion.js` am Ende über seine eigenen Tokens legt, solange das Flag steht. Umschalten: Kontrollzentrum → Experiments oder `henri-ui-experimental on\|off\|toggle`; `henri-ui-sync` startet die Shell neu. Neuer Token: in **beide** Dateien eintragen (eine `.pragma library` kann eigene Variablen nicht über den Namen setzen). Die Tabelle ist zum Drehen da — Motion bleibt bewusst außen vor, MacTahoes Kurven sind Material Design, nicht macOS | — |
 | `gtk.css` | GTK4/libadwaita-Apps | zur Laufzeit laden + FileMonitor |
 | `motion.css` | Web/Tauri/Electron | zur Laufzeit laden bzw. im Build aus der Quelle ziehen |
 

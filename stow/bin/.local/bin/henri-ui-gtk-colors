@@ -131,15 +131,3 @@ for name, target in GTK3_TEMPLATES.items():
     tmp = target.with_suffix(".tmp")
     tmp.write_text(css)
     tmp.replace(target)
-
-
-# ── Experimental macOS mode ─────────────────────────────────────────────────
-# MacTahoe is compiled against these same colors, so a theme switch leaves it
-# stale. Rebuild it detached: it takes half a minute and nothing waits for it —
-# GTK apps read the result when they next start anyway.
-experimental = out.parent / "experimental"
-if experimental.exists() and experimental.read_text().strip() == "on":
-    import subprocess
-    subprocess.Popen(["henri-ui-experimental", "on", "--rebuild"],
-                     start_new_session=True,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

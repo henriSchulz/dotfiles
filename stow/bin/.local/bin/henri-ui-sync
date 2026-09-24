@@ -26,8 +26,13 @@ for marker in "$plugins"/*/henri-ui/.henri-ui-vendored; do
   [[ -e $marker ]] || continue
   dest="$(dirname "$marker")/"
   rsync -a --delete --checksum \
-    --exclude gallery/ --exclude .henri-ui-vendored \
+    --exclude gallery/ --exclude .henri-ui-vendored --exclude Experimental.js \
     "$src" "$dest"
+  # Experimental.js is mirrored with the switch forced off: Motion.js imports
+  # it unconditionally, so it has to exist, but a public plugin repo should not
+  # carry whichever experiment happens to be running here — and without this,
+  # every toggle would dirty those repos.
+  sed 's/^var on = true$/var on = false/' "$src/Experimental.js" > "$dest/Experimental.js"
   echo "henri-ui-sync: updated ${dest#"$HOME"/}"
 done
 

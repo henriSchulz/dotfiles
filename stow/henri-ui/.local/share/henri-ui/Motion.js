@@ -1,4 +1,5 @@
 .pragma library
+.import "Experimental.js" as Experimental
 // Henri UI tokens — SINGLE SOURCE OF TRUTH for every QML plugin.
 // Never copy this file into a plugin; import it by absolute URL:
 //   import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
@@ -113,3 +114,21 @@ var contrastLarge = 3.0       // ≥ 18 pt or bold, and UI glyphs
 // ── Kinetic scrolling ──────────────────────────────────────────────────────
 var flickDeceleration = 1500
 var maximumFlickVelocity = 4000
+
+// ── Experimental macOS mode ────────────────────────────────────────────────
+// Applied last, so it wins over everything above and nothing else in this file
+// has to know it exists. Experimental.js carries the flag and the table; the
+// Control Center's Experiments switch (henri-ui-experimental) flips the flag
+// and henri-ui-sync restarts the shell. Off, this block does nothing.
+// A .pragma library has no writable global object, so the assignments are
+// spelled out — a new token needs a line here as well as in Experimental.js.
+if (Experimental.on) {
+    radiusPanel = Experimental.tokens.radiusPanel
+    radiusPopover = Experimental.tokens.radiusPopover
+    radiusControl = Experimental.tokens.radiusControl
+    radiusRow = Experimental.tokens.radiusRow
+    radiusChip = Experimental.tokens.radiusChip
+    menuItemHeight = Experimental.tokens.menuItemHeight
+    controlHeight = Experimental.tokens.controlHeight
+    hairlineAlpha = Experimental.tokens.hairlineAlpha
+}
