@@ -24,6 +24,8 @@ MAC_USER=${MAC_USER:-henrischulz}
 MAC_CABLE=${MAC_CABLE:-10.55.0.2}
 MAC_WIFI=${MAC_WIFI:-192.168.178.126}
 LPORT=${MAC_SCREEN_PORT:-5901}
+# The filter sits between the scaling viewer and the tunnel; see below.
+FPORT=${MAC_SCREEN_FILTER_PORT:-5902}
 CONFDIR=${XDG_CONFIG_HOME:-$HOME/.config}/mt-bridge
 PASSFILE=${MAC_SCREEN_PASS:-$CONFDIR/vncpass}
 PROFILE=$CONFDIR/mac-screen.remmina
@@ -62,11 +64,13 @@ fi
 echo "mac-screen: $ROUTE -> $HOST"
 
 VIEWER=""
+FILTER=""
 # Every step ends in `|| true`: this runs under `set -e`, and a viewer that has
 # already exited makes kill fail, which would otherwise abort the function
 # right here and leave the tunnel holding the port.
 cleanup() {
     if [ -n "$VIEWER" ]; then kill "$VIEWER" 2>/dev/null || true; fi
+    if [ -n "$FILTER" ]; then kill "$FILTER" 2>/dev/null || true; fi
     ssh -S "$CTL" -O exit "$MAC_USER@$HOST" 2>/dev/null || true
     rm -f "$CTL" || true
 }
@@ -89,6 +93,15 @@ if [ "$CRISP" -eq 1 ]; then
               -QualityLevel 9 -CompressLevel 2 -Shared=1 -ReconnectOnError=0 \
               "127.0.0.1:$LPORT" &
 else
+    # libvncclient, which the scaling viewer is built on, takes the first
+    # security type the server lists -- and macOS lists its own schemes first,
+    # so it picks one it cannot finish and fails with "could not authenticate"
+    # on a perfectly good password. There is no client option to pin the
+    # choice, so it is pinned from the other side.
+    vnc-pin-auth --listen "$FPORT" --target "127.0.0.1:$LPORT" >/dev/null 2>&1 &
+    FILTER=$!
+    sleep 0.3
+
     mkdir -p "$CONFDIR"
     # Rewritten every run so the port always matches. The password is left for
     # Remmina to hold: it keeps it in the keyring once you tick "save", and
@@ -98,7 +111,7 @@ else
 name=MacBook
 group=
 protocol=VNC
-server=127.0.0.1:$LPORT
+server=127.0.0.1:$FPORT
 username=
 scale=1
 scale_quality=3

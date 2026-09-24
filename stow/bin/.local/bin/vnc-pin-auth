@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""Offer a VNC client exactly one security type, and relay everything else.
+
+macOS Screen Sharing lists its own schemes first: 30, 33, 36, then 2, then 35.
+libvncclient -- which is what Remmina and anything else built on it uses --
+takes the first entry in that list and never reaches the one it can actually
+complete, so the connection dies at "could not authenticate" with a perfectly
+good password.
+
+There is no client option to pin the choice, so this pins it from the other
+side: the server's list is rewritten to hold only VncAuth before the client
+sees it. Nothing else is touched. The password never passes through here --
+the client still does its own challenge and response with the server, byte for
+byte, so this holds no secret and cannot weaken the exchange.
+
+    vnc-pin-auth [--listen PORT] [--target HOST:PORT]
+"""
+import argparse
+import socket
+import socketserver
+import sys
+import threading
+
+VNC_AUTH = 2
+
+
+def read_exactly(sock, n):
+    buf = b""
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            raise ConnectionError("peer closed during handshake")
+        buf += chunk
+    return buf
+
+
+def pump(src, dst):
+    """Relay until either side closes, then close both so the other pump ends."""
+    try:
+        while True:
+            data = src.recv(65536)
+            if not data:
+                break
+            dst.sendall(data)
+    except OSError:
+        pass
+    finally:
+        for s in (src, dst):
+            try:
+                s.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+
+class Handler(socketserver.BaseRequestHandler):
+    def handle(self):
+        client = self.request
+        target_host, target_port = self.server.target
+        try:
+            server = socket.create_connection((target_host, target_port), timeout=10)
+        except OSError as e:
+            print(f"vnc-pin-auth: cannot reach {target_host}:{target_port}: {e}",
+                  file=sys.stderr)
+            return
+
+        try:
+            # Protocol version, both directions, untouched.
+            client.sendall(read_exactly(server, 12))
+            server.sendall(read_exactly(client, 12))
+
+            # The one substitution: whatever the server offers, the client is
+            # shown VncAuth and nothing else.
+            count = read_exactly(server, 1)[0]
+            if count == 0:
+                # A zero count means the server is refusing with a reason
+                # string; pass that through so the client can report it.
+                client.sendall(b"\x00")
+                pump(server, client)
+                return
+            offered = read_exactly(server, count)
+            if VNC_AUTH not in offered:
+                print("vnc-pin-auth: server does not offer VncAuth, offered "
+                      f"{list(offered)}", file=sys.stderr)
+                client.sendall(b"\x00")
+                return
+            client.sendall(bytes([1, VNC_AUTH]))
+
+            chosen = read_exactly(client, 1)
+            if chosen[0] != VNC_AUTH:
+                print(f"vnc-pin-auth: client chose {chosen[0]}, expected {VNC_AUTH}",
+                      file=sys.stderr)
+                return
+            server.sendall(chosen)
+
+            # From here the challenge, the response and the whole session are
+            # none of this program's business.
+            t = threading.Thread(target=pump, args=(server, client), daemon=True)
+            t.start()
+            pump(client, server)
+            t.join(timeout=2)
+        except (ConnectionError, OSError) as e:
+            print(f"vnc-pin-auth: {e}", file=sys.stderr)
+        finally:
+            server.close()
+
+
+class Server(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--listen", type=int, default=5902)
+    ap.add_argument("--target", default="127.0.0.1:5901")
+    args = ap.parse_args()
+
+    host, _, port = args.target.rpartition(":")
+    srv = Server(("127.0.0.1", args.listen), Handler)
+    srv.target = (host or "127.0.0.1", int(port))
+    print(f"vnc-pin-auth: 127.0.0.1:{args.listen} -> {srv.target[0]}:{srv.target[1]}",
+          flush=True)
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+main()
