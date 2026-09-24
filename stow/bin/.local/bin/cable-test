@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Measures negotiated USB link speed and real read/write throughput of a
+# Samsung T7 SSD, to compare USB-C/USB cables against each other.
+set -euo pipefail
+
+LOG="$HOME/cable-tests.csv"
+TESTSIZE_MB=2048
+MODEL_MATCH="T7"
+
+if [ ! -f "$LOG" ]; then
+    echo "timestamp,cable_label,usb_speed_mbps,usb_class,bcdUSB,write_MBps,read_MBps" > "$LOG"
+fi
+
+CABLE_LABEL="${1:-}"
+if [ -z "$CABLE_LABEL" ]; then
+    read -rp "Kabel-Label (z.B. 'Anker 1m rot'): " CABLE_LABEL
+fi
+
+DEV_NAME=$(lsblk -rno NAME,MODEL | awk -v m="$MODEL_MATCH" '$0 ~ m {print $1; exit}')
+if [ -z "$DEV_NAME" ]; then
+    echo "T7 nicht gefunden. Ist sie angeschlossen?" >&2
+    exit 1
+fi
+DEV_NAME=$(echo "$DEV_NAME" | sed -E 's/[0-9]+$//')
+DEV="/dev/$DEV_NAME"
+
+SYSPATH="/sys$(udevadm info -q path -n "$DEV")"
+P="$SYSPATH"
+while [ "$P" != "/" ]; do
+    if [ -f "$P/idVendor" ]; then
+        break
+    fi
+    P=$(dirname "$P")
+done
+
+SPEED=$(cat "$P/speed" 2>/dev/null || echo "?")
+BCDUSB=$(cat "$P/version" 2>/dev/null | tr -d ' ' || echo "?")
+
+case "$SPEED" in
+    1.5|12) CLASS="USB 1.1 (Low/Full-Speed)";;
+    480) CLASS="USB 2.0 High-Speed";;
+    5000) CLASS="USB 3.2 Gen1 (5 Gbps)";;
+    10000) CLASS="USB 3.2 Gen2 (10 Gbps)";;
+    20000) CLASS="USB 3.2 Gen2x2 (20 Gbps)";;
+    *) CLASS="unbekannt ($SPEED)";;
+esac
+
+MOUNT=$(lsblk -rno NAME,MOUNTPOINT | awk -v d="$DEV_NAME" '$1 ~ "^"d"[0-9]+$" && $2 != "" {print $2; exit}')
+if [ -z "$MOUNT" ]; then
+    echo "Keine gemountete Partition auf $DEV gefunden." >&2
+    exit 1
+fi
+
+TESTDIR="$MOUNT/.cable-test"
+mkdir -p "$TESTDIR"
+TESTFILE="$TESTDIR/testfile.bin"
+trap 'rm -f "$TESTFILE"' EXIT
+
+echo "Schreibtest ($TESTSIZE_MB MB, O_DIRECT)..."
+WRITE_OUT=$(dd if=/dev/zero of="$TESTFILE" bs=1M count="$TESTSIZE_MB" oflag=direct 2>&1)
+WRITE_MBPS=$(echo "$WRITE_OUT" | grep -oP '[\d.,]+ [MG]B/s' | tail -1)
+
+echo "Lesetest (O_DIRECT)..."
+READ_OUT=$(dd if="$TESTFILE" of=/dev/null bs=1M iflag=direct 2>&1)
+READ_MBPS=$(echo "$READ_OUT" | grep -oP '[\d.,]+ [MG]B/s' | tail -1)
+
+echo "$(date -Iseconds),\"$CABLE_LABEL\",$SPEED,\"$CLASS\",$BCDUSB,\"$WRITE_MBPS\",\"$READ_MBPS\"" >> "$LOG"
+
+echo ""
+echo "=== $CABLE_LABEL ==="
+echo "USB-Link:  $CLASS ($SPEED Mbps, bcdUSB $BCDUSB)"
+echo "Schreiben: $WRITE_MBPS"
+echo "Lesen:     $READ_MBPS"
+echo ""
+echo "Alle Ergebnisse: $LOG"
