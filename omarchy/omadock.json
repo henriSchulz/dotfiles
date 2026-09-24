@@ -1,34 +1,31 @@
 {
   "alignment": "center",
-  "showRemovableDrives": true,
-  "appGroups": [],
   "autohide": true,
   "intelligentAutohide": true,
-  "showAppsButton": false,
-  "showTooltips": true,
+  "minimizeMode": "active",
   "showMinimizedTiles": true,
-  "hoverEffect": "zoom",
-  "launchBounce": true,
-  "advancedTooltips": true,
   "opacity": 0.65,
   "shape": "rounded",
   "bgColor": "theme",
-  "folderColor": "theme",
   "itemSpacing": 4,
-  "minimizeMode": "active",
-  "clickToMinimize": true,
+  "iconSize": 56,
+  "hoverEffect": "wave",
+  "showAppsButton": false,
+  "showTooltips": true,
+  "advancedTooltips": true,
+  "launchBounce": true,
   "showUrgentHint": true,
   "urgentOnNotification": true,
-  "urgentSound": true,
-  "urgentSoundName": "bell",
+  "urgentSound": false,
+  "showRemovableDrives": true,
+  "folderColor": "theme",
   "revealDelay": 160,
   "tooltipDelay": 450,
   "pinnedFolders": [
     {
-      "path": "~",
-      "name": "Home",
-      "icon": "user-home"
+      "path": "~/Downloads",
+      "name": "Downloads",
+      "icon": "folder-download"
     }
-  ],
-  "iconSize": 44
+  ]
 }

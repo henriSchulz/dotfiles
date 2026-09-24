@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""Install (or remove) the MacTahoe icon theme for the experimental macOS mode.
+
+  https://github.com/vinceliuice/MacTahoe-icon-theme (GPL-3.0)
+
+The switch (henri-ui-experimental) points gsettings' icon-theme at MacTahoe
+while the mode is on and puts the old name back on the way out; this script
+only puts the files on disk. They live in ~/.local/share/icons and never in
+the dotfiles repo — 220 MB installed, and a GPL-3.0 icon set inside a public
+repo of my own is a licence question worth avoiding.
+
+  henri-macos-icons [--remove]
+
+Without --remove it clones (or updates) the source into the state directory
+and runs upstream's installer, which is what keeps the icon caches right.
+"""
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+REPO = "https://github.com/vinceliuice/MacTahoe-icon-theme.git"
+THEMES = ("MacTahoe", "MacTahoe-light", "MacTahoe-dark")
+
+home = Path.home()
+state = Path(os.environ.get("XDG_STATE_HOME", home / ".local/state")) / "henri-ui"
+src = state / "vendor/icons-src"
+icons = home / ".local/share/icons"
+
+
+def remove():
+    for name in THEMES:
+        target = icons / name
+        if target.is_dir():
+            shutil.rmtree(target)
+            print(f"henri-macos-icons: removed {target}")
+    shutil.rmtree(src, ignore_errors=True)
+
+
+def fetch():
+    if (src / ".git").is_dir():
+        subprocess.run(["git", "-C", str(src), "fetch", "--depth", "1", "origin", "HEAD"],
+                       check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(["git", "-C", str(src), "reset", "--hard", "FETCH_HEAD"],
+                       check=True, stdout=subprocess.DEVNULL)
+    else:
+        src.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "clone", "--depth", "1", REPO, str(src)], check=True)
+
+
+def main():
+    if "--remove" in sys.argv[1:]:
+        return remove()
+
+    fetch()
+    icons.mkdir(parents=True, exist_ok=True)
+    # Upstream's installer also builds the icon caches; doing it by hand means
+    # getting that wrong. -t blue matches the Omarchy accent closely enough
+    # that folder colours do not fight the theme.
+    subprocess.run(["./install.sh", "-d", str(icons), "-t", "blue"],
+                   cwd=src, check=True)
+
+    installed = [n for n in THEMES if (icons / n).is_dir()]
+    if not installed:
+        sys.exit("henri-macos-icons: nothing was installed")
+    print("henri-macos-icons: " + ", ".join(installed))
+
+
+if __name__ == "__main__":
+    main()

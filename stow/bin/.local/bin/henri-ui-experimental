@@ -9,6 +9,14 @@ change shape together.
 
   ~/.local/share/henri-ui/Experimental.js   the flag and the table
   ~/.local/state/henri-ui/experimental      "on"/"off", what the panel reads
+  gsettings icon-theme                      MacTahoe while the mode is on
+
+It also swaps the icon theme, because shapes alone do not make a dock look
+like macOS — the app icons do. MacTahoe (vinceliuice, GPL-3.0) is installed
+into ~/.local/share/icons by henri-macos-icons; the previous theme name is
+kept in experimental.prev-icons and put back on the way out. The theme files
+stay out of the dotfiles repo: 220 MB, and GPL-3.0 next to a public repo of
+my own is a licence question I would rather not have.
 
 Flipping the flag writes into the central henri-ui folder, which henri-ui-sync
 watches: it mirrors the change into the plugins that vendor their own copy and
@@ -22,13 +30,22 @@ Called by the Control Center (Experiments page) and usable on its own.
 """
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 home = Path.home()
 state = Path(os.environ.get("XDG_STATE_HOME", home / ".local/state")) / "henri-ui"
 flag = state / "experimental"
+prev_icons = state / "experimental.prev-icons"
 script = home / ".local/share/henri-ui/Experimental.js"
+ICONS = "MacTahoe"
+icon_dir = home / ".local/share/icons" / ICONS
+# Henri's own Files icon lives in hicolor because Yaru-blue ships none. hicolor
+# is searched before the active theme, so it would beat MacTahoe's Finder face
+# in the dock — park it while the mode is on and put it back afterwards.
+nautilus_override = home / ".local/share/icons/hicolor/scalable/apps/org.gnome.Nautilus.svg"
+nautilus_parked = nautilus_override.with_name(nautilus_override.name + ".parked")
 
 
 def is_on():
@@ -37,6 +54,46 @@ def is_on():
         return re.search(r"^var on = (\w+)", script.read_text(), re.M).group(1) == "true"
     except (OSError, AttributeError):
         return False
+
+
+def gsettings(*args):
+    try:
+        out = subprocess.run(["gsettings", *args], capture_output=True, text=True)
+        return out.stdout.strip().strip("'")
+    except OSError:
+        return ""
+
+
+def park_override(on):
+    """Get Henri's hicolor Files icon out of MacTahoe's way, or bring it back."""
+    if on and nautilus_override.exists() and not nautilus_parked.exists():
+        nautilus_override.rename(nautilus_parked)
+    elif not on and nautilus_parked.exists():
+        nautilus_parked.rename(nautilus_override)
+
+
+def set_icons(on):
+    """Point the icon theme at MacTahoe, or put the old name back."""
+    current = gsettings("get", "org.gnome.desktop.interface", "icon-theme")
+    if on:
+        if not icon_dir.is_dir():
+            print(f"henri-ui-experimental: {ICONS} icons are not installed "
+                  f"(run henri-macos-icons), leaving icon-theme alone", file=sys.stderr)
+            return
+        # Never remember our own name, so switching on twice keeps the original.
+        if current and current != ICONS:
+            prev_icons.write_text(current + "\n")
+        gsettings("set", "org.gnome.desktop.interface", "icon-theme", ICONS)
+        park_override(True)
+    elif current == ICONS:
+        park_override(False)
+        try:
+            back = prev_icons.read_text().strip()
+        except OSError:
+            back = ""
+        gsettings("set", "org.gnome.desktop.interface", "icon-theme", back or "Adwaita")
+    else:
+        park_override(on)
 
 
 def apply(on):
@@ -60,6 +117,7 @@ def apply(on):
 
     state.mkdir(parents=True, exist_ok=True)
     (state / "experimental").write_text("on\n" if on else "off\n")
+    set_icons(on)
     return on
 
 

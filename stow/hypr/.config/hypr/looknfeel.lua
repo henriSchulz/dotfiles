@@ -70,6 +70,10 @@ hl.layer_rule({ match = { namespace = "omarchy-keyboard-panel" }, blur = true, i
 hl.layer_rule({ match = { namespace = "omarchy-menu" }, blur = true, ignore_alpha = 0.3 })
 hl.layer_rule({ match = { namespace = "henri-osd" }, blur = true, ignore_alpha = 0.3 })
 
+-- Dock (omadock): das macOS-Dock ist Milchglas, kein Balken. Ohne Blur wäre
+-- die 0.65er Fläche aus omadock.json nur blass.
+hl.layer_rule({ match = { namespace = "omadock" }, blur = true, ignore_alpha = 0.3 })
+
 -- Mission Control animiert selbst (Fenster schrumpfen, eigener Crossfade).
 -- Hyprlands Layer-Fade darüber lässt es ruckeln und doppelt blenden.
 hl.layer_rule({ match = { namespace = "mission-control" }, no_anim = true, animation = "none" })
