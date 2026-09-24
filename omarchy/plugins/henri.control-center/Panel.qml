@@ -82,6 +82,18 @@ Panel {
     : padTransport !== "" ? "Idle \u00b7 " + padTransport
     : padLinkUp ? "Cable ready" : "Waiting for the Mac"
 
+  // ---- The Mac's screen, arriving as H.264 from the same machine. mac-stream
+  // keeps a status file for the same reason the trackpad's daemons do, and it
+  // carries a heartbeat: presence alone would still claim a mirror after the
+  // viewer was killed outright.
+  property var screenState: ({})
+  readonly property bool screenOn: padTick >= 0
+    && Number(screenState.updated || 0) > 0
+    && Date.now() / 1000 - Number(screenState.updated) < 6
+  readonly property string screenRoute: screenState.route || ""
+  readonly property string screenSubtitle: !screenOn ? "Off"
+    : screenRoute !== "" ? "Over " + screenRoute : "Mirroring"
+
   function padParse(text) {
     var out = {}
     var lines = String(text || "").split("\n")
@@ -108,8 +120,16 @@ Panel {
     onFileChanged: reload()
     onLoaded: root.padStream = root.padParse(text())
   }
+  FileView {
+    id: screenFile
+    path: Quickshell.env("XDG_RUNTIME_DIR") + "/mt-bridge/screen"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.screenState = root.padParse(text())
+  }
   Timer {
-    // Both files vanish with their services, and a watch cannot follow a file
+    // These files vanish with their services, and a watch cannot follow a file
     // that is not there, so re-read while the panel is open. Reading a file is
     // cheap; this is deliberately not a process.
     running: root.opened
@@ -120,6 +140,7 @@ Panel {
       root.padTick++
       padLinkFile.reload()
       padStreamFile.reload()
+      screenFile.reload()
     }
   }
 
@@ -2043,6 +2064,20 @@ Panel {
                 : "systemctl --user start mtbridge")
               onDetails: root.showPage("trackpad")
             }
+            ToggleRow {
+              width: parent.width
+              icon: root.sf(0x1008B9)
+              on: root.screenOn
+              title: "Mac Screen"
+              subtitle: root.screenSubtitle
+              // Stopped by its own pid rather than by name: more than one
+              // viewer could be running, and the one this panel started is
+              // the one it may end.
+              onToggled: root.run(root.screenOn
+                ? "kill " + (root.screenState.pid || 0)
+                : "setsid -f mac-stream >/dev/null 2>&1")
+              onDetails: root.showPage("screen")
+            }
           }
         }
 
@@ -3336,6 +3371,73 @@ Panel {
           topPadding: Style.space(2)
           Stat { width: hwPage.cellWidth; label: "Free"; value: root.formatBytesGB(root.hw.diskTotal - root.hw.diskUsed) }
           Stat { width: hwPage.cellWidth; label: "Uptime"; value: root.hw.uptime > 0 ? root.formatUptime(root.hw.uptime) : "--" }
+        }
+      }
+
+      // Mac screen — the MacBook's display arriving as H.264. Everything here
+      // describes this side: what the far side is doing is its own business
+      // and asking would mean a probe on every tick.
+      PageHeader {
+        visible: root.detailPage === "screen"
+        title: "Mac Screen"
+        showSwitch: true
+        checked: root.screenOn
+        onToggled: root.run(root.screenOn
+          ? "kill " + (root.screenState.pid || 0)
+          : "setsid -f mac-stream >/dev/null 2>&1")
+      }
+      Separator { visible: root.detailPage === "screen" }
+      Column {
+        id: screenPage
+        visible: root.detailPage === "screen"
+        width: root.panelWidth
+        leftPadding: Style.space(6)
+        rightPadding: Style.space(6)
+        topPadding: Style.space(4)
+        bottomPadding: Style.space(6)
+        spacing: Style.space(6)
+        readonly property int innerWidth: root.panelWidth - Style.space(12)
+        readonly property int cellWidth: Math.floor((innerWidth - Style.space(16)) / 2)
+
+        UsageHeader {
+          width: screenPage.innerWidth
+          title: "Mirror"
+          value: root.screenOn
+            ? (root.screenRoute !== "" ? "Over " + root.screenRoute : "Mirroring")
+            : "Off"
+          valueColor: root.screenOn ? Color.accent : root.dimText
+        }
+        Text {
+          width: screenPage.innerWidth
+          wrapMode: Text.WordWrap
+          color: root.dimText
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+          text: root.screenOn
+              ? "The Mac is capturing its own screen and sending it here. Nothing on it had to be clicked."
+            : root.padLinkUp
+              ? "Cable is up. Turning this on opens the mirror."
+              : "No cable. It will fall back to Wi-Fi, which costs delay and drops frames."
+        }
+
+        Separator { width: screenPage.innerWidth }
+
+        ListLabel { text: "Stream" }
+        Grid {
+          columns: 2
+          columnSpacing: Style.space(16)
+          rowSpacing: Style.space(2)
+          Stat { width: screenPage.cellWidth; label: "Route"; value: root.screenRoute !== "" ? root.screenRoute : "--" }
+          Stat { width: screenPage.cellWidth; label: "Source"; value: root.screenState.host || "--" }
+          Stat { width: screenPage.cellWidth; label: "Port"; value: root.screenState.port || "--" }
+          Stat { width: screenPage.cellWidth; label: "Decoder"; value: root.screenState.decoder || "--" }
+          Stat {
+            width: screenPage.cellWidth
+            label: "Running"
+            value: root.screenOn && Number(root.screenState.started || 0) > 0
+              ? root.formatUptime(Math.max(0, Math.floor(Date.now() / 1000 - Number(root.screenState.started))))
+              : "--"
+          }
         }
       }
 

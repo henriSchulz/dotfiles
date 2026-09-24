@@ -113,9 +113,54 @@ SINKOPTS="sync=false"
 
 echo "mac-stream: $ROUTE -> $HOST:$PORT"
 
+# A status file, so the control centre can say whether the Mac's screen is on
+# this one without having to probe anything. Same shape and place as the
+# trackpad receiver's, read the same way: a line per fact, rewritten whole, and
+# gone when this exits.
+STATUS_DIR=${XDG_RUNTIME_DIR:-/tmp}/mt-bridge
+STATUS=$STATUS_DIR/screen
+mkdir -p "$STATUS_DIR"
+
+write_status() {
+    # Written to a temporary file and moved into place: a reader that catches
+    # the moment of writing gets the old file or the new one, never half of
+    # either.
+    tmp=$STATUS.$$
+    {
+        echo "pid=$VIEWER"
+        echo "route=$ROUTE"
+        echo "host=$HOST"
+        echo "port=$PORT"
+        echo "decoder=${DECODE%% *}"
+        echo "started=$STARTED"
+        echo "updated=$(date +%s)"
+    } > "$tmp" && mv -f "$tmp" "$STATUS"
+}
+
 # sync=false: the stream carries no clock worth obeying and every frame is
 # wanted the moment it lands rather than at some nominal presentation time.
-exec gst-launch-1.0 -q \
+#
+# Not exec'd, unlike the obvious way to end a script like this: the viewer has
+# to stay a child so that its going away can be noticed and the status file
+# taken with it. An exec would replace this shell and leave the file behind
+# claiming a mirror that is no longer there.
+gst-launch-1.0 -q \
     tcpclientsrc host="$HOST" port="$PORT" do-timestamp=true \
     ! h264parse ! $DECODE \
-    ! waylandsink $SINKOPTS
+    ! waylandsink $SINKOPTS &
+VIEWER=$!
+STARTED=$(date +%s)
+
+cleanup() {
+    rm -f "$STATUS"
+    kill "$VIEWER" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+# The heartbeat is what makes the file trustworthy. Presence alone would lie
+# after a kill -9; a timestamp that stops moving cannot.
+while kill -0 "$VIEWER" 2>/dev/null; do
+    write_status
+    sleep 2
+done
+wait "$VIEWER"
