@@ -57,6 +57,14 @@ hl.config({
 hl.curve("appleSlide", { type = "bezier", points = { { 0.25, 1 }, { 0.5, 1 } } })
 hl.animation({ leaf = "workspaces", enabled = true, speed = 4, bezier = "appleSlide", style = "slide" })
 
+-- Maus bleibt, wo sie ist. Omarchy setzt warp_on_change_workspace = 1; beim
+-- Zurückholen eines minimierten Fensters aus dem Dock springt der Zeiger damit
+-- in dessen Mitte (gemessen: 768,497 -> 290,200). omadock vermeidet das schon,
+-- wo es kann (silent move, follow = false) — die Wayland-Aktivierung danach
+-- löst den Warp trotzdem aus, und die erwischt man nur hier. macOS bewegt den
+-- Zeiger nie von selbst, also gilt das auch für den Workspace-Wechsel.
+hl.config({ cursor = { no_warps = true } })
+
 -- Eigene Menüleiste (henri.bar): Hintergrund weichzeichnen wie bei macOS.
 hl.layer_rule({ match = { namespace = "omarchy-bar" }, blur = true, ignore_alpha = 0.3 })
 
