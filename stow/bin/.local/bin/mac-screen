@@ -3,6 +3,7 @@
 #
 #   mac-screen            # the Mac's screen, filling this one
 #   mac-screen --control  # also send keyboard and mouse to the Mac
+#   mac-screen --rich     # full colour depth, slower to follow
 #   mac-screen --crisp    # unscaled, 1:1 pixels, scroll to see the rest
 #   mac-screen --window   # in a window rather than filling the screen
 #   mac-screen --wifi     # force the wireless route
@@ -41,12 +42,19 @@ CTL=$(mktemp -u "${XDG_RUNTIME_DIR:-/tmp}/mac-screen.XXXXXX")
 CRISP=0
 WINDOWED=0
 CONTROL=0
+# Fast by default: mirroring a Retina screen means the Mac captures and encodes
+# four times the pixels of an ordinary display, and that is where the delay
+# comes from. Colour depth is the cheapest thing to give up for a picture that
+# keeps up; --rich puts it back.
+FAST=1
 FORCE=""
 for a in "$@"; do
     case "$a" in
         --crisp|--tiger) CRISP=1 ;;
         -w|--window) WINDOWED=1 ;;
         --control) CONTROL=1 ;;
+        --fast) FAST=1 ;;
+        --rich|--quality) FAST=0 ;;
         --wifi)  FORCE=$MAC_WIFI ;;
         --cable) FORCE=$MAC_CABLE ;;
         -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -54,6 +62,18 @@ for a in "$@"; do
 done
 
 die() { echo "mac-screen: $*" >&2; exit 1; }
+
+# A tunnel left behind by an earlier run holds its port, and binding then fails
+# with nothing on screen to explain why. Rather than making that the user's
+# problem, move along until something is free.
+free_port() {
+    p=$1
+    while [ "$p" -lt $(($1 + 20)) ]; do
+        timeout 1 sh -c "echo > /dev/tcp/127.0.0.1/$p" 2>/dev/null || { echo "$p"; return; }
+        p=$((p + 1))
+    done
+    echo "$1"
+}
 
 reachable() {
     # A short TCP probe rather than ping: what matters is that sshd answers,
@@ -72,6 +92,9 @@ else
     die "the Mac answers on neither $MAC_CABLE nor $MAC_WIFI
   is it awake, and is the cable in? check: systemctl status ncmlink"
 fi
+LPORT=$(free_port "$LPORT")
+FPORT=$(free_port "$FPORT")
+[ "$FPORT" = "$LPORT" ] && FPORT=$((LPORT + 1))
 echo "mac-screen: $ROUTE -> $HOST"
 
 VIEWER=""
@@ -137,6 +160,20 @@ else
     VIEWONLY=1
     [ "$CONTROL" -eq 1 ] && VIEWONLY=0
 
+    # showcursor is off on purpose. With it on the viewer draws the Mac's
+    # cursor wherever the local pointer happens to be, which in a view-only
+    # mirror is nowhere near where the Mac's cursor actually is -- so it simply
+    # vanishes. Off, the Mac draws it into the picture, which is where it
+    # belongs for something being watched rather than driven.
+    #
+    # Quality against latency: a mirrored Retina screen is a great many pixels
+    # to capture and encode, and that is where the delay comes from rather than
+    # the link. --fast trades colour depth for a picture that keeps up.
+    SCALEQ=1; QUALITY=9; DEPTH=32
+    if [ "$FAST" -eq 1 ]; then
+        SCALEQ=0; QUALITY=5; DEPTH=16
+    fi
+
     mkdir -p "$CONFDIR"
     # Rewritten every run so the port always matches. The password is left for
     # Remmina to hold: it keeps it in the keyring once you tick "save", and
@@ -149,10 +186,10 @@ protocol=VNC
 server=127.0.0.1:$FPORT
 username=
 scale=1
-scale_quality=3
-quality=9
-colordepth=32
-showcursor=1
+scale_quality=$SCALEQ
+quality=$QUALITY
+colordepth=$DEPTH
+showcursor=0
 viewonly=$VIEWONLY
 disableserverinput=0
 viewmode=$VIEWMODE
