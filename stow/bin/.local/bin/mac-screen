@@ -3,6 +3,7 @@
 #
 #   mac-screen            # the whole Mac screen, fitted to the window
 #   mac-screen --crisp    # unscaled, 1:1 pixels, scroll to see the rest
+#   mac-screen --window   # in a window rather than filling the screen
 #   mac-screen --wifi     # force the wireless route
 #   mac-screen --cable
 #
@@ -32,10 +33,12 @@ PROFILE=$CONFDIR/mac-screen.remmina
 CTL=$(mktemp -u "${XDG_RUNTIME_DIR:-/tmp}/mac-screen.XXXXXX")
 
 CRISP=0
+WINDOWED=0
 FORCE=""
 for a in "$@"; do
     case "$a" in
         --crisp|--tiger) CRISP=1 ;;
+        -w|--window) WINDOWED=1 ;;
         --wifi)  FORCE=$MAC_WIFI ;;
         --cable) FORCE=$MAC_CABLE ;;
         -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -102,6 +105,12 @@ else
     FILTER=$!
     sleep 0.3
 
+    # 4 is viewport fullscreen, 1 an ordinary window. Mirroring a screen means
+    # filling this one: tiled beside two terminals the desktop ends up a
+    # thumbnail, which is not a mirror of anything.
+    VIEWMODE=4
+    [ "$WINDOWED" -eq 1 ] && VIEWMODE=1
+
     mkdir -p "$CONFDIR"
     # Rewritten every run so the port always matches. The password is left for
     # Remmina to hold: it keeps it in the keyring once you tick "save", and
@@ -119,7 +128,7 @@ quality=9
 colordepth=32
 showcursor=1
 disableserverinput=0
-viewmode=1
+viewmode=$VIEWMODE
 window_maximize=1
 PROFILEEOF
     remmina -c "$PROFILE" &
