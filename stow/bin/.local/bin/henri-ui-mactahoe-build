@@ -6,7 +6,8 @@ touches a running system: the result is a stylesheet in the state directory
 that ~/.config/gtk-4.0/gtk.css only pulls in while the mode is switched on.
 
   source  ~/.local/state/henri-ui/vendor/src   (git clone, never committed)
-  output  ~/.local/state/henri-ui/vendor/mactahoe/{gtk.css,assets,windows-assets}
+  output  ~/.local/state/henri-ui/vendor/mactahoe/    GTK4, imported by gtk.css
+          ~/.local/share/themes/MacTahoe-Experimental/  GTK3, a real theme dir
 
 Upstream is https://github.com/vinceliuice/MacTahoe-gtk-theme (MIT). It ships
 a fixed macOS palette; the few SCSS variables everything else derives from are
@@ -33,6 +34,8 @@ state = Path(os.environ.get("XDG_STATE_HOME", home / ".local/state")) / "henri-u
 vendor = state / "vendor"
 src = vendor / "src"
 out = vendor / "mactahoe"
+# The GTK3 side has to be a real theme directory, not a stylesheet.
+THEMES = home / ".local/share/themes/MacTahoe-Experimental"
 
 
 def run(cmd, **kw):
@@ -85,6 +88,15 @@ def patch(path, replacements):
     path.write_text("".join(lines))
 
 
+def replace_once(path, old, new, why):
+    """A targeted source fix, loud if upstream moves it."""
+    text = path.read_text()
+    if text.count(old) != 1:
+        sys.exit(f"henri-ui-mactahoe-build: {path.name}: cannot apply "
+                 f"'{why}' — upstream changed")
+    path.write_text(text.replace(old, new))
+
+
 def sass(scss, css):
     """sassc if it is installed, else dart-sass through npx."""
     if shutil.which("sassc"):
@@ -132,17 +144,48 @@ def main():
         "hint_fg_color": mix(fg, bg, 0.26),
     })
 
+    # Upstream points placeholder text at the drop-target colour, so every
+    # empty entry gets orange hint text. Hint grey is what it should be.
+    replace_once(sass_dir / "gtk/_colors-public.scss",
+                 "@define-color placeholder_text_color #{\"\" + $drop_target_color};",
+                 "@define-color placeholder_text_color #{\"\" + $hint_fg_color};",
+                 "placeholder colour")
+
+    assets = src / "src/assets/gtk"
+
+    def copy_assets(target):
+        """The stylesheets' url()s are relative to where the css file sits."""
+        for sub in ("assets", "windows-assets"):
+            shutil.rmtree(target / sub, ignore_errors=True)
+        shutil.copytree(assets / "common-assets/assets", target / "assets")
+        shutil.copytree(assets / "scalable", target / "assets/scalable")
+        shutil.copytree(assets / "windows-assets/titlebutton", target / "windows-assets")
+
     out.mkdir(parents=True, exist_ok=True)
     built = out / "gtk.css"
     sass(src / f"src/main/gtk-4.0/gtk-{variant}.scss", built)
+    copy_assets(out)
 
-    # Assets sit next to the stylesheet: its url()s are relative to it.
-    assets = src / "src/assets/gtk"
-    for target in (out / "assets", out / "windows-assets"):
-        shutil.rmtree(target, ignore_errors=True)
-    shutil.copytree(assets / "common-assets/assets", out / "assets")
-    shutil.copytree(assets / "scalable", out / "assets/scalable")
-    shutil.copytree(assets / "windows-assets/titlebutton", out / "windows-assets")
+    # GTK3 has no user stylesheet to hook into, so it needs a real theme on
+    # disk that henri-ui-experimental points gtk-theme-name at. Sushi keeps
+    # its own look regardless: it is started with GTK_THEME=HenriQuickLook,
+    # and the environment variable beats the setting.
+    gtk3 = THEMES / "gtk-3.0"
+    gtk3.mkdir(parents=True, exist_ok=True)
+    sass(src / f"src/main/gtk-3.0/gtk-{variant}.scss", gtk3 / "gtk.css")
+    # Named gtk-dark.css so apps asking for the dark variant get something;
+    # both files are this theme's one variant, which follows Omarchy's mode.
+    shutil.copy(gtk3 / "gtk.css", gtk3 / "gtk-dark.css")
+    copy_assets(gtk3)
+    (THEMES / "index.theme").write_text(
+        "[Desktop Entry]\n"
+        "Type=X-GNOME-Metatheme\n"
+        f"Name={THEMES.name}\n"
+        "Comment=MacTahoe in the Omarchy colours — experimental macOS mode\n"
+        "Encoding=UTF-8\n\n"
+        "[X-GNOME-Metatheme]\n"
+        f"GtkTheme={THEMES.name}\n"
+        "ButtonLayout=close,minimize,maximize:menu\n")
 
     head = subprocess.run(["git", "-C", str(src), "rev-parse", "--short", "HEAD"],
                           capture_output=True, text=True).stdout.strip()
@@ -151,7 +194,8 @@ def main():
         " * henri-ui-mactahoe-build. Generated — do not edit.\n"
         " * Upstream: https://github.com/vinceliuice/MacTahoe-gtk-theme (MIT) */\n"
         + built.read_text())
-    print(f"henri-ui-mactahoe-build: wrote {built} (MacTahoe {variant} {head})")
+    print(f"henri-ui-mactahoe-build: wrote {built} and {THEMES} "
+          f"(MacTahoe {variant} {head})")
 
 
 if __name__ == "__main__":
