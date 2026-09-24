@@ -1,15 +1,22 @@
 #!/bin/sh
 # Show the screenless MacBook's display on this machine.
 #
-#   mac-screen              # cable if it answers, otherwise Wi-Fi
-#   mac-screen --wifi       # force the wireless route
-#   mac-screen --fullscreen
+#   mac-screen            # the whole Mac screen, fitted to the window
+#   mac-screen --crisp    # unscaled, 1:1 pixels, scroll to see the rest
+#   mac-screen --wifi     # force the wireless route
+#   mac-screen --cable
 #
-# macOS Screen Sharing only offers Apple's own authentication schemes, which no
-# Linux VNC client speaks, so the legacy VNC password is enabled on the Mac
-# instead. That scheme is DES from 1998 and worth nothing on its own -- so the
-# connection is not made to it directly: it goes through an SSH tunnel keyed to
-# this machine, and VNC only ever sees localhost.
+# The Mac renders more pixels than this screen has, so the default viewer is
+# the one that can scale: the point is to mirror the whole desktop, not to
+# inspect a corner of it. --crisp uses TigerVNC instead, which cannot scale but
+# shows real pixels, and is the better choice once the Mac's own resolution
+# fits here.
+#
+# macOS Screen Sharing only offers Apple's own authentication schemes by
+# default, so the legacy VNC password is enabled on the Mac instead. That
+# scheme is DES and worth nothing on its own -- which is why nothing connects
+# to it directly: the session runs through an SSH tunnel keyed to this machine,
+# and VNC only ever sees localhost.
 
 set -e
 
@@ -17,51 +24,47 @@ MAC_USER=${MAC_USER:-henrischulz}
 MAC_CABLE=${MAC_CABLE:-10.55.0.2}
 MAC_WIFI=${MAC_WIFI:-192.168.178.126}
 LPORT=${MAC_SCREEN_PORT:-5901}
-PASSFILE=${MAC_SCREEN_PASS:-$HOME/.config/mt-bridge/vncpass}
+CONFDIR=${XDG_CONFIG_HOME:-$HOME/.config}/mt-bridge
+PASSFILE=${MAC_SCREEN_PASS:-$CONFDIR/vncpass}
+PROFILE=$CONFDIR/mac-screen.remmina
 CTL=$(mktemp -u "${XDG_RUNTIME_DIR:-/tmp}/mac-screen.XXXXXX")
 
-FULLSCREEN=0
+CRISP=0
 FORCE=""
 for a in "$@"; do
     case "$a" in
-        -f|--fullscreen) FULLSCREEN=1 ;;
+        --crisp|--tiger) CRISP=1 ;;
         --wifi)  FORCE=$MAC_WIFI ;;
         --cable) FORCE=$MAC_CABLE ;;
-        -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     esac
 done
 
 die() { echo "mac-screen: $*" >&2; exit 1; }
 
-[ -f "$PASSFILE" ] || die "no password file at $PASSFILE
-  create one with the password set on the Mac (8 characters, no more):
-    mkdir -p $(dirname "$PASSFILE") && vncpasswd $PASSFILE"
-
 reachable() {
     # A short TCP probe rather than ping: what matters is that sshd answers,
-    # not that the address exists.
+    # not that the address replies.
     timeout 2 sh -c "echo > /dev/tcp/$1/22" 2>/dev/null
 }
 
 if [ -n "$FORCE" ]; then
-    HOST=$FORCE
+    HOST=$FORCE; ROUTE=$FORCE
     reachable "$HOST" || die "$HOST does not answer on port 22"
 elif reachable "$MAC_CABLE"; then
-    HOST=$MAC_CABLE
-    ROUTE="cable"
+    HOST=$MAC_CABLE; ROUTE="cable"
 elif reachable "$MAC_WIFI"; then
-    HOST=$MAC_WIFI
-    ROUTE="Wi-Fi"
+    HOST=$MAC_WIFI; ROUTE="Wi-Fi"
 else
     die "the Mac answers on neither $MAC_CABLE nor $MAC_WIFI
   is it awake, and is the cable in? check: systemctl status ncmlink"
 fi
-echo "mac-screen: ${ROUTE:-$HOST} -> $HOST"
+echo "mac-screen: $ROUTE -> $HOST"
 
 VIEWER=""
 # Every step ends in `|| true`: this runs under `set -e`, and a viewer that has
-# already exited makes kill fail, which used to abort the function right here
-# and leave the tunnel holding the port.
+# already exited makes kill fail, which would otherwise abort the function
+# right here and leave the tunnel holding the port.
 cleanup() {
     if [ -n "$VIEWER" ]; then kill "$VIEWER" 2>/dev/null || true; fi
     ssh -S "$CTL" -O exit "$MAC_USER@$HOST" 2>/dev/null || true
@@ -73,24 +76,44 @@ trap cleanup EXIT INT TERM
 # leaving the viewer to connect to whatever else is listening on it.
 ssh -f -N -M -S "$CTL" -o ExitOnForwardFailure=yes -o ConnectTimeout=5 \
     -L "$LPORT:127.0.0.1:5900" "$MAC_USER@$HOST" \
-    || die "could not open the tunnel (is port $LPORT free?)"
+    || die "could not open the tunnel (is port $LPORT already in use?)"
 
-# Pinned to VncAuth: this viewer also speaks Apple's DH scheme and prefers it,
-# but that one wants the Mac account interactively, which turns a launcher into
-# a dialog. The tunnel is what secures this connection, so the weaker scheme
-# costs nothing here.
-set -- -SecurityTypes VncAuth -passwd "$PASSFILE" \
-       -QualityLevel 9 -CompressLevel 2 \
-       -Shared=1 -ReconnectOnError=0
-[ "$FULLSCREEN" -eq 1 ] && set -- "$@" -FullScreen
+if [ "$CRISP" -eq 1 ]; then
+    [ -f "$PASSFILE" ] || die "no password file at $PASSFILE
+  create one with the password set on the Mac (8 characters, no more):
+    mkdir -p $CONFDIR && vncpasswd $PASSFILE"
+    # Pinned to VncAuth: this viewer also speaks Apple's DH scheme and prefers
+    # it, but that one asks for the Mac account interactively, which turns a
+    # launcher into a dialog. The tunnel is what secures this connection.
+    vncviewer -SecurityTypes VncAuth -passwd "$PASSFILE" \
+              -QualityLevel 9 -CompressLevel 2 -Shared=1 -ReconnectOnError=0 \
+              "127.0.0.1:$LPORT" &
+else
+    mkdir -p "$CONFDIR"
+    # Rewritten every run so the port always matches. The password is left for
+    # Remmina to hold: it keeps it in the keyring once you tick "save", and
+    # writing it here would mean storing it in plain text next to the profile.
+    cat > "$PROFILE" <<PROFILEEOF
+[remmina]
+name=MacBook
+group=
+protocol=VNC
+server=127.0.0.1:$LPORT
+username=
+scale=1
+scale_quality=3
+quality=9
+colordepth=32
+showcursor=1
+disableserverinput=0
+viewmode=1
+window_maximize=1
+PROFILEEOF
+    remmina -c "$PROFILE" &
+fi
 
-# Quality high and compression low on purpose: the cable has bandwidth to spare
-# and latency is what matters, so there is nothing to gain from squeezing.
-# Backgrounded and waited on, rather than run in the foreground: a shell
-# waiting on a foreground child defers its traps until that child is done, so a
-# signal here would clean up nothing and leave the tunnel holding the port. The
-# viewer also has to be killed by name in cleanup, because the signal that
-# interrupts the wait never reaches it.
-vncviewer "$@" "127.0.0.1:$LPORT" &
 VIEWER=$!
+# Backgrounded and waited on rather than run in the foreground: a shell waiting
+# on a foreground child defers its traps until that child is done, so a signal
+# would clean up nothing and leave the tunnel holding the port.
 wait "$VIEWER"
