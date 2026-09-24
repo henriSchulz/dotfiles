@@ -5,6 +5,7 @@
 #   mac-stream --window
 #   mac-stream --fps 30     # easier on the battery
 #   mac-stream --half       # half resolution, for a weak link
+#   mac-stream --gpu        # decode on the GPU: less power, more delay
 #   mac-stream --cable | --wifi
 #
 # AirPlay cannot be started from this side: the call that does it is behind
@@ -27,6 +28,7 @@ PORT=${MTSCREEN_PORT:-7101}
 LABEL=com.mtbridge.mtscreen
 
 FULLSCREEN=1
+GPU=0
 FORCE=""
 FPS=""
 SCALE=""
@@ -34,6 +36,7 @@ for a in "$@"; do
     case "$a" in
         -w|--window) FULLSCREEN=0 ;;
         --half) SCALE=0.5 ;;
+        --gpu) GPU=1 ;;
         --wifi) FORCE=$MAC_WIFI ;;
         --cable) FORCE=$MAC_CABLE ;;
         --fps) FPS=next ;;
@@ -84,12 +87,25 @@ if ! timeout 3 sh -c "echo > /dev/tcp/$HOST/$PORT" 2>/dev/null; then
   likely: Screen Recording has not been granted to mt-screen.app"
 fi
 
-# Prefer the GPU. Falling back to libav matters on a machine where VA-API is
-# there but refuses the stream, which is a driver question, not ours.
-if gst-inspect-1.0 vah264dec >/dev/null 2>&1; then
+# openh264 first, and not for want of a GPU. Measured on this stream, from the
+# buffer entering the decoder to leaving it:
+#
+#   openh264dec    25 ms median    84 ms p95
+#   vah264dec     105 ms median   292 ms p95
+#   avdec_h264    119 ms median   546 ms p95
+#
+# The other two hold frames back; openh264 is built for real-time calls and
+# hands each one straight on. It decodes on the CPU, which at this size is a
+# fair trade for four times less delay. --gpu picks VA-API instead, which is
+# the better choice if the battery matters more than the lag.
+if [ "$GPU" = 1 ] && gst-inspect-1.0 vah264dec >/dev/null 2>&1; then
+    DECODE="vah264dec ! vapostproc"
+elif gst-inspect-1.0 openh264dec >/dev/null 2>&1; then
+    DECODE="openh264dec ! videoconvert"
+elif gst-inspect-1.0 vah264dec >/dev/null 2>&1; then
     DECODE="vah264dec ! vapostproc"
 else
-    DECODE="avdec_h264 ! videoconvert"
+    DECODE="avdec_h264 max-threads=1 ! videoconvert"
 fi
 
 SINKOPTS="sync=false"
@@ -97,9 +113,8 @@ SINKOPTS="sync=false"
 
 echo "mac-stream: $ROUTE -> $HOST:$PORT"
 
-# sync=false throughout: the stream carries no clock worth obeying and every
-# frame is wanted the moment it lands. latency=0 on the parser stops it holding
-# frames back to look for a complete access unit it already has.
+# sync=false: the stream carries no clock worth obeying and every frame is
+# wanted the moment it lands rather than at some nominal presentation time.
 exec gst-launch-1.0 -q \
     tcpclientsrc host="$HOST" port="$PORT" do-timestamp=true \
     ! h264parse ! $DECODE \
