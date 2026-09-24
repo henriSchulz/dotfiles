@@ -83,8 +83,10 @@ on ccPanel()
 			tell process "ControlCenter"
 				repeat 4 times
 					repeat with i from 1 to (count of windows)
-						if my hasId(window i, "screen-mirroring-device-list") then return window i
-						if my hasId(window i, "controlcenter-screen-mirroring") then return window i
+						try
+							if my hasId(window i, "screen-mirroring-device-list") then return window i
+							if my hasId(window i, "controlcenter-screen-mirroring") then return window i
+						end try
 					end repeat
 					try
 						perform action "AXPress" of my ccIcon()
@@ -122,31 +124,42 @@ on deviceList()
 	return missing value
 end deviceList
 
--- Once connected the receiver's row stops being a checkbox and becomes a
--- disclosure triangle, a line of status text and a pair of buttons, all
--- carrying the same identifier. The text is the readable part.
+-- The receiver's row takes three shapes, all under the same identifier, and
+-- the shape is the state. Idle it is a checkbox. While the Mac is connected
+-- but still deciding what to send it becomes a disclosure triangle, a line of
+-- status text and two buttons. Once the picture is actually going it is a
+-- checkbox again, this time ticked.
 on receiverState(dl)
+	set ticked to false
 	tell application "System Events"
-		repeat with c in (UI elements of dl)
+		try
+			repeat with c in (UI elements of dl)
 			set el to contents of c
 			try
 				if ((value of attribute "AXIdentifier" of el) as text) ends with "$DEVLC" then
 					if (role of el) is "AXStaticText" then return ((value of el) as text)
+					if (role of el) is "AXCheckBox" then
+						if ((value of el) as integer) is 1 then set ticked to true
+					end if
 				end if
 			end try
-		end repeat
-		return "disconnected"
+			end repeat
+		end try
 	end tell
+	if ticked then return "Currently Mirroring"
+	return "disconnected"
 end receiverState
 
 on receiverToggle(dl)
 	tell application "System Events"
-		repeat with c in (UI elements of dl)
+		try
+			repeat with c in (UI elements of dl)
 			set el to contents of c
 			try
 				if (role of el) is "AXCheckBox" and ((value of attribute "AXIdentifier" of el) as text) ends with "$DEVLC" then return el
 			end try
-		end repeat
+			end repeat
+		end try
 		return missing value
 	end tell
 end receiverToggle
@@ -239,12 +252,14 @@ end shieldUp
 on rowButtons(dl)
 	set acc to {}
 	tell application "System Events"
-		repeat with c in (UI elements of dl)
+		try
+			repeat with c in (UI elements of dl)
 			set el to contents of c
 			try
 				if (role of el) is "AXButton" and ((value of attribute "AXIdentifier" of el) as text) ends with "$DEVLC" then set end of acc to el
 			end try
-		end repeat
+			end repeat
+		end try
 	end tell
 	return acc
 end rowButtons
@@ -271,11 +286,10 @@ if dl is missing value then return "ERROR: Control Center never showed the recei
 set nowState to my receiverState(dl)
 
 if want is "status" then
-	set sh to my shieldUp()
 	my closeCC()
 	if nowState is "disconnected" then return "off"
-	if sh then return "connected, not mirroring yet"
-	return "on"
+	if nowState contains "Mirroring" then return "on"
+	return "connected, but the Mac has not been told what to show"
 end if
 
 if want is "off" then
@@ -283,26 +297,30 @@ if want is "off" then
 		my closeCC()
 		return "off (already)"
 	end if
-	-- When connected the row has no checkbox any more; the right-hand of its
-	-- two buttons is what lets go of the receiver.
-	set rowBtns to my rowButtons(dl)
-	if (count of rowBtns) is 0 then
-		my closeCC()
-		return "ERROR: nothing in the receiver's row will disconnect it"
+	-- While the picture is going the row is a ticked checkbox and unticking it
+	-- is the way out. Caught mid-decision there is no checkbox, and the
+	-- right-hand of the two buttons lets go instead.
+	set tog to my receiverToggle(dl)
+	if tog is missing value then
+		set rowBtns to my rowButtons(dl)
+		if (count of rowBtns) is 0 then
+			my closeCC()
+			return "ERROR: nothing in the receiver's row will disconnect it"
+		end if
+		set tog to item 1 of rowBtns
+		set tx to -1
+		tell application "System Events"
+			repeat with b in rowBtns
+				set {bx, byy} to (position of b)
+				if bx > tx then
+					set tx to bx
+					set tog to b
+				end if
+			end repeat
+		end tell
 	end if
-	set tog to item 1 of rowBtns
-	set tx to -1
-	tell application "System Events"
-		repeat with b in rowBtns
-			set {bx, byy} to (position of b)
-			if bx > tx then
-				set tx to bx
-				set tog to b
-			end if
-		end repeat
-		perform action "AXPress" of tog
-	end tell
-	delay 4
+	tell application "System Events" to perform action "AXPress" of tog
+	delay 6
 	set dl to my deviceList()
 	if dl is missing value then return "ERROR: Control Center went away before this could be checked"
 	set nowState to my receiverState(dl)
@@ -312,6 +330,11 @@ if want is "off" then
 end if
 
 -- want is "on"
+if nowState contains "Mirroring" then
+	my closeCC()
+	return "on (already)"
+end if
+
 if nowState is "disconnected" then
 	set tog to my receiverToggle(dl)
 	if tog is missing value then

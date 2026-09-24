@@ -69,7 +69,9 @@ echo "mac-mirror: advertising as \"$NAME\" (device $DEVICE_ID)"
 # having decided between mirroring and extending, and choosing tears the
 # session down and builds a new one immediately -- which used to race uxplay's
 # renderer teardown against its own restart and segfault it every time.
-RECEIVER="uxplay -n $NAME -p -m $DEVICE_ID -nc -vs $SINK"
+# -nh drops the "@hostname" uxplay otherwise appends, which on a machine named
+# after itself reads as "omarchy@omarchy" in the Mac's menu.
+RECEIVER="uxplay -n $NAME -nh -p -m $DEVICE_ID -nc -vs $SINK"
 
 if [ "$AUTO" = 0 ]; then
     echo "mac-mirror: waiting -- pick it in Screen Mirroring on the Mac"
