@@ -352,6 +352,8 @@ def main():
     ap.add_argument("--vncpass",
                     default=os.path.expanduser("~/.config/mt-bridge/vncpass"),
                     help="vncpasswd file, used only if there is no account")
+    ap.add_argument("--keep-cursor", action="store_true",
+                    help="leave the cursor pseudo-encodings in the request")
     ap.add_argument("--no-prompt", action="store_true",
                     help="fail rather than asking for a password")
     args = ap.parse_args()
@@ -384,6 +386,8 @@ def main():
     srv = Server(("127.0.0.1", args.listen), Handler)
     srv.target = (host or "127.0.0.1", int(port))
     srv.creds = Credentials(args.user, macpass, vncpass)
+    if args.keep_cursor:
+        CURSOR_ENCODINGS.clear()
     how = f"as {args.user}" if (args.user and macpass) else "with the VNC password"
     print(f"vnc-pin-auth: 127.0.0.1:{args.listen} -> {srv.target[0]}:{srv.target[1]}, {how}",
           flush=True)

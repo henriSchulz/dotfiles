@@ -1,8 +1,8 @@
 #!/bin/sh
 # Use this machine as a display for the screenless MacBook.
 #
-#   mac-screen            # the Mac's screen, pixel for pixel
-#   mac-screen --scaled   # fit a screen larger than this one into the window
+#   mac-screen            # the Mac's screen, filling this one edge to edge
+#   mac-screen --exact    # pixel for pixel, black bars where sizes differ
 #   mac-screen --control  # also send keyboard and mouse to the Mac
 #   mac-screen --window   # in a window rather than filling the screen
 #   mac-screen --wifi     # force the wireless route
@@ -12,12 +12,16 @@
 # ask otherwise. The Mac is driven from the Mac, and a stray click over here
 # should not land over there.
 #
-# Set the Mac's own resolution to something that fits here -- macres on the Mac
-# does that -- and no scaling is needed at all. That is the arrangement this
-# assumes: it is cheaper for the Mac, which then captures and encodes a third
-# of the pixels a Retina mode costs, and it draws the cursor properly, which a
-# scaling viewer built on libvncclient cannot. --scaled is the fallback for a
-# Mac whose screen is bigger than this one.
+# Set the Mac to a resolution with this screen's aspect ratio -- macres on the
+# Mac does that -- and the picture fills the display exactly. 1440x900 against
+# 1920x1200 is the same 16:10 and scales by a clean third, which also leaves
+# the Mac a quarter of the pixels a Retina mode would have cost.
+#
+# Do not expect to see the Mac's pointer. Its screen sharing sends no cursor
+# information to a standard VNC client at all -- not the shape, not the
+# position -- because the protocol assumes whoever is watching is also the one
+# moving it. Measured, not guessed. With --control the pointer is yours and
+# therefore visible; watching, there is nothing to draw.
 #
 # macOS Screen Sharing only offers Apple's own authentication schemes by
 # default, so the legacy VNC password is enabled on the Mac instead. That
@@ -39,7 +43,7 @@ PASSFILE=${MAC_SCREEN_PASS:-$CONFDIR/vncpass}
 PROFILE=$CONFDIR/mac-screen.remmina
 CTL=$(mktemp -u "${XDG_RUNTIME_DIR:-/tmp}/mac-screen.XXXXXX")
 
-SCALED=0
+SCALED=1
 WINDOWED=0
 CONTROL=0
 # Fast by default: mirroring a Retina screen means the Mac captures and encodes
@@ -50,7 +54,7 @@ FAST=1
 FORCE=""
 for a in "$@"; do
     case "$a" in
-        --scaled) SCALED=1 ;;
+        --exact|--pixels) SCALED=0 ;;
         -w|--window) WINDOWED=1 ;;
         --control) CONTROL=1 ;;
         --rich|--quality) FAST=0 ;;
