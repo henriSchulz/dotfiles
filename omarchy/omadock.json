@@ -9,7 +9,7 @@
   "bgColor": "theme",
   "itemSpacing": 4,
   "iconSize": 56,
-  "hoverEffect": "wave",
+  "hoverEffect": "off",
   "showAppsButton": false,
   "showTooltips": true,
   "advancedTooltips": true,
