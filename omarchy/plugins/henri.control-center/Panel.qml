@@ -32,8 +32,15 @@ Panel {
   // ---- Palette. Tiles are a faint wash of the foreground over the popup
   //      background; an "on" icon circle takes the accent colour.
   readonly property color fg: Color.popups.text
-  readonly property color tileColor: Qt.rgba(fg.r, fg.g, fg.b, 0.07)
-  readonly property color tileHover: Qt.rgba(fg.r, fg.g, fg.b, 0.11)
+  // On glass the tiles are frosted rather than a wash of the foreground: the
+  // panel's own colour again, so they stay lighter than what shows through it
+  // (macOS Control Center) and a dark theme still gets dark tiles.
+  readonly property color tileColor: Motion.glass
+    ? Util.alpha(Color.popups.background, Motion.glassTileAlpha)
+    : Qt.rgba(fg.r, fg.g, fg.b, 0.07)
+  readonly property color tileHover: Motion.glass
+    ? Util.alpha(Color.popups.background, Motion.glassTileHoverAlpha)
+    : Qt.rgba(fg.r, fg.g, fg.b, 0.11)
   readonly property color circleOff: Qt.rgba(fg.r, fg.g, fg.b, 0.14)
   readonly property color circleOn: Color.accent
   // Glyphs/text on the accent fill: white or black by contrast (henri-ui).

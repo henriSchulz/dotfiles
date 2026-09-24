@@ -102,6 +102,18 @@ var radiusChip = 5
 var radiusPill = 999   // capsules: toolbar clusters, segmented controls
 var hairlineAlpha = 0.10
 
+// ── Glass (off by default) ─────────────────────────────────────────────────
+// Surfaces normally take the theme's own alpha (cupertino: 0.97 — nearly
+// opaque on purpose). With glass on they drop to the alphas below and let the
+// compositor's blur through, and Surface/PopupCard/PopupPanel put a HUi.GlassSheen
+// on top. Switched by the experimental mode, never by a plugin.
+var glass = false
+var glassAlpha = 0.65
+var glassMenuAlpha = 0.75
+var glassSheen = 0.14
+var glassTileAlpha = 0.55
+var glassTileHoverAlpha = 0.72
+
 // ── Size (Apple HIG, desktop) ──────────────────────────────────────────────
 var controlHeight = 28        // default control / hit target
 var controlMin = 20           // never smaller
@@ -131,4 +143,11 @@ if (Experimental.on) {
     menuItemHeight = Experimental.tokens.menuItemHeight
     controlHeight = Experimental.tokens.controlHeight
     hairlineAlpha = Experimental.tokens.hairlineAlpha
+    glass = Experimental.tokens.glass === true
+    glassAlpha = Experimental.tokens.glassAlpha
+    glassMenuAlpha = Experimental.tokens.glassMenuAlpha
+    glassSheen = Experimental.tokens.glassSheen
+    glassTileAlpha = Experimental.tokens.glassTileAlpha
+    glassTileHoverAlpha = Experimental.tokens.glassTileHoverAlpha
+    secondaryTextAlpha = Experimental.tokens.secondaryTextAlpha
 }

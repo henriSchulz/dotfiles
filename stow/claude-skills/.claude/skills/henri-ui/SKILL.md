@@ -28,7 +28,7 @@ danach gebaut wurden, automatisch mitziehen. Deshalb:
 | Datei | Für | Einbinden |
 |-------|-----|-----------|
 | `Motion.js` | QML-Plugins: Dauern, Kurven, Spring-Presets, Radien, Skalen | `import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion` |
-| `*.qml` (Reveal, Surface, Pressable, Button, MenuList, Highlight, Toggle, CrossfadeText, Collapse, PageStack, StaggerIn, SpringValue, MicGlyph, Waveform) | QML: fertige Komponenten — Katalog in `references/qml.md` | `import "file:///home/henri/.local/share/henri-ui" as HUi` |
+| `*.qml` (Reveal, Surface, Pressable, Button, MenuList, Highlight, Toggle, CrossfadeText, Collapse, PageStack, StaggerIn, SpringValue, GlassSheen, MicGlyph, Waveform) | QML: fertige Komponenten — Katalog in `references/qml.md` | `import "file:///home/henri/.local/share/henri-ui" as HUi` |
 | `gallery/shell.qml` | Alle Komponenten live + Selbsttest | `quickshell -p ~/.local/share/henri-ui/gallery/shell.qml` |
 | `Experimental.js` | **Experimenteller macOS-Modus**: ein Flag + eine Tabelle mit Tahoe-Werten (Radien, Control-Höhen), die `Motion.js` am Ende über seine eigenen Tokens legt, solange das Flag steht. Umschalten: Kontrollzentrum → Experiments oder `henri-ui-experimental on\|off\|toggle`; `henri-ui-sync` startet die Shell neu. Neuer Token: in **beide** Dateien eintragen (eine `.pragma library` kann eigene Variablen nicht über den Namen setzen). Die Tabelle ist zum Drehen da — Motion bleibt bewusst außen vor, MacTahoes Kurven sind Material Design, nicht macOS | — |
 | `gtk.css` | GTK4/libadwaita-Apps | zur Laufzeit laden + FileMonitor |
@@ -280,7 +280,7 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
 - **Radien:** Fenster/Panels 14, Popover/Menüs 10, Buttons/Felder 8, Menü-Einträge 6,
   kleine Chips 5, Kapseln (Toolbar-Gruppen, Segment-Umschalter) `pill` = 999.
   Konzentrisch: innerer Radius = äußerer − Innenabstand.
-- **Material:** Menüs, Popover und Panels fast deckend (Hintergrund-Alpha ~0.97, Henri: durchscheinender Inhalt „sieht komisch aus“) + Blur hinter
+- **Material:** Menüs, Popover und Panels fast deckend (Hintergrund-Alpha ~0.97, Henri: durchscheinender Inhalt „sieht komisch aus“). **Ausnahme: der experimentelle Glas-Modus** (`Experimental.js`, Schalter im Kontrollzentrum) — dort fallen die Flächen auf 0.65 (Menüs 0.75), bekommen oben eine `HUi.GlassSheen` und leben vom Compositor-Blur. Dabei **steigt `secondaryTextAlpha` auf 0.85**: bei 0.65 sind es über Glas auf schwarzem Inhalt nur 3.3 : 1 (gemessen), 0.85 gibt 5.0 : 1. Glas nur dort, nie als Default + Blur hinter
   der Fläche (Hyprland-`layerrule blur` bzw. Compositor), dünne Haarlinie
   1 px `foreground` @ α 0.10, weicher Schatten (y 8, blur 24, α 0.18–0.25).
 - **Zustände (Fill-Alpha auf foreground):** normal 0, hover 0.08, pressed 0.14,

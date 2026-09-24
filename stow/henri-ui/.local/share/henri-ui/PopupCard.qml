@@ -188,10 +188,16 @@ PopupWindow {
     BorderSurface {
       id: card
       anchors.fill: parent
-      color: Color.popups.background
+      color: Motion.glass ? Util.alpha(Color.popups.background, Motion.glassAlpha)
+        : Color.popups.background
       borderSpec: root.borderSpec
       padding: root.padding
       radius: Style.space(root.kind === "panel" ? Motion.radiusPanel : Motion.radiusPopover)
+
+      GlassSheen {
+        anchors.fill: parent
+        radius: card.radius
+      }
 
       Item {
         id: contentHolder
