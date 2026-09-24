@@ -1,0 +1,106 @@
+#!/bin/sh
+# Watch the screenless MacBook's screen, without AirPlay.
+#
+#   mac-stream              # fill this screen
+#   mac-stream --window
+#   mac-stream --fps 30     # easier on the battery
+#   mac-stream --half       # half resolution, for a weak link
+#   mac-stream --cable | --wifi
+#
+# AirPlay cannot be started from this side: the call that does it is behind
+# Apple-private entitlements, so the only way in is to drive Control Centre's
+# buttons, which takes the better part of a minute and depends on a user
+# interface Apple can change. This does not ask macOS to mirror anything. A
+# small program on the Mac reads the screen itself -- screen recording being an
+# ordinary permission, the one Zoom and Discord ask for -- encodes it in the
+# same hardware block AirPlay uses, and serves it on a socket.
+#
+# mac-screen is still the way in when this machine has to reach the Mac rather
+# than be served by it: at the login window there is no session to record.
+
+set -e
+
+MAC_USER=${MAC_USER:-henrischulz}
+MAC_CABLE=${MAC_CABLE:-10.55.0.2}
+MAC_WIFI=${MAC_WIFI:-192.168.178.126}
+PORT=${MTSCREEN_PORT:-7101}
+LABEL=com.mtbridge.mtscreen
+
+FULLSCREEN=1
+FORCE=""
+FPS=""
+SCALE=""
+for a in "$@"; do
+    case "$a" in
+        -w|--window) FULLSCREEN=0 ;;
+        --half) SCALE=0.5 ;;
+        --wifi) FORCE=$MAC_WIFI ;;
+        --cable) FORCE=$MAC_CABLE ;;
+        --fps) FPS=next ;;
+        -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) [ "$FPS" = next ] && FPS=$a ;;
+    esac
+done
+[ "$FPS" = next ] && FPS=""
+
+die() { echo "mac-stream: $*" >&2; exit 1; }
+
+reachable() { timeout 2 sh -c "echo > /dev/tcp/$1/22" 2>/dev/null; }
+
+if [ -n "$FORCE" ]; then
+    HOST=$FORCE; ROUTE=$FORCE
+    reachable "$HOST" || die "$HOST does not answer on port 22"
+elif reachable "$MAC_CABLE"; then
+    HOST=$MAC_CABLE; ROUTE="cable"
+elif reachable "$MAC_WIFI"; then
+    HOST=$MAC_WIFI; ROUTE="Wi-Fi"
+else
+    die "the Mac answers on neither $MAC_CABLE nor $MAC_WIFI"
+fi
+
+# The capture agent has to run inside the logged-in desktop session to hold the
+# screen recording grant, so it is launchd that starts it, not this script --
+# a process started over SSH is attributed to sshd and gets nothing. All that
+# is needed from here is a nudge in case it is not running.
+REMOTE_ARGS=""
+[ -n "$FPS" ] && REMOTE_ARGS="$REMOTE_ARGS --fps $FPS"
+[ -n "$SCALE" ] && REMOTE_ARGS="$REMOTE_ARGS --scale $SCALE"
+if [ -n "$REMOTE_ARGS" ]; then
+    echo "mac-stream: note -- --fps and --half need mtscreen restarted with them" >&2
+fi
+
+if ! timeout 3 sh -c "echo > /dev/tcp/$HOST/$PORT" 2>/dev/null; then
+    echo "mac-stream: waking the capture agent"
+    ssh -o ConnectTimeout=5 "$MAC_USER@$HOST" \
+        "launchctl kickstart -k gui/\$(id -u)/$LABEL" >/dev/null 2>&1 || true
+    i=0
+    while [ $i -lt 20 ]; do
+        timeout 1 sh -c "echo > /dev/tcp/$HOST/$PORT" 2>/dev/null && break
+        i=$((i + 1))
+    done
+    timeout 2 sh -c "echo > /dev/tcp/$HOST/$PORT" 2>/dev/null \
+        || die "nothing is listening on $HOST:$PORT
+  check:  ssh $MAC_USER@$HOST 'tail -20 ~/Library/Logs/mtscreen.log'
+  likely: Screen Recording has not been granted to mt-screen.app"
+fi
+
+# Prefer the GPU. Falling back to libav matters on a machine where VA-API is
+# there but refuses the stream, which is a driver question, not ours.
+if gst-inspect-1.0 vah264dec >/dev/null 2>&1; then
+    DECODE="vah264dec ! vapostproc"
+else
+    DECODE="avdec_h264 ! videoconvert"
+fi
+
+SINKOPTS="sync=false"
+[ "$FULLSCREEN" = 1 ] && SINKOPTS="$SINKOPTS fullscreen=true"
+
+echo "mac-stream: $ROUTE -> $HOST:$PORT"
+
+# sync=false throughout: the stream carries no clock worth obeying and every
+# frame is wanted the moment it lands. latency=0 on the parser stops it holding
+# frames back to look for a complete access unit it already has.
+exec gst-launch-1.0 -q \
+    tcpclientsrc host="$HOST" port="$PORT" do-timestamp=true \
+    ! h264parse ! $DECODE \
+    ! waylandsink $SINKOPTS
