@@ -46,6 +46,20 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 SEC_NONE, SEC_VNCAUTH, SEC_APPLE_DH = 1, 2, 30
 
+# Cursor pseudo-encodings. Asking for any of these means "send me the pointer
+# shape and I will draw it myself" -- at the local pointer, which in a mirror
+# is nowhere near where the Mac's pointer is, so the cursor is simply never
+# seen. Struck out, the server has no choice but to paint it into the picture,
+# which is what someone watching a screen expects.
+CURSOR_ENCODINGS = {
+    -239,   # Cursor
+    -240,   # XCursor
+    -314,   # VMware cursor
+    -315,   # VMware cursor position
+    -305,   # gii, some servers pair it with cursor handling
+    0x574D5664,  # VMwareCursor, unsigned spelling
+}
+
 # VNC's DES uses each key byte's bits in reverse order, and single DES is
 # TripleDES with the same key three times.
 _REVERSED = bytes(int(format(b, "08b")[::-1], 2) for b in range(256))
@@ -77,6 +91,93 @@ def read_exactly(sock, n):
             raise ConnectionError("peer closed during handshake")
         buf += chunk
     return buf
+
+
+def strip_cursor_encodings(body):
+    """Rewrite a SetEncodings body without the cursor pseudo-encodings."""
+    count = struct.unpack(">H", body[2:4])[0]
+    if os.environ.get("MTB_DEBUG"):
+        encs = [struct.unpack_from(">i", body, 4 + i * 4)[0] for i in range(count)]
+        print(f"  client asked for encodings: {encs}", flush=True)
+    kept = []
+    for i in range(count):
+        (enc,) = struct.unpack_from(">i", body, 4 + i * 4)
+        if enc not in CURSOR_ENCODINGS and (enc & 0xFFFFFFFF) not in CURSOR_ENCODINGS:
+            kept.append(enc)
+    out = bytearray(body[:2])
+    out += struct.pack(">H", len(kept))
+    for enc in kept:
+        out += struct.pack(">i", enc)
+    return bytes(out), count - len(kept)
+
+
+# Every client message but these two has a fixed length, which is all that is
+# needed to find the one worth rewriting and then get out of the way.
+_FIXED = {0: 20, 3: 10, 4: 8, 5: 6}
+
+
+def pump_client(client, server):
+    """Relay client to server, rewriting SetEncodings on the way past.
+
+    Only until it has been seen: after that this is a plain relay again, so
+    the cost is a handful of small reads at the start of a session.
+    """
+    pending = b""
+    watching = True
+    try:
+        while True:
+            data = client.recv(65536)
+            if not data:
+                break
+            if not watching:
+                server.sendall(data)
+                continue
+
+            pending += data
+            out = b""
+            while pending and watching:
+                kind = pending[0]
+                if os.environ.get("MTB_DEBUG"):
+                    print(f"  client message type {kind}, {len(pending)} bytes buffered",
+                          flush=True)
+                if kind in _FIXED:
+                    n = _FIXED[kind]
+                    if len(pending) < n:
+                        break
+                    out += pending[:n]
+                    pending = pending[n:]
+                elif kind == 2:  # SetEncodings
+                    if len(pending) < 4:
+                        break
+                    count = struct.unpack(">H", pending[2:4])[0]
+                    n = 4 + count * 4
+                    if len(pending) < n:
+                        break
+                    body, dropped = strip_cursor_encodings(pending[:n])
+                    if dropped:
+                        print(f"vnc-pin-auth: struck {dropped} cursor encoding(s), "
+                              "so the Mac draws its pointer into the picture",
+                              flush=True)
+                    out += body
+                    pending = pending[n:]
+                    watching = False
+                else:
+                    # Something variable-length or unknown: stop looking and
+                    # relay the rest untouched rather than guess at lengths.
+                    watching = False
+            if out:
+                server.sendall(out)
+            if not watching and pending:
+                server.sendall(pending)
+                pending = b""
+    except OSError:
+        pass
+    finally:
+        for s in (client, server):
+            try:
+                s.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
 
 
 def pump(src, dst):
@@ -187,10 +288,16 @@ class Handler(socketserver.BaseRequestHandler):
             # 3.8 sends a SecurityResult even for None.
             client.sendall(struct.pack(">I", 0))
 
-            # ClientInit onwards belongs to the two of them.
+            # ClientInit is a single byte and comes before the message stream.
+            # Reading it here is not optional: left in the stream it looks like
+            # a message type, and a shared flag of zero reads as SetPixelFormat
+            # -- whereupon this waits for nineteen bytes that never come while
+            # the server waits for the byte being held. Both sides then wait
+            # for each other, forever.
+            server.sendall(read_exactly(client, 1))
             t = threading.Thread(target=pump, args=(server, client), daemon=True)
             t.start()
-            pump(client, server)
+            pump_client(client, server)
             t.join(timeout=2)
         except (ConnectionError, OSError) as e:
             print(f"vnc-pin-auth: {e}", file=sys.stderr)
