@@ -19,7 +19,7 @@
 // Add a token: put it here AND in the apply block at the end of Motion.js —
 // a .pragma library cannot assign to its own variables by name.
 
-var on = true
+var on = false
 
 var tokens = {
     // ── Shape. Tahoe is markedly rounder than what henri-ui set for Sonoma.
