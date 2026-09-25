@@ -844,6 +844,70 @@ Panel {
     if (!actionProc.running) actionProc.running = true
   }
 
+  // ---- Keyboard cursor (main page). A flat, reading-order list of the main
+  // page's focusable stops. Arrow keys / hjkl move it (dy between stops, dx
+  // acts on the focused one — same moveRequested convention PanelKeyCatcher's
+  // stock consumers use, e.g. omarchy.bluetooth); Enter/Space activates.
+  // Tab still switches bar panels (root.switchPanel) and Esc still closes or
+  // goes back — unchanged, shared with every other panel in the shell.
+  property bool cursorActive: false
+  property int mainCursorIndex: 0
+  property int playbackCursorIndex: 1  // 0 previous, 1 play/pause, 2 next
+  readonly property var mainStops: {
+    var s = ["wifi", "bluetooth", "airdrop", "trackpad", "screen", "display", "sound"]
+    if (player) s.push("playback")
+    s.push("hardware")
+    return s
+  }
+  readonly property string mainFocus: cursorActive && page === "main"
+    && mainCursorIndex >= 0 && mainCursorIndex < mainStops.length ? mainStops[mainCursorIndex] : ""
+  onMainStopsChanged: mainCursorIndex = Math.max(0, Math.min(mainStops.length - 1, mainCursorIndex))
+
+  function mainMoveCursor(dy) {
+    if (!cursorActive) { cursorActive = true; return }
+    mainCursorIndex = Math.max(0, Math.min(mainStops.length - 1, mainCursorIndex + dy))
+  }
+  function mainMoveHorizontal(dx) {
+    if (!cursorActive) { cursorActive = true; return }
+    var f = mainFocus
+    if (f === "display") setBrightness(brightness + dx * 5)
+    else if (f === "playback") playbackCursorIndex = Math.max(0, Math.min(2, playbackCursorIndex + dx))
+    else if (dx > 0) {
+      if (f === "wifi" || f === "bluetooth" || f === "trackpad") showPage(f)
+      else if (f === "screen") showPage("screen")
+      else if (f === "airdrop") openAirdrop()
+      else if (f === "sound") showPage(airpodsActive ? "airpods" : "sound")
+    }
+  }
+  function mainActivate() {
+    if (!cursorActive) return
+    var f = mainFocus
+    if (f === "wifi") toggleWifi()
+    else if (f === "bluetooth") toggleBluetooth()
+    else if (f === "airdrop") toggleAirdrop()
+    else if (f === "trackpad") toggleTrackpad()
+    else if (f === "screen") launchMacScreen()
+    else if (f === "display") displayExpanded = !displayExpanded
+    else if (f === "sound") toggleMute()
+    else if (f === "playback") { if (media) media.runAction(["previous", "playPause", "next"][playbackCursorIndex], false) }
+    else if (f === "hardware") showPage("hardware")
+  }
+
+  // Named so the row's mouse handlers and the keyboard cursor above share one
+  // implementation instead of two copies drifting apart.
+  function toggleWifi() { Networking.wifiEnabled = !Networking.wifiEnabled }
+  function toggleBluetooth() { Quickshell.execDetached(["omarchy-bluetooth-power", root.btOn ? "off" : "on"]) }
+  function toggleAirdrop() {
+    if (localsendRunning) { run("pkill -x localsend"); localsendRunning = false }
+    else { run("setsid -f localsend >/dev/null 2>&1"); localsendRunning = true }
+  }
+  function openAirdrop() { close(); run("omarchy-launch-or-focus localsend 'setsid -f localsend'") }
+  function toggleTrackpad() {
+    run(padBridgeUp ? "systemctl --user stop mtbridge" : "systemctl --user start mtbridge")
+  }
+  function launchMacScreen() { close(); run("omarchy-launch-or-focus gst-launch-1.0 'setsid -f mac-stream'") }
+  function toggleMute() { if (sink && sink.audio) sink.audio.muted = !muted }
+
   onOpenedChanged: {
     if (opened) {
       refresh()
@@ -857,6 +921,9 @@ Panel {
       page = "main"
       wifiPasswordFor = ""
       wifiAdvanced = false
+      cursorActive = false
+      mainCursorIndex = 0
+      playbackCursorIndex = 1
     }
   }
 
@@ -1457,13 +1524,14 @@ Panel {
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(6)
       Text {
+        id: chevronText
         anchors.verticalCenter: parent.verticalCenter
         text: root.sf(0x100189)
         transform: Translate {
-          x: backMouse.containsMouse && !Motion.reduceMotion ? -Style.space(3) : 0
+          x: chevronHover.hovered && !Motion.reduceMotion ? -Style.space(3) : 0
           Behavior on x {
             NumberAnimation {
-              duration: backMouse.containsMouse ? Motion.instant : Motion.fast
+              duration: chevronHover.hovered ? Motion.instant : Motion.fast
               easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
             }
           }
@@ -1471,6 +1539,9 @@ Panel {
         color: root.fg
         font.family: root.symbolFont
         font.pixelSize: Style.font.iconLarge
+        // Hovering anywhere in the (much wider) click target below shouldn't
+        // nudge the chevron — only actually hovering it should.
+        HoverHandler { id: chevronHover }
       }
       Text {
         anchors.verticalCenter: parent.verticalCenter
