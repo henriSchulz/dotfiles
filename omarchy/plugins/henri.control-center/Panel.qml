@@ -78,6 +78,14 @@ Panel {
   readonly property bool padBridgeUp: padTick >= 0
     && Number(padStream.updated || 0) > 0
     && Date.now() / 1000 - Number(padStream.updated) < 4
+  // The switch has to flip the instant it's pressed, not once the status
+  // file confirms it -- systemctl itself is fast, but stopping the service
+  // deletes the file rather than updating it, and padBridgeUp then only
+  // notices four seconds later (its own staleness window). null = trust
+  // padBridgeUp; true/false = trust the press until reality agrees with it.
+  property var padOverride: null
+  property double padOverrideSetAt: 0
+  readonly property bool padOn: padOverride !== null ? padOverride : padBridgeUp
   readonly property bool padStreaming: padBridgeUp
     && Number(padStream.last_packet || 0) > 0
     && Date.now() / 1000 - Number(padStream.last_packet) < 3
@@ -154,6 +162,13 @@ Panel {
       padLinkFile.reload()
       padStreamFile.reload()
       screenFile.reload()
+      // Once the real state agrees with the press, or five seconds have
+      // passed and it still hasn't (systemctl failed, most likely), stop
+      // overriding and show what is actually true again.
+      if (root.padOverride !== null
+          && (root.padBridgeUp === root.padOverride
+              || Date.now() - root.padOverrideSetAt > 5000))
+        root.padOverride = null
     }
   }
 
@@ -908,7 +923,10 @@ Panel {
   }
   function openAirdrop() { close(); run("omarchy-launch-or-focus localsend 'setsid -f localsend'") }
   function toggleTrackpad() {
-    run(padBridgeUp ? "systemctl --user stop mtbridge" : "systemctl --user start mtbridge")
+    var goingUp = !padOn
+    padOverride = goingUp
+    padOverrideSetAt = Date.now()
+    run(goingUp ? "systemctl --user start mtbridge" : "systemctl --user stop mtbridge")
   }
   function launchMacScreen() { close(); run("omarchy-launch-or-focus gst-launch-1.0 'setsid -f mac-stream'") }
   function toggleMute() { if (sink && sink.audio) sink.audio.muted = !muted }
@@ -2303,9 +2321,9 @@ Panel {
               anchors.rightMargin: Style.space(10)
               anchors.verticalCenter: parent.verticalCenter
               icon: root.sf(0x100EA4)
-              on: root.padStreaming
+              on: root.padOn
               squircle: true
-              title: "Trackpad"
+              title: "Mac Input"
               subtitle: root.padSubtitle
               hasCursor: root.mainFocus === "trackpad"
               onToggled: root.toggleTrackpad()
@@ -3498,17 +3516,16 @@ Panel {
         }
       }
 
-      // Trackpad — where the MacBook's trackpad is coming in, and over which
-      // route. Read only except for the receiver switch: the cable link comes
-      // and goes with the cable, which is not this panel's to decide.
+      // Mac Input — where the MacBook's trackpad and keyboard are coming in,
+      // and over which route. Read only except for the receiver switch: the
+      // cable link comes and goes with the cable, which is not this panel's
+      // to decide.
       PageHeader {
         visible: root.detailPage === "trackpad"
-        title: "Trackpad"
+        title: "Mac Input"
         showSwitch: true
-        checked: root.padBridgeUp
-        onToggled: root.run(root.padBridgeUp
-          ? "systemctl --user stop mtbridge"
-          : "systemctl --user start mtbridge")
+        checked: root.padOn
+        onToggled: root.toggleTrackpad()
       }
       Separator { visible: root.detailPage === "trackpad" }
       Column {
