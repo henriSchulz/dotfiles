@@ -2320,7 +2320,12 @@ Panel {
               anchors.leftMargin: Style.space(10)
               anchors.rightMargin: Style.space(10)
               anchors.verticalCenter: parent.verticalCenter
-              icon: root.sf(0x100EA4)
+              // Was the mouse glyph, a stand-in for "trackpad" -- there is no
+              // SF Symbol actually named trackpad (checked against Apple's
+              // full published catalog through 7.0, all versions), and mouse
+              // reads wrong now that this tile also carries the keyboard.
+              // keyboard is the closer single glyph for "input from the Mac".
+              icon: root.sf(0x100A33)
               on: root.padOn
               squircle: true
               title: "Mac Input"
