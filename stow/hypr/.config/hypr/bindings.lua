@@ -66,6 +66,11 @@ o.bind("SUPER + CTRL + B", "Bluetooth", "omarchy-shell henri.control-center togg
 o.bind("SUPER + CTRL + D", "Display", "omarchy-shell henri.control-center togglePage display")
 o.bind("SUPER + CTRL + W", "Wi-Fi", "omarchy-shell henri.control-center togglePage wifi")
 
+-- Öffnet das Kontrollzentrum auf der Übersichtsseite (nicht auf einer
+-- Detailseite wie die Kürzel oben); nochmal drücken schließt. Danach im
+-- Popup mit Tab/Shift+Tab durch die Kacheln navigieren.
+o.bind("SUPER + CTRL + G", "Control Center", "omarchy-shell henri.control-center toggle")
+
 -- SUPER+CTRL+SPACE war Omarchys Hintergrund-Switcher (nur Bilder des Themes).
 -- Jetzt öffnet es den globalen Wallpaper-Picker (Plugin henri.wallpaper,
 -- Ordner ~/Pictures/Wallpaper, Auswahl bleibt über Theme-Wechsel erhalten).

@@ -1104,6 +1104,8 @@ Panel {
   component Tile: Rectangle {
     id: tile
     property bool hoverable: false
+    // Keyboard cursor is on this tile (root.mainFocus) — draws the ring below.
+    property bool hasCursor: false
     // Position in the entrance cascade; -1 opts out.
     property int revealIndex: -1
     signal clicked()
@@ -1163,6 +1165,20 @@ Panel {
       cursorShape: tile.hoverable ? Qt.PointingHandCursor : Qt.ArrowCursor
       onClicked: tile.clicked()
     }
+
+    // Keyboard-cursor ring (henri-ui: accent ring, fast fade in). z above any
+    // externally-supplied children, which land after the tile's own in paint
+    // order. Never intercepts pointer events (no MouseArea of its own).
+    Rectangle {
+      z: 1
+      anchors.fill: parent
+      radius: tile.radius
+      color: "transparent"
+      border.width: Math.max(2, Style.space(2))
+      border.color: Color.accent
+      opacity: tile.hasCursor ? 1 : 0
+      Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+    }
   }
 
   // Icon + two lines of text, used inside the connectivity tile and Focus.
@@ -1173,6 +1189,7 @@ Panel {
     property string title: ""
     property string subtitle: ""
     property bool squircle: false
+    property bool hasCursor: false
     signal toggled()
     signal details()
     implicitHeight: Style.space(38)
@@ -1217,6 +1234,17 @@ Panel {
       cursorShape: Qt.PointingHandCursor
       onClicked: row.details()
     }
+
+    // Keyboard-cursor ring (henri-ui: accent ring, fast fade in).
+    Rectangle {
+      anchors.fill: parent
+      radius: Style.space(8)
+      color: "transparent"
+      border.width: Math.max(2, Style.space(2))
+      border.color: Color.accent
+      opacity: row.hasCursor ? 1 : 0
+      Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+    }
   }
 
   // Like ToggleRow, but for something you open rather than switch on. The
@@ -1231,6 +1259,7 @@ Panel {
     property string subtitle: ""
     property string action: "Open"
     property bool squircle: false
+    property bool hasCursor: false
     signal launched()
     signal details()
     implicitHeight: Style.space(38)
@@ -1291,6 +1320,17 @@ Panel {
       anchors.rightMargin: lrowButton.width + Style.space(6)
       cursorShape: Qt.PointingHandCursor
       onClicked: lrow.details()
+    }
+
+    // Keyboard-cursor ring (henri-ui: accent ring, fast fade in).
+    Rectangle {
+      anchors.fill: parent
+      radius: Style.space(8)
+      color: "transparent"
+      border.width: Math.max(2, Style.space(2))
+      border.color: Color.accent
+      opacity: lrow.hasCursor ? 1 : 0
+      Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
     }
   }
 
@@ -2138,8 +2178,16 @@ Panel {
         else root.close()
       }
       onTabRequested: function(direction) { root.switchPanel(direction) }
-      // ← (or h) goes back from a detail page, like Esc (drill-in flow).
-      onMoveRequested: function(dx, dy) { if (dx < 0 && root.page !== "main") root.page = "main" }
+      // Main page: dy moves the cursor between tiles, dx acts on the focused
+      // one (open its detail page, nudge brightness, pick a transport
+      // button). Detail pages have no cursor yet — ← (or h) there still just
+      // goes back, like Esc (drill-in flow).
+      onMoveRequested: function(dx, dy) {
+        if (root.page !== "main") { if (dx < 0) root.page = "main"; return }
+        if (dy !== 0) root.mainMoveCursor(dy)
+        else if (dx !== 0) root.mainMoveHorizontal(dx)
+      }
+      onActivateRequested: root.mainActivate()
     }
 
     Item {
@@ -2196,7 +2244,8 @@ Panel {
               on: root.wifiOn
               title: "Wi-Fi"
               subtitle: !root.wifiOn ? "Off" : (root.wifiName !== "" ? root.wifiName : "Not connected")
-              onToggled: Networking.wifiEnabled = !Networking.wifiEnabled
+              hasCursor: root.mainFocus === "wifi"
+              onToggled: root.toggleWifi()
               onDetails: root.showPage("wifi")
             }
             ToggleRow {
@@ -2208,8 +2257,8 @@ Panel {
                 : root.btConnected.length === 1 ? (root.btConnected[0].name || "1 device")
                 : root.btConnected.length > 1 ? root.btConnected.length + " devices"
                 : "On"
-              // omarchy-bluetooth-power persists the state (see the stock panel).
-              onToggled: Quickshell.execDetached(["omarchy-bluetooth-power", root.btOn ? "off" : "on"])
+              hasCursor: root.mainFocus === "bluetooth"
+              onToggled: root.toggleBluetooth()
               onDetails: root.showPage("bluetooth")
             }
             ToggleRow {
@@ -2218,16 +2267,9 @@ Panel {
               on: root.localsendRunning
               title: "AirDrop"
               subtitle: root.localsendRunning ? "LocalSend active" : "LocalSend"
-              onToggled: {
-                if (root.localsendRunning) {
-                  root.run("pkill -x localsend")
-                  root.localsendRunning = false
-                } else {
-                  root.run("setsid -f localsend >/dev/null 2>&1")
-                  root.localsendRunning = true
-                }
-              }
-              onDetails: { root.close(); root.run("omarchy-launch-or-focus localsend 'setsid -f localsend'") }
+              hasCursor: root.mainFocus === "airdrop"
+              onToggled: root.toggleAirdrop()
+              onDetails: root.openAirdrop()
             }
           }
         }
@@ -2255,9 +2297,8 @@ Panel {
               squircle: true
               title: "Trackpad"
               subtitle: root.padSubtitle
-              onToggled: root.run(root.padBridgeUp
-                ? "systemctl --user stop mtbridge"
-                : "systemctl --user start mtbridge")
+              hasCursor: root.mainFocus === "trackpad"
+              onToggled: root.toggleTrackpad()
               onDetails: root.showPage("trackpad")
             }
           }
@@ -2280,11 +2321,12 @@ Panel {
               title: "Mac Screen"
               subtitle: root.screenSubtitle
               action: root.screenOn ? "Show" : "Open"
+              hasCursor: root.mainFocus === "screen"
               // Already running means raise the window it is in, not start a
               // second one. Closing it is what closing a window is for; the
               // detail page has the switch for when it is on another
               // workspace.
-              onLaunched: { root.close(); root.run("omarchy-launch-or-focus gst-launch-1.0 'setsid -f mac-stream'") }
+              onLaunched: root.launchMacScreen()
               onDetails: root.showPage("screen")
             }
           }
@@ -2299,6 +2341,7 @@ Panel {
         value: root.brightness / 100
         expandable: true
         expanded: root.displayExpanded
+        hasCursor: root.mainFocus === "display"
         onHeadingClicked: root.displayExpanded = !root.displayExpanded
         onMoved: function(v) { root.setBrightness(v * 100) }
 
@@ -2425,12 +2468,13 @@ Panel {
         expandable: true
         icon: root.muted || root.volume === 0 ? root.sf(0x1002A3) : root.volume < 0.34 ? root.sf(0x1002A5) : root.volume < 0.67 ? root.sf(0x1002A7) : root.sf(0x1002A9)
         value: root.muted ? 0 : Math.min(1, root.volume)
+        hasCursor: root.mainFocus === "sound"
         onMoved: function(v) {
           if (!root.sink || !root.sink.audio) return
           root.sink.audio.volume = v
           if (root.muted && v > 0) root.sink.audio.muted = false
         }
-        onIconClicked: if (root.sink && root.sink.audio) root.sink.audio.muted = !root.muted
+        onIconClicked: root.toggleMute()
         onHeadingClicked: root.showPage(root.airpodsActive ? "airpods" : "sound")
       }
 
@@ -2512,7 +2556,9 @@ Panel {
               { icon: root.sf(0x10028C), action: "next" }
             ]
             delegate: Rectangle {
+              id: playBtn
               required property var modelData
+              required property int index
               width: Style.space(30)
               height: width
               radius: width / 2
@@ -2537,6 +2583,17 @@ Panel {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: if (root.media) root.media.runAction(modelData.action, false)
               }
+              // Keyboard-cursor ring: one of the three transport buttons,
+              // picked with ←/→ while "playback" is the focused stop.
+              Rectangle {
+                anchors.fill: parent
+                radius: playBtn.radius
+                color: "transparent"
+                border.width: Math.max(2, Style.space(2))
+                border.color: Color.accent
+                opacity: root.mainFocus === "playback" && root.playbackCursorIndex === playBtn.index ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+              }
             }
           }
         }
@@ -2548,6 +2605,7 @@ Panel {
         width: root.panelWidth
         height: Style.space(52)
         hoverable: true
+        hasCursor: root.mainFocus === "hardware"
         onClicked: root.showPage("hardware")
 
         Circle {
