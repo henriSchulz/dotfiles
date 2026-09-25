@@ -65,6 +65,22 @@ hl.animation({ leaf = "workspaces", enabled = true, speed = 4, bezier = "appleSl
 -- Zeiger nie von selbst, also gilt das auch für den Workspace-Wechsel.
 hl.config({ cursor = { no_warps = true } })
 
+-- Zeiger sichtbar machen. Er bewegte sich nachweislich (hyprctl cursorpos
+-- aenderte sich), war aber auf keinem Monitor zu sehen. Zwei Ursachen, beide
+-- hier behoben:
+--
+-- enable_hyprcursor sucht ein hyprcursor-Thema; installiert ist keines
+-- (kein manifest.hl unter /usr/share/icons oder ~/.local/share/icons), und
+-- HYPRCURSOR_THEME ist leer. Statt auf XCursor zurueckzufallen wird dann
+-- nichts gezeichnet.
+--
+-- Das XCursor-Thema stand ausserdem auf "default", was es auf diesem System
+-- nicht gibt -- auch ~/.local/share/icons/default/index.theme fehlt. MacTahoe
+-- ist installiert und passt zum Rest.
+hl.config({ cursor = { enable_hyprcursor = false } })
+hl.env("XCURSOR_THEME", "MacTahoe")
+hl.env("XCURSOR_SIZE", "24")
+
 -- Eigene Menüleiste (henri.bar): Hintergrund weichzeichnen wie bei macOS.
 hl.layer_rule({ match = { namespace = "omarchy-bar" }, blur = true, ignore_alpha = 0.3 })
 
@@ -98,6 +114,14 @@ hl.layer_rule({ match = { namespace = "henri-dictation" }, blur = true, ignore_a
 -- Assistenten-Karte (henri.assistant) blendet sich selbst ein, wie das Diktat.
 hl.layer_rule({ match = { namespace = "henri-assistant" }, no_anim = true, animation = "none" })
 hl.layer_rule({ match = { namespace = "henri-assistant" }, blur = true, ignore_alpha = 0.3 })
+
+-- HUi.PopupPanel (jedes Plugin-Popup/-Panel, inkl. der echten Bildschirmtastatur,
+-- die sich den Namespace teilt): blendet sich selbst ein und ist jetzt bewusst
+-- halbdurchsichtig (Motion.glassPanelAlpha) statt fast deckend, seit dem
+-- macOS-Big-Sur-Umbau von henri.control-center — der Weichzeichner trägt jetzt
+-- echtes Milchglas, nicht nur die runden Ecken. Gilt für alle Plugins zentral.
+hl.layer_rule({ match = { namespace = "omarchy-keyboard-panel" }, no_anim = true, animation = "none" })
+hl.layer_rule({ match = { namespace = "omarchy-keyboard-panel" }, blur = true, ignore_alpha = 0.3 })
 
 -- Quick Look (GNOME Sushi): Hyprland maps the window at a size of its own and
 -- only a frame later gets the preview's real size, so the default pop-in

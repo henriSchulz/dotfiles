@@ -416,7 +416,10 @@ PanelWindow {
     BorderSurface {
       id: card
       anchors.fill: parent
-      color: Color.popups.background
+      // Translucent, not the theme's near-opaque popup background: paired
+      // with the Hyprland blur on this window's namespace (looknfeel.lua),
+      // that's what makes every popup/panel read as frosted glass.
+      color: Motion.glass ? Util.alpha(Color.popups.background, Motion.glassPanelAlpha) : Color.popups.background
       borderSpec: root.borderSpec
       padding: root.padding
       radius: Style.space(root.kind === "panel" ? Motion.radiusPanel : Motion.radiusPopover)

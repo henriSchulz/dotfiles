@@ -261,7 +261,7 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
 
 - **Referenz-Theme: das aktuell aktive Omarchy-Theme — derzeit `cupertino`**
   (hell, macOS Light: Hintergrund `#f5f5f7`, Text `#1d1d1f`, Akzent Apple-Blau `#0071e3`,
-  Menü-Auswahl blau mit weißem Text, Menüs und Popover α 0.97 (fast deckend — Inhalt dahinter darf nicht durchscheinen), Haarlinie schwarz α 0.12).
+  Menü-Auswahl blau mit weißem Text, Haarlinie schwarz α 0.12).
   Henri: „wir arbeiten erstmal standardmäßig auf meinem aktuellen Theme“ → dagegen
   gestalten, Screenshots/Selbsttest darin ansehen, Kontrast darin prüfen. Aktuelles Theme
   nachsehen: `cat ~/.local/state/omarchy/current/theme.name`.
@@ -276,18 +276,31 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   das hat in cupertino nur 2.4 : 1 und ist nur für Deaktiviertes/Deko.
 - **Text auf Farbflächen** (Primär-Button, Auswahl): `Motion.onColor(fläche)` wählt
   Weiß/Schwarz nach Kontrast (Blau `#0071e3` → Weiß 4.7 : 1).
-- **Radien:** Fenster/Panels 14, Popover/Menüs 10, Buttons/Felder 8, Menü-Einträge 6,
-  kleine Chips 5, Kapseln (Toolbar-Gruppen, Segment-Umschalter) `pill` = 999.
+- **Radien:** Fenster/Panels 14, Popover/Menüs 10, Buttons/Felder 8, Menü-Einträge 8,
+  kleine Chips 6, Kapseln (Toolbar-Gruppen, Segment-Umschalter) `pill` = 999.
   Konzentrisch: innerer Radius = äußerer − Innenabstand.
-- **Material:** Menüs, Popover und Panels fast deckend (Hintergrund-Alpha ~0.97, Henri: durchscheinender Inhalt „sieht komisch aus“), dünne Haarlinie
-  1 px `foreground` @ α 0.10, weicher Schatten (y 8, blur 24, α 0.18–0.25).
+- **Material: echtes Milchglas (seit dem macOS-Big-Sur-Umbau von henri.control-center,
+  jetzt zentral in `HUi.PopupPanel`)** — Menüs, Popover und Panels sitzen bei
+  `Motion.glassPanelAlpha` (0.35) über dem Desktop, nicht mehr fast deckend; erst der
+  Hyprland-`layer_rule`-Blur auf ihrem gemeinsamen Namespace (`omarchy-keyboard-panel`,
+  siehe `looknfeel.lua`) macht daraus echtes Glas statt nur blasser Fläche — Blur immer
+  mitdenken, wenn irgendwo die Panel-Transparenz geändert wird. Kacheln/Zeilen darin
+  sitzen deutlich undurchsichtiger (`Motion.glassTileAlpha` 0.42, Hover 0.55) als die
+  Fläche dahinter — dieser Abstand ist es, der die Kachelgrenze lesbar hält, nicht ein
+  harter Rahmen. Dazu weiterhin eine dünne Haarlinie 1 px `foreground` @ α 0.10 und ein
+  weicher Schatten (y 8, blur 24, α 0.18–0.25). `Motion.glass` schaltet das ganze
+  Verhalten ab (`false` → alte fast-deckende Fläche), falls ein Plugin es mal nicht will.
 - **Zustände (Fill-Alpha auf foreground):** normal 0, hover 0.08, pressed 0.14,
   selected = Accent. (In Shell-Plugins: die `Style.*Fill`-Tokens verwenden.)
-- **Typo:** Theme-Font, klare Hierarchie über Gewicht statt Größe (Titel 600,
-  Text 400, sekundär = `muted`-Farbe).
+- **Typo:** Theme-Font (`Style.font.family`, die System-„monospace“-Alias, gemeinsam mit
+  Terminals — bleibt deshalb immer ein echtes Monospace, nie hart auf eine Schrift
+  gesetzt). Will ein Plugin bewusst den Big-Sur-Look, gibt es dafür `Motion.uiFont`
+  (San Francisco, lokal installiert — nie die Schriftdatei committen, nur den Namen) für
+  seinen eigenen Fließtext/Überschriften, unabhängig vom System-Font. Klare Hierarchie
+  über Gewicht statt Größe (Titel 600, Text 400, sekundär = `muted`-Farbe).
 - **Abstände:** 4-px-Raster (4/8/12/16/20/24). In Shell-Plugins `Style.spacing.*`.
 - Icons: dünn, einfarbig (Symbolic), gleiche Strichstärke überall.
-- **Größen (Apple HIG, Desktop):** Controls 28 px hoch (Klickfläche), nie unter 20 px;
+- **Größen (Apple HIG, Desktop):** Controls 30 px hoch (Klickfläche), nie unter 20 px;
   Fließtext = Theme-Body, nie unter 10 pt; dünne/leichte Schnitte nicht für kleinen Text.
 - **Kontrast:** Text ≤ 17 pt mindestens 4.5 : 1, großer/fetter Text und Glyph-Icons
   3 : 1 — gegen die tatsächliche Theme-Hintergrundfarbe prüfen (auch `muted`-Text!).

@@ -12,11 +12,18 @@ import "AirPods.js" as Pods
 import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
 import "file:///home/henri/.local/share/henri-ui" as HUi
 
-// macOS-style Control Center. Everything here drives the same backends the
-// stock panels use (Quickshell.Networking, Bluetooth, Pipewire, the shell's
-// media service, omarchy-brightness-display), so state stays in sync with the
-// bar icons and the detail panels. Clicking a tile's round icon toggles it;
-// clicking its label opens the stock detail panel, like the chevron in macOS.
+// macOS Big Sur-style Control Center. This was henri-ui's sandbox for the
+// Big Sur direction — built as a private fork of Motion.js/HUi.* so it could
+// experiment without disturbing the shared library or its other consumers.
+// That experiment is done: the glass tokens, radii and uiFont it proved out
+// live in the shared henri-ui now, and this plugin is back to importing it
+// like everyone else.
+//
+// Everything else here drives the same backends the stock panels use
+// (Quickshell.Networking, Bluetooth, Pipewire, the shell's media service,
+// omarchy-brightness-display), so state stays in sync with the bar icons and
+// the detail panels. Clicking a tile's round icon toggles it; clicking its
+// label opens the stock detail panel, like the chevron in macOS.
 Panel {
   id: root
   moduleName: "henri.control-center"
@@ -31,21 +38,30 @@ Panel {
   // ---- Palette. Tiles are a faint wash of the foreground over the popup
   //      background; an "on" icon circle takes the accent colour.
   readonly property color fg: Color.popups.text
-  readonly property color tileColor: Qt.rgba(fg.r, fg.g, fg.b, 0.07)
-  readonly property color tileHover: Qt.rgba(fg.r, fg.g, fg.b, 0.11)
+  // The tiles are frosted rather than a wash of the foreground: the panel's
+  // own colour again, so they stay lighter than what shows through it (macOS
+  // Control Center) and a dark theme still gets dark tiles. The Hyprland blur
+  // on this popup's namespace (looknfeel.lua) is what makes it read as glass.
+  readonly property color tileColor: Motion.glass
+    ? Util.alpha(Color.popups.background, Motion.glassTileAlpha)
+    : Qt.rgba(fg.r, fg.g, fg.b, 0.07)
+  readonly property color tileHover: Motion.glass
+    ? Util.alpha(Color.popups.background, Motion.glassTileHoverAlpha)
+    : Qt.rgba(fg.r, fg.g, fg.b, 0.11)
   readonly property color circleOff: Qt.rgba(fg.r, fg.g, fg.b, 0.14)
   readonly property color circleOn: Color.accent
-  // Glyphs/text on the accent fill: white or black by contrast (henri-ui).
+  // Glyphs/text on the accent fill: white or black by contrast.
   readonly property color onIcon: Motion.onColor(circleOn)
-  // Secondary text: foreground at the henri-ui secondary alpha (not a darkened fg / muted).
+  // Secondary text: foreground at henri-ui's secondary alpha (not a darkened fg / muted).
   readonly property color dimText: Util.alpha(fg, Motion.secondaryTextAlpha)
-  readonly property string iconFont: bar ? bar.fontFamily : Style.font.family
+  readonly property string iconFont: bar ? bar.fontFamily : root.uiFont
   // SF Symbols (local font only, not in the repo). Bluetooth has no SF symbol → Nerd glyph via fallback.
   readonly property string symbolFont: ".SF Symbols Fallback"
+  readonly property string uiFont: Motion.uiFont
   function sf(cp) { return String.fromCodePoint(cp) }
   readonly property int tileRadius: Style.space(Motion.radiusPopover)
-  readonly property int gap: Style.space(10)
-  readonly property int panelWidth: Style.space(340)
+  readonly property int gap: Style.space(12)
+  readonly property int panelWidth: Style.space(350)
   readonly property int colWidth: Math.floor((panelWidth - gap) / 2)
 
   // ---- Trackpad bridge (mt-bridge): a MacBook's trackpad arriving over a
@@ -344,8 +360,6 @@ Panel {
   // ---- Wi-Fi advanced options: live link stats, band and DNS, polled only
   //      while that section is expanded (the status script pings twice).
   property bool wifiAdvanced: false
-  // Main page: Tiling, Hardware and Plugins live in a folded "Advanced" section.
-  property bool advancedOpen: false
   readonly property bool netPolling: opened && page === "wifi" && wifiAdvanced
   property var netInfo: ({})
   property real netPrevRx: 0
@@ -805,6 +819,7 @@ Panel {
     if (!sinkPortProc.running) sinkPortProc.running = true
     if (!localsendProc.running) localsendProc.running = true
     if (!tilingProc.running) tilingProc.running = true
+    if (!experimentalProc.running && !experimentalBusy) experimentalProc.running = true
   }
 
   function setScale(scale) {
@@ -916,6 +931,39 @@ Panel {
     }
   }
 
+  // ---- Experiments. `henri-ui-experimental` owns the flag on disk; the panel
+  // only reads and flips it, so the CLI and this switch can never disagree.
+  // The flag lives in henri-ui/Experimental.js, which henri-ui-sync watches:
+  // a second or two after the switch it restarts the shell and this panel goes
+  // with it. That restart is what makes the new tokens take hold.
+  property bool experimentalOn: false
+  property bool experimentalBusy: false
+
+  function setExperimental(on) {
+    if (experimentalBusy) return
+    experimentalBusy = true
+    experimentalSetProc.command = ["henri-ui-experimental", on ? "on" : "off"]
+    experimentalSetProc.running = true
+  }
+
+  Process {
+    id: experimentalProc
+    command: ["henri-ui-experimental", "status"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.experimentalOn = String(text || "").trim() === "on"
+    }
+  }
+
+  Process {
+    id: experimentalSetProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.experimentalOn = String(text || "").trim() === "on"
+    }
+    onExited: root.experimentalBusy = false
+  }
+
   // ======================================================== components
 
   // Round icon button. `on` fills it with the accent colour.
@@ -923,10 +971,14 @@ Panel {
     id: circle
     property string icon: ""
     property bool on: false
+    // Big Sur badges connectivity toggles as full circles but its
+    // accessory tiles (Do Not Disturb, Screen Mirroring) as squircles —
+    // same distinction as Trackpad/Mac Screen here vs. Wi-Fi/Bluetooth/AirDrop.
+    property bool squircle: false
     signal clicked()
-    width: Style.space(30)
+    width: Style.space(32)
     height: width
-    radius: width / 2
+    radius: squircle ? width * 0.28 : width / 2
     color: on ? root.circleOn : root.circleOff
     Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
 
@@ -990,6 +1042,11 @@ Panel {
     signal clicked()
     radius: root.tileRadius
     color: hoverable && tileMouse.containsMouse ? root.tileHover : root.tileColor
+    // Big Sur's cards read as separate surfaces even where the glass alpha
+    // gap alone reads thin (bright wallpaper, low-contrast angle) — a
+    // hairline finishes the edge the way a subtle drop shadow would.
+    border.width: 1
+    border.color: Util.alpha(root.fg, Motion.hairlineAlpha)
     Behavior on color {
       ColorAnimation {
         duration: tile.hoverable && tileMouse.containsMouse ? Motion.instant : Motion.fast
@@ -1048,6 +1105,7 @@ Panel {
     property bool on: false
     property string title: ""
     property string subtitle: ""
+    property bool squircle: false
     signal toggled()
     signal details()
     implicitHeight: Style.space(38)
@@ -1058,6 +1116,7 @@ Panel {
       anchors.verticalCenter: parent.verticalCenter
       icon: row.icon
       on: row.on
+      squircle: row.squircle
       onClicked: row.toggled()
     }
     Column {
@@ -1070,7 +1129,7 @@ Panel {
         width: parent.width
         text: row.title
         color: root.fg
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.subtitle
         font.weight: Font.DemiBold
         elide: Text.ElideRight
@@ -1080,7 +1139,7 @@ Panel {
         text: row.subtitle
         visible: text !== ""
         color: root.dimText
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.bodySmall
         elide: Text.ElideRight
       }
@@ -1104,6 +1163,7 @@ Panel {
     property string title: ""
     property string subtitle: ""
     property string action: "Open"
+    property bool squircle: false
     signal launched()
     signal details()
     implicitHeight: Style.space(38)
@@ -1114,6 +1174,7 @@ Panel {
       anchors.verticalCenter: parent.verticalCenter
       icon: lrow.icon
       on: lrow.on
+      squircle: lrow.squircle
       onClicked: lrow.launched()
     }
     Column {
@@ -1127,7 +1188,7 @@ Panel {
         width: parent.width
         text: lrow.title
         color: root.fg
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.subtitle
         font.weight: Font.DemiBold
         elide: Text.ElideRight
@@ -1137,7 +1198,7 @@ Panel {
         text: lrow.subtitle
         visible: text !== ""
         color: root.dimText
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.bodySmall
         elide: Text.ElideRight
       }
@@ -1183,7 +1244,7 @@ Panel {
     signal iconClicked()
     signal headingClicked()
     width: root.panelWidth
-    height: stColumn.implicitHeight + Style.space(15)
+    height: stColumn.implicitHeight + Style.space(24)
     clip: true
     Behavior on height {
       enabled: root.heightAnimated
@@ -1195,7 +1256,7 @@ Panel {
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: parent.top
-      anchors.topMargin: Style.space(9)
+      anchors.topMargin: Style.space(12)
       anchors.leftMargin: Style.space(12)
       anchors.rightMargin: Style.space(14)
       spacing: Style.space(4)
@@ -1247,42 +1308,51 @@ Panel {
         }
       }
 
+      // Big Sur's slider: one continuous pill, the icon sitting inside its
+      // left edge rather than in a separate column beside it. Fill and knob
+      // are both plain white so they read as one shape; the track's accent
+      // tint is what gives an empty/low slider (Sound, muted) a visible rail.
       Item {
         width: parent.width
-        height: stSlider.implicitHeight
+        height: Math.max(stSlider.implicitHeight, Style.space(30))
 
-        HUi.CrossfadeText {
-          id: stIcon
-          anchors.left: parent.left
-          anchors.verticalCenter: parent.verticalCenter
-          width: Style.space(20)
-          text: st.icon
-          color: root.fg
-          fontFamily: root.symbolFont
-          fontSize: Style.font.iconLarge
-          MouseArea {
-            anchors.fill: parent
-            anchors.margins: -Style.space(4)
-            cursorShape: Qt.PointingHandCursor
-            onClicked: st.iconClicked()
-          }
-        }
         PanelSlider {
           id: stSlider
-          anchors.left: stIcon.right
+          anchors.left: parent.left
           anchors.right: parent.right
-          anchors.leftMargin: Style.space(6)
           anchors.verticalCenter: parent.verticalCenter
           bar: root.bar
           minimum: 0
           maximum: 1
           step: 0.05
           value: st.value
-          fillColor: root.fg
-          knobColor: root.fg
-          trackColor: root.circleOff
+          // Henri's values.
+          trackHeight: Style.space(22)
+          knobSize: Style.space(30)
+          fillColor: "#ffffff"
+          knobColor: "#ffffff"
+          trackColor: Util.alpha(Color.accent, 0.28)
           tickColor: "transparent"
           onMoved: function(v) { st.moved(v) }
+        }
+        HUi.CrossfadeText {
+          id: stIcon
+          anchors.left: parent.left
+          anchors.leftMargin: Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          width: Style.space(16)
+          text: st.icon
+          color: Util.alpha(Color.accent, 0.85)
+          fontFamily: root.symbolFont
+          // Kept clearly smaller than the track height so it never touches
+          // the pill's top/bottom edge.
+          fontSize: Style.space(12)
+          MouseArea {
+            anchors.fill: parent
+            anchors.margins: -Style.space(4)
+            cursorShape: Qt.PointingHandCursor
+            onClicked: st.iconClicked()
+          }
         }
       }
 
@@ -1311,7 +1381,7 @@ Panel {
   // Small caps section label inside an expanded tile.
   component SectionLabel: Text {
     color: root.dimText
-    font.family: Style.font.family
+    font.family: root.uiFont
     font.pixelSize: Style.font.caption
     font.capitalization: Font.AllUppercase
     font.letterSpacing: 0.6
@@ -1358,7 +1428,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         text: pill.label
         color: pill.ink
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.bodySmall
         font.weight: pill.selected ? Font.DemiBold : Font.Normal
       }
@@ -1406,7 +1476,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         text: ph.title
         color: root.fg
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.heading
         font.weight: Font.DemiBold
       }
@@ -1534,7 +1604,7 @@ Panel {
         width: parent.width
         text: lr.title
         color: root.fg
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.subtitle
         font.weight: lr.active ? Font.DemiBold : Font.Normal
         elide: Text.ElideRight
@@ -1544,7 +1614,7 @@ Panel {
         visible: text !== ""
         text: lr.subtitle
         color: root.dimText
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.caption
         elide: Text.ElideRight
         // Breathe while connecting / disconnecting.
@@ -1588,7 +1658,7 @@ Panel {
       anchors.verticalCenter: parent.verticalCenter
       text: parent.label
       color: root.dimText
-      font.family: Style.font.family
+      font.family: root.uiFont
       font.pixelSize: Style.font.bodySmall
     }
     HUi.CrossfadeText {
@@ -1657,7 +1727,7 @@ Panel {
       anchors.verticalCenter: parent.verticalCenter
       text: parent.title
       color: root.fg
-      font.family: Style.font.family
+      font.family: root.uiFont
       font.pixelSize: Style.font.body
       font.weight: Font.DemiBold
     }
@@ -1714,7 +1784,7 @@ Panel {
     leftPadding: Style.space(6)
     topPadding: Style.space(4)
     color: root.dimText
-    font.family: Style.font.family
+    font.family: root.uiFont
     font.pixelSize: Style.font.caption
     font.capitalization: Font.AllUppercase
     font.letterSpacing: 0.6
@@ -1754,7 +1824,7 @@ Panel {
       color: root.fg
       selectionColor: root.circleOn
       selectedTextColor: root.onIcon
-      font.family: Style.font.family
+      font.family: root.uiFont
       font.pixelSize: Style.font.body
       clip: true
       Keys.onReturnPressed: cf.submitted()
@@ -1877,7 +1947,7 @@ Panel {
         width: parent.width
         text: sr.title
         color: root.fg
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.subtitle
         elide: Text.ElideRight
       }
@@ -1885,7 +1955,7 @@ Panel {
         width: parent.width
         text: sr.caption
         color: root.dimText
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.caption
         elide: Text.ElideRight
       }
@@ -1933,7 +2003,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         text: pb.label
         color: root.dimText
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.caption
       }
     }
@@ -1961,7 +2031,7 @@ Panel {
         easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
       }
     }
-    font.family: Style.font.family
+    font.family: root.uiFont
     font.pixelSize: Style.font.bodySmall
     MouseArea {
       id: flMouse
@@ -2027,18 +2097,18 @@ Panel {
       Behavior on opacity { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
       Behavior on x { enabled: root.heightAnimated; NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
-      // Top block, two columns of equal height: what the machine talks to on
-      // the left, what it borrows from the Mac on the right.
+      // Top block: what the machine talks to on the left (one tall tile,
+      // three rows); what it borrows from the Mac on the right, as two
+      // separate single-row tiles stacked with a gap — like Big Sur's own
+      // Do Not Disturb / Screen Mirroring pair, not one merged tile.
       Row {
         id: topRow
         spacing: root.gap
-        readonly property int tileHeight:
-          Math.max(connectivity.implicitHeight, macGroup.implicitHeight) + Style.space(20)
 
         Tile {
           revealIndex: 0
           width: root.colWidth
-          height: topRow.tileHeight
+          height: connectivity.implicitHeight + Style.space(20)
 
           Column {
             id: connectivity
@@ -2092,25 +2162,26 @@ Panel {
         }
 
         // The Mac side of the desk: its trackpad and its screen, the two
-        // things this machine borrows over the cable.
-        Tile {
-          revealIndex: 1
+        // things this machine borrows over the cable — each its own tile.
+        Column {
           width: root.colWidth
-          height: topRow.tileHeight
+          spacing: root.gap
 
-          Column {
-            id: macGroup
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.leftMargin: Style.space(10)
-            anchors.rightMargin: Style.space(10)
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(4)
+          Tile {
+            revealIndex: 1
+            width: parent.width
+            height: trackpadRow.implicitHeight + Style.space(20)
 
             ToggleRow {
-              width: parent.width
+              id: trackpadRow
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.leftMargin: Style.space(10)
+              anchors.rightMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
               icon: root.sf(0x100EA4)
               on: root.padStreaming
+              squircle: true
               title: "Trackpad"
               subtitle: root.padSubtitle
               onToggled: root.run(root.padBridgeUp
@@ -2118,10 +2189,23 @@ Panel {
                 : "systemctl --user start mtbridge")
               onDetails: root.showPage("trackpad")
             }
+          }
+
+          Tile {
+            revealIndex: 2
+            width: parent.width
+            height: screenRow.implicitHeight + Style.space(20)
+
             LaunchRow {
-              width: parent.width
+              id: screenRow
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.leftMargin: Style.space(10)
+              anchors.rightMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
               icon: root.sf(0x1008B9)
               on: root.screenOn
+              squircle: true
               title: "Mac Screen"
               subtitle: root.screenSubtitle
               action: root.screenOn ? "Show" : "Open"
@@ -2137,7 +2221,7 @@ Panel {
       }
 
       SliderTile {
-        revealIndex: 2
+        revealIndex: 3
         visible: root.brightnessAvailable || root.displays.length > 0
         heading: "Display"
         icon: root.sf(root.brightness < 40 ? 0x1001AC : 0x1001AE)
@@ -2159,7 +2243,7 @@ Panel {
             width: Style.space(20)
             text: "A"
             color: root.fg
-            font.family: Style.font.family
+            font.family: root.uiFont
             font.pixelSize: Style.font.caption
           }
           PanelSlider {
@@ -2188,7 +2272,7 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
             text: "A"
             color: root.fg
-            font.family: Style.font.family
+            font.family: root.uiFont
             font.pixelSize: Style.font.heading
           }
         }
@@ -2262,7 +2346,7 @@ Panel {
       }
 
       SliderTile {
-        revealIndex: 3
+        revealIndex: 4
         visible: root.sink !== null
         heading: root.airpodsActive ? root.airpodsName : "Sound"
         headingGlyph: root.airpodsActive ? airpodsGlyph : null
@@ -2281,7 +2365,7 @@ Panel {
 
       // Now Playing — only while an MPRIS player has a track.
       Tile {
-        revealIndex: 4
+        revealIndex: 5
         id: nowPlaying
         readonly property bool playing: root.player ? root.player.isPlaying === true : false
         visible: root.player !== null
@@ -2328,7 +2412,7 @@ Panel {
             width: parent.width
             text: root.player ? (root.player.trackTitle || "") : ""
             color: root.fg
-            font.family: Style.font.family
+            font.family: root.uiFont
             font.pixelSize: Style.font.subtitle
             font.weight: Font.DemiBold
             elide: Text.ElideRight
@@ -2337,7 +2421,7 @@ Panel {
             width: parent.width
             text: root.player ? (root.player.trackArtist || root.player.identity || "") : ""
             color: root.dimText
-            font.family: Style.font.family
+            font.family: root.uiFont
             font.pixelSize: Style.font.bodySmall
             elide: Text.ElideRight
           }
@@ -2389,7 +2473,7 @@ Panel {
 
       // Hardware: CPU load, memory and temperature at a glance.
       Tile {
-        revealIndex: 5
+        revealIndex: 6
         width: root.panelWidth
         height: Style.space(52)
         hoverable: true
@@ -2412,7 +2496,7 @@ Panel {
             width: parent.width
             text: "Hardware"
             color: root.fg
-            font.family: Style.font.family
+            font.family: root.uiFont
             font.pixelSize: Style.font.subtitle
             font.weight: Font.DemiBold
           }
@@ -2437,144 +2521,6 @@ Panel {
         }
       }
 
-      // Advanced: rarely used controls, folded away like macOS disclosure sections.
-      Item {
-        id: advancedHeader
-        width: root.panelWidth
-        height: Style.space(28)
-        opacity: root.revealed ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
-        Text {
-          anchors.left: parent.left
-          anchors.leftMargin: Style.space(12)
-          anchors.verticalCenter: parent.verticalCenter
-          text: "Advanced"
-          color: advancedMouse.containsMouse ? root.fg : root.dimText
-          font.family: Style.font.family
-          font.pixelSize: Style.font.body
-          font.weight: Font.DemiBold
-          Behavior on color {
-            ColorAnimation {
-              duration: advancedMouse.containsMouse ? Motion.instant : Motion.fast
-              easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
-            }
-          }
-        }
-        Text {
-          anchors.right: parent.right
-          anchors.rightMargin: Style.space(14)
-          anchors.verticalCenter: parent.verticalCenter
-          text: root.sf(0x10018A)
-          rotation: root.advancedOpen ? 90 : 0
-          color: root.dimText
-          font.family: root.symbolFont
-          font.pixelSize: Style.font.icon
-          Behavior on rotation { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
-        }
-        MouseArea {
-          id: advancedMouse
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: root.advancedOpen = !root.advancedOpen
-        }
-      }
-
-      HUi.Collapse {
-        id: advancedSection
-        width: root.panelWidth
-        expanded: root.advancedOpen
-
-        Column {
-          width: root.panelWidth
-          spacing: root.gap
-
-          // Tiling layout for the active workspace.
-          Tile {
-            revealIndex: 6
-            width: root.panelWidth
-            height: tilingColumn.implicitHeight + Style.space(20)
-
-            Column {
-              id: tilingColumn
-              anchors.left: parent.left
-              anchors.right: parent.right
-              anchors.top: parent.top
-              anchors.topMargin: Style.space(9)
-              anchors.leftMargin: Style.space(12)
-              anchors.rightMargin: Style.space(14)
-              spacing: Style.space(8)
-
-              Text {
-                text: "Tiling"
-                color: root.fg
-                font.family: Style.font.family
-                font.pixelSize: Style.font.subtitle
-                font.weight: Font.DemiBold
-              }
-              Row {
-                id: tilingRow
-                width: parent.width
-                spacing: Style.space(5)
-                readonly property var layouts: [
-                  // SF Symbols: square split recursively / rectangle.split.3x1.
-                  { id: "dwindle", label: "Dwindle", symbol: String.fromCodePoint(0x100BEB) },
-                  { id: "scrolling", label: "Scrolling", symbol: String.fromCodePoint(0x1003DF) }
-                ]
-                Repeater {
-                  model: tilingRow.layouts
-                  delegate: Pill {
-                    required property var modelData
-                    width: Math.floor((tilingRow.width - tilingRow.spacing * (tilingRow.layouts.length - 1)) / tilingRow.layouts.length)
-                    label: modelData.label
-                    symbol: modelData.symbol
-                    selected: root.tilingLayout === modelData.id
-                    onClicked: root.setTilingLayout(modelData.id)
-                  }
-                }
-              }
-            }
-          }
-
-          // Bottom row, like "Edit Controls" on macOS.
-          Tile {
-            revealIndex: 7
-            width: root.panelWidth
-            height: Style.space(40)
-            hoverable: true
-            onClicked: root.openPluginManager()
-
-            Text {
-              id: pluginsIcon
-              anchors.left: parent.left
-              anchors.leftMargin: Style.space(14)
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.sf(0x10096E)
-              color: root.fg
-              font.family: root.symbolFont
-              font.pixelSize: Style.font.iconLarge
-            }
-            Text {
-              anchors.left: pluginsIcon.right
-              anchors.leftMargin: Style.space(10)
-              anchors.verticalCenter: parent.verticalCenter
-              text: "Manage Plugins"
-              color: root.fg
-              font.family: Style.font.family
-              font.pixelSize: Style.font.subtitle
-            }
-            Text {
-              anchors.right: parent.right
-              anchors.rightMargin: Style.space(14)
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.sf(0x10018A)
-              color: root.dimText
-              font.family: root.symbolFont
-              font.pixelSize: Style.font.icon
-            }
-          }
-        }
-      }
     }
 
     // ---- Detail pages
@@ -2751,7 +2697,7 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               text: "Advanced Options"
               color: advMouse.containsMouse ? root.fg : root.dimText
-              font.family: Style.font.family
+              font.family: root.uiFont
               font.pixelSize: Style.font.body
               Behavior on color {
                 ColorAnimation {
@@ -2812,7 +2758,7 @@ Panel {
                   width: parent.width
                   text: root.netConnected ? (root.netInfo.ssid || root.wifiName || root.netInfo.iface) : "Not connected"
                   color: root.fg
-                  font.family: Style.font.family
+                  font.family: root.uiFont
                   font.pixelSize: Style.font.subtitle
                   font.weight: Font.DemiBold
                   elide: Text.ElideRight
@@ -2824,7 +2770,7 @@ Panel {
                          root.netInfo.signal_dbm ? root.netInfo.signal_dbm + " dBm" : ""]
                         .filter(function(t) { return t !== "" }).join(" · ")
                   color: root.dimText
-                  font.family: Style.font.family
+                  font.family: root.uiFont
                   font.pixelSize: Style.font.caption
                   elide: Text.ElideRight
                 }
@@ -3043,7 +2989,7 @@ Panel {
             rightPadding: Style.space(6)
             text: pods.actionStatus !== "" ? pods.actionStatus : pods.lastError
             color: Color.urgent
-            font.family: Style.font.family
+            font.family: root.uiFont
             font.pixelSize: Style.font.caption
             wrapMode: Text.WordWrap
           }
@@ -3081,7 +3027,7 @@ Panel {
                   x: Style.space(12)
                   text: "Adaptive noise level"
                   color: root.dimText
-                  font.family: Style.font.family
+                  font.family: root.uiFont
                   font.pixelSize: Style.font.caption
                 }
                 HUi.CrossfadeText {
@@ -3168,6 +3114,46 @@ Panel {
         }
       }
 
+      // Experiments — switches for things that are still being tried out.
+      // Every one of them is a flag a helper owns, so anything here can be
+      // turned straight back off without leaving traces behind.
+      PageHeader {
+        visible: root.detailPage === "experiments"
+        title: "Experiments"
+      }
+      Separator { visible: root.detailPage === "experiments" }
+      Column {
+        visible: root.detailPage === "experiments"
+        width: root.panelWidth
+
+        ListLabel { text: "Appearance" }
+        SwitchRow {
+          title: "macOS Mode"
+          caption: root.experimentalBusy ? "Switching …"
+            : root.experimentalOn ? "On — Tahoe shapes across the shell"
+            : "Round the shell the way macOS Tahoe is"
+          checked: root.experimentalOn
+          onToggled: function(on) { root.setExperimental(on) }
+        }
+        Item {
+          width: root.panelWidth
+          height: explainer.implicitHeight + Style.space(14)
+          Text {
+            id: explainer
+            x: Style.space(12)
+            y: Style.space(4)
+            width: root.panelWidth - Style.space(24)
+            text: "Swaps the henri-ui corner radii and control sizes for Tahoe's, "
+              + "everywhere at once. The shell restarts a moment after the switch, "
+              + "so this panel will blink."
+            wrapMode: Text.WordWrap
+            color: root.dimText
+            font.family: root.uiFont
+            font.pixelSize: Style.font.caption
+          }
+        }
+      }
+
       // Hardware — read-only live readings, refreshed every 2 s.
       PageHeader {
         visible: root.detailPage === "hardware"
@@ -3192,7 +3178,7 @@ Panel {
           width: hwPage.innerWidth
           text: root.hw.model + (root.hw.cores > 0 ? " · " + root.hw.cores + " cores / " + root.hw.threads + " threads" : "")
           color: root.dimText
-          font.family: Style.font.family
+          font.family: root.uiFont
           font.pixelSize: Style.font.caption
           elide: Text.ElideRight
         }
@@ -3323,7 +3309,7 @@ Panel {
           width: screenPage.innerWidth
           wrapMode: Text.WordWrap
           color: root.dimText
-          font.family: Style.font.family
+          font.family: root.uiFont
           font.pixelSize: Style.font.caption
           text: root.screenOn
               ? "The Mac is capturing its own screen and sending it here. Nothing on it had to be clicked."
@@ -3408,7 +3394,7 @@ Panel {
           width: padPage.innerWidth
           wrapMode: Text.WordWrap
           color: root.dimText
-          font.family: Style.font.family
+          font.family: root.uiFont
           font.pixelSize: Style.font.caption
           text: !root.padBridgeUp
               ? "The receiver is not running."
@@ -3473,7 +3459,7 @@ Panel {
           width: padPage.innerWidth
           wrapMode: Text.WordWrap
           color: root.dimText
-          font.family: Style.font.family
+          font.family: root.uiFont
           font.pixelSize: Style.font.caption
           text: "Keys map by position: this machine's layout decides the "
             + "character. Both hotkeys stay on the Mac."
