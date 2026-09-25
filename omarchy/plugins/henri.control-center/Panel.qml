@@ -1384,6 +1384,7 @@ Panel {
           anchors.left: stGlyph.right
           text: st.heading
           color: root.fg
+          fontFamily: root.uiFont
           fontSize: Style.font.subtitle
           fontWeight: Font.DemiBold
         }
@@ -1394,6 +1395,7 @@ Panel {
           horizontalAlignment: Text.AlignRight
           text: st.headingDetail
           color: root.dimText
+          fontFamily: root.uiFont
           fontSize: Style.font.bodySmall
         }
         Text {
@@ -1780,6 +1782,7 @@ Panel {
       horizontalAlignment: Text.AlignRight
       text: parent.value
       color: root.fg
+      fontFamily: root.uiFont
       fontSize: Style.font.bodySmall
     }
   }
@@ -1849,6 +1852,7 @@ Panel {
       horizontalAlignment: Text.AlignRight
       text: parent.value
       color: parent.valueColor
+      fontFamily: root.uiFont
       fontSize: Style.font.body
     }
   }
@@ -2096,6 +2100,7 @@ Panel {
       anchors.horizontalCenter: parent.horizontalCenter
       text: pb.known ? pb.level + " %" : "--"
       color: pb.known && pb.level <= 20 && !pb.charging ? Color.urgent : root.fg
+      fontFamily: root.uiFont
       fontSize: Style.font.subtitle
       fontWeight: Font.DemiBold
     }
@@ -2634,6 +2639,7 @@ Panel {
             visible: root.hwSummary !== ""
             text: root.hwSummary
             color: root.hw.temp >= 80 ? root.tempColor(root.hw.temp) : root.dimText
+            fontFamily: root.uiFont
             fontSize: Style.font.bodySmall
             elide: Text.ElideRight
           }
@@ -3165,6 +3171,7 @@ Panel {
                   horizontalAlignment: Text.AlignRight
                   text: pods.adaptiveNoiseLevel + " %"
                   color: root.dimText
+                  fontFamily: root.uiFont
                   fontSize: Style.font.caption
                 }
               }
@@ -3452,11 +3459,13 @@ Panel {
           HUi.Button {
             text: root.screenOn ? "Show window" : "Open mirror"
             prominent: !root.screenOn
+            fontFamily: root.uiFont
             onClicked: { root.close(); root.run("omarchy-launch-or-focus gst-launch-1.0 'setsid -f mac-stream'") }
           }
           HUi.Button {
             visible: root.screenOn
             text: "Close"
+            fontFamily: root.uiFont
             // By pid from the status file, not by name: more than one viewer
             // may be running and only the one that wrote this file is ours.
             onClicked: root.run("kill " + (root.screenState.pid || 0))

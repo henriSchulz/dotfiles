@@ -137,10 +137,18 @@ Panel {
   // ---- Look (henri-ui: theme colours, secondary text by alpha, token radii)
   readonly property color fg: Color.popups.text
   readonly property color dimText: Util.alpha(fg, Motion.secondaryTextAlpha)
-  readonly property color wash: Util.alpha(fg, 0.07)
+  // Glass wash, matching the Control Center's tiles: more opaque than the
+  // card behind it (Motion.glassTileAlpha), not a flat foreground tint.
+  readonly property color wash: Motion.glass
+    ? Util.alpha(Color.popups.background, Motion.glassTileAlpha)
+    : Util.alpha(fg, 0.07)
+  readonly property color washHover: Motion.glass
+    ? Util.alpha(Color.popups.background, Motion.glassTileHoverAlpha)
+    : Util.alpha(fg, 0.11)
   readonly property color trackColor: Util.alpha(fg, 0.12)
   readonly property color hairline: Util.alpha(fg, Motion.hairlineAlpha)
-  readonly property string iconFont: bar ? bar.fontFamily : Style.font.family
+  readonly property string iconFont: bar ? bar.fontFamily : root.uiFont
+  readonly property string uiFont: Motion.uiFont
   readonly property int panelWidth: Style.space(340)
   readonly property int blockGap: Style.space(14)
   // The page stack clips; it reaches this far past the content on each side
@@ -852,7 +860,7 @@ Panel {
 
   TextMetrics {
     id: pctMetrics
-    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+    font.family: root.bar ? root.bar.fontFamily : root.uiFont
     font.pixelSize: Style.font.body
     text: root.pctText
   }
@@ -873,7 +881,7 @@ Panel {
             text: root.pctText
             color: button ? button.foreground : Color.foreground
             fontSize: Style.font.body
-            fontFamily: button ? button.fontFamily : Style.font.family
+            fontFamily: button ? button.fontFamily : root.uiFont
           }
           HUi.BatteryGlyph {
             anchors.verticalCenter: parent.verticalCenter
@@ -1005,12 +1013,13 @@ Panel {
               text: "Battery"
               color: root.fg
               elide: Text.ElideRight
-              font.family: Style.font.family
+              font.family: root.uiFont
               font.pixelSize: Style.font.subtitle
               font.weight: Font.DemiBold
             }
 
             HUi.CrossfadeText {
+              fontFamily: root.uiFont
               width: parent.width
               text: root.heroStatusText
               color: root.dimText
@@ -1020,6 +1029,7 @@ Panel {
           }
 
           HUi.CrossfadeText {
+            fontFamily: root.uiFont
             id: heroPercent
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
@@ -1045,7 +1055,7 @@ Panel {
             text: root.dellError
             color: Color.urgent
             wrapMode: Text.WordWrap
-            font.family: Style.font.family
+            font.family: root.uiFont
             font.pixelSize: Style.font.caption
           }
         }
@@ -1329,7 +1339,7 @@ Panel {
                     Text {
                       text: "USB PowerShare"
                       color: root.fg
-                      font.family: Style.font.family
+                      font.family: root.uiFont
                       font.pixelSize: Style.font.body
                     }
                     Caption { text: "Keeps the USB-A port powered while the laptop sleeps" }
@@ -1359,7 +1369,7 @@ Panel {
                   Text {
                     text: "USB-C output"
                     color: root.fg
-                    font.family: Style.font.family
+                    font.family: root.uiFont
                     font.pixelSize: Style.font.body
                   }
                   Segmented {
@@ -1389,7 +1399,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: "Charge modes, thresholds, USB options and power flow need the system helper. Click to copy the command, then run it once in a terminal:"
                   color: root.dimText
-                  font.family: Style.font.family
+                  font.family: root.uiFont
                   font.pixelSize: Style.font.caption
                 }
                 HUi.Pressable {
@@ -1405,6 +1415,7 @@ Panel {
                     color: root.wash
                   }
                   HUi.CrossfadeText {
+                    fontFamily: root.uiFont
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.margins: Style.space(10)
@@ -1476,6 +1487,7 @@ Panel {
                 onPicked: function(value) { root.setHistoryMetric(value) }
               }
               HUi.CrossfadeText {
+                fontFamily: root.uiFont
                 id: historyReadout
                 anchors.right: parent.right
                 anchors.left: historyTitle.right
@@ -1799,7 +1811,7 @@ Panel {
         textFormat: Text.PlainText
         text: thresholdTip.shownText
         color: Color.tooltip.text
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.caption
       }
     }
@@ -1857,7 +1869,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         text: disc.text
         color: root.fg
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.body
         font.weight: Font.Medium
       }
@@ -1938,7 +1950,7 @@ Panel {
     }
     implicitHeight: plotH + timeRow.height + Style.space(12) + legend.height
 
-    TextMetrics { id: gutterMetrics; font.family: Style.font.family; font.pixelSize: Style.font.caption; text: "888 W" }
+    TextMetrics { id: gutterMetrics; font.family: root.uiFont; font.pixelSize: Style.font.caption; text: "888 W" }
 
     function xOf(t) { return (t - from) / (root.historyHours * 3600000) * plotW }
     function yOf(pct) { return plotH - Math.max(0, Math.min(100, pct)) / 100 * plotH }
@@ -1962,6 +1974,7 @@ Panel {
         width: graph.width
         Rectangle { width: graph.plotW; height: 1; color: root.hairline }
         HUi.CrossfadeText {
+          fontFamily: root.uiFont
           x: graph.plotW + Style.space(6)
           anchors.verticalCenter: parent.top
           text: root.historyAxisLabel(graph.axis.min + graph.axisSpan * modelData / 100, graph.metric)
@@ -2013,7 +2026,7 @@ Panel {
       y: graph.plotH + Style.space(4)
       width: graph.plotW
       height: tickMetrics.height
-      TextMetrics { id: tickMetrics; font.family: Style.font.family; font.pixelSize: Style.font.caption; text: "00:00" }
+      TextMetrics { id: tickMetrics; font.family: root.uiFont; font.pixelSize: Style.font.caption; text: "00:00" }
       Repeater {
         model: graph.ticks
         Text {
@@ -2022,7 +2035,7 @@ Panel {
           x: Math.max(0, Math.min(graph.plotW - width, cx - width / 2))
           text: graph.tickText(modelData)
           color: root.dimText
-          font.family: Style.font.family
+          font.family: root.uiFont
           font.pixelSize: Style.font.caption
         }
       }
@@ -2051,7 +2064,7 @@ Panel {
           Text {
             text: modelData.text
             color: root.dimText
-            font.family: Style.font.family
+            font.family: root.uiFont
             font.pixelSize: Style.font.caption
           }
         }
@@ -2075,7 +2088,7 @@ Panel {
     showFill: false
     activeFocusOnTab: false
 
-    TextMetrics { id: widestMetrics; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall; font.weight: Font.DemiBold; text: pop.widest }
+    TextMetrics { id: widestMetrics; font.family: root.uiFont; font.pixelSize: Style.font.bodySmall; font.weight: Font.DemiBold; text: pop.widest }
 
     // The resting fill is the segmented track's wash; hover and press add
     // the usual state alpha on top of it.
@@ -2096,6 +2109,7 @@ Panel {
       anchors.centerIn: parent
       spacing: Style.space(6)
       HUi.CrossfadeText {
+        fontFamily: root.uiFont
         anchors.verticalCenter: parent.verticalCenter
         text: pop.text
         color: root.fg
@@ -2121,8 +2135,10 @@ Panel {
     property string label: ""
     property string value: ""
     implicitHeight: statCol.implicitHeight + Style.space(16)
-    radius: Style.space(Motion.radiusControl)
+    radius: Style.space(Motion.radiusPopover)
     color: root.wash
+    border.width: 1
+    border.color: root.hairline
 
     Column {
       id: statCol
@@ -2134,6 +2150,7 @@ Panel {
       spacing: Style.space(2)
 
       HUi.CrossfadeText {
+        fontFamily: root.uiFont
         width: parent.width
         text: stat.label
         color: root.dimText
@@ -2141,6 +2158,7 @@ Panel {
         fontSize: Style.font.caption
       }
       HUi.CrossfadeText {
+        fontFamily: root.uiFont
         width: parent.width
         text: stat.value
         color: root.fg
@@ -2154,7 +2172,7 @@ Panel {
   // Small-caps heading of an Advanced section (same as the Control Center).
   component SectionLabel: Text {
     color: root.dimText
-    font.family: Style.font.family
+    font.family: root.uiFont
     font.pixelSize: Style.font.caption
     font.capitalization: Font.AllUppercase
     font.letterSpacing: 0.6
@@ -2165,6 +2183,7 @@ Panel {
     width: parent.width
     color: root.dimText
     elide: Text.ElideRight
+    fontFamily: root.uiFont
     fontSize: Style.font.caption
   }
 
@@ -2240,7 +2259,7 @@ Panel {
               textFormat: Text.PlainText
               text: seg.labels[cell.index] !== undefined ? seg.labels[cell.index] : String(cell.modelData)
               color: cell.isCurrent ? Motion.onColor(Color.accent) : root.fg
-              font.family: Style.font.family
+              font.family: root.uiFont
               font.pixelSize: seg.labelSize
               font.weight: cell.isCurrent ? Font.DemiBold : Font.Normal
               Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
@@ -2281,7 +2300,7 @@ Panel {
       textFormat: Text.PlainText
       text: fanRow.name
       color: root.dimText
-      font.family: Style.font.family
+      font.family: root.uiFont
       font.pixelSize: Style.font.bodySmall
     }
 
@@ -2311,6 +2330,7 @@ Panel {
     }
 
     HUi.CrossfadeText {
+      fontFamily: root.uiFont
       id: fanRpm
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
@@ -2331,6 +2351,8 @@ Panel {
     implicitHeight: tempBox.implicitHeight + Style.space(12)
     radius: Style.space(Motion.radiusControl)
     color: root.wash
+    border.width: 1
+    border.color: root.hairline
 
     Column {
       id: tempBox
@@ -2339,6 +2361,7 @@ Panel {
       spacing: Style.space(1)
 
       HUi.CrossfadeText {
+        fontFamily: root.uiFont
         width: parent.width
         horizontalAlignment: Text.AlignHCenter
         text: tempTile.reading ? tempTile.reading.c + "°" : "—"
@@ -2354,7 +2377,7 @@ Panel {
         textFormat: Text.PlainText
         text: tempTile.reading ? tempTile.reading.label : ""
         color: root.dimText
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.caption
       }
     }
@@ -2378,14 +2401,14 @@ Panel {
         id: boostTitle
         text: boostBox.title
         color: root.dimText
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.bodySmall
       }
       Text {
         anchors.right: parent.right
         text: (boostSlider.dragging ? Math.round(boostSlider.liveValue) : Model.boostPercent(boostBox.boost)) + " %"
         color: root.fg
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.bodySmall
       }
     }
@@ -2461,6 +2484,8 @@ Panel {
     implicitHeight: nodeBox.implicitHeight + Style.space(14)
     radius: Style.space(Motion.radiusControl)
     color: root.wash
+    border.width: 1
+    border.color: root.hairline
 
     Column {
       id: nodeBox
@@ -2489,7 +2514,7 @@ Panel {
         textFormat: Text.PlainText
         text: node.title
         color: root.dimText
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.caption
       }
 
@@ -2499,6 +2524,7 @@ Panel {
         height: Math.max(nodeValue.implicitHeight, node.collapsible ? Style.space(Motion.controlMin) : 0)
 
         HUi.CrossfadeText {
+          fontFamily: root.uiFont
           id: nodeValue
           anchors.verticalCenter: parent.verticalCenter
           x: node.collapsible ? (parent.width - width - chevron.width) / 2 : (parent.width - width) / 2
@@ -2541,7 +2567,7 @@ Panel {
         textFormat: Text.PlainText
         text: node.sub
         color: root.dimText
-        font.family: Style.font.family
+        font.family: root.uiFont
         font.pixelSize: Style.font.caption
       }
 
@@ -2562,7 +2588,7 @@ Panel {
                 textFormat: Text.PlainText
                 text: modelData.label
                 color: root.dimText
-                font.family: Style.font.family
+                font.family: root.uiFont
                 font.pixelSize: Style.font.caption
               }
               Text {
@@ -2570,7 +2596,7 @@ Panel {
                 textFormat: Text.PlainText
                 text: modelData.value
                 color: root.fg
-                font.family: Style.font.family
+                font.family: root.uiFont
                 font.pixelSize: Style.font.caption
                 font.weight: Font.DemiBold
               }
