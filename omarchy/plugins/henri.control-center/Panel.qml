@@ -31,15 +31,8 @@ Panel {
   // ---- Palette. Tiles are a faint wash of the foreground over the popup
   //      background; an "on" icon circle takes the accent colour.
   readonly property color fg: Color.popups.text
-  // On glass the tiles are frosted rather than a wash of the foreground: the
-  // panel's own colour again, so they stay lighter than what shows through it
-  // (macOS Control Center) and a dark theme still gets dark tiles.
-  readonly property color tileColor: Motion.glass
-    ? Util.alpha(Color.popups.background, Motion.glassTileAlpha)
-    : Qt.rgba(fg.r, fg.g, fg.b, 0.07)
-  readonly property color tileHover: Motion.glass
-    ? Util.alpha(Color.popups.background, Motion.glassTileHoverAlpha)
-    : Qt.rgba(fg.r, fg.g, fg.b, 0.11)
+  readonly property color tileColor: Qt.rgba(fg.r, fg.g, fg.b, 0.07)
+  readonly property color tileHover: Qt.rgba(fg.r, fg.g, fg.b, 0.11)
   readonly property color circleOff: Qt.rgba(fg.r, fg.g, fg.b, 0.14)
   readonly property color circleOn: Color.accent
   // Glyphs/text on the accent fill: white or black by contrast (henri-ui).
@@ -812,7 +805,6 @@ Panel {
     if (!sinkPortProc.running) sinkPortProc.running = true
     if (!localsendProc.running) localsendProc.running = true
     if (!tilingProc.running) tilingProc.running = true
-    if (!experimentalProc.running && !experimentalBusy) experimentalProc.running = true
   }
 
   function setScale(scale) {
@@ -922,39 +914,6 @@ Panel {
         try { root.tilingLayout = JSON.parse(text).tiledLayout || "" } catch (e) {}
       }
     }
-  }
-
-  // ---- Experiments. `henri-ui-experimental` owns the flag on disk; the panel
-  // only reads and flips it, so the CLI and this switch can never disagree.
-  // The flag lives in henri-ui/Experimental.js, which henri-ui-sync watches:
-  // a second or two after the switch it restarts the shell and this panel goes
-  // with it. That restart is what makes the new tokens take hold.
-  property bool experimentalOn: false
-  property bool experimentalBusy: false
-
-  function setExperimental(on) {
-    if (experimentalBusy) return
-    experimentalBusy = true
-    experimentalSetProc.command = ["henri-ui-experimental", on ? "on" : "off"]
-    experimentalSetProc.running = true
-  }
-
-  Process {
-    id: experimentalProc
-    command: ["henri-ui-experimental", "status"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.experimentalOn = String(text || "").trim() === "on"
-    }
-  }
-
-  Process {
-    id: experimentalSetProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.experimentalOn = String(text || "").trim() === "on"
-    }
-    onExited: root.experimentalBusy = false
   }
 
   // ======================================================== components
@@ -2577,64 +2536,9 @@ Panel {
             }
           }
 
-          // Experiments: things that are being tried out and can be switched
-          // straight back off, like the macOS look for GTK apps.
-          Tile {
-            revealIndex: 7
-            width: root.panelWidth
-            height: Style.space(40)
-            hoverable: true
-            onClicked: root.showPage("experiments")
-
-            Text {
-              id: experimentsIcon
-              anchors.left: parent.left
-              anchors.leftMargin: Style.space(14)
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.sf(0xF0093)   // md flask
-              color: root.experimentalOn ? root.circleOn : root.fg
-              Behavior on color {
-                ColorAnimation {
-                  duration: Motion.fast
-                  easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
-                }
-              }
-              font.family: root.symbolFont
-              font.pixelSize: Style.font.iconLarge
-            }
-            Text {
-              anchors.left: experimentsIcon.right
-              anchors.leftMargin: Style.space(10)
-              anchors.verticalCenter: parent.verticalCenter
-              text: "Experiments"
-              color: root.fg
-              font.family: Style.font.family
-              font.pixelSize: Style.font.subtitle
-            }
-            HUi.CrossfadeText {
-              anchors.right: experimentsChevron.left
-              anchors.rightMargin: Style.space(8)
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.experimentalOn ? "On" : ""
-              color: root.dimText
-              fontFamily: Style.font.family
-              fontSize: Style.font.caption
-            }
-            Text {
-              id: experimentsChevron
-              anchors.right: parent.right
-              anchors.rightMargin: Style.space(14)
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.sf(0x10018A)
-              color: root.dimText
-              font.family: root.symbolFont
-              font.pixelSize: Style.font.icon
-            }
-          }
-
           // Bottom row, like "Edit Controls" on macOS.
           Tile {
-            revealIndex: 8
+            revealIndex: 7
             width: root.panelWidth
             height: Style.space(40)
             hoverable: true
@@ -3260,46 +3164,6 @@ Panel {
               text: "Sound Output …"
               onClicked: root.showPage("sound")
             }
-          }
-        }
-      }
-
-      // Experiments — switches for things that are still being tried out.
-      // Every one of them is a flag a helper owns, so anything here can be
-      // turned straight back off without leaving traces behind.
-      PageHeader {
-        visible: root.detailPage === "experiments"
-        title: "Experiments"
-      }
-      Separator { visible: root.detailPage === "experiments" }
-      Column {
-        visible: root.detailPage === "experiments"
-        width: root.panelWidth
-
-        ListLabel { text: "Appearance" }
-        SwitchRow {
-          title: "macOS Mode"
-          caption: root.experimentalBusy ? "Switching …"
-            : root.experimentalOn ? "On — Tahoe shapes across the shell"
-            : "Round the shell the way macOS Tahoe is"
-          checked: root.experimentalOn
-          onToggled: function(on) { root.setExperimental(on) }
-        }
-        Item {
-          width: root.panelWidth
-          height: explainer.implicitHeight + Style.space(14)
-          Text {
-            id: explainer
-            x: Style.space(12)
-            y: Style.space(4)
-            width: root.panelWidth - Style.space(24)
-            text: "Swaps the henri-ui corner radii and control sizes for Tahoe's, "
-              + "everywhere at once. The shell restarts a moment after the switch, "
-              + "so this panel will blink."
-            wrapMode: Text.WordWrap
-            color: root.dimText
-            font.family: Style.font.family
-            font.pixelSize: Style.font.caption
           }
         }
       }

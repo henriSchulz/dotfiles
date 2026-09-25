@@ -1,5 +1,4 @@
 .pragma library
-.import "Experimental.js" as Experimental
 // Henri UI tokens — SINGLE SOURCE OF TRUTH for every QML plugin.
 // Never copy this file into a plugin; import it by absolute URL:
 //   import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
@@ -102,18 +101,6 @@ var radiusChip = 5
 var radiusPill = 999   // capsules: toolbar clusters, segmented controls
 var hairlineAlpha = 0.10
 
-// ── Glass (off by default) ─────────────────────────────────────────────────
-// Surfaces normally take the theme's own alpha (cupertino: 0.97 — nearly
-// opaque on purpose). With glass on they drop to the alphas below and let the
-// compositor's blur through, and Surface/PopupCard/PopupPanel put a HUi.GlassSheen
-// on top. Switched by the experimental mode, never by a plugin.
-var glass = false
-var glassAlpha = 0.65
-var glassMenuAlpha = 0.75
-var glassSheen = 0.14
-var glassTileAlpha = 0.55
-var glassTileHoverAlpha = 0.72
-
 // ── Size (Apple HIG, desktop) ──────────────────────────────────────────────
 var controlHeight = 28        // default control / hit target
 var controlMin = 20           // never smaller
@@ -126,28 +113,3 @@ var contrastLarge = 3.0       // ≥ 18 pt or bold, and UI glyphs
 // ── Kinetic scrolling ──────────────────────────────────────────────────────
 var flickDeceleration = 1500
 var maximumFlickVelocity = 4000
-
-// ── Experimental macOS mode ────────────────────────────────────────────────
-// Applied last, so it wins over everything above and nothing else in this file
-// has to know it exists. Experimental.js carries the flag and the table; the
-// Control Center's Experiments switch (henri-ui-experimental) flips the flag
-// and henri-ui-sync restarts the shell. Off, this block does nothing.
-// A .pragma library has no writable global object, so the assignments are
-// spelled out — a new token needs a line here as well as in Experimental.js.
-if (Experimental.on) {
-    radiusPanel = Experimental.tokens.radiusPanel
-    radiusPopover = Experimental.tokens.radiusPopover
-    radiusControl = Experimental.tokens.radiusControl
-    radiusRow = Experimental.tokens.radiusRow
-    radiusChip = Experimental.tokens.radiusChip
-    menuItemHeight = Experimental.tokens.menuItemHeight
-    controlHeight = Experimental.tokens.controlHeight
-    hairlineAlpha = Experimental.tokens.hairlineAlpha
-    glass = Experimental.tokens.glass === true
-    glassAlpha = Experimental.tokens.glassAlpha
-    glassMenuAlpha = Experimental.tokens.glassMenuAlpha
-    glassSheen = Experimental.tokens.glassSheen
-    glassTileAlpha = Experimental.tokens.glassTileAlpha
-    glassTileHoverAlpha = Experimental.tokens.glassTileHoverAlpha
-    secondaryTextAlpha = Experimental.tokens.secondaryTextAlpha
-}

@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Install (or remove) the MacTahoe icon theme for the experimental macOS mode.
+"""Install (or remove) the MacTahoe icon theme.
 
   https://github.com/vinceliuice/MacTahoe-icon-theme (GPL-3.0)
 
-The switch (henri-ui-experimental) points gsettings' icon-theme at MacTahoe
-while the mode is on and puts the old name back on the way out; this script
-only puts the files on disk. They live in ~/.local/share/icons and never in
-the dotfiles repo — 220 MB installed, and a GPL-3.0 icon set inside a public
-repo of my own is a licence question worth avoiding.
+This script only puts the files on disk; it never switches gsettings'
+icon-theme or anything else itself. They live in ~/.local/share/icons and
+never in the dotfiles repo — 220 MB installed, and a GPL-3.0 icon set inside
+a public repo of my own is a licence question worth avoiding.
 
   henri-macos-icons [--remove]
 

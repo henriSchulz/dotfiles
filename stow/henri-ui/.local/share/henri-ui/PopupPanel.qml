@@ -416,16 +416,10 @@ PanelWindow {
     BorderSurface {
       id: card
       anchors.fill: parent
-      color: Motion.glass ? Util.alpha(Color.popups.background, Motion.glassAlpha)
-        : Color.popups.background
+      color: Color.popups.background
       borderSpec: root.borderSpec
       padding: root.padding
       radius: Style.space(root.kind === "panel" ? Motion.radiusPanel : Motion.radiusPopover)
-
-      GlassSheen {
-        anchors.fill: parent
-        radius: card.radius
-      }
 
       // Swallow clicks on the card so they don't bubble to the dismissal
       // MouseArea behind us.

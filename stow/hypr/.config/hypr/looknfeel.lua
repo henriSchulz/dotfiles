@@ -68,16 +68,6 @@ hl.config({ cursor = { no_warps = true } })
 -- Eigene Menüleiste (henri.bar): Hintergrund weichzeichnen wie bei macOS.
 hl.layer_rule({ match = { namespace = "omarchy-bar" }, blur = true, ignore_alpha = 0.3 })
 
--- Popup-Ebene der Shell (Kontrollzentrum, Menüs, Panels laufen alle darin) und
--- Spotlight. Ohne Blur dahinter ist eine durchscheinende Fläche kein Glas,
--- sondern nur blass. ignore_alpha lässt die leere Fläche der Vollbild-Ebene in
--- Ruhe, weichgezeichnet wird nur die Karte selbst. Steht dauerhaft hier: bei
--- den fast deckenden Standardflächen (Alpha 0.97) sieht man davon nichts, es
--- wirkt erst, wenn der experimentelle Glas-Modus die Flächen öffnet.
-hl.layer_rule({ match = { namespace = "omarchy-keyboard-panel" }, blur = true, ignore_alpha = 0.3 })
-hl.layer_rule({ match = { namespace = "omarchy-menu" }, blur = true, ignore_alpha = 0.3 })
-hl.layer_rule({ match = { namespace = "henri-osd" }, blur = true, ignore_alpha = 0.3 })
-
 -- Dock (omadock): das macOS-Dock ist Milchglas, kein Balken. Ohne Blur wäre
 -- die 0.65er Fläche aus omadock.json nur blass.
 hl.layer_rule({ match = { namespace = "omadock" }, blur = true, ignore_alpha = 0.3 })
