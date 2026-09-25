@@ -129,3 +129,9 @@ hl.layer_rule({ match = { namespace = "omarchy-keyboard-panel" }, blur = true, i
 -- almost nothing hides that correction: the preview grows out of the file,
 -- like macOS.
 hl.window_rule({ match = { class = "org.gnome.NautilusPreviewer" }, float = true, animation = "popin 10%" })
+
+-- Finder (henri-ui macOS Finder clone, ~/Projects/finder): it draws its own
+-- rounded card with traffic lights instead of a headerbar, so it has to
+-- float like a real window — tiled edge-to-edge it loses the whole card
+-- illusion and just looks broken.
+hl.window_rule({ match = { class = "de.henri.Finder" }, float = true })
