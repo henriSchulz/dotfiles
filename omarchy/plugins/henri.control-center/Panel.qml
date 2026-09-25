@@ -85,10 +85,15 @@ Panel {
   readonly property bool padButton: padStream.button === "1"
   readonly property bool padKeyboard: padStream.keyboard === "1"
   readonly property int padKeysHeld: Number(padStream.keys_held || 0)
+  // mtsend pings once a second whether or not a finger is down, so this is
+  // the Mac actually answering right now -- not a guess from how stale the
+  // touch fields look, which used to read "Idle" the same way whether the
+  // Mac was sitting there idle or not reachable at all.
+  readonly property bool padLinked: padStream.linked === "1"
   readonly property string padSubtitle: !padBridgeUp ? "Off"
     : padStreaming ? (padTransport !== "" ? "Over " + padTransport : "Connected")
-    : padTransport !== "" ? "Idle \u00b7 " + padTransport
-    : padLinkUp ? "Cable ready" : "Waiting for the Mac"
+    : padLinked ? (padTransport !== "" ? "Idle \u00b7 " + padTransport : "Connected")
+    : padLinkUp ? "Cable up \u00b7 not connected" : "Not connected"
 
   // ---- The Mac's screen, arriving as H.264 from the same machine. mac-stream
   // keeps a status file for the same reason the trackpad's daemons do, and it
@@ -3521,12 +3526,15 @@ Panel {
         UsageHeader {
           width: padPage.innerWidth
           title: "Connection"
-          value: (root.padStreaming ? (root.padTransport !== "" ? root.padTransport : "Connected")
-            : root.padBridgeUp ? "Idle" : "Off")
+          value: (!root.padBridgeUp ? "Off"
+            : root.padStreaming ? (root.padTransport !== "" ? root.padTransport : "Connected")
+            : root.padLinked ? "Idle"
+            : "Not connected")
             + (root.padButton ? " \u00b7 click" : "")
             + (root.padKeysHeld > 0 ? " \u00b7 " + root.padKeysHeld + " key"
                + (root.padKeysHeld === 1 ? "" : "s") : "")
-          valueColor: root.padStreaming ? Color.accent : root.dimText
+          valueColor: root.padStreaming ? Color.accent
+            : !root.padBridgeUp || root.padLinked ? root.dimText : Color.urgent
         }
         Text {
           width: padPage.innerWidth
@@ -3538,9 +3546,11 @@ Panel {
               ? "The receiver is not running."
             : root.padStreaming
               ? "Fingers are arriving from " + (root.padStream.source || "the Mac") + "."
+            : root.padLinked
+              ? "The Mac is connected over " + (root.padTransport || "the link") + " and waiting for a touch."
             : root.padLinkUp
-              ? "Cable is up and the receiver is waiting. Press Control-Option-Command-T on the Mac."
-              : "No cable. Plug the MacBook in, or let it fall back to Wi-Fi."
+              ? "Cable is up, but the Mac isn't answering. Check that mtsend is running there."
+              : "Not connected. Plug the cable in, or start mtsend on the Mac."
         }
 
         Separator { width: padPage.innerWidth }
@@ -3563,6 +3573,7 @@ Panel {
           columns: 2
           columnSpacing: Style.space(16)
           rowSpacing: Style.space(2)
+          Stat { width: padPage.cellWidth; label: "Mac"; value: !root.padBridgeUp ? "--" : root.padLinked ? "Connected" : "Not connected" }
           Stat { width: padPage.cellWidth; label: "Route"; value: root.padTransport !== "" ? root.padTransport : "--" }
           Stat { width: padPage.cellWidth; label: "Source"; value: root.padStream.source || "--" }
           Stat { width: padPage.cellWidth; label: "Fingers"; value: root.padStreaming ? String(root.padStream.contacts || 0) : "--" }
