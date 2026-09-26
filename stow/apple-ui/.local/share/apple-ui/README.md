@@ -47,6 +47,7 @@ bekommt `cardColor: mat.sheet` und `borderSpec: Border.flat(mat.hairline, 1)`.
 | `Title` / `Subtitle` / `Caption` | 13 bold / 12 sekundär / 11 gedämpft | Text-Props |
 | `Glyph` | SF-Symbol | `text`, `size` |
 | `SectionLabel` | Versal-Überschrift | Text-Props |
+| `DisclosureLabel` | Versal-Überschrift mit Aufklapp-Chevron (Kopf zu `HUi.Collapse`) | `text`, `expanded`, `leftPadding`, `clicked()` |
 | `Separator` | Haarlinie | — |
 | `Capsule` | Kapsel-Button 24 pt | `label`, `symbol`, `selected`, `outlined`, `clicked()` |
 | `Button` | NSButton rounded | `text`, `icon`, `prominent`, `clicked()` |

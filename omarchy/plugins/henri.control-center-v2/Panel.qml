@@ -928,6 +928,7 @@ Panel {
   property string monitorScale: ""
   property var displays: []
   property bool displayExpanded: false
+  property bool macDebugExpanded: false
   readonly property var focusedDisplay: {
     for (var i = 0; i < displays.length; i++) if (displays[i] && displays[i].focused) return displays[i]
     return displays.length ? displays[0] : null
@@ -1132,6 +1133,7 @@ Panel {
       heightAnimated = false
       revealTimer.stop()
       displayExpanded = false
+      macDebugExpanded = false
       page = "main"
       wifiPasswordFor = ""
       wifiAdvanced = false
@@ -2931,65 +2933,81 @@ Panel {
           }
 
           AUi.Separator { width: macPage.innerWidth }
-          AUi.SectionLabel { leftPadding: 0; text: "Debug" }
-          AUi.Caption {
+          // Debug folds away by default: the SSH rows are for the rare day the
+          // bridge is silent, not for every visit to this page.
+          AUi.DisclosureLabel {
             width: macPage.innerWidth
-            text: "A shell on the Mac itself, for when the bridge won't say why. Tap to copy."
+            leftPadding: 0
+            text: "Debug"
+            expanded: root.macDebugExpanded
+            onClicked: root.macDebugExpanded = !root.macDebugExpanded
           }
-          Repeater {
-            model: [
-              { label: "SSH · USB-C", cmd: "ssh henrischulz@10.55.0.2" },
-              { label: "SSH · Wi-Fi", cmd: "ssh henrischulz@192.168.178.126" },
-            ]
-            delegate: Rectangle {
-              id: sshRow
-              required property var modelData
-              property bool copied: false
+          HUi.Collapse {
+            width: macPage.innerWidth
+            expanded: root.macDebugExpanded
+            Column {
               width: macPage.innerWidth
-              height: Style.space(44)
-              radius: Style.space(Apple.radiusRow)
-              color: sshMouse.containsMouse ? root.m.rowHover
-                : Qt.rgba(root.m.rowHover.r, root.m.rowHover.g, root.m.rowHover.b, 0)
-              Behavior on color {
-                ColorAnimation {
-                  duration: sshMouse.containsMouse ? Motion.instant : Motion.fast
-                  easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+              spacing: macPage.spacing
+              AUi.Caption {
+                width: macPage.innerWidth
+                text: "A shell on the Mac itself, for when the bridge won't say why. Tap to copy."
+              }
+              Repeater {
+                model: [
+                  { label: "SSH · USB-C", cmd: "ssh henrischulz@10.55.0.2" },
+                  { label: "SSH · Wi-Fi", cmd: "ssh henrischulz@192.168.178.126" },
+                ]
+                delegate: Rectangle {
+                  id: sshRow
+                  required property var modelData
+                  property bool copied: false
+                  width: macPage.innerWidth
+                  height: Style.space(44)
+                  radius: Style.space(Apple.radiusRow)
+                  color: sshMouse.containsMouse ? root.m.rowHover
+                    : Qt.rgba(root.m.rowHover.r, root.m.rowHover.g, root.m.rowHover.b, 0)
+                  Behavior on color {
+                    ColorAnimation {
+                      duration: sshMouse.containsMouse ? Motion.instant : Motion.fast
+                      easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+                    }
+                  }
+                  scale: sshPress.value
+                  HUi.SpringValue { id: sshPress; preset: Motion.snappy; to: sshMouse.pressed && !Motion.reduceMotion ? Motion.pressScale : 1 }
+                  Column {
+                    anchors.left: parent.left; anchors.leftMargin: Style.space(10)
+                    anchors.right: parent.right; anchors.rightMargin: Style.space(10)
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Style.space(1)
+                    Text {
+                      text: sshRow.modelData.label
+                      color: root.m.ink
+                      font.family: Apple.uiFont
+                      font.pixelSize: Style.space(Apple.subheadline)
+                      font.weight: Font.DemiBold
+                    }
+                    HUi.CrossfadeText {
+                      width: parent.width
+                      text: sshRow.copied ? "Copied to clipboard" : sshRow.modelData.cmd
+                      color: sshRow.copied ? root.m.accent : root.m.inkMuted
+                      fontFamily: Apple.uiFont
+                      fontSize: Style.space(Apple.footnote)
+                      elide: Text.ElideRight
+                    }
+                  }
+                  MouseArea {
+                    id: sshMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: {
+                      Quickshell.clipboardText = sshRow.modelData.cmd
+                      sshRow.copied = true
+                      sshCopiedTimer.restart()
+                    }
+                  }
+                  Timer { id: sshCopiedTimer; interval: 1400; onTriggered: sshRow.copied = false }
                 }
               }
-              scale: sshPress.value
-              HUi.SpringValue { id: sshPress; preset: Motion.snappy; to: sshMouse.pressed && !Motion.reduceMotion ? Motion.pressScale : 1 }
-              Column {
-                anchors.left: parent.left; anchors.leftMargin: Style.space(10)
-                anchors.right: parent.right; anchors.rightMargin: Style.space(10)
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.space(1)
-                Text {
-                  text: sshRow.modelData.label
-                  color: root.m.ink
-                  font.family: Apple.uiFont
-                  font.pixelSize: Style.space(Apple.subheadline)
-                  font.weight: Font.DemiBold
-                }
-                HUi.CrossfadeText {
-                  width: parent.width
-                  text: sshRow.copied ? "Copied to clipboard" : sshRow.modelData.cmd
-                  color: sshRow.copied ? root.m.accent : root.m.inkMuted
-                  fontFamily: Apple.uiFont
-                  fontSize: Style.space(Apple.footnote)
-                  elide: Text.ElideRight
-                }
-              }
-              MouseArea {
-                id: sshMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: {
-                  Quickshell.clipboardText = sshRow.modelData.cmd
-                  sshRow.copied = true
-                  sshCopiedTimer.restart()
-                }
-              }
-              Timer { id: sshCopiedTimer; interval: 1400; onTriggered: sshRow.copied = false }
             }
           }
           Item { width: 1; height: root.pt(4) }
