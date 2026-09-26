@@ -2349,24 +2349,26 @@ Panel {
           }
         }
 
-        // The Mac side of the desk: its trackpad and its screen, the two
-        // things this machine borrows over the cable — each its own tile.
-        Column {
+        // The Mac side of the desk: trackpad/keyboard, screen, and the
+        // power/background mode it runs in — one card, three rows, same
+        // pattern as Wi-Fi/Bluetooth/AirDrop on the left (Henri: three was
+        // one too many for separate single-row tiles).
+        Tile {
+          revealIndex: 1
           width: root.colWidth
-          spacing: root.gap
+          height: macColumn.implicitHeight + Style.space(20)
 
-          Tile {
-            revealIndex: 1
-            width: parent.width
-            height: trackpadRow.implicitHeight + Style.space(20)
+          Column {
+            id: macColumn
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: Style.space(10)
+            anchors.rightMargin: Style.space(10)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(4)
 
             ToggleRow {
-              id: trackpadRow
-              anchors.left: parent.left
-              anchors.right: parent.right
-              anchors.leftMargin: Style.space(10)
-              anchors.rightMargin: Style.space(10)
-              anchors.verticalCenter: parent.verticalCenter
+              width: parent.width
               // Was the mouse glyph, a stand-in for "trackpad" -- there is no
               // SF Symbol actually named trackpad (checked against Apple's
               // full published catalog through 7.0, all versions), and mouse
@@ -2381,20 +2383,8 @@ Panel {
               onToggled: root.toggleTrackpad()
               onDetails: root.showPage("trackpad")
             }
-          }
-
-          Tile {
-            revealIndex: 2
-            width: parent.width
-            height: screenRow.implicitHeight + Style.space(20)
-
             LaunchRow {
-              id: screenRow
-              anchors.left: parent.left
-              anchors.right: parent.right
-              anchors.leftMargin: Style.space(10)
-              anchors.rightMargin: Style.space(10)
-              anchors.verticalCenter: parent.verticalCenter
+              width: parent.width
               icon: root.sf(0x1008B9)
               on: root.screenOn
               squircle: true
@@ -2409,65 +2399,25 @@ Panel {
               onLaunched: root.launchMacScreen()
               onDetails: root.showPage("screen")
             }
-          }
-
-          Tile {
-            revealIndex: 3
-            width: parent.width
-            height: Style.space(52)
-            hoverable: true
-            hasCursor: root.mainFocus === "macmode"
-            onClicked: root.showPage("macmode")
-
-            Circle {
-              anchors.left: parent.left
-              anchors.leftMargin: Style.space(10)
-              anchors.verticalCenter: parent.verticalCenter
+            ToggleRow {
+              width: parent.width
               icon: root.sf(0x100657)
               on: root.macModeIsDesktop
               squircle: true
-              onClicked: root.showPage("macmode")
-            }
-            Column {
-              anchors.left: parent.left
-              anchors.leftMargin: Style.space(52)
-              anchors.right: modeChevron.left
-              anchors.rightMargin: Style.space(6)
-              anchors.verticalCenter: parent.verticalCenter
-              Text {
-                width: parent.width
-                text: "Mac Mode"
-                color: root.fg
-                font.family: root.uiFont
-                font.pixelSize: Style.font.subtitle
-                font.weight: Font.DemiBold
-                elide: Text.ElideRight
-              }
-              HUi.CrossfadeText {
-                width: parent.width
-                text: root.macModeSubtitle
-                color: root.dimText
-                fontFamily: root.uiFont
-                fontSize: Style.font.bodySmall
-                elide: Text.ElideRight
-              }
-            }
-            Text {
-              id: modeChevron
-              anchors.right: parent.right
-              anchors.rightMargin: Style.space(14)
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.sf(0x10018A)
-              color: root.dimText
-              font.family: root.symbolFont
-              font.pixelSize: Style.font.icon
+              title: "Mac Mode"
+              subtitle: root.macModeSubtitle
+              hasCursor: root.mainFocus === "macmode"
+              // Three states don't fit a switch -- both the icon and the row
+              // just open the picker on the detail page.
+              onToggled: root.showPage("macmode")
+              onDetails: root.showPage("macmode")
             }
           }
         }
       }
 
       SliderTile {
-        revealIndex: 4
+        revealIndex: 2
         visible: root.brightnessAvailable || root.displays.length > 0
         heading: "Display"
         icon: root.sf(root.brightness < 40 ? 0x1001AC : 0x1001AE)
@@ -2593,7 +2543,7 @@ Panel {
       }
 
       SliderTile {
-        revealIndex: 5
+        revealIndex: 3
         visible: root.sink !== null
         heading: root.airpodsActive ? root.airpodsName : "Sound"
         headingGlyph: root.airpodsActive ? airpodsGlyph : null
@@ -2613,7 +2563,7 @@ Panel {
 
       // Now Playing — only while an MPRIS player has a track.
       Tile {
-        revealIndex: 6
+        revealIndex: 4
         id: nowPlaying
         readonly property bool playing: root.player ? root.player.isPlaying === true : false
         visible: root.player !== null
@@ -2734,7 +2684,7 @@ Panel {
 
       // Hardware: CPU load, memory and temperature at a glance.
       Tile {
-        revealIndex: 7
+        revealIndex: 5
         width: root.panelWidth
         height: Style.space(52)
         hoverable: true
