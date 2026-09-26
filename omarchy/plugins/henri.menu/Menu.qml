@@ -2621,10 +2621,24 @@ Item {
       // The round category buttons appear beside the compact capsule while
       // the pointer is over Spotlight (or after a category key), sliding in
       // from the field; inside the panel the filter capsules take over.
-      // Hover is read through a MouseArea (a HoverHandler on a layer surface
-      // missed the compositor-moved pointer in testing).
+      // One hover zone spans the capsule, the gap and the four buttons, so
+      // the pointer can travel to a button without the buttons folding away
+      // in the gap. (A MouseArea, not a HoverHandler: the latter missed the
+      // compositor-moved pointer on this layer surface.)
       readonly property bool buttonsShown: root.opened && !root.dmenuActive && !expanded
-        && (cardHover.containsMouse || buttonsHover.containsMouse || root.buttonsPinned)
+        && (hoverZone.containsMouse || root.buttonsPinned)
+      // On top of everything, buttons excluded from its input: with no
+      // accepted button it only watches hover and lets presses through.
+      MouseArea {
+        id: hoverZone
+        z: 10
+        x: 0
+        y: 0
+        width: card.width + root.buttonOffset + buttons.width
+        height: root.compactHeight
+        hoverEnabled: true
+        acceptedButtons: Qt.NoButton
+      }
 
       RectangularShadow {
         anchors.fill: card
@@ -2668,7 +2682,7 @@ Item {
           }
         }
 
-        MouseArea { id: cardHover; anchors.fill: parent; hoverEnabled: true; onClicked: {} }
+        MouseArea { anchors.fill: parent; onClicked: {} }
 
         // -------------------------------------------------------- search row
         Item {
@@ -3476,14 +3490,6 @@ Item {
         y: Math.round((root.compactHeight - root.buttonSize) / 2)
         width: buttons.width
         height: root.buttonSize
-        // Pointer over the buttons (and the gap to the field) counts as "over Spotlight".
-        MouseArea {
-          id: buttonsHover
-          anchors.fill: parent
-          anchors.leftMargin: -root.buttonOffset
-          hoverEnabled: true
-          acceptedButtons: Qt.NoButton
-        }
       Row {
         id: buttons
         spacing: root.buttonGap
