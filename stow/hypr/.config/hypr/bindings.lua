@@ -147,7 +147,7 @@ o.bind("Control_R", "Dictation toggle", "voxtype record toggle")
 
 -- Verschrieben? `voxtype record cancel` wirft die laufende Aufnahme weg,
 -- ohne Text einzufuegen. Omarchys Standard SUPER+CTRL+X (Toggle) bleibt als
--- zweiter Weg bestehen, F9 (halten) ebenfalls.
+-- zweiter Weg bestehen.
 
 -- Sprach-Assistent (henri.assistant): SUPER+A öffnet die Karte und hört sofort
 -- zu, dieselbe Tastenkombination stoppt die Aufnahme und diktiert den nächsten
@@ -190,11 +190,13 @@ o.bind("ALT + SHIFT + Alt_L", nil, hl.dsp.event("app-switcher commit"), { releas
 -- Weder Omarchy noch diese Datei hatten F8 belegt, und auch die Medienfunktion
 -- der Taste auf dem XPS 13 (Display umschalten, Keysym XF86Display) war ohne
 -- Binding -- je nach Fn-Lock kommt das eine oder das andere Keysym an, deshalb
--- beide. Shift+F8 = App Exposé (nur die Fenster der aktiven App, über alle
--- Desktops), Ctrl+F8 = Schreibtisch anzeigen. Nochmal drücken schließt, eine
--- andere Variante wechselt den Modus, ohne zu schließen. Als Hyprland-Ereignis
--- direkt ans Plugin, wie Spotlight und die Switcher: kein Prozess pro Taste.
+-- beide. F9 (und Shift+F8) = App Exposé (nur die Fenster der aktiven App, über
+-- alle Desktops), Ctrl+F8 = Schreibtisch anzeigen. Nochmal drücken schließt,
+-- eine andere Variante wechselt den Modus, ohne zu schließen. Als
+-- Hyprland-Ereignis direkt ans Plugin, wie Spotlight und die Switcher: kein
+-- Prozess pro Taste. F9 war frei (voxtype hört auf ScrollLock, nicht F9).
 o.bind("F8", "Mission Control", hl.dsp.event("mission-control toggle"))
+o.bind("F9", "App Exposé", hl.dsp.event("mission-control toggle app"))
 o.bind("SHIFT + F8", "App Exposé", hl.dsp.event("mission-control toggle app"))
 o.bind("CTRL + F8", "Show Desktop", hl.dsp.event("mission-control toggle desktop"))
 o.bind("XF86Display", "Mission Control", hl.dsp.event("mission-control toggle"))
