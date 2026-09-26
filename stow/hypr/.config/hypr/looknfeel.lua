@@ -65,7 +65,14 @@ hl.animation({ leaf = "windowsMove", enabled = true, speed = 2, bezier = "mcInOu
 hl.animation({ leaf = "fade", enabled = true, speed = 1.4, bezier = "mcOut" })
 hl.animation({ leaf = "layersIn", enabled = true, speed = 2, bezier = "mcOut", style = "fade" })
 hl.animation({ leaf = "layersOut", enabled = true, speed = 1.4, bezier = "mcIn", style = "fade" })
-hl.animation({ leaf = "workspaces", enabled = true, speed = 2.6, bezier = "mcInOut", style = "slide" })
+-- Workspaces: Tastatur-Wechsel mit derselben Feder wie die Wischgeste
+-- (hyprswipe, ~/Projects/hyprswipe): k = (2π/0,35 s)² ≈ 322, kritisch gedämpft.
+-- Hyprlands Feder läuft in Echtzeit und behält beim schnellen Nachdrücken die
+-- Geschwindigkeit; `speed` ist bei Federn ohne Wirkung. 40 px Spalt wie im
+-- Plugin (gap), damit Geste und Taste dieselbe Geometrie haben.
+hl.curve("spacesSpring", { type = "spring", mass = 1, stiffness = 322, dampening = 35.889 })
+hl.animation({ leaf = "workspaces", enabled = true, speed = 1, spring = "spacesSpring", style = "slide" })
+hl.config({ general = { gaps_workspaces = 40 } })
 
 -- Maus bleibt, wo sie ist. Omarchy setzt warp_on_change_workspace = 1; beim
 -- Zurückholen eines minimierten Fensters aus dem Dock springt der Zeiger damit

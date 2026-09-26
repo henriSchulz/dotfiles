@@ -71,8 +71,9 @@ hl.config({
 -- Plugin, das die Animation live mitführt und beim Loslassen je nach Weg und
 -- Tempo öffnet oder schließt. Tasten dazu: F8 / Shift+F8 / Ctrl+F8 in
 -- bindings.lua.
--- Hinweis: Gesten lassen sich nicht per `hyprctl reload` entfernen – nach
--- Änderungen ab- und wieder anmelden.
+-- Hinweis: Ein `hyprctl reload` startet ohne Gesten und registriert sie neu
+-- (geprüft 2026-09-26 in einer verschachtelten Instanz); zur Laufzeit entfernt
+-- sie nur `action = "unset"`.
 local function mc_event(phase, value, time_ms)
   hl.dispatch(hl.dsp.event(string.format("mission-control-gesture:%s:%s:%d",
     phase, value, math.floor(time_ms or 0))))
@@ -88,7 +89,18 @@ hl.gesture({
   },
 })
 
--- 4-Finger-Wisch zur Seite: Workspace wechseln (folgt den Fingern).
+-- 4-Finger-Wisch zur Seite: Workspace wechseln wie macOS Spaces (hyprswipe,
+-- ~/Projects/hyprswipe, Spec: ~/Downloads/workspace-swipe-spec.md). Der Inhalt
+-- klebt 1:1 an den Fingern, federt an den Rändern, und beim Loslassen übernimmt
+-- eine Feder die Fingergeschwindigkeit. Alle Parameter live per
+-- `hyprctl hyprswipe` / `hyprctl hyprswipe set <key> <wert>`. Fehlt das Plugin
+-- (z. B. nach einem Hyprland-Update: `~/Projects/hyprswipe/scripts/install.sh`),
+-- registriert der Helper Hyprlands eingebauten Workspace-Wisch als Fallback.
+local hyprswipe = dofile(os.getenv("HOME") .. "/Projects/hyprswipe/hyprswipe.lua")({
+  fingers = 4,
+  config = { gap = 40, swipeDistance = 550 }, -- 550 Gesteneinheiten = eine Seite, wie bisher
+})
+
 -- Solange Mission Control offen ist, tauscht das Plugin diese Geste über
 -- mission_control_swipe_mode(true) gegen eine Variante, die die Bewegung ans
 -- Plugin schickt – dort gleitet dann die Übersicht zur Seite wie bei macOS.
@@ -103,7 +115,7 @@ function mission_control_swipe_mode(open)
   open = open and true or false
   if open == mc_hswipe_active then return end
   mc_hswipe_active = open
-  hl.gesture({ fingers = 4, direction = "horizontal", action = "unset" })
+  hyprswipe.unregister()
   if open then
     hl.gesture({
       fingers = 4,
@@ -115,12 +127,11 @@ function mission_control_swipe_mode(open)
       },
     })
   else
-    hl.gesture({ fingers = 4, direction = "horizontal", action = "workspace" })
+    hyprswipe.register()
   end
 end
-hl.gesture({ fingers = 4, direction = "horizontal", action = "workspace" })
 
--- Wischgeste feiner abstimmen (fühlt sich eher wie macOS an).
+-- Eingebauten Wisch feiner abstimmen (nur noch als Fallback ohne Plugin).
 hl.config({
   gestures = {
     workspace_swipe_distance = 550,        -- kürzerer Weg = weniger Wischen pro Workspace (vorher 850)
