@@ -224,90 +224,102 @@ function lookup(item, name, fallback) {
 function material(item) { return lookup(item, "appleMaterial", light) }
 
 // ---- Spotlight (macOS 26 „Tahoe“, Liquid Glass). Eigener Abschnitt, nicht
-// die Popup-Werte oben. Quelle: Henris Design-Spec (spotlight-design-spec.md,
-// aus Retina-Screenshots abgeleitete Näherungen, 1 pt = 1 px), nicht gescrapt —
-// wer pixelgenau will, misst am eigenen Mac nach (references/apple.md).
-// Referenz-Plugin: ~/.config/omarchy/plugins/henri.menu. Punkt-Werte werden
-// mit Style.space(pt) auf die Shell-Skala gebracht. Die Auswahlfarbe folgt der
-// Akzentfarbe des Systems (Omarchy: Color.accent); `selection` ist der Fallback.
+// die Popup-Werte oben. Gemessen 2026-09-26 an Apples Support-Screenshots
+// (~/Downloads/f8089fdb… Feld + Buttons, ~/Downloads/ba1156d1… aufgeklappt);
+// Skala je Bild über die Breite von SF-Pro-Text (Feldtext 22 pt, Zeilentitel
+// 15, Untertitel/Kapseln 13, Meta 12 — drei unabhängige Anker stimmten auf
+// 1,54 px/pt bzw. 1,33 px/pt überein). Farben/Alphas per Pixelmessung, die
+// dunkle Palette ist abgeleitet (kein dunkler Screenshot). Referenz-Plugin:
+// ~/.config/omarchy/plugins/henri.menu. Punkt-Werte → Style.space(pt).
+// Die Auswahl ist eine leichte Tönung, kein Akzent-Balken (Text bleibt Ink).
 var spotlight = {
-  width: 620,            // Suchfeld und Ergebnispanel (600–640)
-  topFraction: 0.23,     // Oberkante des Suchfelds bei 23 % der Bildschirmhöhe
-  fieldHeight: 52,
-  fieldRadius: 999,      // Kapsel
-  fieldInset: 18,        // links bis zur Lupe, rechts bis zum Text
-  fieldIcon: 20,         // SF `magnifyingglass`
-  fieldGap: 10,          // Lupe → Text
-  fieldFont: 22,         // Light
+  topFraction: 0.23,     // Oberkante des Feldes bei 23 % der Bildschirmhöhe (Spec)
+  // Kompakte Kapsel (nichts getippt): 438 × 63,5 px / 1,33
+  compactWidth: 330,
+  compactHeight: 48,
+  fieldInset: 18,        // Kapselrand → Lupe (24 px)
+  fieldIcon: 20,         // SF magnifyingglass (26 px hoch)
+  fieldGap: 16,          // Lupe → Text/Caret (22 px)
+  fieldFont: 22,         // Regular
   fieldLine: 1.2,
   caret: 2,
   chipHeight: 22,        // Kategorie-Token links im Feld
   chipFont: 12,
   chipPadX: 8,
-  button: 44,            // runde Kategorie-Buttons rechts neben dem Feld
-  buttonIcon: 18,
+  // Runde Kategorie-Buttons rechts neben der Kapsel: 62 px ø, 11 px Abstand, 12 px zum Feld
+  button: 46,
+  buttonIcon: 21,
   buttonGap: 8,
-  buttonOffset: 10,      // Abstand Feld → erster Button
-  buttonSlide: 8,        // Einblenden: von links hineingleiten
-  resultsGap: 8,         // Feld → Ergebnispanel
-  resultsRadius: 24,     // 22–26
-  resultsPadding: 8,
+  buttonOffset: 9,
+  buttonSlide: 8,
+  // Aufgeklappt: ein Panel (851 × 522 px / 1,54), Feldzeile oben, Trennlinie,
+  // Filter-Kapseln, zweizeilige Ergebnisse
+  width: 560,
+  radius: 20,            // Kantenprofil ≈ 30 px
+  fieldRow: 50,          // Höhe der Suchzeile im Panel (Trennlinie bei 76 px)
+  panelInset: 17,        // Lupe, Trennlinie und Kapseln 26 px vom Rand
+  capsuleTop: 58,        // Filter-Kapseln: Oberkante ab Panel-Oberkante
+  capsuleHeight: 21,     // 32 px
+  capsuleGap: 7,         // 11 px
+  capsuleFont: 13,
+  rowsTop: 89,           // erste Zeile ab Panel-Oberkante (287 px)
+  rowInset: 8,           // Zeilen 13 px vom Panelrand
+  rowHeight: 49,         // Zeilenraster 75 px
+  rowIcon: 25,           // 38 px App-Icon
+  rowIconInset: 10,      // Icon 16 px ab Zeilenrand
+  rowTextX: 55,          // Text 83 px ab Zeilenrand
+  rowRadius: 8,
+  titleFont: 15,         // Regular
+  subtitleFont: 13,      // sekundär
+  metaFont: 12,          // rechts („Yesterday“), sekundär
+  metaInset: 8,
+  calcFont: 28,
+  shortcutW: 24,         // Kürzel-Chip („sm“) 37 × 26 px
+  shortcutH: 17,
+  shortcutRadius: 5,
+  shortcutFont: 11,
+  bottomPad: 7,
   resultsMaxHeight: 480,
-  rowHeight: 36,
-  rowIcon: 24,
-  rowGap: 8,             // Icon → Text
-  rowInset: 10,
-  rowRadius: 10,         // 10–12
-  rowFont: 13,
-  metaFont: 11,          // Pfad/Art rechts, Tastaturkürzel
-  metaAlpha: 0.7,        // Kürzel-Hinweis: Zeilentextfarbe bei 70 %
-  topHeight: 48,         // Top-Treffer 44–52
-  topIcon: 32,
-  topGap: 10,
-  topFont: 15,           // Medium
-  calcFont: 28,          // Rechenergebnis
-  sectionFont: 11,       // Semibold, normale Schreibung
-  sectionInset: 10,
-  sectionTop: 8,
-  sectionTopFirst: 4,
-  sectionBottom: 2,
-  shadowOffset: 22,      // 0 22px 70px 4px
+  shadowOffset: 22,      // Spec: 0 22px 70px 4px
   shadowBlur: 70,
   shadowSpread: 4,
-  contactOffset: 4,      // 0 4px 12px
+  contactOffset: 4,
   contactBlur: 12,
   contactAlpha: 0.12,
-  pressedDarken: 1.1,    // Auswahlfarbe gedrückt: ~10 % dunkler
   light: {
     dark: false,
-    fill: "#b8f6f6f6",          // rgba(246,246,246,0.72)
+    fill: "#73ffffff",          // Weiß α 0.45 über dem Blur (gemessen ≈ 0.4)
     opaqueFill: "#ffececec",    // „Transparenz reduzieren“
-    border: "#1a000000",        // 0.10
-    highlight: "#99ffffff",     // obere Lichtkante 0.60
+    border: "#1a000000",
+    highlight: "#99ffffff",
     textPrimary: "#d9000000",   // 0.85
     textSecondary: "#80000000", // 0.50
-    textTertiary: "#4d000000",  // 0.30 (Platzhalter, Vervollständigung)
-    separator: "#1a000000",
-    selection: "#ff0064e1",
-    selectionText: "#ffffffff",
-    hover: "#0d000000",         // 0.05
-    inactiveSelection: "#40808080",
+    textTertiary: "#4d000000",  // 0.30
+    separator: "#0f000000",     // Trennlinie unter der Suchzeile (gemessen sehr zart)
+    selectionFill: "#1a000000", // Auswahl: Schwarz α 0.10 (gemessen 0.08–0.15)
+    selectionBorder: "#66ffffff",
+    capsule: "#99ffffff",       // Filter-Kapseln: Weiß α 0.60 (gemessen 243 auf ~250)
+    capsuleSelected: "#e6ffffff",
+    shortcut: "#a6ffffff",      // Kürzel-Chip: Weiß α 0.65 (gemessen 230 neutral)
+    hover: "#0d000000",
     shadowAlpha: 0.35
   },
   dark: {
     dark: true,
-    fill: "#b328282a",          // rgba(40,40,42,0.70)
+    fill: "#b328282a",          // rgba(40,40,42,0.70) (Spec, kein dunkler Screenshot)
     opaqueFill: "#ff2a2a2c",
-    border: "#24ffffff",        // 0.14
-    highlight: "#38ffffff",     // 0.22
-    textPrimary: "#e6ffffff",   // 0.90
-    textSecondary: "#8cffffff", // 0.55
-    textTertiary: "#4dffffff",  // 0.30
-    separator: "#1affffff",
-    selection: "#ff0a84ff",
-    selectionText: "#ffffffff",
-    hover: "#12ffffff",         // 0.07
-    inactiveSelection: "#40808080",
+    border: "#24ffffff",
+    highlight: "#38ffffff",
+    textPrimary: "#e6ffffff",
+    textSecondary: "#8cffffff",
+    textTertiary: "#4dffffff",
+    separator: "#14ffffff",
+    selectionFill: "#26ffffff", // Weiß α 0.15
+    selectionBorder: "#1fffffff",
+    capsule: "#1fffffff",       // Weiß α 0.12
+    capsuleSelected: "#40ffffff",
+    shortcut: "#33ffffff",
+    hover: "#12ffffff",
     shadowAlpha: 0.55
   }
 }

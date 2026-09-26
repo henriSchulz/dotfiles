@@ -113,32 +113,33 @@
   --apple-win-disabled: rgba(0, 0, 0, 0.259);
 }
 
-/* ---- Spotlight (macOS 26 Tahoe) — see Apple.js `spotlight` (light values;
-   dark palette: fill rgba(40,40,42,0.70), text 0.90/0.55/0.30 white, hover 0.07). */
+/* ---- Spotlight (macOS 26 Tahoe) — see Apple.js `spotlight`, measured on
+   Apple's screenshots (light values; dark: fill rgba(40,40,42,0.70), selection
+   white 0.15, capsules white 0.12, text 0.90/0.55/0.30 white). */
 :root {
-  --apple-sp-width: 620px;
-  --apple-sp-field-h: 52px;
+  --apple-sp-compact-width: 330px;
+  --apple-sp-compact-height: 48px;
   --apple-sp-field-inset: 18px;
   --apple-sp-field-font: 22px;
-  --apple-sp-results-gap: 8px;
-  --apple-sp-results-radius: 24px;
-  --apple-sp-results-padding: 8px;
+  --apple-sp-button: 46px;
+  --apple-sp-width: 560px;
+  --apple-sp-radius: 20px;
+  --apple-sp-field-row: 50px;
+  --apple-sp-capsule-h: 21px;
+  --apple-sp-row-h: 49px;
+  --apple-sp-row-icon: 25px;
+  --apple-sp-row-radius: 8px;
+  --apple-sp-title-font: 15px;
+  --apple-sp-subtitle-font: 13px;
+  --apple-sp-meta-font: 12px;
   --apple-sp-results-max-h: 480px;
-  --apple-sp-row-h: 36px;
-  --apple-sp-row-icon: 24px;
-  --apple-sp-row-radius: 10px;
-  --apple-sp-row-font: 13px;
-  --apple-sp-meta-font: 11px;
-  --apple-sp-top-h: 48px;
-  --apple-sp-section-font: 11px;
-  --apple-sp-fill: rgba(246, 246, 246, 0.72);
+  --apple-sp-fill: rgba(255, 255, 255, 0.45);
   --apple-sp-opaque-fill: #ececec;
-  --apple-sp-border: rgba(0, 0, 0, 0.10);
   --apple-sp-text-primary: rgba(0, 0, 0, 0.85);
   --apple-sp-text-secondary: rgba(0, 0, 0, 0.50);
   --apple-sp-text-tertiary: rgba(0, 0, 0, 0.30);
-  --apple-sp-selection: #0064e1;
+  --apple-sp-selection-fill: rgba(0, 0, 0, 0.10);
+  --apple-sp-capsule: rgba(255, 255, 255, 0.60);
   --apple-sp-hover: rgba(0, 0, 0, 0.05);
 }
-@define-color apple_sp_selection #0064e1;
 @define-color apple_sp_opaque_fill #ececec;

@@ -39,7 +39,7 @@ Werte, die Popup-Werte sind nur der erste Abschnitt.
 |---|---|---|
 | Popup (Tokens oben in `Apple.js`, `--apple-*`) | Control Center | `henri.control-center-v2`, `henri.power` |
 | `Apple.window` / `--apple-win-*` | Finder-Fenster (icon/list/column, `system/finder.*`) | `~/Projects/finder` (GTK4) |
-| `Apple.spotlight` / `--apple-sp-*` | Spotlight Tahoe — **nicht gescrapt**, aus Henris Design-Spec (Screenshot-Näherungen) | `henri.menu` (Quickshell) |
+| `Apple.spotlight` / `--apple-sp-*` | Spotlight Tahoe — Apples Support-Screenshots (`~/Downloads/f8089fdb…png` Kapsel + Buttons, `ba1156d1…png` aufgeklappt), Skala über SF-Pro-Textbreiten (22/15/13/12 pt), Farben per Pixelmessung; dunkle Palette abgeleitet | `henri.menu` (Quickshell) |
 
 Fenster-Werte in Kürze: Sidebar-Karte 226 pt, Radius 18, 8 pt Einzug, Ampel innen
 (12 pt, Pitch 23, Mitte 18/18); Toolbar 52 mit weißen 38-pt-Kapseln und 36-pt-
@@ -84,6 +84,12 @@ Codepoint-Tabelle im Memory `sf-symbols-font`.
 | `~/macos-scrape/<Run>/` (z. B. `20260925T204357Z`) | Roh-Run des Scrapers |
 | `~/macos-scrape/controlCenter-fixed/` | **Referenz-Screenshot** des echten Control Centers: `screen.png` (2880×1800, 2x), `ax.json` (Accessibility-Tree mit Frames in pt), Crops `cc-crop.png`, `cc-corner-zoom.png`, `cc-slider-zoom.png` |
 | `~/Projects/MacOSUICapture/` | Der Scraper (Swift, auf dem MacBook per SSH, siehe Memory `macbook-ssh-access`): `run_all.sh`, `distill_tokens.py`, `macos-style-scraper-spezifikation.md` |
+
+**Skala ohne AX-Tree** (Spotlight-Fall): Apples Doku-Bilder sind beliebig skaliert. Die
+Skala kommt dann aus Textbreiten — den sichtbaren String mit SF Pro rendern
+(`magick -font SF-Pro.ttf -pointsize 22 label:"Spotlight Search" -format %w info:`) und
+mit der gemessenen Breite vergleichen; drei unabhängige Strings müssen dieselbe
+px/pt-Zahl liefern (bei Spotlight 1,54 und 1,33), sonst stimmt die Punktgröße nicht.
 
 Neue Fläche nachbauen (Spotlight, Notification Center, Popover …): erst auf dem Mac
 Screenshot + AX-Tree ziehen (Scraper bzw. `screencapture` + Accessibility-Dump), dann

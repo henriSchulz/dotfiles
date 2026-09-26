@@ -663,8 +663,14 @@ Item {
   readonly property color inkSecondary: pal.textSecondary
   readonly property color inkTertiary: pal.textTertiary
   readonly property color separator: pal.separator
-  readonly property color selection: Color.accent
-  readonly property color selectionText: Motion.onColor(Color.accent)
+  // The selection is a light tint with the text left as it is (measured on
+  // Apple's screenshot), not an accent bar; the accent only marks the caret.
+  readonly property color selection: pal.selectionFill
+  readonly property color selectionBorder: pal.selectionBorder
+  readonly property color selectionText: root.ink
+  readonly property color capsuleFill: pal.capsule
+  readonly property color capsuleSelectedFill: pal.capsuleSelected
+  readonly property color shortcutFill: pal.shortcut
   readonly property color hoverFill: pal.hover
   readonly property real shadowAlpha: pal.shadowAlpha
 
@@ -672,11 +678,12 @@ Item {
   readonly property color background: pal.opaqueFill
   readonly property color foreground: root.ink
   readonly property color scrim: Util.alpha(pal.opaqueFill, 0.5)
-  readonly property color selectedBackground: root.selection
-  readonly property color selectedText: root.selectionText
+  readonly property color selectedBackground: Color.accent
+  readonly property color selectedText: Motion.onColor(Color.accent)
 
+  readonly property int compactWidth: pt(sp.compactWidth)
+  readonly property int compactHeight: pt(sp.compactHeight)
   readonly property int spotWidth: pt(sp.width)
-  readonly property int fieldHeight: pt(sp.fieldHeight)
   readonly property int fieldInset: pt(sp.fieldInset)
   readonly property int fieldIconSize: pt(sp.fieldIcon)
   readonly property int fieldGap: pt(sp.fieldGap)
@@ -689,26 +696,33 @@ Item {
   readonly property int buttonGap: pt(sp.buttonGap)
   readonly property int buttonOffset: pt(sp.buttonOffset)
   readonly property int buttonSlide: pt(sp.buttonSlide)
-  readonly property int resultsGap: pt(sp.resultsGap)
-  readonly property int resultsRadius: pt(sp.resultsRadius)
-  readonly property int resultsPadding: pt(sp.resultsPadding)
-  readonly property int resultsMaxHeight: pt(sp.resultsMaxHeight)
+  readonly property int panelRadius: pt(sp.radius)
+  readonly property int fieldRow: pt(sp.fieldRow)
+  readonly property int panelInset: pt(sp.panelInset)
+  readonly property int capsuleTop: pt(sp.capsuleTop)
+  readonly property int capsuleHeight: pt(sp.capsuleHeight)
+  readonly property int capsuleGap: pt(sp.capsuleGap)
+  readonly property int capsuleFontSize: pt(sp.capsuleFont)
+  // Filter capsules only outside a dmenu prompt; rows start right under the field then.
+  readonly property bool showCapsules: !root.dmenuActive
+  readonly property int rowsTop: root.showCapsules ? pt(sp.rowsTop) : root.fieldRow + pt(sp.rowInset)
+  readonly property int rowInset: pt(sp.rowInset)
   readonly property int rowHeight: pt(sp.rowHeight)
   readonly property int rowIcon: pt(sp.rowIcon)
-  readonly property int rowGap: pt(sp.rowGap)
-  readonly property int rowInset: pt(sp.rowInset)
+  readonly property int rowIconInset: pt(sp.rowIconInset)
+  readonly property int rowTextX: pt(sp.rowTextX)
   readonly property int rowRadius: pt(sp.rowRadius)
-  readonly property int rowFontSize: pt(sp.rowFont)
+  readonly property int titleFontSize: pt(sp.titleFont)
+  readonly property int subtitleFontSize: pt(sp.subtitleFont)
   readonly property int metaFontSize: pt(sp.metaFont)
-  readonly property real metaAlpha: sp.metaAlpha
-  readonly property int topHeight: pt(sp.topHeight)
-  readonly property int topIcon: pt(sp.topIcon)
-  readonly property int topGap: pt(sp.topGap)
-  readonly property int topFontSize: pt(sp.topFont)
+  readonly property int metaInset: pt(sp.metaInset)
   readonly property int calcFontSize: pt(sp.calcFont)
-  readonly property int sectionFontSize: pt(sp.sectionFont)
-  readonly property int sectionInset: pt(sp.sectionInset)
-  readonly property int sectionLine: Math.round(pt(sp.sectionFont) * 1.3)
+  readonly property int shortcutW: pt(sp.shortcutW)
+  readonly property int shortcutH: pt(sp.shortcutH)
+  readonly property int shortcutRadius: pt(sp.shortcutRadius)
+  readonly property int shortcutFontSize: pt(sp.shortcutFont)
+  readonly property int bottomPad: pt(sp.bottomPad)
+  readonly property int resultsMaxHeight: pt(sp.resultsMaxHeight)
   readonly property int shadowOffset: pt(sp.shadowOffset)
   readonly property int shadowBlur: pt(sp.shadowBlur)
   readonly property int shadowSpread: pt(sp.shadowSpread)
@@ -721,7 +735,7 @@ Item {
   readonly property bool isAppsGrid: root.activeMenu === "apps" && !root.dmenuActive && !root.fileSearchActive && root.category === ""
   property int gridCellMinWidth: pt(108)
   readonly property int gridIconSize: pt(46)
-  readonly property int gridLabelHeight: Math.round(rowFontSize * 2.7)
+  readonly property int gridLabelHeight: Math.round(subtitleFontSize * 2.7)
   readonly property int gridCellPadTop: pt(11)
   readonly property int gridCellPadBottom: pt(9)
   readonly property int gridIconGap: pt(7)
@@ -746,8 +760,8 @@ Item {
   property bool buttonsPinned: false
   readonly property var categories: [
     { id: "apps", label: "Applications", glyph: Apple.sf(0x1001F7), key: "1" },     // square.grid.2x2
-    { id: "files", label: "Files", glyph: Apple.sf(0x100237), key: "2" },           // doc
-    { id: "actions", label: "Actions", glyph: Apple.sf(0x1002E5), key: "3" },       // bolt
+    { id: "files", label: "Files", glyph: Apple.sf(0x100215), key: "2" },           // folder
+    { id: "actions", label: "Actions", glyph: Apple.sf(0x10041E), key: "3" },       // square.stack.3d.up
     { id: "clipboard", label: "Clipboard", glyph: Apple.sf(0x100243), key: "4" }    // doc.on.clipboard
   ]
   function categoryLabel(id) {
@@ -961,9 +975,11 @@ Item {
     if (entry && (entry.title || entry.label)) return entry.title || entry.label
     return "Spotlight Search"
   }
-  // A dmenu caller may ask for more width than Spotlight's; never less.
+  // The compact capsule widens into the results panel; a dmenu caller may
+  // ask for more width than Spotlight's, never less.
   property int cardWidth: Math.min(root.dmenuActive
-    ? Math.max(root.pt(root.dmenuWidth), root.spotWidth) : root.spotWidth, panel.width - Style.gapsOut * 2)
+    ? Math.max(root.pt(root.dmenuWidth), root.spotWidth)
+    : (root.blankRoot ? root.compactWidth : root.spotWidth), panel.width - Style.gapsOut * 2)
   property int visibleRowsHeight: root.blankRoot ? 0 : (root.dmenuActive ? dmenuRowListHeight(layoutSerial, displayModel.count, filterText) : (root.isAppsGrid ? root.gridRowsHeight() : rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)))
   property bool searchDivider: false
 
@@ -994,24 +1010,17 @@ Item {
     Util.execDetached(command)
   }
 
-  // Row heights (spec §7): 36 pt rows, the Top Hit 48 pt with a subtitle;
-  // a dmenu row with caller subtext needs the two-line height as well.
-  function rowHeightFor(row) {
-    if (!row) return root.rowHeight
-    if (row.section === "top") return root.topHeight
-    if (row.kind === "dmenu" && row.detail) return root.topHeight
-    return root.rowHeight
-  }
-  function sectionHeaderHeight(first) {
-    return root.pt(first ? root.sp.sectionTopFirst : root.sp.sectionTop) + root.sectionLine + root.pt(root.sp.sectionBottom)
-  }
+  // Every row is the measured 49-pt two-line row; section headers are not
+  // drawn (Apple's list runs continuously), the grouping only orders rows.
+  function rowHeightFor(row) { return root.rowHeight }
+  function sectionHeaderHeight(first) { return 0 }
 
   // Height the results panel can devote to rows: below the field, above the
   // bottom gap, and never more than the spec's 480 pt panel.
   function availableRowsHeight() {
-    var top = panel.fieldTop + root.fieldHeight + root.resultsGap + root.resultsPadding * 2
+    var top = panel.fieldTop + root.rowsTop + root.bottomPad
     var available = panel.height - top - Style.gapsOut
-    return Math.min(available, root.resultsMaxHeight - root.resultsPadding * 2)
+    return Math.min(available, root.resultsMaxHeight - root.rowsTop - root.bottomPad)
   }
 
   // When every row fits, the list gets its full height. When they don't,
@@ -2152,7 +2161,7 @@ Item {
     Region { id: closingMask }
 
     // The field's top edge sits at 23 % of the screen and never moves; the
-    // results panel grows downward from under it (spec §2).
+    // panel grows downward from under it (spec §2).
     readonly property int fieldTop: Math.max(Style.gapsOut, Math.round(height * root.sp.topFraction))
 
     // The query as it looked while open, kept because closing clears
@@ -2172,16 +2181,20 @@ Item {
       onClicked: root.cancel()
     }
 
-    // ---------------------------------------------------------------- field
+    // ------------------------------------------------------------- the panel
     //
-    // Open: fade + a small scale from 0.98 (`fast`, easeOut); close: fade only,
-    // faster (spec §10). Reduce Motion keeps the fade alone.
+    // One glass surface (measured on Apple's Tahoe screenshots): a 330 × 48
+    // capsule while nothing is typed, widening into a 560-pt panel with the
+    // search row on top, a hairline, the filter capsules and 49-pt two-line
+    // rows. Width, height and radius follow the `smooth` spring inside a
+    // clipping rectangle; open is fade + 0.98→1 scale on `fast`, close a
+    // plain fade (spec §10). Reduce Motion keeps the fades alone.
     Item {
       id: spot
-      x: Math.round((panel.width - root.cardWidth) / 2)
+      x: Math.round((panel.width - width) / 2)
       y: panel.fieldTop
-      width: root.cardWidth
-      height: root.fieldHeight
+      width: widthS.value
+      height: heightS.value
       transformOrigin: Item.Top
       opacity: root.opened ? 1 : 0
       Behavior on opacity {
@@ -2191,6 +2204,20 @@ Item {
           easing.bezierCurve: root.opened ? Motion.easeOut : Motion.easeExit
         }
       }
+
+      readonly property bool expanded: root.resultsShown
+      readonly property int targetWidth: root.cardWidth
+      readonly property int targetHeight: expanded
+        ? root.rowsTop + root.visibleRowsHeight + root.bottomPad
+        : (root.dmenuActive ? root.fieldRow : root.compactHeight)
+      readonly property real targetRadius: expanded ? root.panelRadius : targetHeight / 2
+      HUi.SpringValue { id: widthS; epsilon: 0.5; preset: Motion.smooth; to: spot.targetWidth }
+      HUi.SpringValue { id: heightS; epsilon: 0.5; preset: Motion.smooth; to: spot.targetHeight }
+      HUi.SpringValue { id: radiusS; epsilon: 0.2; preset: Motion.smooth; to: spot.targetRadius }
+      function snapGeometry() {
+        widthS.snap(targetWidth); heightS.snap(targetHeight); radiusS.snap(targetRadius)
+      }
+
       NumberAnimation {
         id: enterScale
         target: spot
@@ -2205,201 +2232,618 @@ Item {
         target: root
         function onOpenedChanged() {
           if (!root.opened) return
-          if (!Motion.reduceMotion && spot.opacity < 0.01) enterScale.restart()
-          if (spot.opacity < 0.01) resultsHeight.snap(results.targetHeight)
+          if (spot.opacity < 0.01) {
+            // A fresh open starts in its final pose; only the fade/scale runs.
+            spot.snapGeometry()
+            if (!Motion.reduceMotion) enterScale.restart()
+          }
           Qt.callLater(function() { keyCatcher.forceActiveFocus() })
         }
       }
+      Component.onCompleted: snapGeometry()
 
-      // The four category buttons appear while the pointer is over Spotlight
-      // (or once a category was chosen by key), sliding in from the field.
-      HoverHandler { id: spotHover }
-      readonly property bool buttonsShown: root.opened && !root.dmenuActive
-        && (spotHover.hovered || root.category !== "" || root.buttonsPinned)
+      // The round category buttons appear beside the compact capsule while
+      // the pointer is over Spotlight (or after a category key), sliding in
+      // from the field; inside the panel the filter capsules take over.
+      // Hover is read through a MouseArea (a HoverHandler on a layer surface
+      // missed the compositor-moved pointer in testing).
+      readonly property bool buttonsShown: root.opened && !root.dmenuActive && !expanded
+        && (cardHover.containsMouse || buttonsHover.containsMouse || root.buttonsPinned)
 
       RectangularShadow {
-        anchors.fill: field
-        radius: field.radius
+        anchors.fill: card
+        radius: card.radius
         blur: root.shadowBlur
         spread: root.shadowSpread
         offset.y: root.shadowOffset
-        color: Qt.rgba(0, 0, 0, root.shadowAlpha * 0.6)
+        color: Qt.rgba(0, 0, 0, root.shadowAlpha * (spot.expanded ? 1 : 0.6))
+        Behavior on color { ColorAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
       }
       RectangularShadow {
-        anchors.fill: field
-        radius: field.radius
+        anchors.fill: card
+        radius: card.radius
         blur: root.pt(root.sp.contactBlur)
         offset.y: root.pt(root.sp.contactOffset)
         color: Qt.rgba(0, 0, 0, root.sp.contactAlpha)
       }
 
       Rectangle {
-        id: field
+        id: card
         anchors.fill: parent
-        radius: height / 2
+        radius: radiusS.value
         color: root.glassFill
         border.width: 1
         border.color: root.glassBorder
+        clip: true
         Accessible.role: Accessible.EditableText
         Accessible.name: root.searchPlaceholder
 
         // Glass light edge: a soft sheen from the top (spec §5.1).
         Rectangle {
-          anchors.fill: parent
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: parent.top
           anchors.margins: 1
+          height: root.compactHeight
           radius: parent.radius
           gradient: Gradient {
             GradientStop { position: 0.0; color: Util.alpha(root.glassHighlight, root.glassHighlight.a * 0.6) }
-            GradientStop { position: 0.45; color: Util.alpha(root.glassHighlight, 0) }
+            GradientStop { position: 1.0; color: Util.alpha(root.glassHighlight, 0) }
           }
         }
 
-        MouseArea { anchors.fill: parent; onClicked: {} }
+        MouseArea { id: cardHover; anchors.fill: parent; hoverEnabled: true; onClicked: {} }
 
-        Text {
-          id: searchGlyph
-          textFormat: Text.PlainText
-          text: Apple.sf(0x1002AB)   // SF magnifyingglass
-          color: root.inkSecondary
-          font.family: root.symbolFont
-          font.pixelSize: root.fieldIconSize
-          anchors.left: parent.left
-          anchors.leftMargin: root.fieldInset
-          anchors.verticalCenter: parent.verticalCenter
-        }
-
-        // Category chip (spec §5.2): a capsule with the category's name, in
-        // front of the query; ⌫ on an empty field or a click removes it.
-        Rectangle {
-          id: chip
-          readonly property bool shown: root.category !== ""
-          anchors.left: searchGlyph.right
-          anchors.leftMargin: root.fieldGap
-          anchors.verticalCenter: parent.verticalCenter
-          height: root.chipHeight
-          width: shown ? chipLabel.implicitWidth + root.chipPadX * 2 : 0
-          radius: height / 2
-          color: root.hoverFill
-          opacity: shown ? 1 : 0
-          visible: opacity > 0
-          clip: true
-          Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
-          Text {
-            id: chipLabel
-            anchors.centerIn: parent
-            text: root.categoryLabel(root.category)
-            color: root.ink
-            font.family: root.uiFont
-            font.pixelSize: root.chipFontSize
-            font.weight: Font.Medium
-          }
-          MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.setCategory("") }
-        }
-
+        // -------------------------------------------------------- search row
         Item {
-          id: queryRow
-          height: Math.round(root.fieldFontSize * root.sp.fieldLine)
-          anchors.left: chip.shown ? chip.right : searchGlyph.right
-          anchors.leftMargin: root.fieldGap
-          anchors.right: parent.right
-          anchors.rightMargin: root.fieldInset
-          anchors.verticalCenter: parent.verticalCenter
-          clip: true
-
-          readonly property int caretGap: root.pt(2)
-          readonly property string shownQuery: root.fileSearchActive && root.category !== "files"
-            ? panel.shownFilter.slice(1) : panel.shownFilter
-          readonly property bool hasQuery: shownQuery.length > 0
-
-          // The restored query is drawn selected (spec §8).
-          Rectangle {
-            visible: root.querySelected && queryRow.hasQuery
-            x: queryText.x - root.pt(1)
-            width: queryText.width + root.pt(2)
-            height: parent.height
-            radius: root.pt(3)
-            color: Util.alpha(root.selection, 0.35)
-          }
+          id: field
+          width: parent.width
+          height: spot.expanded || root.dmenuActive ? root.fieldRow : root.compactHeight
+          readonly property int inset: spot.expanded ? root.panelInset : root.fieldInset
 
           Text {
-            id: queryText
+            id: searchGlyph
             textFormat: Text.PlainText
-            visible: queryRow.hasQuery
-            text: queryRow.shownQuery
-            // Elide from the left so the tail of a long query — the part
-            // still being typed — stays next to the caret.
-            width: Math.min(implicitWidth, Math.max(0, queryRow.width - caret.width - queryRow.caretGap))
-            elide: Text.ElideLeft
-            color: root.ink
-            font.family: root.uiFont
-            font.pixelSize: root.fieldFontSize
-            font.weight: Font.Light
+            text: Apple.sf(0x1002AB)   // SF magnifyingglass
+            color: root.inkSecondary
+            font.family: root.symbolFont
+            font.pixelSize: root.fieldIconSize
             anchors.left: parent.left
+            anchors.leftMargin: field.inset
             anchors.verticalCenter: parent.verticalCenter
           }
 
+          // Category chip (spec §5.2): a capsule with the category's name in
+          // front of the query; ⌫ on an empty field or a click removes it.
           Rectangle {
-            id: caret
-            width: Math.max(1, root.pt(root.sp.caret))
-            height: Math.round(root.fieldFontSize * 1.15)
-            radius: width / 2
-            color: root.selection
-            opacity: root.caretOn && !root.querySelected ? 1 : 0
-            x: queryRow.hasQuery ? queryText.width + queryRow.caretGap : 0
+            id: chip
+            readonly property bool shown: root.category !== ""
+            anchors.left: searchGlyph.right
+            anchors.leftMargin: root.fieldGap
             anchors.verticalCenter: parent.verticalCenter
-            Behavior on opacity { NumberAnimation { duration: Motion.instant; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+            height: root.chipHeight
+            width: shown ? chipLabel.implicitWidth + root.chipPadX * 2 : 0
+            radius: height / 2
+            color: root.capsuleFill
+            border.width: 1
+            border.color: root.glassBorder
+            opacity: shown ? 1 : 0
+            visible: opacity > 0
+            clip: true
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+            Text {
+              id: chipLabel
+              anchors.centerIn: parent
+              text: root.categoryLabel(root.category)
+              color: root.ink
+              font.family: root.uiFont
+              font.pixelSize: root.chipFontSize
+              font.weight: Font.Medium
+            }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.setCategory("") }
           }
 
-          // Inline completion: the rest of the Top Hit's name plus " — Kind".
-          Text {
-            id: completionText
-            textFormat: Text.PlainText
-            visible: queryRow.hasQuery && root.opened && text.length > 0
-            text: root.completionRest ? root.completionRest + root.completionSuffix : ""
-            color: root.inkTertiary
-            font.family: root.uiFont
-            font.pixelSize: root.fieldFontSize
-            font.weight: Font.Light
-            elide: Text.ElideRight
-            x: caret.x + caret.width + queryRow.caretGap
-            width: Math.max(0, queryRow.width - x)
+          Item {
+            id: queryRow
+            height: Math.round(root.fieldFontSize * root.sp.fieldLine)
+            anchors.left: chip.shown ? chip.right : searchGlyph.right
+            anchors.leftMargin: chip.shown ? root.pt(8) : root.fieldGap
+            anchors.right: parent.right
+            anchors.rightMargin: field.inset
             anchors.verticalCenter: parent.verticalCenter
+            clip: true
+
+            readonly property int caretGap: root.pt(2)
+            readonly property string shownQuery: root.fileSearchActive && root.category !== "files"
+              ? panel.shownFilter.slice(1) : panel.shownFilter
+            readonly property bool hasQuery: shownQuery.length > 0
+
+            // The restored query is drawn selected (spec §8).
+            Rectangle {
+              visible: root.querySelected && queryRow.hasQuery
+              x: queryText.x - root.pt(1)
+              width: queryText.width + root.pt(2)
+              height: parent.height
+              radius: root.pt(3)
+              color: Util.alpha(Color.accent, 0.35)
+            }
+
+            Text {
+              id: queryText
+              textFormat: Text.PlainText
+              visible: queryRow.hasQuery
+              text: queryRow.shownQuery
+              // Elide from the left so the tail of a long query — the part
+              // still being typed — stays next to the caret.
+              width: Math.min(implicitWidth, Math.max(0, queryRow.width - caret.width - queryRow.caretGap))
+              elide: Text.ElideLeft
+              color: root.ink
+              font.family: root.uiFont
+              font.pixelSize: root.fieldFontSize
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Rectangle {
+              id: caret
+              width: Math.max(1, root.pt(root.sp.caret))
+              height: Math.round(root.fieldFontSize * 1.15)
+              radius: width / 2
+              color: root.ink
+              opacity: root.caretOn && !root.querySelected ? 1 : 0
+              x: queryRow.hasQuery ? queryText.width + queryRow.caretGap : 0
+              anchors.verticalCenter: parent.verticalCenter
+              Behavior on opacity { NumberAnimation { duration: Motion.instant; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+            }
+
+            // Inline completion: the rest of the top hit's name plus " — Kind".
+            Text {
+              id: completionText
+              textFormat: Text.PlainText
+              visible: queryRow.hasQuery && root.opened && text.length > 0
+              text: root.completionRest ? root.completionRest + root.completionSuffix : ""
+              color: root.inkTertiary
+              font.family: root.uiFont
+              font.pixelSize: root.fieldFontSize
+              elide: Text.ElideRight
+              x: caret.x + caret.width + queryRow.caretGap
+              width: Math.max(0, queryRow.width - x)
+              anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+              id: placeholderText
+              textFormat: Text.PlainText
+              visible: !queryRow.hasQuery
+              text: root.searchPlaceholder
+              width: parent.width - caret.width - queryRow.caretGap
+              x: caret.width + queryRow.caretGap
+              color: root.inkTertiary
+              font.family: root.uiFont
+              font.pixelSize: root.fieldFontSize
+              elide: Text.ElideRight
+              anchors.verticalCenter: parent.verticalCenter
+            }
           }
 
-          Text {
-            id: placeholderText
-            textFormat: Text.PlainText
-            visible: !queryRow.hasQuery
-            text: root.searchPlaceholder
-            width: parent.width - caret.width - queryRow.caretGap
-            x: caret.width + queryRow.caretGap
-            color: root.inkTertiary
-            font.family: root.uiFont
-            font.pixelSize: root.fieldFontSize
-            font.weight: Font.Light
-            elide: Text.ElideRight
-            anchors.verticalCenter: parent.verticalCenter
+          Timer {
+            id: caretTimer
+            interval: 540
+            running: panel.showing
+            repeat: true
+            onTriggered: root.caretOn = !root.caretOn
           }
         }
 
-        Timer {
-          id: caretTimer
-          interval: 540
-          running: panel.showing
-          repeat: true
-          onTriggered: root.caretOn = !root.caretOn
+        // Hairline under the search row (measured: very faint, inset like the capsules).
+        Rectangle {
+          x: root.panelInset
+          y: root.fieldRow
+          width: parent.width - root.panelInset * 2
+          height: 1
+          color: root.separator
+          opacity: spot.expanded ? 1 : 0
+          Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        }
+
+        // ------------------------------------------------- filter capsules
+        //
+        // Four equal capsules under the search row (Apple: Photos · Actions ·
+        // Help · Mail); here the categories, the active one filled stronger.
+        Row {
+          id: capsules
+          x: root.panelInset
+          y: root.capsuleTop
+          width: parent.width - root.panelInset * 2
+          height: root.capsuleHeight
+          spacing: root.capsuleGap
+          opacity: spot.expanded && root.showCapsules ? 1 : 0
+          visible: opacity > 0
+          Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+          Repeater {
+            model: root.categories
+            delegate: Item {
+              id: capsule
+              required property int index
+              required property var modelData
+              readonly property bool active: root.category === modelData.id
+              width: Math.floor((capsules.width - root.capsuleGap * (root.categories.length - 1)) / root.categories.length)
+              height: root.capsuleHeight
+              Rectangle {
+                anchors.fill: parent
+                radius: height / 2
+                color: capsule.active ? root.capsuleSelectedFill : press.hovered ? root.capsuleSelectedFill : root.capsuleFill
+                border.width: 1
+                border.color: root.glassBorder
+                Behavior on color { ColorAnimation { duration: press.hovered ? Motion.instant : Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+              }
+              HUi.Pressable {
+                id: press
+                anchors.fill: parent
+                radius: height / 2
+                tint: root.ink
+                showFill: false
+                Accessible.role: Accessible.Button
+                Accessible.name: capsule.modelData.label + " (Ctrl+" + capsule.modelData.key + ")"
+                onClicked: root.setCategory(capsule.modelData.id)
+                Text {
+                  anchors.centerIn: parent
+                  text: capsule.modelData.label
+                  color: capsule.active ? root.ink : root.inkSecondary
+                  font.family: root.uiFont
+                  font.pixelSize: root.capsuleFontSize
+                  font.weight: capsule.active ? Font.Medium : Font.Normal
+                }
+              }
+            }
+          }
+        }
+
+        // ------------------------------------------------------------ rows
+        Item {
+          id: resultsViewport
+          x: root.rowInset
+          y: root.rowsTop
+          width: parent.width - root.rowInset * 2
+          height: root.visibleRowsHeight
+          opacity: spot.expanded ? 1 : 0
+          visible: opacity > 0
+          Behavior on opacity {
+            NumberAnimation {
+              duration: spot.expanded ? Motion.fast : Motion.exit(Motion.fast)
+              easing.type: Easing.BezierSpline
+              easing.bezierCurve: spot.expanded ? Motion.easeOut : Motion.easeExit
+            }
+          }
+
+          ListView {
+            id: resultList
+            anchors.fill: parent
+            visible: !root.isAppsGrid
+            model: displayModel
+            clip: true
+            spacing: root.rowSpacing
+            boundsBehavior: Flickable.DragAndOvershootBounds
+            flickDeceleration: Motion.flickDeceleration
+            maximumFlickVelocity: Motion.maximumFlickVelocity
+            Accessible.role: Accessible.List
+
+            delegate: Rectangle {
+              id: row
+              required property int index
+              required property string itemId
+              required property string kind
+              required property string icon
+              required property string iconFont
+              required property string appIcon
+              required property string appId
+              required property bool isDir
+              required property string label
+              required property string target
+              required property string detail
+              required property string path
+              required property string action
+              required property int childCount
+              required property string section
+
+              readonly property bool hasCursor: root.cursorActive && row.index === root.selectedIndex
+              readonly property bool isApp: row.kind === "app"
+              readonly property bool isCalc: row.kind === "calc"
+              readonly property bool hasIcon: row.icon.length > 0 || row.isApp
+              readonly property bool isMenu: row.kind === "menu" || row.kind === "link" || row.isDir
+              readonly property string subtitle: row.detail.length > 0 ? row.detail : root.kindName(row.kind, row.isDir)
+              readonly property bool twoLine: !isCalc && subtitle.length > 0
+
+              width: ListView.view.width
+              height: root.rowHeightFor(row)
+              radius: root.rowRadius
+              // A light tint, text unchanged, switching instantly (spec §10).
+              color: hasCursor ? root.selection : mouseArea.containsMouse ? root.hoverFill : Util.alpha(root.hoverFill, 0)
+              border.width: 1
+              border.color: hasCursor ? root.selectionBorder : Util.alpha(root.selectionBorder, 0)
+              Accessible.role: Accessible.ListItem
+              Accessible.name: row.label
+
+              Text {
+                id: iconText
+                textFormat: Text.PlainText
+                visible: row.hasIcon && !row.isApp
+                text: row.icon
+                color: row.isMenu || row.kind === "action" ? root.ink : root.inkSecondary
+                font.family: row.iconFont.length > 0 ? row.iconFont : root.fontFamily
+                font.pixelSize: Math.round(root.rowIcon * 0.8)
+                width: root.rowIcon
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                anchors.left: parent.left
+                anchors.leftMargin: root.rowIconInset
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Image {
+                id: appIconImage
+                visible: row.isApp
+                width: root.rowIcon
+                height: root.rowIcon
+                fillMode: Image.PreserveAspectFit
+                // Decode at physical pixels — a logical-size decode leaves
+                // PNG icons upscaled and blurry on HiDPI displays.
+                sourceSize.width: width * Screen.devicePixelRatio
+                sourceSize.height: height * Screen.devicePixelRatio
+                source: row.isApp ? (root.appLibrary ? root.appLibrary.iconSource(row.appIcon) : root.fallbackIcon(row.appIcon)) : ""
+                asynchronous: true
+                anchors.left: parent.left
+                anchors.leftMargin: root.rowIconInset
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Column {
+                id: contentColumn
+                anchors.left: parent.left
+                anchors.leftMargin: row.hasIcon ? root.rowTextX : root.rowIconInset
+                anchors.right: trail.left
+                anchors.rightMargin: root.pt(8)
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 0
+
+                Text {
+                  id: labelText
+                  textFormat: Text.PlainText
+                  width: parent.width
+                  text: row.label
+                  color: root.ink
+                  font.family: root.uiFont
+                  font.pixelSize: row.isCalc ? root.calcFontSize : root.titleFontSize
+                  elide: Text.ElideRight
+                }
+
+                Text {
+                  textFormat: Text.PlainText
+                  width: parent.width
+                  visible: row.twoLine
+                  text: row.subtitle
+                  color: root.inkSecondary
+                  font.family: root.uiFont
+                  font.pixelSize: root.subtitleFontSize
+                  elide: Text.ElideRight
+                }
+              }
+
+              Row {
+                id: trail
+                anchors.right: parent.right
+                anchors.rightMargin: root.metaInset
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: root.pt(8)
+
+                // The calculator names itself on the right; menus show a chevron.
+                Text {
+                  textFormat: Text.PlainText
+                  visible: text.length > 0
+                  text: row.isCalc ? row.detail : row.isMenu ? "›" : ""
+                  color: row.isMenu ? root.inkTertiary : root.inkSecondary
+                  font.family: root.uiFont
+                  font.pixelSize: row.isMenu ? root.titleFontSize : root.metaFontSize
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                // Return hint as a small chip on the selected row (Apple's quick-key chip).
+                Rectangle {
+                  visible: row.hasCursor
+                  width: root.shortcutW
+                  height: root.shortcutH
+                  radius: root.shortcutRadius
+                  color: root.shortcutFill
+                  border.width: 1
+                  border.color: root.glassBorder
+                  anchors.verticalCenter: parent.verticalCenter
+                  Text {
+                    anchors.centerIn: parent
+                    text: "↩"
+                    color: root.inkSecondary
+                    font.family: root.uiFont
+                    font.pixelSize: root.shortcutFontSize
+                  }
+                }
+              }
+
+              MouseArea {
+                id: mouseArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onEntered: root.selectFromPointer(row.index, row, {
+                  x: mouseArea.mouseX,
+                  y: mouseArea.mouseY
+                })
+                onPositionChanged: function(mouse) {
+                  root.selectFromPointer(row.index, row, mouse)
+                }
+                onClicked: {
+                  root.cursorActive = true
+                  root.selectedIndex = row.index
+                  root.activateIndex(row.index, true)
+                }
+              }
+            }
+          }
+
+          GridView {
+            id: appGrid
+            anchors.fill: parent
+            visible: root.isAppsGrid
+            model: displayModel
+            clip: true
+            cellWidth: Math.floor(appGrid.width / Math.max(1, root.gridColumns))
+            cellHeight: root.gridCellHeight
+            boundsBehavior: Flickable.DragAndOvershootBounds
+            flickDeceleration: Motion.flickDeceleration
+            maximumFlickVelocity: Motion.maximumFlickVelocity
+
+            delegate: Item {
+              id: cell
+              required property int index
+              required property string kind
+              required property string label
+              required property string appIcon
+              required property string appId
+              width: GridView.view.cellWidth
+              height: root.gridCellHeight
+
+              readonly property bool hasCursor: root.cursorActive && cell.index === root.selectedIndex
+              readonly property bool isApp: cell.kind === "app"
+
+              Rectangle {
+                anchors.fill: parent
+                anchors.margins: root.pt(3)
+                radius: root.rowRadius
+                color: cell.hasCursor ? root.selection : cellMouse.containsMouse ? root.hoverFill : Util.alpha(root.hoverFill, 0)
+                border.width: 1
+                border.color: cell.hasCursor ? root.selectionBorder : Util.alpha(root.selectionBorder, 0)
+
+                Column {
+                  anchors.top: parent.top
+                  anchors.topMargin: root.gridCellPadTop
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  width: parent.width - root.pt(12)
+                  spacing: root.gridIconGap
+
+                  Image {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: root.gridIconSize
+                    height: root.gridIconSize
+                    visible: cell.isApp
+                    fillMode: Image.PreserveAspectFit
+                    sourceSize.width: width * Screen.devicePixelRatio
+                    sourceSize.height: height * Screen.devicePixelRatio
+                    source: cell.isApp ? (root.appLibrary ? root.appLibrary.iconSource(cell.appIcon) : root.fallbackIcon(cell.appIcon)) : ""
+                    asynchronous: true
+                  }
+
+                  Text {
+                    textFormat: Text.PlainText
+                    width: parent.width
+                    height: root.gridLabelHeight
+                    text: cell.label
+                    color: root.ink
+                    font.family: root.uiFont
+                    font.pixelSize: root.metaFontSize
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignTop
+                    elide: Text.ElideRight
+                    maximumLineCount: 2
+                    wrapMode: Text.WordWrap
+                  }
+                }
+              }
+
+              MouseArea {
+                id: cellMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onEntered: root.selectFromPointer(cell.index, cell, {
+                  x: cellMouse.mouseX,
+                  y: cellMouse.mouseY
+                })
+                onPositionChanged: function(mouse) {
+                  root.selectFromPointer(cell.index, cell, mouse)
+                }
+                onClicked: {
+                  root.cursorActive = true
+                  root.selectedIndex = cell.index
+                  root.activateIndex(cell.index, true)
+                }
+              }
+            }
+          }
+
+          // Scroll scrims: the clipped row already marks the fold at rest;
+          // these keep both edges honest once the list has been scrolled.
+          Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: Math.min(root.pt(20), parent.height / 2)
+            visible: opacity > 0
+            opacity: resultList.contentHeight > resultList.height
+              ? Math.max(0, Math.min(1, (resultList.contentY - resultList.originY) / height))
+              : 0
+            gradient: Gradient {
+              GradientStop { position: 0; color: root.glassFill }
+              GradientStop { position: 1; color: Util.alpha(root.glassFill, 0) }
+            }
+          }
+
+          Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: Math.min(root.pt(20), parent.height / 2)
+            visible: opacity > 0
+            opacity: resultList.contentHeight > resultList.height
+              ? Math.max(0, Math.min(1, (resultList.originY + resultList.contentHeight - resultList.height - resultList.contentY) / height))
+              : 0
+            gradient: Gradient {
+              GradientStop { position: 0; color: Util.alpha(root.glassFill, 0) }
+              GradientStop { position: 1; color: root.glassFill }
+            }
+          }
+
+          Text {
+            anchors.centerIn: parent
+            visible: displayModel.count === 0 && root.mode !== "input" && !root.blankRoot
+            textFormat: Text.PlainText
+            text: root.emptyStateText
+            color: root.inkSecondary
+            font.family: root.uiFont
+            font.pixelSize: root.subtitleFontSize
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
+            width: parent.width - root.rowInset * 2
+          }
         }
       }
 
       // ------------------------------------------------------ category buttons
+      Item {
+        id: buttonsArea
+        anchors.left: card.right
+        anchors.leftMargin: root.buttonOffset
+        y: Math.round((root.compactHeight - root.buttonSize) / 2)
+        width: buttons.width
+        height: root.buttonSize
+        // Pointer over the buttons (and the gap to the field) counts as "over Spotlight".
+        MouseArea {
+          id: buttonsHover
+          anchors.fill: parent
+          anchors.leftMargin: -root.buttonOffset
+          hoverEnabled: true
+          acceptedButtons: Qt.NoButton
+        }
       Row {
         id: buttons
-        anchors.left: field.right
-        anchors.leftMargin: root.buttonOffset
-        anchors.verticalCenter: field.verticalCenter
         spacing: root.buttonGap
-        // Pointer over the buttons counts as "over Spotlight" as well.
-        HoverHandler { id: buttonsHover }
         Repeater {
           model: root.categories
           delegate: Item {
@@ -2407,7 +2851,7 @@ Item {
             required property int index
             required property var modelData
             readonly property bool active: root.category === modelData.id
-            readonly property bool shown: spot.buttonsShown || buttonsHover.hovered
+            readonly property bool shown: spot.buttonsShown
             width: root.buttonSize
             height: root.buttonSize
             opacity: 0
@@ -2464,398 +2908,6 @@ Item {
           }
         }
       }
-
-      // --------------------------------------------------------------- results
-      //
-      // A separate glass panel 8 pt under the field, same width, strongly
-      // rounded (spec §5.3). Its height follows the rows with the `smooth`
-      // spring inside a clipping container (no per-frame layout animation of
-      // the rows themselves); it fades with `fast`.
-      Item {
-        id: results
-        anchors.top: field.bottom
-        anchors.topMargin: root.resultsGap
-        width: parent.width
-        height: resultsHeight.value
-        readonly property int targetHeight: root.resultsShown ? root.visibleRowsHeight + root.resultsPadding * 2 : 0
-        opacity: root.resultsShown ? 1 : 0
-        visible: opacity > 0 && height > 1
-        Behavior on opacity {
-          NumberAnimation {
-            duration: root.resultsShown ? Motion.fast : Motion.exit(Motion.fast)
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: root.resultsShown ? Motion.easeOut : Motion.easeExit
-          }
-        }
-        HUi.SpringValue {
-          id: resultsHeight
-          epsilon: 0.5
-          preset: Motion.smooth
-          // Collapsing to nothing happens behind the fade, so it may snap.
-          to: results.targetHeight
-        }
-
-        RectangularShadow {
-          anchors.fill: card
-          radius: card.radius
-          blur: root.shadowBlur
-          spread: root.shadowSpread
-          offset.y: root.shadowOffset
-          color: Qt.rgba(0, 0, 0, root.shadowAlpha)
-        }
-        RectangularShadow {
-          anchors.fill: card
-          radius: card.radius
-          blur: root.pt(root.sp.contactBlur)
-          offset.y: root.pt(root.sp.contactOffset)
-          color: Qt.rgba(0, 0, 0, root.sp.contactAlpha)
-        }
-
-        Rectangle {
-          id: card
-          anchors.fill: parent
-          radius: root.resultsRadius
-          color: root.glassFill
-          border.width: 1
-          border.color: root.glassBorder
-          clip: true
-
-          MouseArea { anchors.fill: parent; onClicked: {} }
-
-          Item {
-            id: resultsViewport
-            x: root.resultsPadding
-            y: root.resultsPadding
-            width: parent.width - root.resultsPadding * 2
-            height: root.visibleRowsHeight
-
-            ListView {
-              id: resultList
-              anchors.fill: parent
-              visible: !root.isAppsGrid
-              model: displayModel
-              clip: true
-              spacing: root.rowSpacing
-              boundsBehavior: Flickable.DragAndOvershootBounds
-              flickDeceleration: Motion.flickDeceleration
-              maximumFlickVelocity: Motion.maximumFlickVelocity
-              Accessible.role: Accessible.List
-
-              section.property: "section"
-              section.criteria: ViewSection.FullString
-              section.delegate: Item {
-                required property string section
-                readonly property bool first: section === root.firstSection
-                width: ListView.view.width
-                height: section ? root.sectionHeaderHeight(first) : 0
-                visible: section !== ""
-                Text {
-                  textFormat: Text.PlainText
-                  x: root.sectionInset
-                  y: root.pt(parent.first ? root.sp.sectionTopFirst : root.sp.sectionTop)
-                  height: root.sectionLine
-                  verticalAlignment: Text.AlignVCenter
-                  text: root.sectionLabel(parent.section)
-                  color: root.inkSecondary
-                  font.family: root.uiFont
-                  font.pixelSize: root.sectionFontSize
-                  font.weight: Font.DemiBold
-                }
-              }
-
-              delegate: Rectangle {
-                id: row
-                required property int index
-                required property string itemId
-                required property string kind
-                required property string icon
-                required property string iconFont
-                required property string appIcon
-                required property string appId
-                required property bool isDir
-                required property string label
-                required property string target
-                required property string detail
-                required property string path
-                required property string action
-                required property int childCount
-                required property string section
-
-                readonly property bool hasCursor: root.cursorActive && row.index === root.selectedIndex
-                readonly property bool isApp: row.kind === "app"
-                readonly property bool isTop: row.section === "top"
-                readonly property bool isCalc: row.kind === "calc"
-                // The calculator's top hit is one line: the "=" glyph, the big
-                // number, "Calculator" on the right (spec §8).
-                readonly property bool twoLine: (isTop && !isCalc) || (row.kind === "dmenu" && row.detail.length > 0)
-                readonly property bool hasIcon: row.icon.length > 0 || row.isApp
-                readonly property int glyphSize: isTop ? root.topIcon : root.rowIcon
-                readonly property bool isMenu: row.kind === "menu" || row.kind === "link" || row.isDir
-                readonly property color textColor: hasCursor ? root.selectionText : root.ink
-                readonly property color metaColor: hasCursor ? Util.alpha(root.selectionText, 0.75) : root.inkSecondary
-                readonly property string subtitle: row.detail.length > 0 ? row.detail : root.kindName(row.kind, row.isDir)
-
-                width: ListView.view.width
-                height: root.rowHeightFor(row)
-                radius: root.rowRadius
-                // Selection switches instantly (spec §10: 0 ms), like NSMenu.
-                color: hasCursor ? root.selection : mouseArea.containsMouse ? root.hoverFill : Util.alpha(root.hoverFill, 0)
-                Accessible.role: Accessible.ListItem
-                Accessible.name: row.label
-
-                Text {
-                  id: iconText
-                  textFormat: Text.PlainText
-                  visible: row.hasIcon && !row.isApp
-                  text: row.icon
-                  color: row.textColor
-                  font.family: row.iconFont.length > 0 ? row.iconFont : root.fontFamily
-                  font.pixelSize: Math.round(row.glyphSize * 0.78)
-                  width: row.glyphSize
-                  horizontalAlignment: Text.AlignHCenter
-                  verticalAlignment: Text.AlignVCenter
-                  anchors.left: parent.left
-                  anchors.leftMargin: root.rowInset
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Image {
-                  id: appIconImage
-                  visible: row.isApp
-                  width: row.glyphSize
-                  height: row.glyphSize
-                  fillMode: Image.PreserveAspectFit
-                  // Decode at physical pixels — a logical-size decode leaves
-                  // PNG icons upscaled and blurry on HiDPI displays.
-                  sourceSize.width: width * Screen.devicePixelRatio
-                  sourceSize.height: height * Screen.devicePixelRatio
-                  source: row.isApp ? (root.appLibrary ? root.appLibrary.iconSource(row.appIcon) : root.fallbackIcon(row.appIcon)) : ""
-                  asynchronous: true
-                  anchors.left: parent.left
-                  anchors.leftMargin: root.rowInset
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Column {
-                  id: contentColumn
-                  anchors.left: parent.left
-                  anchors.leftMargin: root.rowInset + (row.hasIcon ? row.glyphSize + (row.isTop ? root.topGap : root.rowGap) : 0)
-                  anchors.right: trail.left
-                  anchors.rightMargin: root.pt(6)
-                  anchors.verticalCenter: parent.verticalCenter
-                  spacing: root.pt(1)
-
-                  Text {
-                    id: labelText
-                    textFormat: Text.PlainText
-                    width: parent.width
-                    text: row.label
-                    color: row.textColor
-                    font.family: root.uiFont
-                    font.pixelSize: row.isCalc ? root.calcFontSize : row.isTop ? root.topFontSize : root.rowFontSize
-                    font.weight: row.isTop ? Font.Medium : Font.Normal
-                    elide: Text.ElideRight
-                  }
-
-                  Text {
-                    textFormat: Text.PlainText
-                    width: parent.width
-                    visible: row.twoLine && text.length > 0
-                    text: row.subtitle
-                    color: row.metaColor
-                    font.family: root.uiFont
-                    font.pixelSize: root.metaFontSize
-                    elide: Text.ElideRight
-                  }
-                }
-
-                Row {
-                  id: trail
-                  anchors.right: parent.right
-                  anchors.rightMargin: root.rowInset
-                  anchors.verticalCenter: parent.verticalCenter
-                  spacing: root.pt(8)
-
-                  // Single-line rows carry their path or kind on the right.
-                  Text {
-                    textFormat: Text.PlainText
-                    visible: !row.twoLine && text.length > 0
-                    text: row.detail.length > 0 ? row.detail : (row.kind === "app" || row.kind === "file" ? root.kindName(row.kind, row.isDir) : "")
-                    color: row.metaColor
-                    font.family: root.uiFont
-                    font.pixelSize: root.metaFontSize
-                    elide: Text.ElideMiddle
-                    width: Math.min(implicitWidth, Math.round(row.width * 0.4))
-                    anchors.verticalCenter: parent.verticalCenter
-                  }
-
-                  // The selected row hints at Return; menus show their chevron.
-                  Text {
-                    textFormat: Text.PlainText
-                    visible: text.length > 0
-                    text: row.isMenu ? "›" : row.hasCursor ? "↩" : ""
-                    color: Util.alpha(row.textColor, root.metaAlpha)
-                    font.family: root.uiFont
-                    font.pixelSize: row.isMenu ? root.rowFontSize : root.metaFontSize
-                    anchors.verticalCenter: parent.verticalCenter
-                  }
-                }
-
-                MouseArea {
-                  id: mouseArea
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onEntered: root.selectFromPointer(row.index, row, {
-                    x: mouseArea.mouseX,
-                    y: mouseArea.mouseY
-                  })
-                  onPositionChanged: function(mouse) {
-                    root.selectFromPointer(row.index, row, mouse)
-                  }
-                  onClicked: {
-                    root.cursorActive = true
-                    root.selectedIndex = row.index
-                    root.activateIndex(row.index, true)
-                  }
-                }
-              }
-            }
-
-            GridView {
-              id: appGrid
-              anchors.fill: parent
-              visible: root.isAppsGrid
-              model: displayModel
-              clip: true
-              cellWidth: Math.floor(appGrid.width / Math.max(1, root.gridColumns))
-              cellHeight: root.gridCellHeight
-              boundsBehavior: Flickable.DragAndOvershootBounds
-              flickDeceleration: Motion.flickDeceleration
-              maximumFlickVelocity: Motion.maximumFlickVelocity
-
-              delegate: Item {
-                id: cell
-                required property int index
-                required property string kind
-                required property string label
-                required property string appIcon
-                required property string appId
-                width: GridView.view.cellWidth
-                height: root.gridCellHeight
-
-                readonly property bool hasCursor: root.cursorActive && cell.index === root.selectedIndex
-                readonly property bool isApp: cell.kind === "app"
-
-                Rectangle {
-                  anchors.fill: parent
-                  anchors.margins: root.pt(3)
-                  radius: root.rowRadius
-                  color: cell.hasCursor ? root.selection : cellMouse.containsMouse ? root.hoverFill : Util.alpha(root.hoverFill, 0)
-
-                  Column {
-                    anchors.top: parent.top
-                    anchors.topMargin: root.gridCellPadTop
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: parent.width - root.pt(12)
-                    spacing: root.gridIconGap
-
-                    Image {
-                      anchors.horizontalCenter: parent.horizontalCenter
-                      width: root.gridIconSize
-                      height: root.gridIconSize
-                      visible: cell.isApp
-                      fillMode: Image.PreserveAspectFit
-                      sourceSize.width: width * Screen.devicePixelRatio
-                      sourceSize.height: height * Screen.devicePixelRatio
-                      source: cell.isApp ? (root.appLibrary ? root.appLibrary.iconSource(cell.appIcon) : root.fallbackIcon(cell.appIcon)) : ""
-                      asynchronous: true
-                    }
-
-                    Text {
-                      textFormat: Text.PlainText
-                      width: parent.width
-                      height: root.gridLabelHeight
-                      text: cell.label
-                      color: cell.hasCursor ? root.selectionText : root.ink
-                      font.family: root.uiFont
-                      font.pixelSize: root.metaFontSize
-                      horizontalAlignment: Text.AlignHCenter
-                      verticalAlignment: Text.AlignTop
-                      elide: Text.ElideRight
-                      maximumLineCount: 2
-                      wrapMode: Text.WordWrap
-                    }
-                  }
-                }
-
-                MouseArea {
-                  id: cellMouse
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onEntered: root.selectFromPointer(cell.index, cell, {
-                    x: cellMouse.mouseX,
-                    y: cellMouse.mouseY
-                  })
-                  onPositionChanged: function(mouse) {
-                    root.selectFromPointer(cell.index, cell, mouse)
-                  }
-                  onClicked: {
-                    root.cursorActive = true
-                    root.selectedIndex = cell.index
-                    root.activateIndex(cell.index, true)
-                  }
-                }
-              }
-            }
-
-            // Scroll scrims: the clipped row already marks the fold at rest;
-            // these keep both edges honest once the list has been scrolled.
-            Rectangle {
-              anchors.left: parent.left
-              anchors.right: parent.right
-              anchors.top: parent.top
-              height: Math.min(root.pt(20), parent.height / 2)
-              visible: opacity > 0
-              opacity: resultList.contentHeight > resultList.height
-                ? Math.max(0, Math.min(1, (resultList.contentY - resultList.originY) / height))
-                : 0
-              gradient: Gradient {
-                GradientStop { position: 0; color: root.glassFill }
-                GradientStop { position: 1; color: Util.alpha(root.glassFill, 0) }
-              }
-            }
-
-            Rectangle {
-              anchors.left: parent.left
-              anchors.right: parent.right
-              anchors.bottom: parent.bottom
-              height: Math.min(root.pt(20), parent.height / 2)
-              visible: opacity > 0
-              opacity: resultList.contentHeight > resultList.height
-                ? Math.max(0, Math.min(1, (resultList.originY + resultList.contentHeight - resultList.height - resultList.contentY) / height))
-                : 0
-              gradient: Gradient {
-                GradientStop { position: 0; color: Util.alpha(root.glassFill, 0) }
-                GradientStop { position: 1; color: root.glassFill }
-              }
-            }
-
-            Text {
-              anchors.centerIn: parent
-              visible: displayModel.count === 0 && root.mode !== "input" && !root.blankRoot
-              textFormat: Text.PlainText
-              text: root.emptyStateText
-              color: root.inkSecondary
-              font.family: root.uiFont
-              font.pixelSize: root.rowFontSize
-              horizontalAlignment: Text.AlignHCenter
-              elide: Text.ElideRight
-              width: parent.width - root.rowInset * 2
-            }
-          }
-        }
       }
     }
 

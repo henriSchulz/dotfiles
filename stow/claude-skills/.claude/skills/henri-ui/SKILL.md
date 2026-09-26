@@ -238,17 +238,23 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   Vollbild-Fläche nur eine Karte über einem Scrim — der folgt dem Popover-Rezept
   (`slow` + `smooth`). `slower` fühlt sich dort träge an.
 
-**Spotlight (`henri.menu`, seit 2026-09-26 nach Henris Design-Spec, Tahoe-Variante)**
-- Look aus `apple-ui` (`Apple.spotlight`: Kapsel 620 × 52, Ergebnispanel Radius 24,
-  Zeilen 36, Top-Treffer 48, Glas α 0.70 hell/dunkel nach Theme-Helligkeit), Auswahl =
-  `Color.accent`, kein Scrim, Blur per `layer_rule` auf `omarchy-menu`.
-- Öffnen: Fade + Scale `Motion.launcherFromScale` (0.98 → 1) in `fast`/easeOut;
+**Spotlight (`henri.menu`, seit 2026-09-26 nach Apples Tahoe-Screenshots vermessen)**
+- Look aus `apple-ui` (`Apple.spotlight`, an Apples Support-Screenshots gemessen, Skala
+  über SF-Pro-Textbreiten): kompakte Kapsel 330 × 48 mit 46-pt-Buttons daneben; mit
+  Ergebnissen **eine** Fläche 560 breit, Radius 20: Suchzeile 50, Haarlinie, vier
+  Filter-Kapseln (21 hoch), zweizeilige Zeilen 49 (Titel 15, Untertitel 13, Icon 25,
+  Text bei 55). Auswahl = leichte Tönung (Schwarz 0.10 / Weiß 0.15) mit Haarlinie,
+  Text bleibt Ink — **kein** Akzent-Balken; rechts ein Kürzel-Chip 24 × 17. Glas hell
+  Weiß 0.45 / dunkel nach Theme-Helligkeit, kein Scrim, Blur per `layer_rule` auf
+  `omarchy-menu`. Keine Abschnittsüberschriften (Apple listet durchgehend).
+- Kapsel → Panel morpht (Breite, Höhe, Radius per `smooth`-Spring im Clip-Rectangle),
+  Öffnen: Fade + Scale `Motion.launcherFromScale` (0.98 → 1) in `fast`/easeOut;
   Schließen: nur Fade in `exit(fast)`/easeExit — die einzige Fläche, die schneller als
-  ein Popover kommt, weil sie dutzende Male am Tag aufgeht. Ergebnispanel wächst nur
-  nach unten (Höhe per `smooth`-Spring im Clip-Container), Auswahlwechsel 0 ms.
-- Kategorie-Buttons (⌃1–⌃4, Super+Ziffer wären Workspaces): Fade + 8-px-Slide,
-  `Motion.stagger`; aktiv = Akzent + Chip im Feld. Inline-Vervollständigung in
-  tertiärem Grau, „— Art“ dahinter; letzte Suche kommt markiert zurück.
+  ein Popover kommt, weil sie dutzende Male am Tag aufgeht. Auswahlwechsel 0 ms.
+- Kategorie-Buttons nur an der Kapsel (⌃1–⌃4, Super+Ziffer wären Workspaces): Fade +
+  8-px-Slide, `Motion.stagger`; im Panel übernehmen die Filter-Kapseln, aktiv = Chip
+  im Feld. Inline-Vervollständigung in tertiärem Grau, „— Art“ dahinter; letzte Suche
+  kommt markiert zurück.
 
 **Switcher (Super+Tab, wie Cmd/Alt+Tab)**
 - Streifen erscheint erst nach `Motion.switcherDelay` (50 ms) Halten; kurzes Antippen
