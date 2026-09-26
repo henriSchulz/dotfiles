@@ -2287,8 +2287,8 @@ Panel {
             caption: root.renderPowerBusy
               ? "Reloading Hyprland…"
               : root.renderPowerOn
-                ? "Direct scanout · " + (root.renderPower.passes || "2") + " blur passes · color management off"
-                : "Direct scanout, 2 blur passes, no color management"
+                ? "Direct scanout · " + (root.renderPower.passes || "2") + " blur passes · CM off"
+                : "Direct scanout, 2 blur passes, no CM pass"
             checked: root.renderPowerOn
             onToggled: function(on) { root.setRenderPower(on) }
           }
