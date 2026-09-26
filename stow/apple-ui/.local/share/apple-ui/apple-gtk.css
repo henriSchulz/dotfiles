@@ -133,6 +133,8 @@
   --apple-sp-subtitle-font: 13px;
   --apple-sp-meta-font: 12px;
   --apple-sp-results-max-h: 480px;
+  --apple-sp-action-row-h: 36px;
+  --apple-sp-section-font: 11px;
   --apple-sp-fill: rgba(255, 255, 255, 0.45);
   --apple-sp-opaque-fill: #ececec;
   --apple-sp-text-primary: rgba(0, 0, 0, 0.85);

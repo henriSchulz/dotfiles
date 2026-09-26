@@ -254,6 +254,10 @@
   --apple-sp-shortcut-font: 400 11px var(--apple-ui-font);
   --apple-sp-calc-font: 28px;
   --apple-sp-results-max-h: 480px;
+  --apple-sp-action-header: 49px;
+  --apple-sp-action-row-h: 36px;
+  --apple-sp-action-font: 400 13px var(--apple-ui-font);
+  --apple-sp-section-font: 600 11px var(--apple-ui-font);
   --apple-sp-fill: rgba(255, 255, 255, 0.45);
   --apple-sp-opaque-fill: #ececec;
   --apple-sp-border: rgba(0, 0, 0, 0.10);

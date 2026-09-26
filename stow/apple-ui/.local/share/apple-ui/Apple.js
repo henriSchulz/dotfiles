@@ -280,6 +280,16 @@ var spotlight = {
   shortcutFont: 11,
   bottomPad: 7,
   resultsMaxHeight: 480,
+  // Aktionsseite (→ auf einem Treffer): Kopf mit dem Treffer, dann kompakte
+  // einzeilige Zeilen in Gruppen — bewusst anders als die Ergebnisliste
+  // (Spec §7: 36-pt-Zeilen, 11-pt-Überschriften in normaler Schreibung).
+  actionHeader: 49,
+  actionRowHeight: 36,
+  actionFont: 13,
+  sectionFont: 11,
+  sectionTop: 8,
+  sectionTopFirst: 4,
+  sectionBottom: 2,
   shadowOffset: 22,      // Spec: 0 22px 70px 4px
   shadowBlur: 70,
   shadowSpread: 4,

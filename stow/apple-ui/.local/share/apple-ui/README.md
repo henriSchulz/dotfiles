@@ -79,7 +79,8 @@ SF-Pro-Textbreiten): kompakte Kapsel 330 × 48 mit 46-pt-Buttons, aufgeklappt
 eine Fläche 560 breit / Radius 20 mit Suchzeile 50, Haarlinie, Filter-Kapseln
 21, zweizeiligen Zeilen 49 (Titel 15, Untertitel 13, Icon 25), Auswahl als
 leichte Tönung mit Haarlinie, Kürzel-Chip 24 × 17, Glas-Paletten hell (gemessen)
-und dunkel (abgeleitet). `Apple.spotlightPalette(dark)` liefert die Palette.
+und dunkel (abgeleitet); dazu die Aktionsseite (`actionHeader` 49, `actionRowHeight`
+36, `sectionFont` 11 — Spec-Werte, nicht gemessen). `Apple.spotlightPalette(dark)` liefert die Palette.
 Referenz-Plugin: `~/.config/omarchy/plugins/henri.menu`.
 
 ## Fenster (Apps)

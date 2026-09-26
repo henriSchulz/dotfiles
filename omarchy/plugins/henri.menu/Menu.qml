@@ -1067,18 +1067,33 @@ Item {
     return foldedListHeight(totals, available, heads)
   }
 
+  // The action page: header, then grouped 36-pt rows.
+  readonly property int actionHeader: pt(sp.actionHeader)
+  readonly property int actionRowHeight: pt(sp.actionRowHeight)
+  readonly property int actionFontSize: pt(sp.actionFont)
+  readonly property int sectionFontSize: pt(sp.sectionFont)
+  readonly property int sectionLine: Math.round(pt(sp.sectionFont) * 1.3)
+  function pageSectionHeight(first) {
+    return pt(first ? sp.sectionTopFirst : sp.sectionTop) + sectionLine + pt(sp.sectionBottom)
+  }
+  property string firstPageSection: ""
   function pageRowListHeight(_serial, _count, _filter) {
-    if (pageModel.count === 0) return root.emptyStateHeight
-    var available = availableRowsHeight()
+    var available = availableRowsHeight() - root.actionHeader
+    if (pageModel.count === 0) return root.actionHeader + root.emptyStateHeight
     var totals = []
+    var heads = []
     var total = 0
+    var previous = null
     for (var i = 0; i < pageModel.count; i++) {
-      if (i > 0) total += root.rowSpacing
-      total += root.rowHeight
+      var r = pageModel.get(i)
+      var head = (r.section && r.section !== previous) ? root.pageSectionHeight(i === 0) : 0
+      total += head + root.actionRowHeight
+      previous = r.section
       totals.push(total)
+      heads.push(head)
       if (total > available) break
     }
-    return foldedListHeight(totals, available)
+    return root.actionHeader + foldedListHeight(totals, available, heads)
   }
 
   function dmenuRowListHeight(_serial, _count, _filter) {
@@ -2054,10 +2069,11 @@ Item {
         pageModel.append({
           label: String(r.label || ""), detail: String(r.detail || ""), icon: String(r.icon || ""),
           iconFont: String(r.iconFont || ""), appIcon: String(r.appIcon || ""),
-          hasMore: !!r.more, rowIndex: i
+          hasMore: !!r.more, danger: !!r.danger, section: String(r.section || ""), rowIndex: i
         })
       }
     }
+    root.firstPageSection = pageModel.count > 0 ? String(pageModel.get(0).section || "") : ""
     layoutSerial += 1
     if (pageModel.count === 0) root.pageSelected = 0
     else if (root.pageSelected >= pageModel.count) root.pageSelected = pageModel.count - 1
@@ -2087,7 +2103,9 @@ Item {
     var row = root.rowCopy(displayModel.get(root.selectedIndex))
     var rows = root.actionsFor(row)
     if (rows.length === 0) return false
-    root.pushPage({ kind: "actions", title: row.label, target: row, rows: rows })
+    root.pushPage({ kind: "actions", title: row.label, target: row, rows: root.grouped(rows),
+      headerIcon: row.icon, headerIconFont: row.iconFont, headerAppIcon: row.appIcon,
+      headerTitle: row.label, headerSubtitle: row.detail || root.kindName(row.kind, row.isDir) })
     return true
   }
 
@@ -2127,14 +2145,28 @@ Item {
     terminal: Apple.sf(0x100194),  // command
     run: Apple.sf(0x1002E5)        // bolt
   })
-  function act(label, glyphKey, run, detail, more) {
-    return { label: label, detail: detail || "", icon: root.glyph[glyphKey] || "", iconFont: Apple.symbolFont, run: run || null, more: more || null }
+  function act(label, glyphKey, run, detail, more, section, danger) {
+    return { label: label, detail: detail || "", icon: root.glyph[glyphKey] || "", iconFont: Apple.symbolFont,
+      run: run || null, more: more || null, section: section || "", danger: !!danger }
+  }
+  // Groups the rows of an actions page: what the row does decides its section.
+  function grouped(rows) {
+    var order = ["open", "copy", "move", "more"]
+    var out = []
+    for (var g = 0; g < order.length; g++)
+      for (var i = 0; i < rows.length; i++) if (rows[i].section === order[g]) out.push(rows[i])
+    for (var j = 0; j < rows.length; j++) if (order.indexOf(rows[j].section) < 0) out.push(rows[j])
+    return out
+  }
+  function sectionTitle(section) {
+    switch (section) { case "open": return "Open"; case "copy": return "Copy"; case "move": return "Move"; case "more": return "More"; default: return "" }
   }
   function webAction(text) {
     var q = String(text || "").trim()
     return root.act("Search the Web", "web", function() { root.webSearch(q) }, "“" + (q.length > 40 ? q.slice(0, 39) + "…" : q) + "”")
   }
 
+  function sec(a, section, danger) { a.section = section; a.danger = !!danger; return a }
   function actionsFor(row) {
     var rows = []
     var path = row.target
@@ -2142,54 +2174,55 @@ Item {
       var pretty = root.prettyPath(path)
       var parent = root.dirNameOf(path) || "/"
       if (row.isDir) {
-        rows.push(root.act("Browse Folder", "folder", function() { root.closePages(); root.setFilter(" " + pretty + "/") }, "in Spotlight"))
-        rows.push(root.act("Open", "open", function() { root.finishWith(function() { root.openPath(path) }) }, "in Files"))
-        rows.push(root.act("Open in Terminal", "terminal", function() { root.finishWith(function() { root.terminalAt(path) }) }))
+        rows.push(root.sec(root.act("Browse Folder", "folder", function() { root.closePages(); root.setFilter(" " + pretty + "/") }, "in Spotlight"), "open"))
+        rows.push(root.sec(root.act("Open", "open", function() { root.finishWith(function() { root.openPath(path) }) }, "in Files"), "open"))
+        rows.push(root.sec(root.act("Open in Terminal", "terminal", function() { root.finishWith(function() { root.terminalAt(path) }) }), "open"))
       } else {
-        rows.push(root.act("Open", "open", function() { root.finishWith(function() { root.openPath(path) }) }))
-        rows.push(root.act("Open With…", "apps", null, "", function() { root.pushPage(root.openWithPage(path)) }))
+        rows.push(root.sec(root.act("Open", "open", function() { root.finishWith(function() { root.openPath(path) }) }), "open"))
+        rows.push(root.sec(root.act("Open With…", "apps", null, "", function() { root.pushPage(root.openWithPage(path)) }), "open"))
       }
-      rows.push(root.act("Show in Files", "folder", function() { root.finishWith(function() { root.openPath(parent) }) }, root.prettyPath(parent)))
-      rows.push(root.act("Get Info", "info", null, "", function() { root.pushPage({ kind: "info", title: "Info", path: path, rows: [] }) }))
-      rows.push(root.act("Copy Path", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(path) }) }, pretty))
-      rows.push(root.act(row.isDir ? "Copy Folder" : "Copy File", "copy", function() { root.finishWith(function() { root.copyFileToClipboard(path) }) }, "for pasting in Files"))
-      rows.push(root.act("Copy To…", "copy", null, "", function() { root.pushPage(root.folderPage("Copy To", parent, function(dest) {
-        root.finishWith(function() { Quickshell.execDetached(["cp", "-r", "--", path, dest + "/"]) }) })) }))
-      rows.push(root.act("Move To…", "move", null, "", function() { root.pushPage(root.folderPage("Move To", parent, function(dest) {
-        root.finishWith(function() { Quickshell.execDetached(["mv", "--", path, dest + "/"]) }) })) }))
-      rows.push(root.act("Move to Trash", "trash", function() {
+      rows.push(root.sec(root.act("Show in Files", "folder", function() { root.finishWith(function() { root.openPath(parent) }) }, root.prettyPath(parent)), "open"))
+      rows.push(root.sec(root.act("Get Info", "info", null, "", function() { root.pushPage({ kind: "info", title: "Info", path: path, rows: [],
+        headerIcon: root.glyph.info, headerIconFont: Apple.symbolFont, headerAppIcon: "", headerTitle: "Info", headerSubtitle: root.baseNameOf(path) }) }), "more"))
+      rows.push(root.sec(root.act("Copy Path", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(path) }) }, pretty), "copy"))
+      rows.push(root.sec(root.act(row.isDir ? "Copy Folder" : "Copy File", "copy", function() { root.finishWith(function() { root.copyFileToClipboard(path) }) }, "for pasting in Files"), "copy"))
+      rows.push(root.sec(root.act("Copy To…", "copy", null, "", function() { root.pushPage(root.folderPage("Copy To", parent, function(dest) {
+        root.finishWith(function() { Quickshell.execDetached(["cp", "-r", "--", path, dest + "/"]) }) })) }), "copy"))
+      rows.push(root.sec(root.act("Move To…", "move", null, "", function() { root.pushPage(root.folderPage("Move To", parent, function(dest) {
+        root.finishWith(function() { Quickshell.execDetached(["mv", "--", path, dest + "/"]) }) })) }), "move"))
+      rows.push(root.sec(root.act("Move to Trash", "trash", function() {
         root.askConfirm({ message: "Move “" + row.label + "” to the trash?", confirmText: "Move to Trash",
           run: function() { root.finishWith(function() { Quickshell.execDetached(["gio", "trash", path]) }) } })
-      }))
+      }), "move", true))
     } else if (row.kind === "app") {
       var appId = row.appId, label = row.label
-      rows.push(root.act("Open", "open", function() { root.finishWith(function() {
-        if (root.appLibrary) root.appLibrary.launch(appId, label); else root.fallbackLaunch(appId) }) }))
-      rows.push(root.act("Copy Name", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(label) }) }, label))
-      rows.push(root.act("Copy App ID", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(appId) }) }, appId))
-      rows.push(root.webAction(label))
-      rows.push(root.act("Uninstall", "remove", function() { root.requestUninstall(appId, label) }))
+      rows.push(root.sec(root.act("Open", "open", function() { root.finishWith(function() {
+        if (root.appLibrary) root.appLibrary.launch(appId, label); else root.fallbackLaunch(appId) }) }), "open"))
+      rows.push(root.sec(root.act("Copy Name", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(label) }) }, label), "copy"))
+      rows.push(root.sec(root.act("Copy App ID", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(appId) }) }, appId), "copy"))
+      rows.push(root.sec(root.webAction(label), "more"))
+      rows.push(root.sec(root.act("Uninstall", "remove", function() { root.requestUninstall(appId, label) }), "more", true))
     } else if (row.kind === "menu" || row.kind === "link") {
-      rows.push(root.act("Open Menu", "open", function() { root.closePages(); root.setActiveMenu(row.target || row.itemId, true, false) }))
-      rows.push(root.act("Copy Name", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(row.label) }) }, row.label))
+      rows.push(root.sec(root.act("Open Menu", "open", function() { root.closePages(); root.setActiveMenu(row.target || row.itemId, true, false) }), "open"))
+      rows.push(root.sec(root.act("Copy Name", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(row.label) }) }, row.label), "copy"))
     } else if (row.kind === "action") {
-      rows.push(root.act("Run", "run", function() { root.finishWith(function() { root.runAction(row.action) }) }))
-      if (row.action) rows.push(root.act("Copy Command", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(row.action) }) }, row.action))
-      rows.push(root.act("Copy Name", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(row.label) }) }, row.label))
+      rows.push(root.sec(root.act("Run", "run", function() { root.finishWith(function() { root.runAction(row.action) }) }), "open"))
+      if (row.action) rows.push(root.sec(root.act("Copy Command", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(row.action) }) }, row.action), "copy"))
+      rows.push(root.sec(root.act("Copy Name", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(row.label) }) }, row.label), "copy"))
     } else if (row.kind === "calc") {
       var result = String(row.label || "").replace(/^=\s*/, "")
-      rows.push(root.act("Copy Result", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(result) }) }, result))
-      rows.push(root.act("Copy Expression", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(root.filterText.trim()) }) }, root.filterText.trim()))
-      rows.push(root.webAction(root.filterText.trim()))
+      rows.push(root.sec(root.act("Copy Result", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(result) }) }, result), "copy"))
+      rows.push(root.sec(root.act("Copy Expression", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(root.filterText.trim()) }) }, root.filterText.trim()), "copy"))
+      rows.push(root.sec(root.webAction(root.filterText.trim()), "more"))
     } else if (row.kind === "clip") {
       if (row.appId) {
-        rows.push(root.act("Copy Image", "copy", function() { root.finishWith(function() { root.copyImageToClipboard(row.target, row.appId) }) }))
-        rows.push(root.act("Open Image", "open", function() { root.finishWith(function() { root.openPath(row.target) }) }))
-        rows.push(root.act("Copy Image Path", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(row.target) }) }, root.prettyPath(row.target)))
+        rows.push(root.sec(root.act("Copy Image", "copy", function() { root.finishWith(function() { root.copyImageToClipboard(row.target, row.appId) }) }), "copy"))
+        rows.push(root.sec(root.act("Open Image", "open", function() { root.finishWith(function() { root.openPath(row.target) }) }), "open"))
+        rows.push(root.sec(root.act("Copy Image Path", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(row.target) }) }, root.prettyPath(row.target)), "copy"))
       } else {
-        rows.push(root.act("Copy", "copy", function() { root.finishWith(function() { root.copyToClipboard(row.target) }) }))
-        if (root.isUrl(row.target)) rows.push(root.act("Open Link", "open", function() { root.finishWith(function() { root.runAction("omarchy-launch-webapp " + Util.shellQuote(row.target.trim())) }) }))
-        rows.push(root.webAction(row.target))
+        rows.push(root.sec(root.act("Copy", "copy", function() { root.finishWith(function() { root.copyToClipboard(row.target) }) }), "copy"))
+        if (root.isUrl(row.target)) rows.push(root.sec(root.act("Open Link", "open", function() { root.finishWith(function() { root.runAction("omarchy-launch-webapp " + Util.shellQuote(row.target.trim())) }) }), "open"))
+        rows.push(root.sec(root.webAction(row.target), "more"))
       }
     }
     return rows
@@ -2207,13 +2240,15 @@ Item {
       })(entry))
     }
     rows.sort(function(a, b) { return a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1 })
-    return { kind: "apps", title: "Open With", rows: rows }
+    return { kind: "apps", title: "Open With", rows: rows, headerIcon: root.glyph.apps, headerIconFont: Apple.symbolFont,
+      headerAppIcon: "", headerTitle: "Open With", headerSubtitle: root.baseNameOf(path) }
   }
 
   // Sub-page: a folder picker. The first row takes the folder being shown,
   // the rest are its sub-folders: ↩ picks one, → or Tab browses into it.
   function folderPage(title, dir, choose) {
-    return { kind: "folders", title: title, dir: dir, choose: choose, rows: root.folderRows(title, dir, [], choose) }
+    return { kind: "folders", title: title, dir: dir, choose: choose, rows: root.folderRows(title, dir, [], choose),
+      headerIcon: root.glyph.folder, headerIconFont: Apple.symbolFont, headerAppIcon: "", headerTitle: title, headerSubtitle: root.prettyPath(dir) }
   }
   function folderRows(title, dir, subdirs, choose) {
     var rows = [root.act("Here: " + root.prettyPath(dir), "folder", function() { choose(dir) }, "this folder")]
@@ -2665,9 +2700,11 @@ Item {
             height: root.chipHeight
             width: shown ? chipLabel.implicitWidth + root.chipPadX * 2 : 0
             radius: height / 2
-            color: root.capsuleFill
+            // Inside an action page the chip is the accent-tinted way back.
+            color: root.pageOpen ? Util.alpha(Color.accent, 0.22) : root.capsuleFill
             border.width: 1
-            border.color: root.glassBorder
+            border.color: root.pageOpen ? Util.alpha(Color.accent, 0.35) : root.glassBorder
+            Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
             opacity: shown ? 1 : 0
             visible: opacity > 0
             clip: true
@@ -2675,8 +2712,8 @@ Item {
             Text {
               id: chipLabel
               anchors.centerIn: parent
-              text: root.pageOpen ? root.page.title : root.categoryLabel(root.category)
-              color: root.ink
+              text: root.pageOpen ? "‹ " + root.page.title : root.categoryLabel(root.category)
+              color: root.pageOpen ? Color.accent : root.ink
               font.family: root.uiFont
               font.pixelSize: root.chipFontSize
               font.weight: Font.Medium
@@ -3189,15 +3226,113 @@ Item {
             Behavior on x { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
             Behavior on opacity { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
+            // Head of the page: the item the actions belong to (or the
+            // sub-page's subject), over a hairline — what says "you are
+            // inside", together with the accent chip in the field.
+            Item {
+              id: pageHeader
+              width: parent.width
+              height: root.actionHeader
+              Text {
+                id: headerGlyph
+                textFormat: Text.PlainText
+                visible: root.page && !root.page.headerAppIcon && !!root.page.headerIcon
+                text: root.page ? String(root.page.headerIcon || "") : ""
+                color: root.ink
+                font.family: root.page && root.page.headerIconFont ? root.page.headerIconFont : root.fontFamily
+                font.pixelSize: Math.round(root.rowIcon * 0.8)
+                width: root.rowIcon
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                anchors.left: parent.left
+                anchors.leftMargin: root.rowIconInset
+                anchors.verticalCenter: parent.verticalCenter
+              }
+              Image {
+                visible: root.page && !!root.page.headerAppIcon
+                width: root.rowIcon
+                height: root.rowIcon
+                fillMode: Image.PreserveAspectFit
+                sourceSize.width: width * Screen.devicePixelRatio
+                sourceSize.height: height * Screen.devicePixelRatio
+                source: root.page && root.page.headerAppIcon ? (root.appLibrary ? root.appLibrary.iconSource(root.page.headerAppIcon) : root.fallbackIcon(root.page.headerAppIcon)) : ""
+                asynchronous: true
+                anchors.left: parent.left
+                anchors.leftMargin: root.rowIconInset
+                anchors.verticalCenter: parent.verticalCenter
+              }
+              Column {
+                anchors.left: parent.left
+                anchors.leftMargin: root.rowTextX
+                anchors.right: parent.right
+                anchors.rightMargin: root.metaInset
+                anchors.verticalCenter: parent.verticalCenter
+                Text {
+                  textFormat: Text.PlainText
+                  width: parent.width
+                  text: root.page ? String(root.page.headerTitle || "") : ""
+                  color: root.ink
+                  font.family: root.uiFont
+                  font.pixelSize: root.titleFontSize
+                  font.weight: Font.DemiBold
+                  elide: Text.ElideRight
+                }
+                Text {
+                  textFormat: Text.PlainText
+                  width: parent.width
+                  visible: text.length > 0
+                  text: root.page ? String(root.page.headerSubtitle || "") : ""
+                  color: root.inkSecondary
+                  font.family: root.uiFont
+                  font.pixelSize: root.subtitleFontSize
+                  elide: Text.ElideMiddle
+                }
+              }
+              Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.leftMargin: root.rowIconInset
+                anchors.rightMargin: root.metaInset
+                height: 1
+                color: root.separator
+              }
+            }
+
             ListView {
               id: pageList
-              anchors.fill: parent
+              anchors.top: pageHeader.bottom
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.bottom: parent.bottom
               model: pageModel
               clip: true
               boundsBehavior: Flickable.DragAndOvershootBounds
               flickDeceleration: Motion.flickDeceleration
               maximumFlickVelocity: Motion.maximumFlickVelocity
               Accessible.role: Accessible.List
+
+              section.property: "section"
+              section.criteria: ViewSection.FullString
+              section.delegate: Item {
+                required property string section
+                readonly property bool first: section === root.firstPageSection
+                width: ListView.view.width
+                height: section ? root.pageSectionHeight(first) : 0
+                visible: section !== ""
+                Text {
+                  textFormat: Text.PlainText
+                  x: root.rowIconInset
+                  y: root.pt(parent.first ? root.sp.sectionTopFirst : root.sp.sectionTop)
+                  height: root.sectionLine
+                  verticalAlignment: Text.AlignVCenter
+                  text: root.sectionTitle(parent.section)
+                  color: root.inkSecondary
+                  font.family: root.uiFont
+                  font.pixelSize: root.sectionFontSize
+                  font.weight: Font.DemiBold
+                }
+              }
 
               delegate: Rectangle {
                 id: prow
@@ -3208,10 +3343,13 @@ Item {
                 required property string iconFont
                 required property string appIcon
                 required property bool hasMore
+                required property bool danger
+                required property string section
                 readonly property bool hasCursor: prow.index === root.pageSelected
                 readonly property bool isApp: appIcon.length > 0
+                readonly property color labelColor: danger ? Color.urgent : root.ink
                 width: ListView.view.width
-                height: root.rowHeight
+                height: root.actionRowHeight
                 radius: root.rowRadius
                 color: hasCursor ? root.selection : pmouse.containsMouse ? root.hoverFill : Util.alpha(root.hoverFill, 0)
                 border.width: 1
@@ -3223,9 +3361,9 @@ Item {
                   textFormat: Text.PlainText
                   visible: !prow.isApp && prow.icon.length > 0
                   text: prow.icon
-                  color: root.ink
+                  color: prow.labelColor
                   font.family: prow.iconFont.length > 0 ? prow.iconFont : root.fontFamily
-                  font.pixelSize: Math.round(root.rowIcon * 0.72)
+                  font.pixelSize: Math.round(root.actionRowHeight * 0.42)
                   width: root.rowIcon
                   horizontalAlignment: Text.AlignHCenter
                   verticalAlignment: Text.AlignVCenter
@@ -3235,42 +3373,44 @@ Item {
                 }
                 Image {
                   visible: prow.isApp
-                  width: root.rowIcon
-                  height: root.rowIcon
+                  width: Math.round(root.actionRowHeight * 0.6)
+                  height: width
                   fillMode: Image.PreserveAspectFit
                   sourceSize.width: width * Screen.devicePixelRatio
                   sourceSize.height: height * Screen.devicePixelRatio
                   source: prow.isApp ? (root.appLibrary ? root.appLibrary.iconSource(prow.appIcon) : root.fallbackIcon(prow.appIcon)) : ""
                   asynchronous: true
                   anchors.left: parent.left
-                  anchors.leftMargin: root.rowIconInset
+                  anchors.leftMargin: root.rowIconInset + Math.round((root.rowIcon - width) / 2)
                   anchors.verticalCenter: parent.verticalCenter
                 }
-                Column {
+                Text {
+                  id: plabel
+                  textFormat: Text.PlainText
                   anchors.left: parent.left
                   anchors.leftMargin: root.rowTextX
+                  anchors.right: pdetail.left
+                  anchors.rightMargin: root.pt(8)
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: prow.label
+                  color: prow.labelColor
+                  font.family: root.uiFont
+                  font.pixelSize: root.actionFontSize
+                  elide: Text.ElideRight
+                }
+                Text {
+                  id: pdetail
+                  textFormat: Text.PlainText
                   anchors.right: ptrail.left
                   anchors.rightMargin: root.pt(8)
                   anchors.verticalCenter: parent.verticalCenter
-                  Text {
-                    textFormat: Text.PlainText
-                    width: parent.width
-                    text: prow.label
-                    color: root.ink
-                    font.family: root.uiFont
-                    font.pixelSize: root.titleFontSize
-                    elide: Text.ElideRight
-                  }
-                  Text {
-                    textFormat: Text.PlainText
-                    width: parent.width
-                    visible: prow.detail.length > 0
-                    text: prow.detail
-                    color: root.inkSecondary
-                    font.family: root.uiFont
-                    font.pixelSize: root.subtitleFontSize
-                    elide: Text.ElideMiddle
-                  }
+                  visible: prow.detail.length > 0
+                  text: prow.detail
+                  color: root.inkSecondary
+                  font.family: root.uiFont
+                  font.pixelSize: root.metaFontSize
+                  elide: Text.ElideMiddle
+                  width: Math.min(implicitWidth, Math.round(prow.width * 0.45))
                 }
                 Row {
                   id: ptrail
@@ -3312,7 +3452,8 @@ Item {
             }
 
             Text {
-              anchors.centerIn: parent
+              anchors.horizontalCenter: parent.horizontalCenter
+              y: pageHeader.height + Math.round((parent.height - pageHeader.height - height) / 2)
               visible: pageModel.count === 0
               textFormat: Text.PlainText
               text: root.page && root.page.kind === "info" && !root.pageFilter ? "Reading…" : "Nothing matches “" + root.pageFilter + "”"

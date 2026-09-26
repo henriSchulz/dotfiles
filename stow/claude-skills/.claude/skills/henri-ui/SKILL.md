@@ -256,7 +256,10 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   im Feld. Inline-Vervollständigung in tertiärem Grau, „— Art“ dahinter (Tab übernimmt);
   letzte Suche kommt markiert zurück.
 - → auf einem Treffer öffnet die **Aktionsseite** (Drill-in nach §3b: Liste 30 % nach
-  links + Fade, Aktionen von rechts, `slow` easeInOut; Chip im Feld trägt den Namen,
+  links + Fade, Aktionen von rechts, `slow` easeInOut). Sie sieht bewusst anders aus als
+  die Suche: Kopf mit Icon, Name und Art des Treffers über einer Haarlinie, darunter
+  einzeilige 36-pt-Zeilen in Gruppen (Open, Copy, Move, More; 11-pt-Überschriften),
+  Destruktives in `urgent`, der Chip im Feld wird zum akzentfarbenen „‹ Name“-Krümel.
   Tippen filtert, ↩ führt aus, →/Tab nur in Unterseiten — Open With…, Copy To…, Move To…,
   Get Info —, ←/Esc/⌫ zurück mit gemerkter Auswahl). Zerstörendes (Trash, Uninstall)
   fragt über den einen ConfirmDialog.
