@@ -115,6 +115,32 @@ Panel {
   readonly property string screenSubtitle: !screenOn ? "Off"
     : screenRoute !== "" ? "Over " + screenRoute : "Mirroring"
 
+  // ---- Mac mode: "server" (headless, background apps kept quiet, minimal
+  // RAM/power) vs "desktop" (an external monitor is on the Mac and someone is
+  // sitting at it). The Mac decides for itself from its own display count —
+  // this side only reads a local file that a systemd timer (mac-mode-poll)
+  // fills in over SSH every 15s, same reason as the trackpad/screen files:
+  // no process launch at panel-open time.
+  property var macModeState: ({})
+  property int macModeTick: 0
+  readonly property string macModePin: macModeState.pin || "auto"
+  readonly property string macModeEffective: macModeState.mode || ""
+  readonly property int macModeDisplays: Number(macModeState.displays || 0)
+  readonly property bool macModeFresh: macModeTick >= 0
+    && Number(macModeState.updated || 0) > 0
+    && Date.now() / 1000 - Number(macModeState.updated) < 40
+  // Same optimistic-override idea as padOverride above: the pill flips the
+  // instant it's pressed, then a poll (or a six-second timeout) settles it.
+  property var macModeOverride: null
+  property double macModeOverrideSetAt: 0
+  readonly property string macModePinShown: macModeOverride !== null ? macModeOverride : macModePin
+  readonly property string macModeShown: macModeOverride !== null
+    ? (macModeOverride === "auto" ? (macModeDisplays > 1 ? "desktop" : "server") : macModeOverride)
+    : macModeEffective
+  readonly property bool macModeIsDesktop: macModeShown === "desktop"
+  readonly property string macModeSubtitle: !macModeFresh && macModeOverride === null ? "Unreachable"
+    : (macModeIsDesktop ? "Desktop" : "Server") + (macModePinShown === "auto" ? " · Auto" : " · Forced")
+
   function padParse(text) {
     var out = {}
     var lines = String(text || "").split("\n")
@@ -149,6 +175,14 @@ Panel {
     onFileChanged: reload()
     onLoaded: root.screenState = root.padParse(text())
   }
+  FileView {
+    id: macModeFile
+    path: Quickshell.env("XDG_RUNTIME_DIR") + "/mt-bridge/macmode"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.macModeState = root.padParse(text())
+  }
   Timer {
     // These files vanish with their services, and a watch cannot follow a file
     // that is not there, so re-read while the panel is open. Reading a file is
@@ -162,6 +196,7 @@ Panel {
       padLinkFile.reload()
       padStreamFile.reload()
       screenFile.reload()
+      macModeFile.reload()
       // Once the real state agrees with the press, or five seconds have
       // passed and it still hasn't (systemctl failed, most likely), stop
       // overriding and show what is actually true again.
@@ -169,6 +204,10 @@ Panel {
           && (root.padBridgeUp === root.padOverride
               || Date.now() - root.padOverrideSetAt > 5000))
         root.padOverride = null
+      if (root.macModeOverride !== null
+          && (root.macModePin === root.macModeOverride
+              || Date.now() - root.macModeOverrideSetAt > 6000))
+        root.macModeOverride = null
     }
   }
 
@@ -874,7 +913,7 @@ Panel {
   property int mainCursorIndex: 0
   property int playbackCursorIndex: 1  // 0 previous, 1 play/pause, 2 next
   readonly property var mainStops: {
-    var s = ["wifi", "bluetooth", "airdrop", "trackpad", "screen", "display", "sound"]
+    var s = ["wifi", "bluetooth", "airdrop", "trackpad", "screen", "macmode", "display", "sound"]
     if (player) s.push("playback")
     s.push("hardware")
     return s
@@ -895,6 +934,7 @@ Panel {
     else if (dx > 0) {
       if (f === "wifi" || f === "bluetooth" || f === "trackpad") showPage(f)
       else if (f === "screen") showPage("screen")
+      else if (f === "macmode") showPage("macmode")
       else if (f === "airdrop") openAirdrop()
       else if (f === "sound") showPage(airpodsActive ? "airpods" : "sound")
     }
@@ -907,6 +947,7 @@ Panel {
     else if (f === "airdrop") toggleAirdrop()
     else if (f === "trackpad") toggleTrackpad()
     else if (f === "screen") launchMacScreen()
+    else if (f === "macmode") showPage("macmode")
     else if (f === "display") displayExpanded = !displayExpanded
     else if (f === "sound") toggleMute()
     else if (f === "playback") { if (media) media.runAction(["previous", "playPause", "next"][playbackCursorIndex], false) }
@@ -929,6 +970,12 @@ Panel {
     run(goingUp ? "systemctl --user start mtbridge" : "systemctl --user stop mtbridge")
   }
   function launchMacScreen() { close(); run("omarchy-launch-or-focus gst-launch-1.0 'setsid -f mac-stream'") }
+  function setMacMode(mode) {
+    macModeOverride = mode
+    macModeOverrideSetAt = Date.now()
+    run("ssh -o ConnectTimeout=3 -o BatchMode=yes henrischulz@192.168.178.126 /Users/henrischulz/.local/bin/mac-mode set " + mode
+      + "; systemctl --user start mac-mode-poll.service")
+  }
   function toggleMute() { if (sink && sink.audio) sink.audio.muted = !muted }
 
   onOpenedChanged: {
@@ -2363,11 +2410,64 @@ Panel {
               onDetails: root.showPage("screen")
             }
           }
+
+          Tile {
+            revealIndex: 3
+            width: parent.width
+            height: Style.space(52)
+            hoverable: true
+            hasCursor: root.mainFocus === "macmode"
+            onClicked: root.showPage("macmode")
+
+            Circle {
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              icon: root.sf(0x100657)
+              on: root.macModeIsDesktop
+              squircle: true
+              onClicked: root.showPage("macmode")
+            }
+            Column {
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(52)
+              anchors.right: modeChevron.left
+              anchors.rightMargin: Style.space(6)
+              anchors.verticalCenter: parent.verticalCenter
+              Text {
+                width: parent.width
+                text: "Mac Mode"
+                color: root.fg
+                font.family: root.uiFont
+                font.pixelSize: Style.font.subtitle
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+              }
+              HUi.CrossfadeText {
+                width: parent.width
+                text: root.macModeSubtitle
+                color: root.dimText
+                fontFamily: root.uiFont
+                fontSize: Style.font.bodySmall
+                elide: Text.ElideRight
+              }
+            }
+            Text {
+              id: modeChevron
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(14)
+              anchors.verticalCenter: parent.verticalCenter
+              text: root.sf(0x10018A)
+              color: root.dimText
+              font.family: root.symbolFont
+              font.pixelSize: Style.font.icon
+            }
+          }
         }
       }
 
       SliderTile {
-        revealIndex: 3
+        revealIndex: 4
         visible: root.brightnessAvailable || root.displays.length > 0
         heading: "Display"
         icon: root.sf(root.brightness < 40 ? 0x1001AC : 0x1001AE)
@@ -2493,7 +2593,7 @@ Panel {
       }
 
       SliderTile {
-        revealIndex: 4
+        revealIndex: 5
         visible: root.sink !== null
         heading: root.airpodsActive ? root.airpodsName : "Sound"
         headingGlyph: root.airpodsActive ? airpodsGlyph : null
@@ -2513,7 +2613,7 @@ Panel {
 
       // Now Playing — only while an MPRIS player has a track.
       Tile {
-        revealIndex: 5
+        revealIndex: 6
         id: nowPlaying
         readonly property bool playing: root.player ? root.player.isPlaying === true : false
         visible: root.player !== null
@@ -2634,7 +2734,7 @@ Panel {
 
       // Hardware: CPU load, memory and temperature at a glance.
       Tile {
-        revealIndex: 6
+        revealIndex: 7
         width: root.panelWidth
         height: Style.space(52)
         hoverable: true
@@ -3634,6 +3734,100 @@ Panel {
           font.pixelSize: Style.font.caption
           text: "Keys map by position: this machine's layout decides the "
             + "character. Both hotkeys stay on the Mac."
+        }
+      }
+
+      // Mac Mode — server (quiet in the background) vs desktop (someone is
+      // at an attached monitor). Auto follows the Mac's own display count;
+      // Server/Desktop pin it regardless of what's plugged in.
+      PageHeader {
+        visible: root.detailPage === "macmode"
+        title: "Mac Mode"
+      }
+      Separator { visible: root.detailPage === "macmode" }
+      Column {
+        id: modePage
+        visible: root.detailPage === "macmode"
+        width: root.panelWidth
+        leftPadding: Style.space(6)
+        rightPadding: Style.space(6)
+        topPadding: Style.space(4)
+        bottomPadding: Style.space(6)
+        spacing: Style.space(10)
+        readonly property int innerWidth: root.panelWidth - Style.space(12)
+        readonly property int cellWidth: Math.floor((innerWidth - Style.space(16)) / 2)
+
+        UsageHeader {
+          width: modePage.innerWidth
+          title: "Right now"
+          value: !root.macModeFresh && root.macModeOverride === null ? "Unreachable"
+            : root.macModeIsDesktop ? "Desktop" : "Server"
+          valueColor: !root.macModeFresh && root.macModeOverride === null ? Color.urgent
+            : root.macModeIsDesktop ? Color.accent : root.dimText
+        }
+        Text {
+          width: modePage.innerWidth
+          wrapMode: Text.WordWrap
+          color: root.dimText
+          font.family: root.uiFont
+          font.pixelSize: Style.font.caption
+          text: !root.macModeFresh && root.macModeOverride === null
+              ? "No answer from the Mac in the last poll. It may be asleep or off the network."
+            : root.macModeIsDesktop
+              ? "Background apps (App Store, Notes, Calendar, Alfred) may run. Low Power Mode follows the Mac's own battery/AC setting, not this."
+              : "App Store, Notes, Calendar, Alfred and Siri's speech service are kept quit to save RAM and CPU."
+        }
+
+        Separator { width: modePage.innerWidth }
+
+        SectionLabel { text: "Choose" }
+        Row {
+          width: modePage.innerWidth
+          spacing: Style.space(5)
+          Pill {
+            width: Math.floor((parent.width - parent.spacing * 2) / 3)
+            label: "Auto"
+            selected: root.macModePinShown === "auto"
+            onClicked: if (!selected) root.setMacMode("auto")
+          }
+          Pill {
+            width: Math.floor((parent.width - parent.spacing * 2) / 3)
+            label: "Server"
+            selected: root.macModePinShown === "server"
+            onClicked: if (!selected) root.setMacMode("server")
+          }
+          Pill {
+            width: Math.floor((parent.width - parent.spacing * 2) / 3)
+            label: "Desktop"
+            selected: root.macModePinShown === "desktop"
+            onClicked: if (!selected) root.setMacMode("desktop")
+          }
+        }
+        Text {
+          width: modePage.innerWidth
+          wrapMode: Text.WordWrap
+          color: root.dimText
+          font.family: root.uiFont
+          font.pixelSize: Style.font.caption
+          text: "Auto follows the Mac's own monitor: attached → Desktop, "
+            + "unplugged → Server. Server/Desktop here pin it regardless."
+        }
+
+        Separator { width: modePage.innerWidth }
+
+        ListLabel { text: "Detected" }
+        Grid {
+          columns: 2
+          columnSpacing: Style.space(16)
+          rowSpacing: Style.space(2)
+          Stat { width: modePage.cellWidth; label: "Displays"; value: root.macModeFresh ? String(root.macModeDisplays) : "--" }
+          Stat {
+            width: modePage.cellWidth
+            label: "Checked"
+            value: root.macModeFresh
+              ? root.formatUptime(Math.max(0, Math.floor(Date.now() / 1000 - Number(root.macModeState.updated)))) + " ago"
+              : "--"
+          }
         }
       }
     }

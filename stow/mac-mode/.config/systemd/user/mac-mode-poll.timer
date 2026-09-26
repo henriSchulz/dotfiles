@@ -1,0 +1,10 @@
+[Unit]
+Description=Poll the Mac's mode every 15s
+
+[Timer]
+OnBootSec=5
+OnUnitActiveSec=15
+AccuracySec=1
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,14 @@
+#!/bin/bash
+# Polls the Mac's mac-mode status over SSH into a local file the control
+# center plugin watches, so the panel never shells out at open time.
+set -euo pipefail
+
+DEST="$XDG_RUNTIME_DIR/mt-bridge"
+mkdir -p "$DEST"
+
+out=$(ssh -o ConnectTimeout=3 -o BatchMode=yes henrischulz@192.168.178.126 \
+  /Users/henrischulz/.local/bin/mac-mode status 2>/dev/null) || exit 0
+
+tmp=$(mktemp "$DEST/.macmode.XXXXXX")
+printf '%s\n' "$out" > "$tmp"
+mv -f "$tmp" "$DEST/macmode"

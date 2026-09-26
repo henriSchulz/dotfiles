@@ -1,0 +1,6 @@
+[Unit]
+Description=Poll the Mac's server/desktop mode into a local status file
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/mac-mode-poll
