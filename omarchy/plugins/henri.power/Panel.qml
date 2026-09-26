@@ -8,8 +8,10 @@ import qs.Ui
 import "Model.js" as Model
 import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
 import "file:///home/henri/.local/share/henri-ui" as HUi
+import "file:///home/henri/.local/share/apple-ui/Apple.js" as Apple
+import "file:///home/henri/.local/share/apple-ui" as AUi
 
-// Battery menu in the henri-ui style. Fork of io.github.nipsen.dell-power
+// Battery menu in the apple-ui style (measured macOS look; motion from henri-ui). Fork of io.github.nipsen.dell-power
 // (MIT, see LICENSE): the backend (UPower, omarchy tools, the root helper
 // /usr/local/bin/dell-charge-limit) is unchanged; the popup is rebuilt.
 // It opens on the overview — charge, battery size, time left, cycles and
@@ -134,23 +136,32 @@ Panel {
     return !!(device && device.isPresent)
   }
 
-  // ---- Look (henri-ui: theme colours, secondary text by alpha, token radii)
-  readonly property color fg: Color.popups.text
-  readonly property color dimText: Util.alpha(fg, Motion.secondaryTextAlpha)
-  // Glass wash, matching the Control Center's tiles: more opaque than the
-  // card behind it (Motion.glassTileAlpha), not a flat foreground tint.
-  readonly property color wash: Motion.glass
-    ? Util.alpha(Color.popups.background, Motion.glassTileAlpha)
-    : Util.alpha(fg, 0.07)
-  readonly property color washHover: Motion.glass
-    ? Util.alpha(Color.popups.background, Motion.glassTileHoverAlpha)
-    : Util.alpha(fg, 0.11)
-  readonly property color trackColor: Util.alpha(fg, 0.12)
-  readonly property color hairline: Util.alpha(fg, Motion.hairlineAlpha)
+  // ---- Look (apple-ui: measured macOS material, dark or light glass after
+  //      the wallpaper under the panel; motion tokens stay henri-ui)
+  AUi.Backdrop { id: backdrop }
+  AUi.Material { id: mat; dark: backdrop.dark }
+  readonly property var m: mat
+  function pt(v) { return Style.space(v) }
+  readonly property color fg: mat.ink
+  readonly property color dimText: mat.inkMuted
+  readonly property color wash: mat.tile
+  readonly property color washHover: mat.tileHover
+  readonly property color trackColor: mat.sliderTrack
+  readonly property color hairline: mat.hairline
+  readonly property color accent: mat.accent
+  readonly property color urgent: mat.urgent
   readonly property string iconFont: bar ? bar.fontFamily : root.uiFont
-  readonly property string uiFont: Motion.uiFont
+  readonly property string uiFont: Apple.uiFont
+  readonly property string symbolFont: Apple.symbolFont
   readonly property int panelWidth: Style.space(340)
   readonly property int blockGap: Style.space(14)
+  // Type scale (Apple pointSizes through the shell scale)
+  readonly property int fCaption: pt(Apple.footnote)
+  readonly property int fSmall: pt(Apple.subheadline)
+  readonly property int fBody: pt(Apple.callout)
+  readonly property int fSub: pt(Apple.headline)
+  readonly property int fTitle: pt(Apple.title3)
+  readonly property int fDisplay: pt(Apple.largeTitle)
   // The page stack clips; it reaches this far past the content on each side
   // so the rows' hover fills (which overhang the text) are not cut off.
   readonly property int pageInset: Style.space(8)
@@ -666,8 +677,9 @@ Panel {
     function hide() { root.close() }
     function toggle() { root.toggle() }
     function togglePercentage() { root.togglePercentage() }
-    // Opens the popup straight on the History section.
+    // Opens the popup straight on the History section / the Advanced page.
     function history() { root.open(); root.showHistoryPage() }
+    function advanced() { root.open(); root.showAdvancedPage() }
     // History range (15m 30m 1h 3h 6h 12h 24h 3d 7d) and what the bars show
     // (percent watts volts amps, or charge power voltage current).
     function historyRange(key: string): void { root.setHistoryRange(key) }
@@ -906,13 +918,15 @@ Panel {
 
   HUi.PopupPanel {
     id: panel
-    kind: "popover"
+    kind: "panel"
     anchorItem: button
     owner: root
     bar: root.bar
     open: root.opened && root.batteryPresent
     focusTarget: keyCatcher
-    padding: Style.space(14)
+    padding: root.pt(Apple.padding)
+    cardColor: root.m.sheet
+    borderSpec: Border.flat(root.m.hairline, 1)
     contentWidth: panel.fittedContentWidth(root.panelWidth + padding * 2)
     // Follows the column, whose Collapse sections glide with the smooth spring.
     // Follows the page stack, whose height glides between the two pages.
@@ -930,6 +944,8 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
+      // apple-ui components under the page stack find their palette here.
+      property var appleMaterial: mat
       // Overview: ←/→ walk the power profiles and ⏎ applies the one under the
       // cursor; ↑ opens History, ↓ opens Advanced. History: ← goes back,
       // ⏎ opens the range menu (its own ↑ ↓ ⏎ Esc while open).
@@ -1014,7 +1030,7 @@ Panel {
               color: root.fg
               elide: Text.ElideRight
               font.family: root.uiFont
-              font.pixelSize: Style.font.subtitle
+              font.pixelSize: root.fSub
               font.weight: Font.DemiBold
             }
 
@@ -1024,7 +1040,7 @@ Panel {
               text: root.heroStatusText
               color: root.dimText
               elide: Text.ElideRight
-              fontSize: Style.font.bodySmall
+              fontSize: root.fSmall
             }
           }
 
@@ -1036,8 +1052,8 @@ Panel {
             horizontalAlignment: Text.AlignRight
             text: root.pctText
             color: root.fg
-            fontSize: Style.font.display
-            fontWeight: Font.DemiBold
+            fontSize: root.fDisplay
+            fontWeight: Font.Bold
           }
         }
 
@@ -1053,10 +1069,10 @@ Panel {
             topPadding: Style.space(8)
             textFormat: Text.PlainText
             text: root.dellError
-            color: Color.urgent
+            color: root.urgent
             wrapMode: Text.WordWrap
             font.family: root.uiFont
-            font.pixelSize: Style.font.caption
+            font.pixelSize: root.fCaption
           }
         }
 
@@ -1133,13 +1149,11 @@ Panel {
           panel.availableCardHeight - panel.verticalContentInset - advancedHeader.implicitHeight)
         implicitHeight: advancedHeader.implicitHeight + Math.min(advancedBody.implicitHeight, maxBody)
 
-        HUi.PageHeader {
+        AUi.PageHeader {
           id: advancedHeader
           x: root.pageInset
           width: parent.width - root.pageInset * 2
           title: "Advanced"
-          ink: root.fg
-          iconFont: root.iconFont
           onBack: root.closeSubPage()
         }
 
@@ -1340,12 +1354,12 @@ Panel {
                       text: "USB PowerShare"
                       color: root.fg
                       font.family: root.uiFont
-                      font.pixelSize: Style.font.body
+                      font.pixelSize: root.fBody
                     }
                     Caption { text: "Keeps the USB-A port powered while the laptop sleeps" }
                   }
 
-                  HUi.Toggle {
+                  AUi.Switch {
                     id: usbToggle
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
@@ -1370,7 +1384,7 @@ Panel {
                     text: "USB-C output"
                     color: root.fg
                     font.family: root.uiFont
-                    font.pixelSize: Style.font.body
+                    font.pixelSize: root.fBody
                   }
                   Segmented {
                     width: parent.width
@@ -1400,7 +1414,7 @@ Panel {
                   text: "Charge modes, thresholds, USB options and power flow need the system helper. Click to copy the command, then run it once in a terminal:"
                   color: root.dimText
                   font.family: root.uiFont
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: root.fCaption
                 }
                 HUi.Pressable {
                   width: parent.width
@@ -1423,7 +1437,7 @@ Panel {
                     elide: Text.ElideMiddle
                     text: root.setupCopied ? "Copied — paste it in a terminal" : root.setupCommand
                     color: root.fg
-                    fontSize: Style.font.caption
+                    fontSize: root.fCaption
                   }
                 }
               }
@@ -1441,13 +1455,11 @@ Panel {
         visible: false
         implicitHeight: historyHeader.implicitHeight + historyBody.implicitHeight
 
-        HUi.PageHeader {
+        AUi.PageHeader {
           id: historyHeader
           x: root.pageInset
           width: parent.width - root.pageInset * 2
           title: "Battery History"
-          ink: root.fg
-          iconFont: root.iconFont
           onBack: root.closeSubPage()
 
           PopUpButton {
@@ -1497,7 +1509,7 @@ Panel {
                 elide: Text.ElideLeft
                 text: historyGraph.readout
                 color: root.fg
-                fontSize: Style.font.caption
+                fontSize: root.fCaption
                 fontWeight: Font.Medium
               }
             }
@@ -1637,7 +1649,7 @@ Panel {
       anchors.verticalCenter: barTrack.verticalCenter
       height: barTrack.height
       radius: barTrack.radius
-      color: Util.alpha(Color.accent, 0.22)
+      color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.22)
       opacity: !root.dellThresholdsReady ? 0 : (root.thresholdsLive ? 1 : 0.6)
       Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
     }
@@ -1663,7 +1675,7 @@ Panel {
         width: barTrack.width
         height: barTrack.height
         radius: height / 2
-        color: chargeBar.low ? Color.urgent : root.fg
+        color: chargeBar.low ? root.urgent : root.m.sliderFill
         x: fillSpring.value - barTrack.width + barTrack.height / 2
         Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
       }
@@ -1812,7 +1824,7 @@ Panel {
         text: thresholdTip.shownText
         color: Color.tooltip.text
         font.family: root.uiFont
-        font.pixelSize: Style.font.caption
+        font.pixelSize: root.fCaption
       }
     }
   }
@@ -1828,7 +1840,7 @@ Panel {
     height: Style.space(18)
     radius: width / 2
     anchors.verticalCenter: parent.verticalCenter
-    color: Color.accent
+    color: root.accent
     x: track * percent / 100 - width / 2
     opacity: !root.dellThresholdsReady ? 0 : (root.thresholdsLive ? 1 : 0.55)
     scale: dragging && !Motion.reduceMotion ? 1.15 : 1
@@ -1870,7 +1882,7 @@ Panel {
         text: disc.text
         color: root.fg
         font.family: root.uiFont
-        font.pixelSize: Style.font.body
+        font.pixelSize: root.fBody
         font.weight: Font.Medium
       }
 
@@ -1878,7 +1890,7 @@ Panel {
         anchors.right: parent.right
         anchors.rightMargin: Style.space(8)
         anchors.verticalCenter: parent.verticalCenter
-        text: "󰅂"
+        text: Apple.sf(0x10018A)
         rotation: disc.expanded && !disc.drill ? 90 : 0
         transform: Translate {
           x: disc.drill && discPress.hovered && !Motion.reduceMotion ? Style.space(3) : 0
@@ -1890,8 +1902,8 @@ Panel {
           }
         }
         color: root.dimText
-        font.family: root.iconFont
-        font.pixelSize: Style.font.icon
+        font.family: root.symbolFont
+        font.pixelSize: root.fBody
         Behavior on rotation {
           NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
         }
@@ -1930,8 +1942,8 @@ Panel {
     readonly property int barCount: Math.max(1, root.historyBars.length)
     readonly property real slotW: plotW / barCount
     readonly property real barGap: Math.max(1, Math.round(slotW * 0.3))
-    readonly property color batteryInk: Color.accent
-    readonly property color pluggedInk: Util.alpha(Color.accent, 0.35)
+    readonly property color batteryInk: root.accent
+    readonly property color pluggedInk: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.35)
     property int hoverIndex: -1
     readonly property var hoverBar: hoverIndex >= 0 ? root.historyBars[hoverIndex] || null : null
     // Only the metric on show — four of them side by side would not fit next
@@ -1950,7 +1962,7 @@ Panel {
     }
     implicitHeight: plotH + timeRow.height + Style.space(12) + legend.height
 
-    TextMetrics { id: gutterMetrics; font.family: root.uiFont; font.pixelSize: Style.font.caption; text: "888 W" }
+    TextMetrics { id: gutterMetrics; font.family: root.uiFont; font.pixelSize: root.fCaption; text: "888 W" }
 
     function xOf(t) { return (t - from) / (root.historyHours * 3600000) * plotW }
     function yOf(pct) { return plotH - Math.max(0, Math.min(100, pct)) / 100 * plotH }
@@ -1979,7 +1991,7 @@ Panel {
           anchors.verticalCenter: parent.top
           text: root.historyAxisLabel(graph.axis.min + graph.axisSpan * modelData / 100, graph.metric)
           color: root.dimText
-          fontSize: Style.font.caption
+          fontSize: root.fCaption
         }
       }
     }
@@ -1996,7 +2008,7 @@ Panel {
         width: Math.max(1, Math.round(graph.slotW - graph.barGap))
         height: graph.plotH
         color: !bucket ? "transparent"
-          : (graph.metric.key === "percent" && bucket.pct <= 20 ? Color.urgent
+          : (graph.metric.key === "percent" && bucket.pct <= 20 ? root.urgent
             : (bucket.battery ? graph.batteryInk : graph.pluggedInk))
         opacity: !bucket ? 0 : (graph.hoverIndex < 0 || graph.hoverIndex === index ? 1 : 0.45)
         transform: Scale {
@@ -2026,7 +2038,7 @@ Panel {
       y: graph.plotH + Style.space(4)
       width: graph.plotW
       height: tickMetrics.height
-      TextMetrics { id: tickMetrics; font.family: root.uiFont; font.pixelSize: Style.font.caption; text: "00:00" }
+      TextMetrics { id: tickMetrics; font.family: root.uiFont; font.pixelSize: root.fCaption; text: "00:00" }
       Repeater {
         model: graph.ticks
         Text {
@@ -2036,7 +2048,7 @@ Panel {
           text: graph.tickText(modelData)
           color: root.dimText
           font.family: root.uiFont
-          font.pixelSize: Style.font.caption
+          font.pixelSize: root.fCaption
         }
       }
     }
@@ -2065,7 +2077,7 @@ Panel {
             text: modelData.text
             color: root.dimText
             font.family: root.uiFont
-            font.pixelSize: Style.font.caption
+            font.pixelSize: root.fCaption
           }
         }
       }
@@ -2088,14 +2100,16 @@ Panel {
     showFill: false
     activeFocusOnTab: false
 
-    TextMetrics { id: widestMetrics; font.family: root.uiFont; font.pixelSize: Style.font.bodySmall; font.weight: Font.DemiBold; text: pop.widest }
+    TextMetrics { id: widestMetrics; font.family: root.uiFont; font.pixelSize: root.fSmall; font.weight: Font.DemiBold; text: pop.widest }
 
     // The resting fill is the segmented track's wash; hover and press add
     // the usual state alpha on top of it.
     Rectangle {
       anchors.fill: parent
       radius: pop.radius
-      color: Util.alpha(root.fg, 0.07 + (pop.pressed || pop.open ? Motion.pressedAlpha : pop.hovered ? Motion.hoverAlpha : 0))
+      color: pop.pressed || pop.open || pop.hovered ? root.washHover : root.m.capsule
+      border.width: 1
+      border.color: root.hairline
       Behavior on color {
         ColorAnimation {
           duration: pop.hovered || pop.pressed ? Motion.instant : Motion.fast
@@ -2113,17 +2127,17 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         text: pop.text
         color: root.fg
-        fontSize: Style.font.bodySmall
+        fontSize: root.fSmall
         fontWeight: Font.DemiBold
       }
       Text {
         id: chevron
         anchors.verticalCenter: parent.verticalCenter
-        text: "󰅀"
+        text: Apple.sf(0x10018A)
         color: root.dimText
-        font.family: root.iconFont
-        font.pixelSize: Style.font.caption
-        rotation: pop.open ? 180 : 0
+        font.family: root.symbolFont
+        font.pixelSize: root.fCaption
+        rotation: pop.open ? -90 : 90
         Behavior on rotation { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
       }
     }
@@ -2135,7 +2149,7 @@ Panel {
     property string label: ""
     property string value: ""
     implicitHeight: statCol.implicitHeight + Style.space(16)
-    radius: Style.space(Motion.radiusPopover)
+    radius: root.pt(Apple.radiusRow)
     color: root.wash
     border.width: 1
     border.color: root.hairline
@@ -2155,7 +2169,7 @@ Panel {
         text: stat.label
         color: root.dimText
         elide: Text.ElideRight
-        fontSize: Style.font.caption
+        fontSize: root.fCaption
       }
       HUi.CrossfadeText {
         fontFamily: root.uiFont
@@ -2163,20 +2177,14 @@ Panel {
         text: stat.value
         color: root.fg
         elide: Text.ElideRight
-        fontSize: Style.font.body
+        fontSize: root.fBody
         fontWeight: Font.DemiBold
       }
     }
   }
 
   // Small-caps heading of an Advanced section (same as the Control Center).
-  component SectionLabel: Text {
-    color: root.dimText
-    font.family: root.uiFont
-    font.pixelSize: Style.font.caption
-    font.capitalization: Font.AllUppercase
-    font.letterSpacing: 0.6
-  }
+  component SectionLabel: AUi.SectionLabel { leftPadding: 0; topPadding: 0 }
 
   // Secondary one-liner under a control (what the selected mode does).
   component Caption: HUi.CrossfadeText {
@@ -2184,7 +2192,7 @@ Panel {
     color: root.dimText
     elide: Text.ElideRight
     fontFamily: root.uiFont
-    fontSize: Style.font.caption
+    fontSize: root.fCaption
   }
 
   // macOS segmented control: the accent selection glides between segments
@@ -2202,7 +2210,7 @@ Panel {
 
     readonly property real inset: Style.space(2)
     readonly property int currentIndex: options.indexOf(current)
-    readonly property int labelSize: columns > 3 ? Style.font.caption : Style.font.bodySmall
+    readonly property int labelSize: columns > 3 ? root.fCaption : root.fSmall
 
     implicitHeight: segGrid.implicitHeight + inset * 2
     opacity: busy ? Motion.disabledOpacity : 1
@@ -2210,8 +2218,10 @@ Panel {
 
     Rectangle {
       anchors.fill: parent
-      radius: Style.space(Motion.radiusControl)
+      radius: height / 2
       color: root.wash
+      border.width: 1
+      border.color: root.hairline
     }
 
     Item {
@@ -2220,7 +2230,8 @@ Panel {
 
       HUi.Highlight {
         glide: true
-        radius: Style.space(Motion.radiusControl) - seg.inset
+        color: root.accent
+        radius: height / 2
         target: seg.currentIndex >= 0 && seg.currentIndex < segRep.count ? segRep.itemAt(seg.currentIndex) : null
       }
 
@@ -2242,7 +2253,7 @@ Panel {
             readonly property bool isCurrent: index === seg.currentIndex
             width: segGrid.cellWidth
             height: Style.space(Motion.controlHeight) - seg.inset * 2
-            radius: Style.space(Motion.radiusControl) - seg.inset
+            radius: height / 2
             tint: root.fg
             showFill: !isCurrent
             enabled: !seg.busy
@@ -2258,7 +2269,7 @@ Panel {
               elide: Text.ElideRight
               textFormat: Text.PlainText
               text: seg.labels[cell.index] !== undefined ? seg.labels[cell.index] : String(cell.modelData)
-              color: cell.isCurrent ? Motion.onColor(Color.accent) : root.fg
+              color: cell.isCurrent ? "#ffffff" : root.fg
               font.family: root.uiFont
               font.pixelSize: seg.labelSize
               font.weight: cell.isCurrent ? Font.DemiBold : Font.Normal
@@ -2272,7 +2283,7 @@ Panel {
               radius: cell.radius + Style.space(Motion.focusRing)
               color: "transparent"
               border.width: Style.space(Motion.focusRing)
-              border.color: Util.alpha(Color.accent, 0.6)
+              border.color: root.m.cursorRing
               opacity: seg.cursorIndex === cell.index ? 1 : 0
               Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
             }
@@ -2301,7 +2312,7 @@ Panel {
       text: fanRow.name
       color: root.dimText
       font.family: root.uiFont
-      font.pixelSize: Style.font.bodySmall
+      font.pixelSize: root.fSmall
     }
 
     Item {
@@ -2338,7 +2349,7 @@ Panel {
       horizontalAlignment: Text.AlignRight
       text: fanRow.fan && fanRow.fan.rpm !== null ? fanRow.fan.rpm + " rpm" : "—"
       color: root.fg
-      fontSize: Style.font.bodySmall
+      fontSize: root.fSmall
     }
   }
 
@@ -2365,8 +2376,8 @@ Panel {
         width: parent.width
         horizontalAlignment: Text.AlignHCenter
         text: tempTile.reading ? tempTile.reading.c + "°" : "—"
-        color: tempTile.hot ? Color.urgent : root.fg
-        fontSize: Style.font.bodySmall
+        color: tempTile.hot ? root.urgent : root.fg
+        fontSize: root.fSmall
         fontWeight: Font.DemiBold
       }
 
@@ -2378,7 +2389,7 @@ Panel {
         text: tempTile.reading ? tempTile.reading.label : ""
         color: root.dimText
         font.family: root.uiFont
-        font.pixelSize: Style.font.caption
+        font.pixelSize: root.fCaption
       }
     }
   }
@@ -2402,32 +2413,26 @@ Panel {
         text: boostBox.title
         color: root.dimText
         font.family: root.uiFont
-        font.pixelSize: Style.font.bodySmall
+        font.pixelSize: root.fSmall
       }
       Text {
         anchors.right: parent.right
         text: (boostSlider.dragging ? Math.round(boostSlider.liveValue) : Model.boostPercent(boostBox.boost)) + " %"
         color: root.fg
         font.family: root.uiFont
-        font.pixelSize: Style.font.bodySmall
+        font.pixelSize: root.fSmall
       }
     }
 
-    PanelSlider {
+    AUi.Slider {
       id: boostSlider
       width: parent.width
-      bar: root.bar
       minimum: 0
       maximum: 100
       step: 5
-      integer: true
       value: Model.boostPercent(boostBox.boost)
-      fillColor: root.fg
-      knobColor: root.fg
-      trackColor: root.trackColor
-      tickColor: "transparent"
       enabled: !root.dellBusy
-      onReleased: function(v) { root.setFanBoost(boostBox.group, v) }
+      onReleased: function(v) { root.setFanBoost(boostBox.group, Math.round(v / 5) * 5) }
     }
   }
 
@@ -2504,7 +2509,7 @@ Panel {
         text: node.iconText
         color: root.fg
         font.family: root.iconFont
-        font.pixelSize: Style.font.title
+        font.pixelSize: root.fTitle
       }
 
       Text {
@@ -2515,7 +2520,7 @@ Panel {
         text: node.title
         color: root.dimText
         font.family: root.uiFont
-        font.pixelSize: Style.font.caption
+        font.pixelSize: root.fCaption
       }
 
       // Value, plus a chevron that reveals the breakdown.
@@ -2531,7 +2536,7 @@ Panel {
           width: implicitWidth
           text: node.value
           color: root.fg
-          fontSize: Style.font.bodySmall
+          fontSize: root.fSmall
           fontWeight: Font.DemiBold
         }
 
@@ -2549,11 +2554,11 @@ Panel {
 
           Text {
             anchors.centerIn: parent
-            text: "󰅂"
+            text: Apple.sf(0x10018A)
             rotation: node.expanded ? 90 : 0
             color: root.dimText
-            font.family: root.iconFont
-            font.pixelSize: Style.font.caption
+            font.family: root.symbolFont
+            font.pixelSize: root.fCaption
             Behavior on rotation { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
           }
         }
@@ -2568,7 +2573,7 @@ Panel {
         text: node.sub
         color: root.dimText
         font.family: root.uiFont
-        font.pixelSize: Style.font.caption
+        font.pixelSize: root.fCaption
       }
 
       HUi.Collapse {
@@ -2589,7 +2594,7 @@ Panel {
                 text: modelData.label
                 color: root.dimText
                 font.family: root.uiFont
-                font.pixelSize: Style.font.caption
+                font.pixelSize: root.fCaption
               }
               Text {
                 anchors.right: parent.right
@@ -2597,7 +2602,7 @@ Panel {
                 text: modelData.value
                 color: root.fg
                 font.family: root.uiFont
-                font.pixelSize: Style.font.caption
+                font.pixelSize: root.fCaption
                 font.weight: Font.DemiBold
               }
             }

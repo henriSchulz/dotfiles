@@ -126,7 +126,7 @@ erklären sie und müssen bei Änderungen mitgezogen werden.
 | `instant`  | 90  | Hover-*rein*, Press-Feedback |
 | `fast`     | 160 | Hover-*raus*, Farbwechsel, Icon-Crossfade, Tooltip |
 | `base`     | 240 | Menüs, Popover, Dropdowns, Toggles, kleine Größenwechsel |
-| `slow`     | 380 | Panels, Sheets, Seitenwechsel, Control-Center-Drill-in |
+| `slow`     | 270 | Panels, Sheets, Seitenwechsel, Control-Center-Drill-in |
 | `slower`   | 520 | Vollbild-Umbau: Overview, Launcher-Vollbild |
 | `overview` / `overviewExit` | 250 / 165 | **Mission Control** (am echten macOS 26 gemessen, 60-fps-Aufnahme in `~/macos-scrape`): Öffnen 250 ms easeInOut, Schließen 165 ms easeOut |
 | Exit       | ×0.7| Ausblenden = 0.7 × Einblenden-Dauer |
@@ -149,7 +149,7 @@ Ausgerechnet (Masse 1, `stiffness = (2π/response)²`). Presets in `Motion.js`
 |----------|----------|--------------|-----------|-----------|--------------|------------|
 | `smooth` | 0.35 s   | 1.0          | 322       | 0 %       | ~510 ms (optisch fertig ~300) | **Default** für Bewegung, Popover-Scale, Tab-/Segment-Highlight |
 | `snappy` | 0.40 s   | 0.85         | 247       | 0.6 %     | ~560 ms      | Toggles, Press-Release, Drag-Ende |
-| `gentle` | 0.50 s   | 1.0          | 158       | 0 %       | ~730 ms      | Große Flächen: Panels, Overview, Sheets |
+| `gentle` | 0.36 s   | 1.0          | 305       | 0 %       | ~526 ms      | Große Flächen: Panels, Overview, Sheets |
 | `bouncy` | 0.45 s   | 0.75         | 195       | 2.8 %     | ~570 ms      | Selten! Nur Spielerisches (Dock-Icon, Erfolg) |
 
 Springs behalten beim Unterbrechen die Geschwindigkeit bei → das ist das

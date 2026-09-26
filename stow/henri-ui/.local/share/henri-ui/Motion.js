@@ -26,7 +26,7 @@ var uiFont = "SF Pro"
 var instant = ms(90)    // hover in, press feedback
 var fast = ms(160)      // hover out, color change, icon/text crossfade, tooltip
 var base = ms(240)      // menus, dropdowns, toggles, small size changes
-var slow = ms(380)      // panels, popovers, sheets, page transitions
+var slow = ms(270)      // panels, popovers, sheets, page transitions
 var slower = ms(520)    // full screen rebuild: overview, launcher
 // Mission Control, measured on macOS 26 (60 fps recording, missionControl.2windows
 // in ~/macos-scrape): the windows shrink into the overview in 250 ms on an
@@ -45,7 +45,7 @@ var easeExit = [0.4, 0, 0.7, 0.2, 1, 1]     // disappear
 function spring(response, dampingRatio) { return { response: response * speed, dampingRatio: dampingRatio } }
 var smooth = spring(0.35, 1.0)    // default movement, highlight, popover scale
 var snappy = spring(0.40, 0.85)   // toggles, press release, drag end
-var gentle = spring(0.50, 1.0)    // big surfaces: panels, overview, sheets
+var gentle = spring(0.36, 1.0)    // big surfaces: panels, overview, sheets
 var bouncy = spring(0.45, 0.75)   // rare, playful only
 
 // ── Choreography ───────────────────────────────────────────────────────────
