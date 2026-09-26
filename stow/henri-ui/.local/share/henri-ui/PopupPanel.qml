@@ -173,6 +173,11 @@ PanelWindow {
   readonly property real availableCardHeight: screenH > 0
     ? Math.max(120, screenH - ((barPos === "top" || barPos === "bottom") ? barH + gap + margin : margin * 2))
     : 0
+  // Card chrome around the content on each axis: padding plus the border,
+  // which BorderSurface also subtracts from the content area. A plugin that
+  // sizes its content at N px asks for N + this, otherwise the border eats
+  // a pixel per side and the outer tiles get clipped.
+  readonly property real horizontalContentInset: padding * 2 + Border.left(borderSpec) + Border.right(borderSpec)
   readonly property real verticalContentInset: padding * 2 + Border.top(borderSpec) + Border.bottom(borderSpec)
 
   function fittedContentWidth(width, cap) {

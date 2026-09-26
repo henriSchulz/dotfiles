@@ -1776,7 +1776,7 @@ Panel {
     padding: root.pt(Apple.padding)
     cardColor: root.m.sheet
     borderSpec: Border.flat(root.m.hairline, 1)
-    contentWidth: root.panelWidth + panel.padding * 2
+    contentWidth: root.panelWidth + panel.horizontalContentInset
     property real shownHeight: panel.fittedContentHeight(root.page === "main" ? content.implicitHeight : detail.implicitHeight)
     contentHeight: Math.round(heightSpring.value)
 

@@ -927,7 +927,7 @@ Panel {
     padding: root.pt(Apple.padding)
     cardColor: root.m.sheet
     borderSpec: Border.flat(root.m.hairline, 1)
-    contentWidth: panel.fittedContentWidth(root.panelWidth + padding * 2)
+    contentWidth: panel.fittedContentWidth(root.panelWidth + panel.horizontalContentInset)
     // Follows the column, whose Collapse sections glide with the smooth spring.
     // Follows the page stack, whose height glides between the two pages.
     contentHeight: panel.fittedContentHeight(pages.implicitHeight)
