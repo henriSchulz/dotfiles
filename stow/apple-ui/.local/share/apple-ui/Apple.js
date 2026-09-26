@@ -90,6 +90,68 @@ var radiusRow = 10
 var radiusControl = 8
 var radiusPill = 999
 
+// ---- Fenster (App): am Finder gemessen (macOS 26.2, Light, 2x) —
+// ~/macos-scrape/20260925T204357Z/system/finder.{icon,list,column}View
+// (ax.json = Punkte, window.png = Pixelmessung). Eigener Abschnitt, nicht die
+// Popup-Werte oben. Referenz-App: ~/Projects/finder.
+var window = {
+  bg: "#fffbfbfb",            // Fensterhintergrund (Toolbar-Zone), gemessen 251
+  content: "#ffffffff",       // Inhaltsfläche
+  sidebar: "#fffafafa",       // Sidebar-Karte, gemessen 250
+  sidebarInset: 8,            // Karte 8 pt vom Fensterrand
+  sidebarRadius: 18,          // Kartenradius (Kantenprofil, r ≈ 36 px)
+  sidebarShadow: "0 0 8px rgba(0,0,0,0.05)",
+  sidebarHighlight: "#ffffffff",  // 1 px innere Kante
+  sidebarWidth: 226,
+  sidebarTop: 44,             // erste Zeile 44 pt unter der Kartenoberkante (Ampel-Zone)
+  sidebarRow: 32,
+  sidebarHeader: 19,          // Abschnittszeile ("Favorites"), 11 pt bold, secondaryLabel
+  sidebarHeaderGap: 13,       // Abstand vor einer Abschnittszeile
+  sidebarIconX: 18,           // Symbol-Linke ab Kartenrand
+  sidebarTextX: 45,           // Text-Linke ab Kartenrand
+  sidebarHeaderX: 15,
+  sidebarSelInset: 10,        // Auswahl-Kapsel 10 pt von den Kartenrändern
+  sidebarSelected: "#14000000",   // secondarySystemFill α 0.078 (gemessen 231 auf 250)
+  sidebarSelectedRadius: 8,
+  radius: 20,                 // Fensterecken (Kantenprofil, r ≈ 42 px)
+  toolbar: 52,
+  toolbarInset: 8,
+  toolbarGap: 12,
+  capsule: 38,                // Toolbar-Kapsel
+  segment: 36,                // Knopf in der Kapsel
+  capsuleFill: "#ffffffff",
+  capsuleShadow: "0 1px 2px rgba(0,0,0,0.05)",
+  title: 15,                  // Fenstertitel, semibold (Cap-Höhe 11 pt)
+  titleColor: "#ff4c4c4c",    // gemessen 76
+  traffic: 12,                // Ampel-Punkte
+  trafficPitch: 23,
+  trafficX: 18, trafficY: 18, // Mitte des ersten Punkts ab Kartenecke
+  trafficClose: "#ffff5f57", trafficMin: "#fffebc2e", trafficZoom: "#ff28c840",
+  trafficInactive: "#ffd0d0d3",
+  listHeader: 28,
+  listHeaderGap: 5,
+  listRow: 20,
+  listInset: 10,              // Spaltenbeginn ab Inhaltsrand
+  listIconX: 27,
+  listTextX: 47,
+  zebra: "#fff4f5f5",         // alternatingContentBackgroundColor (exakt)
+  grid: "#ffe6e6e6",          // gridColor (Kopfzeilen-Trenner)
+  iconCell: 112,
+  icon: 64,
+  iconTop: 4,
+  iconLabelGap: 7,
+  iconInset: 10,
+  column: 238,
+  columnRow: 22,
+  columnTextX: 33,
+  columnSelInset: 6,
+  columnSelRadius: 6,
+  status: 22,
+  text: 13,                   // Zeilen-/Label-Text (Cap-Höhe 9–9,5 pt)
+  small: 11,                  // Kopfzeilen, Abschnitte, Statuszeile
+  disabled: "#42000000"       // tertiaryLabel (gemessen 189: Nav-Chevrons inaktiv)
+}
+
 // ---- Material. Zwei Paletten: dunkles Glas (am Screenshot gemessen) und
 // helles Glas (Scrape-Farben). Welche gilt, entscheidet die Helligkeit des
 // Hintergrunds unter dem Panel (AUi.Backdrop) — wie macOS.

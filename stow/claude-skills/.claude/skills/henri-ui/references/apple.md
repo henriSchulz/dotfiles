@@ -34,6 +34,19 @@ opakem Grund statt Glas). Für eine App also **nicht** die Control-Center-Kachel
 Kurz: apple-ui wächst pro Fläche mit — jede Fläche bekommt ihre eigenen gemessenen
 Werte, die Popup-Werte sind nur der erste Abschnitt.
 
+**Vorhandene Abschnitte** (Stand 2026-09-26):
+| Abschnitt | Gemessen an | Referenz-Implementierung |
+|---|---|---|
+| Popup (Tokens oben in `Apple.js`, `--apple-*`) | Control Center | `henri.control-center-v2`, `henri.power` |
+| `Apple.window` / `--apple-win-*` | Finder-Fenster (icon/list/column, `system/finder.*`) | `~/Projects/finder` (GTK4) |
+
+Fenster-Werte in Kürze: Sidebar-Karte 226 pt, Radius 18, 8 pt Einzug, Ampel innen
+(12 pt, Pitch 23, Mitte 18/18); Toolbar 52 mit weißen 38-pt-Kapseln und 36-pt-
+Segmenten; Titel 15 semibold #4c4c4c; Sidebar-Zeilen 32, Abschnitte 19 (11 bold),
+Auswahl secondarySystemFill r 8; Liste: Kopf 28 + 5, Zeilen 20, Zebra #f4f5f5, Grid
+#e6e6e6, Text bei 47; Icon-Zellen 112 mit 64-pt-Icon; Spalten 238, Zeilen 22, Auswahl
+r 6; Fensterradius 20. Kein Dark-Wert (Scrape-Lücke).
+
 ## Bibliothek
 
 `~/.local/share/apple-ui/` (dotfiles `stow/apple-ui`) — Gegenstück zu henri-ui:

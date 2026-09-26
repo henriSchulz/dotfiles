@@ -94,6 +94,66 @@
   --apple-blur: 24px;
   /* dark glass below this mean luminance of the backdrop (0..1) */
   --apple-dark-below-luma: 0.75;
+
+  /* ---- window (app), measured on Finder — see Apple.js `window` */
+  --apple-win-bg: #fbfbfb;
+  --apple-win-content: #ffffff;
+  --apple-win-sidebar: #fafafa;
+  --apple-win-sidebar-inset: 8px;
+  --apple-win-sidebar-radius: 18px;
+  --apple-win-sidebar-shadow: 0 0 8px rgba(0, 0, 0, 0.05);
+  --apple-win-sidebar-highlight: #ffffff;
+  --apple-win-sidebar-width: 226px;
+  --apple-win-sidebar-top: 44px;
+  --apple-win-sidebar-row: 32px;
+  --apple-win-sidebar-header: 19px;
+  --apple-win-sidebar-header-gap: 13px;
+  --apple-win-sidebar-icon-x: 18px;
+  --apple-win-sidebar-text-x: 45px;
+  --apple-win-sidebar-header-x: 15px;
+  --apple-win-sidebar-sel-inset: 10px;
+  --apple-win-sidebar-selected: rgba(0, 0, 0, 0.078);
+  --apple-win-sidebar-selected-radius: 8px;
+  --apple-win-radius: 20px;
+  --apple-win-toolbar: 52px;
+  --apple-win-toolbar-inset: 8px;
+  --apple-win-toolbar-gap: 12px;
+  --apple-win-capsule: 38px;
+  --apple-win-segment: 36px;
+  --apple-win-capsule-fill: #ffffff;
+  --apple-win-capsule-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --apple-win-title: 15px;
+  --apple-win-title-color: #4c4c4c;
+  --apple-win-traffic: 12px;
+  --apple-win-traffic-pitch: 23px;
+  --apple-win-traffic-x: 18px;
+  --apple-win-traffic-y: 18px;
+  --apple-win-traffic-close: #ff5f57;
+  --apple-win-traffic-min: #febc2e;
+  --apple-win-traffic-zoom: #28c840;
+  --apple-win-traffic-inactive: #d0d0d3;
+  --apple-win-list-header: 28px;
+  --apple-win-list-header-gap: 5px;
+  --apple-win-list-row: 20px;
+  --apple-win-list-inset: 10px;
+  --apple-win-list-icon-x: 27px;
+  --apple-win-list-text-x: 47px;
+  --apple-win-zebra: #f4f5f5;
+  --apple-win-grid: #e6e6e6;
+  --apple-win-icon-cell: 112px;
+  --apple-win-icon: 64px;
+  --apple-win-icon-top: 4px;
+  --apple-win-icon-label-gap: 7px;
+  --apple-win-icon-inset: 10px;
+  --apple-win-column: 238px;
+  --apple-win-column-row: 22px;
+  --apple-win-column-text-x: 33px;
+  --apple-win-column-sel-inset: 6px;
+  --apple-win-column-sel-radius: 6px;
+  --apple-win-status: 22px;
+  --apple-win-text: 13px;
+  --apple-win-small: 11px;
+  --apple-win-disabled: rgba(0, 0, 0, 0.259);
 }
 
 /* dark glass — measured on the real Control Center over a dark wallpaper.

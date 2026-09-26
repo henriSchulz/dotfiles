@@ -70,6 +70,14 @@ dunkle Glas, fertige `.apple-sheet/.apple-tile/.apple-capsule/.apple-slider`) un
 
 Messmethode, Rohdaten und Scraper-Lücken: `~/.claude/skills/henri-ui/references/apple.md`.
 
-Referenz-Implementierung: `~/.config/omarchy/plugins/henri.control-center-v2/`.
+## Fenster (Apps)
+
+`Apple.window` in `Apple.js` bzw. `--apple-win-*` in beiden CSS-Dateien: die am
+echten Finder gemessenen Fensterwerte (Sidebar-Karte, Toolbar-Kapseln, Listen-,
+Icon- und Spaltengeometrie, Farben). Referenz-App: `~/Projects/finder` (GTK4,
+`data/finder.css`). Neue Fensterflächen (Sheets, Inspector, Toolbar-Varianten)
+kommen als weitere Schlüssel dazu, jeweils gemessen.
+
+Referenz-Implementierung (Popups): `~/.config/omarchy/plugins/henri.control-center-v2/`.
 Punkt-Werte werden mit `Style.space(pt)` auf die Shell-Skala gebracht.
 Schriften SF Pro / SF Symbols sind lokal installiert — nie committen.
