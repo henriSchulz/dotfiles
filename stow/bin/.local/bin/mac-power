@@ -4,14 +4,16 @@
 #
 #   mac-power set off|to-mac|to-linux   remember the wish and apply it now
 #   mac-power reconcile                 re-apply the Linux side, print the
-#                                       charge word the Mac should get (on|off)
+#                                       charge word the Mac should get
+#                                       (on | off | battery)
 #   mac-power status                    the key=value file the panel reads
 #
 # Two halves. Linux owns the port's power role (mt-power-role, root via a
 # sudoers rule): source = we feed the Mac, sink = the Mac feeds us. The Mac
 # owns whether it charges its battery from what arrives (mt-charge, SMC).
-# "off" = we stay source but the Mac's charge inhibit is on: the cable only
-# carries data plus the 5 V the Mac runs on, both batteries stay put.
+# "off" = we stay source (the data link needs VBUS) but the Mac ignores it
+# and runs on its own battery (mt-charge battery): zero watts leave the port.
+# mt-charge tops the Mac up from 15 % to 40 % on its own so it never dies.
 # mac-mode-poll calls `reconcile` on every 15 s round trip and passes the
 # word to the Mac, so a reboot or re-plug on either side heals itself.
 set -euo pipefail
@@ -72,7 +74,11 @@ reconcile() {
   } > "$RUN.tmp"
   mv -f "$RUN.tmp" "$RUN"
 
-  [[ $mode == to-mac ]] && echo on || echo off
+  case "$mode" in
+    to-mac) echo on ;;
+    to-linux) echo off ;;   # the Mac is the source here; no charging either way
+    *) echo battery ;;
+  esac
 }
 
 case "${1:-status}" in

@@ -7,11 +7,12 @@ DEST="$XDG_RUNTIME_DIR/mt-bridge"
 mkdir -p "$DEST"
 
 # Power over the cable rides on the same round trip: mac-power reconciles the
-# Linux port role and says whether the Mac may charge (on|off); mt-charge on
+# Linux port role and says what the Mac does with the cable (on|off|battery);
+# mt-charge on
 # the Mac makes that true and reports charge=... back, so a Mac reboot (SMC
 # keys reset) heals within one tick.
-want=$("$HOME/.local/bin/mac-power" reconcile 2>/dev/null) || want=off
-[[ $want == on || $want == off ]] || want=off
+want=$("$HOME/.local/bin/mac-power" reconcile 2>/dev/null) || want=battery
+[[ $want == on || $want == off || $want == battery ]] || want=battery
 
 # Piggybacks a liveness check for mtsend onto the same round-trip: reachable
 # over SSH says the Mac is awake, nothing about whether the bridge itself is

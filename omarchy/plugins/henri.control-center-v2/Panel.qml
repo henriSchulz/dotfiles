@@ -147,9 +147,11 @@ Panel {
     if (macPowerOverride !== null) return "Applying…"
     var linux = macPowerState.linux || ""
     if (linux === "needs-install" || linux === "needs-sudo") return "Helper not installed on this machine"
+    var soc = macModeState.soc ? " · " + macModeState.soc + " %" : ""
     if (macPowerMode === "off")
-      return macCharge === "inhibited" ? "Off · both batteries left alone"
-        : macCharge === "normal" ? "Off · waiting for the Mac to stop charging"
+      return macCharge === "battery" ? "Off · Mac on its own battery" + soc
+        : macCharge === "guard" ? "Off · Mac battery was low, topping up to 40 %" + soc
+        : macCharge === "normal" || macCharge === "inhibited" ? "Off · waiting for the Mac to let go"
         : linux === "no-mac" ? "Off · no cable" : "Off"
     if (macPowerMode === "to-mac")
       return linux === "no-mac" ? "Linux → Mac · no cable"
@@ -2980,7 +2982,8 @@ Panel {
           }
           AUi.Caption {
             width: macPage.innerWidth
-            text: "Off leaves both batteries where they are: the cable carries data and the 5 V the Mac runs on, nothing more. "
+            text: "Off makes the Mac ignore the cable and run on its own battery, so nothing leaves this port. "
+              + "Below 15 % it tops itself up to 40 % and lets go again. "
               + "Linux → Mac charges the Mac at 15 W. Mac → Linux hands the Mac's 15 W ceiling to this machine, which barely covers idle."
           }
 
