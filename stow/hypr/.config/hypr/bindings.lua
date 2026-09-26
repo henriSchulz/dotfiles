@@ -200,3 +200,15 @@ o.bind("CTRL + F8", "Show Desktop", hl.dsp.event("mission-control toggle desktop
 o.bind("XF86Display", "Mission Control", hl.dsp.event("mission-control toggle"))
 o.bind("SHIFT + XF86Display", "App Exposé", hl.dsp.event("mission-control toggle app"))
 o.bind("CTRL + XF86Display", "Show Desktop", hl.dsp.event("mission-control toggle desktop"))
+
+-- Die F8-Taste selbst (ohne Fn) ist auf dem XPS 13 9310 in der Firmware als
+-- Windows+P verdrahtet (Dells "Display umschalten") -- per evdev gemessen:
+-- Scancode 0xdb (LEFTMETA) + 0x19 (P), von einem echten Super+P nicht zu
+-- unterscheiden; nur Fn+F8 sendet F8. Also bekommt Super+P Mission Control
+-- (Omarchys "Pseudo window" darauf entfällt) und Super+Shift+P App Exposé
+-- (Omarchys "Google Photos"-Webapp entfällt). Super+Ctrl+P bleibt Omarchys
+-- Power-Menü; Schreibtisch anzeigen liegt daher nur auf Ctrl+Fn+F8.
+hl.unbind("SUPER + P")
+hl.unbind("SUPER + SHIFT + P")
+o.bind("SUPER + P", "Mission Control", hl.dsp.event("mission-control toggle"))
+o.bind("SUPER + SHIFT + P", "App Exposé", hl.dsp.event("mission-control toggle app"))
