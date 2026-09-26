@@ -13,6 +13,9 @@ Item {
   property bool checked: false
   signal toggled(bool on)
   signal back()
+  // Trailing controls (pop-up button, icon buttons) sit right of the title,
+  // left of the switch.
+  default property alias trailing: trailingRow.data
   width: parent ? parent.width : 0
   height: Style.space(Apple.pageHeaderH)
 
@@ -51,10 +54,17 @@ Item {
     anchors.left: parent.left
     anchors.top: parent.top
     anchors.bottom: parent.bottom
-    anchors.right: toggle.left
+    anchors.right: trailingRow.left
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
     onClicked: ph.back()
+  }
+  Row {
+    id: trailingRow
+    anchors.right: toggle.visible ? toggle.left : parent.right
+    anchors.rightMargin: Style.space(6)
+    anchors.verticalCenter: parent.verticalCenter
+    spacing: Style.space(6)
   }
   Switch {
     id: toggle
