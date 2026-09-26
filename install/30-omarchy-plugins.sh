@@ -57,6 +57,10 @@ done
 #   henri.assistant — own plugin, the voice assistant card: dictate a
 #                 question, Antigravity (`agy`, package antigravity-cli)
 #                 answers in it
+#   henri.control-center-v2 — apple-ui rebuild of the Control Center, runs
+#                 beside henri.control-center; Experiments holds the
+#                 low-power rendering switch (system/henri-render-power,
+#                 flag read by stow/hypr looknfeel.lua)
 #   io.github.nipsen.dell-power — NIPSEN/omarchy-dell-power (MIT) with the
 #                 bar glyph swapped for the macOS battery (HUi.BatteryGlyph)
 for src in "$DOTFILES_ROOT"/omarchy/plugins/*/; do

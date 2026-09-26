@@ -1,0 +1,24 @@
+#!/bin/bash
+# henri-render-power on|off|toggle|status
+#
+# Low-power rendering for Hyprland, switched from Control Center → Experiments.
+# The flag file is the whole state; ~/.config/hypr/looknfeel.lua reads it on
+# every (re)load and applies: direct scanout, 2 blur passes, color management
+# off. `status` prints key=value lines the panel parses, including the values
+# Hyprland actually runs with, so the switch never lies about what is applied.
+set -euo pipefail
+flag="${XDG_STATE_HOME:-$HOME/.local/state}/henri/low-power-render"
+
+case "${1:-status}" in
+  on)     mkdir -p "$(dirname "$flag")"; : > "$flag"; hyprctl reload >/dev/null ;;
+  off)    rm -f "$flag"; hyprctl reload >/dev/null ;;
+  toggle) if [[ -e $flag ]]; then exec "$0" off; else exec "$0" on; fi ;;
+  status) ;;
+  *)      echo "usage: ${0##*/} on|off|toggle|status" >&2; exit 2 ;;
+esac
+
+opt() { hyprctl getoption "$1" 2>/dev/null | awk '/^\s*(int|bool|float):/ {print $2; exit}'; }
+if [[ -e $flag ]]; then echo "state=on"; else echo "state=off"; fi
+echo "scanout=$(opt render:direct_scanout)"
+echo "passes=$(opt decoration:blur:passes)"
+echo "cm=$(opt render:cm_enabled)"

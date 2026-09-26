@@ -135,3 +135,19 @@ hl.window_rule({ match = { class = "org.gnome.NautilusPreviewer" }, float = true
 -- float like a real window — tiled edge-to-edge it loses the whole card
 -- illusion and just looks broken.
 hl.window_rule({ match = { class = "de.henri.Finder" }, float = true })
+
+-- Low-power rendering, switched from Control Center → Experiments
+-- (henri.control-center-v2/system/henri-render-power). The flag file is the
+-- whole state: present = on. Measured 2026-09-26 on the XPS 13: Hyprland alone
+-- kept the GPU 25–43 % busy, so the display never reached DC5/DC6 and the
+-- package never PC8/PC10. Direct scanout hands a fullscreen window's buffer
+-- straight to the display, two blur passes instead of three, and no color
+-- management pass on this SDR panel.
+local low_power_render = io.open((os.getenv("HOME") or "") .. "/.local/state/henri/low-power-render", "r")
+if low_power_render then
+  low_power_render:close()
+  hl.config({
+    render = { direct_scanout = 1, cm_enabled = false },
+    decoration = { blur = { passes = 2, size = 8 } },
+  })
+end

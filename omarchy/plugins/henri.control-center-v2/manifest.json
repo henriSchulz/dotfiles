@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.control-center-v2",
+  "name": "Control Center (v2 Test)",
+  "version": "0.2.0",
+  "author": "henri",
+  "description": "macOS-Tahoe-style Control Center built on apple-ui: Wi-Fi, Bluetooth, AirDrop (LocalSend), Mac Input/Screen/Mode, display and sound, Now Playing, hardware, experiments. Runs beside henri.control-center.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Control Center v2",
+    "description": "macOS-style Control Center popup (v2, apple-ui)",
+    "category": "System",
+    "allowMultiple": false
+  }
+}
