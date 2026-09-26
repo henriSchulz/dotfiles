@@ -6,11 +6,18 @@ set -euo pipefail
 DEST="$XDG_RUNTIME_DIR/mt-bridge"
 mkdir -p "$DEST"
 
+# Power over the cable rides on the same round trip: mac-power reconciles the
+# Linux port role and says whether the Mac may charge (on|off); mt-charge on
+# the Mac makes that true and reports charge=... back, so a Mac reboot (SMC
+# keys reset) heals within one tick.
+want=$("$HOME/.local/bin/mac-power" reconcile 2>/dev/null) || want=off
+[[ $want == on || $want == off ]] || want=off
+
 # Piggybacks a liveness check for mtsend onto the same round-trip: reachable
 # over SSH says the Mac is awake, nothing about whether the bridge itself is
 # running there, and the panel used to conflate the two.
 out=$(ssh -o ConnectTimeout=3 -o BatchMode=yes henrischulz@192.168.178.126 \
-  '/Users/henrischulz/.local/bin/mac-mode status; pgrep -x mtsend >/dev/null && echo mtsend=1 || echo mtsend=0' \
+  "/Users/henrischulz/.local/bin/mac-mode status; pgrep -x mtsend >/dev/null && echo mtsend=1 || echo mtsend=0; /usr/local/bin/mt-charge ensure $want 2>/dev/null || echo charge=unknown" \
   2>/dev/null) || exit 0
 
 tmp=$(mktemp "$DEST/.macmode.XXXXXX")

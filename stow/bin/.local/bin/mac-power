@@ -1,0 +1,95 @@
+#!/bin/bash
+# mac-power -- whether, and which way, power flows over the USB-C cable
+# between this machine and the mt-bridge Mac. Control Center → Mac → Power.
+#
+#   mac-power set off|to-mac|to-linux   remember the wish and apply it now
+#   mac-power reconcile                 re-apply the Linux side, print the
+#                                       charge word the Mac should get (on|off)
+#   mac-power status                    the key=value file the panel reads
+#
+# Two halves. Linux owns the port's power role (mt-power-role, root via a
+# sudoers rule): source = we feed the Mac, sink = the Mac feeds us. The Mac
+# owns whether it charges its battery from what arrives (mt-charge, SMC).
+# "off" = we stay source but the Mac's charge inhibit is on: the cable only
+# carries data plus the 5 V the Mac runs on, both batteries stay put.
+# mac-mode-poll calls `reconcile` on every 15 s round trip and passes the
+# word to the Mac, so a reboot or re-plug on either side heals itself.
+set -euo pipefail
+
+STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/henri
+STATE=$STATE_DIR/mac-power
+RUN_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/mt-bridge
+RUN=$RUN_DIR/power
+ROLE=/usr/local/bin/mt-power-role
+
+read_state() {
+  mode=off; direction=to-mac
+  [[ -f $STATE ]] || return 0
+  local k v
+  while IFS='=' read -r k v; do
+    case "$k" in mode) mode=$v ;; direction) direction=$v ;; esac
+  done < "$STATE"
+  case "$mode" in off|to-mac|to-linux) ;; *) mode=off ;; esac
+  case "$direction" in to-mac|to-linux) ;; *) direction=to-mac ;; esac
+}
+
+write_state() {
+  mkdir -p "$STATE_DIR"
+  printf 'mode=%s\ndirection=%s\n' "$mode" "$direction" > "$STATE.tmp"
+  mv -f "$STATE.tmp" "$STATE"
+}
+
+# The Linux half: make the port role match, note what actually holds.
+reconcile() {
+  read_state
+  local want_role=source linux=ok port="" role="" partner=0 out
+  [[ $mode == to-linux ]] && want_role=sink
+
+  if [[ -x $ROLE ]]; then
+    eval "$("$ROLE" status 2>/dev/null | grep -E '^(port|role|partner)=[a-z0-9]*$')" || true
+    if [[ $partner == 1 && -n $role && $role != "$want_role" ]]; then
+      if out=$(sudo -n "$ROLE" "$want_role" 2>/dev/null); then
+        eval "$(printf '%s\n' "$out" | grep -E '^(port|role|partner)=[a-z0-9]*$')" || true
+        [[ $role == "$want_role" ]] || linux=swap-refused
+      else
+        linux=needs-sudo
+      fi
+    elif [[ $partner != 1 ]]; then
+      linux=no-mac
+    fi
+  else
+    linux=needs-install
+  fi
+
+  mkdir -p "$RUN_DIR"
+  {
+    echo "mode=$mode"
+    echo "direction=$direction"
+    echo "port=$port"
+    echo "role=$role"
+    echo "linux=$linux"
+    echo "updated=$(date +%s)"
+  } > "$RUN.tmp"
+  mv -f "$RUN.tmp" "$RUN"
+
+  [[ $mode == to-mac ]] && echo on || echo off
+}
+
+case "${1:-status}" in
+  set)
+    read_state
+    case "${2:-}" in
+      off) mode=off ;;
+      to-mac|to-linux) mode=$2; direction=$2 ;;
+      *) echo "usage: mac-power set off|to-mac|to-linux" >&2; exit 2 ;;
+    esac
+    write_state
+    reconcile >/dev/null
+    # The Mac half rides on the next poll round trip; start it now.
+    systemctl --user start --no-block mac-mode-poll.service 2>/dev/null || true
+    cat "$RUN"
+    ;;
+  reconcile) reconcile ;;
+  status) if [[ -f $RUN ]]; then cat "$RUN"; else read_state; echo "mode=$mode"; echo "direction=$direction"; echo "linux=unknown"; fi ;;
+  *) echo "usage: mac-power set off|to-mac|to-linux | reconcile | status" >&2; exit 2 ;;
+esac

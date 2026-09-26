@@ -1,0 +1,1 @@
+henri ALL=(root) NOPASSWD: /usr/local/bin/mt-power-role source, /usr/local/bin/mt-power-role sink

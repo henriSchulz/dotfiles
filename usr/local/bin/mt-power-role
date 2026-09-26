@@ -1,0 +1,65 @@
+#!/bin/bash
+# mt-power-role -- the power role of the USB-C port the mt-bridge Mac is on.
+# Installed root-owned in /usr/local/bin; sudoers lets the user run exactly
+# `mt-power-role source` and `mt-power-role sink` without a password.
+#
+#   mt-power-role status   port=portN role=source|sink partner=1|0  (no root)
+#   mt-power-role source   this machine feeds the Mac (5 V / 3 A)
+#   mt-power-role sink     the Mac feeds this machine (its 15 W ceiling)
+#
+# The write asks the port controller for a USB-PD power-role swap; the Mac
+# has to agree, which a dual-role laptop does. Nothing else in sysfs is
+# touched. Finding the port: the Mac announces itself as a USB-communication-
+# capable dual-role sink, a charger does neither.
+set -euo pipefail
+
+find_port() {
+  local p n pn
+  for p in /sys/class/typec/port*; do
+    n=${p##*/}
+    [[ $n == port[0-9]* ]] || continue
+    pn=/sys/class/typec/$n-partner
+    [[ -d $pn ]] || continue
+    if [[ $(cat "$pn/usb_power_delivery/sink-capabilities/1:fixed_supply/usb_communication_capable" 2>/dev/null) == 1 ]]; then
+      echo "$p"; return 0
+    fi
+  done
+  # Fallback: any partner that is not mains-powered (a charger says
+  # unconstrained_power=1 in its first source PDO).
+  for p in /sys/class/typec/port*; do
+    n=${p##*/}
+    [[ $n == port[0-9]* ]] || continue
+    pn=/sys/class/typec/$n-partner
+    [[ -d $pn ]] || continue
+    if [[ $(cat "$pn/usb_power_delivery/source-capabilities/1:fixed_supply/unconstrained_power" 2>/dev/null) != 1 ]]; then
+      echo "$p"; return 0
+    fi
+  done
+  return 1
+}
+
+current_role() {  # "[source] sink" -> source
+  sed -n 's/.*\[\([a-z]*\)\].*/\1/p' "$1/power_role" 2>/dev/null
+}
+
+port=$(find_port) || { echo "port="; echo "role="; echo "partner=0"; exit 0; }
+
+case "${1:-status}" in
+  status) ;;
+  source|sink)
+    [[ $(id -u) == 0 ]] || { echo "needs root (sudo)" >&2; exit 1; }
+    if [[ $(current_role "$port") != "$1" ]]; then
+      echo "$1" > "$port/power_role"
+      # The swap takes a moment; report what the controller settled on.
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+        [[ $(current_role "$port") == "$1" ]] && break
+        sleep 0.3
+      done
+    fi
+    ;;
+  *) echo "usage: mt-power-role status|source|sink" >&2; exit 2 ;;
+esac
+
+echo "port=${port##*/}"
+echo "role=$(current_role "$port")"
+echo "partner=1"

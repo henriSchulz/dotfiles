@@ -128,6 +128,43 @@ Panel {
   readonly property string macModeSubtitle: !macModeFresh && macModeOverride === null ? "Unreachable"
     : (macModeIsDesktop ? "Desktop" : "Server") + (macModePinShown === "auto" ? " · Auto" : " · Forced")
 
+  // ---- Power over the cable: mac-power owns the Linux half (the port's
+  // USB-PD power role, via mt-power-role + sudoers) and hands the Mac half
+  // (SMC charge inhibit, mt-charge) to mac-mode-poll's SSH round trip. The
+  // wish and what actually holds land in $XDG_RUNTIME_DIR/mt-bridge/power;
+  // the Mac's own word comes back as charge= in the macmode file.
+  property var macPowerState: ({})
+  readonly property string macPowerMode: macPowerState.mode || "off"
+  readonly property string macPowerDirection: macPowerState.direction || "to-mac"
+  readonly property string macCharge: macModeState.charge || ""
+  property var macPowerOverride: null
+  property double macPowerOverrideSetAt: 0
+  readonly property string macPowerShown: macPowerOverride !== null ? macPowerOverride : macPowerMode
+  readonly property bool macPowerOn: macPowerShown !== "off"
+  readonly property string macPowerDirShown: macPowerOverride !== null && macPowerOverride !== "off"
+    ? macPowerOverride : macPowerDirection
+  readonly property string macPowerSubtitle: {
+    if (macPowerOverride !== null) return "Applying…"
+    var linux = macPowerState.linux || ""
+    if (linux === "needs-install" || linux === "needs-sudo") return "Helper not installed on this machine"
+    if (macPowerMode === "off")
+      return macCharge === "inhibited" ? "Off · both batteries left alone"
+        : macCharge === "normal" ? "Off · waiting for the Mac to stop charging"
+        : linux === "no-mac" ? "Off · no cable" : "Off"
+    if (macPowerMode === "to-mac")
+      return linux === "no-mac" ? "Linux → Mac · no cable"
+        : macCharge === "normal" ? "Linux → Mac · " + (macModeState.charging === "Yes" ? "charging" : "5 V / 3 A")
+        : macCharge === "inhibited" ? "Linux → Mac · waiting for the Mac" : "Linux → Mac"
+    return linux === "no-mac" ? "Mac → Linux · no cable"
+      : linux === "swap-refused" ? "Mac → Linux · the Mac declined the swap"
+      : macPowerState.role === "sink" ? "Mac → Linux · 15 W at most" : "Mac → Linux · swapping roles"
+  }
+  function setMacPower(mode) {
+    macPowerOverride = mode
+    macPowerOverrideSetAt = Date.now()
+    run("~/.local/bin/mac-power set " + mode)
+  }
+
   // One "Mac" tile stands for the three mt-bridge features. Its page leads
   // with one status synthesized across all three (actively streaming beats
   // merely reachable beats nothing answering at all); Mode's picker is
@@ -320,6 +357,14 @@ Panel {
     onFileChanged: reload()
     onLoaded: root.macModeState = root.padParse(text())
   }
+  FileView {
+    id: macPowerFile
+    path: Quickshell.env("XDG_RUNTIME_DIR") + "/mt-bridge/power"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.macPowerState = root.padParse(text())
+  }
   // Instantiator, not Repeater: FileView has no visual Item to delegate.
   Instantiator {
     id: battFileViews
@@ -349,6 +394,7 @@ Panel {
       padStreamFile.reload()
       screenFile.reload()
       macModeFile.reload()
+      macPowerFile.reload()
       root.battTick()
       if (root.padOverride !== null
           && (root.padConnected === root.padOverride
@@ -369,6 +415,10 @@ Panel {
           && (root.macModePin === root.macModeOverride
               || Date.now() - root.macModeOverrideSetAt > 6000))
         root.macModeOverride = null
+      if (root.macPowerOverride !== null
+          && (root.macPowerMode === root.macPowerOverride
+              || Date.now() - root.macPowerOverrideSetAt > 6000))
+        root.macPowerOverride = null
     }
   }
 
@@ -2895,6 +2945,43 @@ Panel {
               + (root.macModeFresh
                  ? root.macModeDisplays + " display" + (root.macModeDisplays === 1 ? "" : "s") + " detected."
                  : "No recent answer to say which.")
+          }
+
+          AUi.Separator { width: macPage.innerWidth }
+          AUi.SectionLabel { leftPadding: 0; text: "Power" }
+          AUi.SwitchRow {
+            width: macPage.innerWidth
+            title: "Power over the cable"
+            caption: root.macPowerSubtitle
+            checked: root.macPowerOn
+            onToggled: function(on) { root.setMacPower(on ? root.macPowerDirShown : "off") }
+          }
+          Row {
+            width: macPage.innerWidth
+            spacing: root.pt(5)
+            enabled: root.macPowerOn
+            opacity: root.macPowerOn ? 1 : Motion.disabledOpacity
+            Behavior on opacity {
+              NumberAnimation {
+                duration: Motion.fast
+                easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+              }
+            }
+            Repeater {
+              model: [ { id: "to-mac", label: "Linux → Mac" }, { id: "to-linux", label: "Mac → Linux" } ]
+              delegate: AUi.Capsule {
+                required property var modelData
+                width: Math.floor((macPage.innerWidth - root.pt(5)) / 2)
+                label: modelData.label
+                selected: root.macPowerDirShown === modelData.id
+                onClicked: if (!selected) root.setMacPower(modelData.id)
+              }
+            }
+          }
+          AUi.Caption {
+            width: macPage.innerWidth
+            text: "Off leaves both batteries where they are: the cable carries data and the 5 V the Mac runs on, nothing more. "
+              + "Linux → Mac charges the Mac at 15 W. Mac → Linux hands the Mac's 15 W ceiling to this machine, which barely covers idle."
           }
 
           AUi.Separator { width: macPage.innerWidth }
