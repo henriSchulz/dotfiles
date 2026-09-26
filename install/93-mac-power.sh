@@ -28,5 +28,11 @@ else
   run sudo install -o root -g root -m 440 "$src" "$dst"
 fi
 
+# Whether run as the user (sudo per step, like the other scripts) or as root
+# via `sudo 93-mac-power.sh`, mac-power belongs to the login user.
 info "applying the stored wish (default: off)"
-run "$HOME/.local/bin/mac-power" reconcile >/dev/null
+if [[ $(id -u) == 0 && -n ${SUDO_USER:-} ]]; then
+  run sudo -u "$SUDO_USER" -i "$(getent passwd "$SUDO_USER" | cut -d: -f6)/.local/bin/mac-power" reconcile >/dev/null
+else
+  run "$HOME/.local/bin/mac-power" reconcile >/dev/null
+fi
