@@ -129,8 +129,10 @@ Panel {
   // simple enough to sit right there with nothing further to drill into,
   // Input and Screen are a level below it.
   readonly property string macOverall: (padStreaming || screenOn) ? "connected"
-    : (padBridgeUp || padLinkUp || macModeFresh) ? "idle" : "offline"
+    : padConnecting ? "connecting"
+    : (padConnected || macModeFresh) ? "idle" : "offline"
   readonly property string macOverallLabel: macOverall === "connected" ? "Connected"
+    : macOverall === "connecting" ? "Connecting …"
     : macOverall === "idle" ? "Idle" : "Offline"
   // Which physical link is actually carrying it -- the pad's own transport
   // beats the screen's (it's pinged continuously, so it's known even while
@@ -143,6 +145,7 @@ Panel {
       ? (padStreaming && screenOn ? "Trackpad and screen are both active."
          : padStreaming ? "Fingers are arriving from the Mac."
          : "The screen is mirroring.")
+    : macOverall === "connecting" ? "Waiting for the Mac to answer -- this can take a few seconds."
     : macOverall === "idle" ? "The Mac is reachable, but nothing is streaming right now."
     : "No cable and no answer over the network. Check that the Mac is awake."
   readonly property var macPages: ["trackpad", "screen", "macbattery"]
