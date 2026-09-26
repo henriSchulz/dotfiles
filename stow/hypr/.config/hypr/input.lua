@@ -65,9 +65,12 @@ hl.config({
 })
 
 -- 4-Finger-Wisch hoch/runter: Mission Control (henri.missioncontrol).
--- Folgt den Fingern: Start/Update/Ende gehen als Custom-Event über Hyprlands
--- Event-Socket an das Plugin, das die Animation live mitführt und beim
--- Loslassen je nach Weg und Tempo öffnet oder schließt.
+-- Hoch öffnet Mission Control, runter App Exposé (nur die Fenster der aktiven
+-- App), wie am Mac; die Gegenrichtung schließt. Folgt den Fingern: Start/
+-- Update/Ende gehen als Custom-Event über Hyprlands Event-Socket an das
+-- Plugin, das die Animation live mitführt und beim Loslassen je nach Weg und
+-- Tempo öffnet oder schließt. Tasten dazu: F8 / Shift+F8 / Ctrl+F8 in
+-- bindings.lua.
 -- Hinweis: Gesten lassen sich nicht per `hyprctl reload` entfernen – nach
 -- Änderungen ab- und wieder anmelden.
 local function mc_event(phase, value, time_ms)

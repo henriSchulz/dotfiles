@@ -185,3 +185,18 @@ o.bind("ALT + ESCAPE", "App switcher (cancel)", hl.dsp.event("app-switcher cance
 -- noch gedrückten Alt-Taste — ohne das Flag feuert das Loslassen nie.
 o.bind("ALT + Alt_L", nil, hl.dsp.event("app-switcher commit"), { release = true, transparent = true })
 o.bind("ALT + SHIFT + Alt_L", nil, hl.dsp.event("app-switcher commit"), { release = true, transparent = true })
+
+-- Mission Control (henri.missioncontrol) auf F8: die einzige noch freie Taste.
+-- Weder Omarchy noch diese Datei hatten F8 belegt, und auch die Medienfunktion
+-- der Taste auf dem XPS 13 (Display umschalten, Keysym XF86Display) war ohne
+-- Binding -- je nach Fn-Lock kommt das eine oder das andere Keysym an, deshalb
+-- beide. Shift+F8 = App Exposé (nur die Fenster der aktiven App, über alle
+-- Desktops), Ctrl+F8 = Schreibtisch anzeigen. Nochmal drücken schließt, eine
+-- andere Variante wechselt den Modus, ohne zu schließen. Als Hyprland-Ereignis
+-- direkt ans Plugin, wie Spotlight und die Switcher: kein Prozess pro Taste.
+o.bind("F8", "Mission Control", hl.dsp.event("mission-control toggle"))
+o.bind("SHIFT + F8", "App Exposé", hl.dsp.event("mission-control toggle app"))
+o.bind("CTRL + F8", "Show Desktop", hl.dsp.event("mission-control toggle desktop"))
+o.bind("XF86Display", "Mission Control", hl.dsp.event("mission-control toggle"))
+o.bind("SHIFT + XF86Display", "App Exposé", hl.dsp.event("mission-control toggle app"))
+o.bind("CTRL + XF86Display", "Show Desktop", hl.dsp.event("mission-control toggle desktop"))
