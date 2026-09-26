@@ -1071,6 +1071,11 @@ Panel {
     padOverrideSetAt = Date.now()
     padPendingActivate = goingUp
     padPendingActivateSetAt = Date.now()
+    // Turning it off here only stops the local receiver -- if the Mac is
+    // still actively grabbed (streaming), leaving it there traps its own
+    // pointer and keyboard with nothing on this end to send them to. Same
+    // toggle as activating, just the other direction.
+    if (!goingUp && padStreaming) wakeTrackpad()
     run(goingUp ? "systemctl --user start mtbridge" : "systemctl --user stop mtbridge")
   }
   function wakeTrackpad() {
