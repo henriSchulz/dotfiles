@@ -55,21 +55,21 @@ o.bind("SUPER + SUPER_L", nil, hl.dsp.event("workspace-switcher commit"), { rele
 o.bind("SUPER + SHIFT + SUPER_L", nil, hl.dsp.event("workspace-switcher commit"), { release = true, transparent = true })
 
 -- Audio, Bluetooth, Display und WLAN sind nicht mehr in der Leiste, sondern
--- im Kontrollzentrum (henri.control-center). Omarchys Kürzel öffnen daher
+-- im Kontrollzentrum (henri.control-center-v2). Omarchys Kürzel öffnen daher
 -- jetzt die passende Seite dort; nochmal drücken schließt.
 hl.unbind("SUPER + CTRL + A")
 hl.unbind("SUPER + CTRL + B")
 hl.unbind("SUPER + CTRL + D")
 hl.unbind("SUPER + CTRL + W")
-o.bind("SUPER + CTRL + A", "Sound", "omarchy-shell henri.control-center togglePage sound")
-o.bind("SUPER + CTRL + B", "Bluetooth", "omarchy-shell henri.control-center togglePage bluetooth")
-o.bind("SUPER + CTRL + D", "Display", "omarchy-shell henri.control-center togglePage display")
-o.bind("SUPER + CTRL + W", "Wi-Fi", "omarchy-shell henri.control-center togglePage wifi")
+o.bind("SUPER + CTRL + A", "Sound", "omarchy-shell henri.control-center-v2 togglePage sound")
+o.bind("SUPER + CTRL + B", "Bluetooth", "omarchy-shell henri.control-center-v2 togglePage bluetooth")
+o.bind("SUPER + CTRL + D", "Display", "omarchy-shell henri.control-center-v2 togglePage display")
+o.bind("SUPER + CTRL + W", "Wi-Fi", "omarchy-shell henri.control-center-v2 togglePage wifi")
 
 -- Öffnet das Kontrollzentrum auf der Übersichtsseite (nicht auf einer
 -- Detailseite wie die Kürzel oben); nochmal drücken schließt. Danach im
 -- Popup mit Tab/Shift+Tab durch die Kacheln navigieren.
-o.bind("SUPER + CTRL + G", "Control Center", "omarchy-shell henri.control-center toggle")
+o.bind("SUPER + CTRL + G", "Control Center", "omarchy-shell henri.control-center-v2 toggle")
 
 -- SUPER+CTRL+SPACE war Omarchys Hintergrund-Switcher (nur Bilder des Themes).
 -- Jetzt öffnet es den globalen Wallpaper-Picker (Plugin henri.wallpaper,
