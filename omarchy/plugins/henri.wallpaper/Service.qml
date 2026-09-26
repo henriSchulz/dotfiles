@@ -159,9 +159,11 @@ Item {
     }
   }
 
+  // The link points at a display-size copy; `displayed` maps it back to the
+  // original in the folder, which is what the grid knows.
   Process {
     id: linkProc
-    command: ["readlink", "-f", root.backgroundLink]
+    command: [root.bin, "displayed"]
     stdout: StdioCollector {
       onStreamFinished: root.displayed = String(text || "").trim()
     }

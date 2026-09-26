@@ -5,20 +5,107 @@
 #   henri-wallpaper theme         back to the theme's own backgrounds
 #   henri-wallpaper reapply       re-point the background link (theme-set hook)
 #   henri-wallpaper current       print the global wallpaper, empty in theme mode
+#   henri-wallpaper displayed     print the image on screen, as its original path
 #   henri-wallpaper list          print <image>\t<thumbnail> for the folder
+#   henri-wallpaper prepare       build/refresh the display-size copies, drop stale ones
 #   henri-wallpaper dir           print the wallpaper folder
 #
 # ~/.config/omarchy/global-wallpaper holds the image path; henri.background
 # reads it and skips the theme's background on a theme change.
+#
+# Display-size copies: the folder holds phone photos of 20–30 MB and 24 MP,
+# and every consumer of ~/.local/state/omarchy/current/background (the
+# background, Mission Control, the workspace switcher, the lock screen)
+# decodes that file in full on every shell start or plugin reload. So the
+# background link never points at the original: `set` points it at a copy
+# scaled to fit the largest monitor (at least 2560 px), kept under
+# ~/.cache/henri-wallpaper/scaled/. The two stay linked both ways: the copy's
+# name is a hash of the original's path, size and mtime, so an edited or
+# replaced original gets a fresh copy and `prepare` drops the stale one; a
+# `.src` sidecar next to each copy names its original, which is what
+# `displayed` and the picker use to mark the current image. Originals that
+# already fit are used as they are.
 
 set -euo pipefail
 
 PIN_FILE="$HOME/.config/omarchy/global-wallpaper"
 WALLPAPER_DIR="${HENRI_WALLPAPER_DIR:-$HOME/Pictures/Wallpaper}"
 CURRENT_LINK="$HOME/.local/state/omarchy/current/background"
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/henri-wallpaper"
+SCALED="$CACHE/scaled"
 
 pinned() {
   [[ -f $PIN_FILE ]] && head -n1 "$PIN_FILE" || true
+}
+
+# Longest edge the copy may have: the widest monitor, never below 2560.
+scaled_box() {
+  local box=2560 w
+  w=$(hyprctl monitors -j 2>/dev/null | jq -r '[.[].width] | max // 0' 2>/dev/null || echo 0)
+  (( w > box )) && box=$w
+  echo "$box"
+}
+
+image_hash() {
+  printf '%s\t%s' "$1" "$(stat -Lc '%s:%Y' "$1")" | md5sum | cut -d' ' -f1
+}
+
+image_width() {
+  vipsheader -f width "$1" 2>/dev/null || identify -format '%w' "$1[0]" 2>/dev/null || echo 0
+}
+image_height() {
+  vipsheader -f height "$1" 2>/dev/null || identify -format '%h' "$1[0]" 2>/dev/null || echo 0
+}
+
+# Print the path to use for <image> on screen: a display-size copy, built if
+# missing, or the original itself when it already fits or cannot be scaled.
+scaled_for() {
+  local image=$1 box hash ext dst tmp w h
+  box=$(scaled_box)
+  w=$(image_width "$image"); h=$(image_height "$image")
+  if (( w == 0 || h == 0 || (w <= box && h <= box) )); then
+    echo "$image"; return
+  fi
+  hash=$(image_hash "$image")
+  ext=${image##*.}; ext=${ext,,}
+  [[ $ext =~ ^(jpg|jpeg|png|webp)$ ]] || ext=png
+  dst="$SCALED/$hash.$ext"
+  if [[ ! -f $dst ]]; then
+    mkdir -p "$SCALED"
+    tmp="$SCALED/.$hash.$$.$ext"
+    if vipsthumbnail "$image" -s "${box}x${box}>" -o "$tmp" 2>/dev/null ||
+       magick "$image[0]" -auto-orient -resize "${box}x${box}>" -strip "$tmp" 2>/dev/null; then
+      printf '%s\n' "$image" >"$SCALED/$hash.src"
+      mv -f "$tmp" "$dst"
+    else
+      rm -f "$tmp"
+      echo "$image"; return
+    fi
+  fi
+  echo "$dst"
+}
+
+# Map a path back to its original: copies carry a .src sidecar.
+original_of() {
+  local path=$1 src
+  if [[ $path == "$SCALED"/* ]]; then
+    src="${path%.*}.src"
+    [[ -f $src ]] && { head -n1 "$src"; return; }
+  fi
+  echo "$path"
+}
+
+list_images() {
+  find -L "$WALLPAPER_DIR" -maxdepth 1 -type f \
+    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.bmp' -o -iname '*.gif' \) \
+    -print0 | sort -z
+}
+
+apply_link() {
+  local image=$1 shown
+  shown=$(scaled_for "$image")
+  ln -nsf "$shown" "$CURRENT_LINK"
+  omarchy-shell -q background "${2:-set}" "$shown" || true
 }
 
 case "${1:-}" in
@@ -27,7 +114,7 @@ case "${1:-}" in
     [[ -f $image ]] || { echo "File does not exist: $image" >&2; exit 1; }
     printf '%s\n' "$image" >"$PIN_FILE.tmp"
     mv "$PIN_FILE.tmp" "$PIN_FILE"
-    omarchy-theme-bg-set "$image"
+    apply_link "$image" set
     ;;
   theme)
     rm -f "$PIN_FILE"
@@ -36,36 +123,54 @@ case "${1:-}" in
   reapply)
     image=$(pinned)
     [[ -n $image && -f $image ]] || exit 0
-    ln -nsf "$image" "$CURRENT_LINK"
-    omarchy-shell -q background setInstant "$image" || true
+    apply_link "$image" setInstant
     ;;
   current)
     pinned
     ;;
+  displayed)
+    original_of "$(readlink -f "$CURRENT_LINK" 2>/dev/null || true)"
+    ;;
   list)
     # <image>\t<thumbnail> per line; thumbnails are 16:10 crops, cached by
     # path + size + mtime so replaced files get a new one.
-    cache="${XDG_CACHE_HOME:-$HOME/.cache}/henri-wallpaper"
-    mkdir -p "$WALLPAPER_DIR" "$cache"
-    find -L "$WALLPAPER_DIR" -maxdepth 1 -type f \
-      \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.bmp' -o -iname '*.gif' \) \
-      -print0 | sort -z | while IFS= read -r -d '' image; do
-        hash=$(printf '%s\t%s' "$image" "$(stat -Lc '%s:%Y' "$image")" | md5sum | cut -d' ' -f1)
-        thumb="$cache/$hash.jpg"
-        if [[ ! -f $thumb ]]; then
-          vipsthumbnail "$image" -s 640x400 -m centre -o "$thumb[Q=85]" 2>/dev/null ||
-            magick "$image[0]" -thumbnail 640x400^ -gravity center -extent 640x400 "$thumb" 2>/dev/null ||
-            thumb="$image"
-        fi
-        printf '%s\t%s\n' "$image" "$thumb"
-      done
+    mkdir -p "$WALLPAPER_DIR" "$CACHE"
+    list_images | while IFS= read -r -d '' image; do
+      hash=$(image_hash "$image")
+      thumb="$CACHE/$hash.jpg"
+      if [[ ! -f $thumb ]]; then
+        vipsthumbnail "$image" -s 640x400 -m centre -o "$thumb[Q=85]" 2>/dev/null ||
+          magick "$image[0]" -thumbnail 640x400^ -gravity center -extent 640x400 "$thumb" 2>/dev/null ||
+          thumb="$image"
+      fi
+      printf '%s\t%s\n' "$image" "$thumb"
+    done
+    # Display-size copies are built off the listing, so switching is instant.
+    setsid -f "$0" prepare >/dev/null 2>&1 || true
+    ;;
+  prepare)
+    mkdir -p "$SCALED"
+    declare -A keep=()
+    while IFS= read -r -d '' image; do
+      shown=$(scaled_for "$image")
+      [[ $shown == "$SCALED"/* ]] && keep["${shown##*/}"]=1
+    done < <(list_images)
+    # Drop copies whose original is gone or has changed (new hash, new copy).
+    for f in "$SCALED"/*.src; do
+      [[ -f $f ]] || continue
+      base=${f##*/}; base=${base%.src}
+      live=0
+      for k in "${!keep[@]}"; do [[ ${k%.*} == "$base" ]] && live=1; done
+      (( live )) && continue
+      rm -f "$SCALED/$base".*
+    done
     ;;
   dir)
     mkdir -p "$WALLPAPER_DIR"
     echo "$WALLPAPER_DIR"
     ;;
   *)
-    sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
     ;;
 esac
