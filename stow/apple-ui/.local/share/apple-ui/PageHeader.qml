@@ -11,6 +11,7 @@ Item {
   property string title: ""
   property bool showSwitch: false
   property bool checked: false
+  property bool switchLoading: false
   signal toggled(bool on)
   signal back()
   // Trailing controls (pop-up button, icon buttons) sit right of the title,
@@ -74,6 +75,7 @@ Item {
     anchors.rightMargin: Style.space(6)
     anchors.verticalCenter: parent.verticalCenter
     checked: ph.checked
+    loading: ph.switchLoading
     onToggled: function(on) { ph.toggled(on) }
   }
 }

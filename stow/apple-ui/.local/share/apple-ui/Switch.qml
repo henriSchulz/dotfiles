@@ -10,6 +10,7 @@ Rectangle {
   id: sw
   readonly property var m: Apple.material(sw)
   property bool checked: false
+  property bool loading: false
   signal toggled(bool on)
   width: Style.space(Apple.switchW)
   height: Style.space(Apple.switchH)
@@ -19,6 +20,16 @@ Rectangle {
   border.color: m.hairline
   antialiasing: true
   Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+  // The instant reaction to a tap: while the real handshake behind it is
+  // still in flight (checked stays false until it's genuinely confirmed),
+  // the switch itself breathes so the click never looks ignored.
+  SequentialAnimation on opacity {
+    running: sw.loading
+    loops: Animation.Infinite
+    onRunningChanged: if (!running) sw.opacity = 1
+    NumberAnimation { to: Motion.disabledOpacity; duration: Motion.slower; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
+    NumberAnimation { to: 1; duration: Motion.slower; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
+  }
   readonly property real gap: Style.space(2)
   readonly property real knobBase: height - gap * 2
   Rectangle {

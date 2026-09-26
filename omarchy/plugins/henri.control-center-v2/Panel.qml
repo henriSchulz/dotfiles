@@ -341,13 +341,16 @@ Panel {
       root.battTick()
       if (root.padOverride !== null
           && (root.padConnected === root.padOverride
-              || Date.now() - root.padOverrideSetAt > 10000))
+              // The real handshake (cable or Wi-Fi) typically takes 5-10s --
+              // give it real headroom so the loading state doesn't give up
+              // and flip back to "off" right as the Mac was about to answer.
+              || Date.now() - root.padOverrideSetAt > 20000))
         root.padOverride = null
       if (root.padPendingActivate) {
         if (root.padLinked && !root.padStreaming) {
           root.wakeTrackpad()
           root.padPendingActivate = false
-        } else if (Date.now() - root.padPendingActivateSetAt > 10000) {
+        } else if (Date.now() - root.padPendingActivateSetAt > 20000) {
           root.padPendingActivate = false
         }
       }
@@ -2977,6 +2980,7 @@ Panel {
           title: "Mac Input"
           showSwitch: true
           checked: root.padOn
+          switchLoading: root.padConnecting
           onToggled: root.toggleTrackpad()
           onBack: root.page = "mac"
         }
@@ -2987,18 +2991,22 @@ Panel {
           AUi.UsageHeader {
             width: padPage.innerWidth
             title: "Connection"
-            value: (!root.padBridgeUp ? "Off"
+            value: (root.padConnecting ? "Connecting …"
+              : !root.padBridgeUp ? "Off"
               : root.padStreaming ? (root.padTransport !== "" ? root.padTransport : "Connected")
               : root.padLinked ? "Idle"
               : "Not connected")
               + (root.padButton ? " · click" : "")
               + (root.padKeysHeld > 0 ? " · " + root.padKeysHeld + " key" + (root.padKeysHeld === 1 ? "" : "s") : "")
-            valueColor: root.padStreaming ? root.m.accent
+            valueColor: root.padConnecting ? root.m.inkMuted
+              : root.padStreaming ? root.m.accent
               : !root.padBridgeUp || root.padLinked ? root.m.inkMuted : root.m.urgent
           }
           AUi.Caption {
             width: padPage.innerWidth
-            text: !root.padBridgeUp
+            text: root.padConnecting
+                ? "Waiting for the Mac to answer -- this can take a few seconds over cable or Wi-Fi."
+              : !root.padBridgeUp
                 ? "The receiver is not running."
               : root.padStreaming
                 ? "Fingers are arriving from " + (root.padStream.source || "the Mac") + "."
