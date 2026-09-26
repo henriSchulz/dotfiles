@@ -17,7 +17,8 @@ Item {
   // left of the switch.
   default property alias trailing: trailingRow.data
   width: parent ? parent.width : 0
-  height: Style.space(Apple.pageHeaderH)
+  implicitHeight: Style.space(Apple.pageHeaderH)
+  height: implicitHeight
 
   Row {
     anchors.left: parent.left
