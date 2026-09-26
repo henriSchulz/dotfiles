@@ -14,6 +14,7 @@ Framework-spezifische Umsetzung (Snippets + wie man zentral einbindet):
 - Omarchy-Shell-Plugins / Quickshell / QML → `references/qml.md`
 - GTK4 / libadwaita (gtk-rs, PyGObject) → `references/gtk.md`
 - Web / Tauri / Electron / HTML → `references/web.md`
+- Echter macOS-Look (apple-ui, Scrape-Daten, Messmethode) → `references/apple.md`
 
 Lies die passende Referenz, bevor du Code schreibst.
 
@@ -52,11 +53,14 @@ henri-ui für Plugins, die 1:1 wie macOS Tahoe aussehen sollen — Farben, Typog
 Geometrie, Radien und Glas-Material sind an echtem macOS gemessen/gescrapt
 (`Apple.js`), Bewegung bleibt `Motion.js`. Import `as Apple` (Tokens) und `as AUi`
 (Komponenten: `Tile`, `IconTile`, `Badge`, `Slider`, `Capsule`, `Switch`, `PageHeader`,
-`ListRow`, `SwitchRow`, `Stat`, `Meter`, `TextField`, `Backdrop`, `Material` …).
+`ListRow`, `SwitchRow`, `Stat`, `Meter`, `TextField`, `Backdrop`, `Material` …); für
+Web/GTK `apple.css` / `apple-gtk.css` mit denselben Werten.
 Material = `AUi.Material` als `appleMaterial` am obersten Inhalts-Item, dunkel/hell nach
 Wallpaper (`AUi.Backdrop`). Katalog: `apple-ui/README.md`, Referenz:
 `~/.config/omarchy/plugins/henri.control-center-v2/`. Nur einsetzen, wenn Henri den
 Apple-Look ausdrücklich will (bewusster Bruch mit „Farben aus dem Theme“); sonst henri-ui.
+**Rohdaten (Scrape, Referenz-Screenshots, Scraper), Messmethode und Scraper-Lücken →
+`references/apple.md` — lesen, bevor eine neue macOS-Fläche nachgebaut wird.**
 
 **Globale Schalter** (in `Motion.js`, CSS analog): `speed` (1.0 = normal, 1.2 = alles
 20 % langsamer — Dauern *und* Springs) und `reduceMotion` (nur noch Crossfades).

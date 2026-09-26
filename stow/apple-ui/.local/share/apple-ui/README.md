@@ -53,6 +53,15 @@ bekommt `cardColor: mat.sheet` und `borderSpec: Border.flat(mat.hairline, 1)`.
 | `Backdrop` | Wallpaper-Messung + inotify | `luma`, `threshold`, `dark`, `set(v)`, `remeasure()` |
 | `Material` | Palette-Objekt | `dark` → alle Farben |
 
+## Andere Toolkits
+
+`apple.css` (Web/Tauri/Electron: alle Tokens als `--apple-*`, `.apple-dark` für das
+dunkle Glas, fertige `.apple-sheet/.apple-tile/.apple-capsule/.apple-slider`) und
+`apple-gtk.css` (GTK4: `@define-color apple_*` + `--apple-*`). Gleiche Werte wie
+`Apple.js` — Änderungen in allen drei Dateien. Motion weiterhin aus henri-ui.
+
+Messmethode, Rohdaten und Scraper-Lücken: `~/.claude/skills/henri-ui/references/apple.md`.
+
 Referenz-Implementierung: `~/.config/omarchy/plugins/henri.control-center-v2/`.
 Punkt-Werte werden mit `Style.space(pt)` auf die Shell-Skala gebracht.
 Schriften SF Pro / SF Symbols sind lokal installiert — nie committen.

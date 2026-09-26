@@ -11,6 +11,10 @@ Einzige Quelle: `~/.local/share/henri-ui/motion.css`.
 - JS-Werte (`spring`, `dur`, `ease` unten) ebenfalls aus einer zentralen Datei
   importieren, nicht im Projekt duplizieren.
 
+**Apple-Look** (nur auf Henris Wunsch, siehe `apple.md`): zusätzlich
+`~/.local/share/apple-ui/apple.css` laden — `--apple-*`-Tokens, `.apple-dark` für das
+dunkle Glas (Backdrop-Luma < 0,75), fertige `.apple-sheet/.apple-tile/.apple-capsule`.
+
 Enthält alle Tokens als CSS-Variablen, exakte Spring-Kurven (`--spring-*` als
 `linear()` + passende `--spring-*-dur`), fertige Klassen `.ui-control`, `.ui-menu`,
 `.ui-popover` und den Reduce-Motion-Fallback.

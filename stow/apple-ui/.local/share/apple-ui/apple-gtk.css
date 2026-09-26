@@ -1,0 +1,54 @@
+/* apple-ui tokens for GTK4/libadwaita — values only, no rules. Mirrors
+ * Apple.js / apple.css; change a value in all three. Load beside
+ * henri-ui/gtk-tokens.css (motion) — see references/apple.md. */
+@define-color apple_accent rgba(0, 122, 255, 1);
+@define-color apple_label rgba(0, 0, 0, 0.847);
+@define-color apple_secondary_label rgba(0, 0, 0, 0.498);
+@define-color apple_separator rgba(0, 0, 0, 0.098);
+@define-color apple_system_fill rgba(0, 0, 0, 0.098);
+@define-color apple_system_red rgba(255, 56, 60, 1);
+@define-color apple_system_green rgba(52, 199, 89, 1);
+/* light glass */
+@define-color apple_sheet rgba(255, 255, 255, 0.45);
+@define-color apple_tile rgba(255, 255, 255, 0.40);
+@define-color apple_tile_hover rgba(255, 255, 255, 0.55);
+@define-color apple_hairline rgba(0, 0, 0, 0.098);
+@define-color apple_badge_on rgba(0, 122, 255, 1);
+@define-color apple_badge_on_glyph #ffffff;
+@define-color apple_badge_off rgba(0, 0, 0, 0.098);
+@define-color apple_slider_track rgba(0, 0, 0, 0.098);
+@define-color apple_slider_fill #ffffff;
+@define-color apple_capsule rgba(0, 0, 0, 0.06);
+/* dark glass (measured) */
+@define-color apple_dark_ink #ffffff;
+@define-color apple_dark_ink_muted rgba(255, 255, 255, 0.55);
+@define-color apple_dark_sheet rgba(41, 41, 41, 0.35);
+@define-color apple_dark_tile rgba(255, 255, 255, 0.15);
+@define-color apple_dark_tile_hover rgba(255, 255, 255, 0.25);
+@define-color apple_dark_hairline rgba(255, 255, 255, 0.28);
+@define-color apple_dark_badge_on #ffffff;
+@define-color apple_dark_badge_on_glyph rgba(0, 122, 255, 1);
+@define-color apple_dark_badge_off rgba(255, 255, 255, 0.25);
+@define-color apple_dark_slider_track rgba(0, 0, 0, 0.20);
+@define-color apple_dark_capsule rgba(255, 255, 255, 0.25);
+:root {
+  --apple-ui-font: "SF Pro";
+  --apple-headline: 13px;
+  --apple-body: 13px;
+  --apple-callout: 12px;
+  --apple-subheadline: 11px;
+  --apple-footnote: 10px;
+  --apple-radius: 22px;
+  --apple-radius-row: 10px;
+  --apple-radius-control: 8px;
+  --apple-radius-art: 8px;
+  --apple-tile-h: 64px;
+  --apple-gap: 12px;
+  --apple-padding: 10px;
+  --apple-badge: 36px;
+  --apple-row-h: 44px;
+  --apple-switch-w: 38px;
+  --apple-switch-h: 22px;
+  --apple-slider-h: 4px;
+  --apple-capsule-h: 24px;
+}

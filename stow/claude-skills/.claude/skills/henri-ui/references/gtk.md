@@ -105,6 +105,8 @@ Apps, deren Code wir nicht haben, bekommen den Stil über `~/.config/gtk-4.0/gtk
 (stow-Paket `gtk`). Diese Datei **importiert nur**:
 
 1. `~/.local/share/henri-ui/gtk-tokens.css` — nur `:root`-Tokens, keine Regeln
+   (Apple-Look, nur auf Henris Wunsch: zusätzlich `~/.local/share/apple-ui/apple-gtk.css`,
+   `@define-color apple_*` + `--apple-*`, siehe `apple.md`)
    (`--dur-*`, `--ease-*`, `--radius-*`, `--press-scale`, `--hover-alpha` …).
    `gtk.css` (für eigene Apps) importiert dieselbe Datei.
 2. `~/.local/state/henri-ui/gtk-colors.css` — von `henri-ui-gtk-colors` aus dem

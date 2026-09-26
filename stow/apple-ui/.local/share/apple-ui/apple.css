@@ -1,0 +1,154 @@
+/* apple-ui tokens — Web / Tauri / Electron. Mirrors Apple.js (QML) and
+ * apple-gtk.css (GTK): change a value in all three. Motion stays in
+ * henri-ui/motion.css. Load at runtime from ~/.local/share/apple-ui/apple.css
+ * (never copy) — see ~/.claude/skills/henri-ui/references/apple.md.
+ *
+ * Sources: ~/macos-scrape/dist/macos-tokens.json (NSColor light, typography),
+ * ~/macos-scrape/controlCenter-fixed/ax.json (geometry in pt) and screen.png
+ * (glass alphas, hairline, slider track, radius — measured). 1 pt = 1 px here. */
+:root {
+  --apple-ui-font: "SF Pro", -apple-system, system-ui, sans-serif;
+  --apple-symbol-font: ".SF Symbols Fallback", "SF Pro";
+
+  /* typography (pt) */
+  --apple-large-title: 26px;
+  --apple-title1: 22px;
+  --apple-title2: 17px;
+  --apple-title3: 15px;
+  --apple-headline: 13px;      /* bold */
+  --apple-body: 13px;
+  --apple-callout: 12px;
+  --apple-subheadline: 11px;
+  --apple-footnote: 10px;
+  --apple-caption: 10px;
+
+  /* NSColor (light) */
+  --apple-accent: rgba(0, 122, 255, 1);
+  --apple-label: rgba(0, 0, 0, 0.847);
+  --apple-secondary-label: rgba(0, 0, 0, 0.498);
+  --apple-tertiary-label: rgba(0, 0, 0, 0.259);
+  --apple-separator: rgba(0, 0, 0, 0.098);
+  --apple-system-fill: rgba(0, 0, 0, 0.098);
+  --apple-secondary-system-fill: rgba(0, 0, 0, 0.078);
+  --apple-system-red: rgba(255, 56, 60, 1);
+  --apple-system-green: rgba(52, 199, 89, 1);
+  --apple-system-orange: rgba(255, 141, 40, 1);
+  --apple-system-yellow: rgba(255, 204, 0, 1);
+  --apple-system-gray: rgba(142, 142, 147, 1);
+  --apple-selected-menu-item: rgba(66, 119, 244, 1);
+  --apple-link: rgba(0, 104, 218, 1);
+
+  /* Control Center geometry (pt) */
+  --apple-content-width: 292px;
+  --apple-padding: 10px;
+  --apple-gap: 12px;
+  --apple-tile: 140px;
+  --apple-tile-h: 64px;
+  --apple-circle: 64px;
+  --apple-badge: 36px;
+  --apple-badge-inset: 14px;
+  --apple-text-x: 57px;
+  --apple-label-inset: 16px;
+  --apple-label-top: 11px;
+  --apple-slider-y: 42px;
+  --apple-slider-h: 4px;
+  --apple-art: 40px;
+  --apple-transport: 26px;
+  --apple-capsule-w: 94px;
+  --apple-capsule-h: 24px;
+  --apple-row-h: 44px;
+  --apple-page-header-h: 36px;
+  --apple-switch-w: 38px;
+  --apple-switch-h: 22px;
+  --apple-icon-button: 30px;
+
+  /* radii (measured: ~22 pt on a 64 pt tile) */
+  --apple-radius: 22px;
+  --apple-radius-art: 8px;
+  --apple-radius-row: 10px;
+  --apple-radius-control: 8px;
+  --apple-radius-pill: 999px;
+
+  /* material — light glass (scrape colours). Needs a backdrop blur to read as glass. */
+  --apple-ink: var(--apple-label);
+  --apple-ink-secondary: var(--apple-secondary-label);
+  --apple-ink-muted: var(--apple-secondary-label);
+  --apple-sheet: rgba(255, 255, 255, 0.45);
+  --apple-tile-fill: rgba(255, 255, 255, 0.40);
+  --apple-tile-hover: rgba(255, 255, 255, 0.55);
+  --apple-hairline: var(--apple-separator);
+  --apple-badge-on: var(--apple-accent);
+  --apple-badge-on-glyph: #fff;
+  --apple-badge-off: var(--apple-system-fill);
+  --apple-badge-off-glyph: var(--apple-label);
+  --apple-slider-track: var(--apple-system-fill);
+  --apple-slider-fill: #fff;
+  --apple-capsule: rgba(0, 0, 0, 0.06);
+  --apple-art-placeholder: rgba(0, 0, 0, 0.06);
+  --apple-row-hover: rgba(255, 255, 255, 0.40);
+  --apple-field: rgba(255, 255, 255, 0.40);
+  --apple-cursor-ring: var(--apple-accent);
+  --apple-blur: 24px;
+  /* dark glass below this mean luminance of the backdrop (0..1) */
+  --apple-dark-below-luma: 0.75;
+}
+
+/* dark glass — measured on the real Control Center over a dark wallpaper.
+ * Apply `.apple-dark` on the surface (or html) when the backdrop is dark. */
+.apple-dark {
+  --apple-ink: #fff;
+  --apple-ink-secondary: #fff;
+  --apple-ink-muted: rgba(255, 255, 255, 0.55);
+  --apple-sheet: rgba(41, 41, 41, 0.35);
+  --apple-tile-fill: rgba(255, 255, 255, 0.15);
+  --apple-tile-hover: rgba(255, 255, 255, 0.25);
+  --apple-hairline: rgba(255, 255, 255, 0.28);
+  --apple-badge-on: #fff;
+  --apple-badge-on-glyph: var(--apple-accent);
+  --apple-badge-off: rgba(255, 255, 255, 0.25);
+  --apple-badge-off-glyph: #fff;
+  --apple-slider-track: rgba(0, 0, 0, 0.20);
+  --apple-slider-fill: #fff;
+  --apple-capsule: rgba(255, 255, 255, 0.25);
+  --apple-art-placeholder: rgba(255, 255, 255, 0.15);
+  --apple-row-hover: rgba(255, 255, 255, 0.15);
+  --apple-field: rgba(255, 255, 255, 0.15);
+  --apple-cursor-ring: #fff;
+}
+
+/* ready-made surfaces */
+.apple-sheet {
+  background: var(--apple-sheet);
+  border: 1px solid var(--apple-hairline);
+  border-radius: var(--apple-radius);
+  backdrop-filter: blur(var(--apple-blur));
+  -webkit-backdrop-filter: blur(var(--apple-blur));
+  padding: var(--apple-padding);
+  color: var(--apple-ink);
+  font-family: var(--apple-ui-font);
+  font-size: var(--apple-body);
+}
+.apple-tile {
+  background: var(--apple-tile-fill);
+  border: 1px solid var(--apple-hairline);
+  border-radius: var(--apple-radius);
+  transition: background var(--dur-fast, 160ms) var(--ease-out, ease-out),
+              transform var(--spring-snappy-dur, 560ms) var(--spring-snappy, ease-out);
+}
+.apple-tile[data-interactive]:hover { background: var(--apple-tile-hover); transition-duration: var(--dur-instant, 90ms); }
+.apple-tile[data-interactive]:active { transform: scale(var(--press-scale, 0.97)); }
+.apple-title { font: 700 var(--apple-headline) var(--apple-ui-font); color: var(--apple-ink); }
+.apple-subtitle { font: 400 var(--apple-callout) var(--apple-ui-font); color: var(--apple-ink-secondary); }
+.apple-caption { font: 400 var(--apple-subheadline) var(--apple-ui-font); color: var(--apple-ink-muted); }
+.apple-capsule {
+  height: var(--apple-capsule-h);
+  padding: 0 12px;
+  border-radius: var(--apple-radius-pill);
+  background: var(--apple-capsule);
+  border: 1px solid var(--apple-hairline);
+  color: var(--apple-ink);
+  font: 400 var(--apple-callout) var(--apple-ui-font);
+}
+.apple-capsule[data-selected] { background: var(--apple-badge-on); color: var(--apple-badge-on-glyph); font-weight: 600; }
+.apple-slider { position: relative; height: var(--apple-slider-h); border-radius: 2px; background: var(--apple-slider-track); }
+.apple-slider > .fill { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--apple-slider-fill); }
