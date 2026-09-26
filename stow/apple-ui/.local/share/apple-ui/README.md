@@ -5,6 +5,14 @@ aussehen sollen: Farben, Typografie, Geometrie, Radien und Glas-Material sind
 gemessen bzw. gescrapt (Quellen in `Apple.js`), nicht aus dem Omarchy-Theme.
 Bewegung (Dauern, Kurven, Springs) kommt weiterhin aus `henri-ui/Motion.js`.
 
+**Geltungsbereich:** Der heutige Stand ist am Control Center gemessen und gilt für
+**Menüleisten-Popups** (Control Center, Batterie-Menü, Popover unter einem Bar-Icon).
+Eine **App** (Fenster, Sidebar, Toolbar, Listen, Sheets) ist anders aufgebaut — dafür
+nicht diese Kacheln/Radien/Alphas übernehmen, sondern die passende macOS-Fläche
+scrapen und nachmessen und die Werte als eigenen Abschnitt hier ergänzen. Die
+NSColor-/Typografie-Tokens aus dem Scrape gelten überall. Details:
+`~/.claude/skills/henri-ui/references/apple.md`.
+
 ```qml
 import "file:///home/henri/.local/share/apple-ui/Apple.js" as Apple
 import "file:///home/henri/.local/share/apple-ui" as AUi

@@ -16,6 +16,12 @@
 //   import "file:///home/henri/.local/share/apple-ui" as AUi
 // Punkt-Werte werden im Plugin mit Style.space(pt) auf die Shell-Skala gebracht.
 
+// Geltungsbereich: die Geometrie-, Radius- und Material-Werte unten sind am
+// Control Center gemessen und gelten für Menüleisten-Popups. Eine App (Fenster,
+// Sidebar, Toolbar, Sheet) bekommt eigene, an ihrer Referenzfläche gemessene
+// Abschnitte — die Popup-Werte nicht dafür zweckentfremden. NSColor und
+// Typografie gelten flächenunabhängig. Siehe henri-ui references/apple.md.
+
 // ---- Schriften. SF Pro / SF Symbols sind lokal installiert (nie committen).
 var uiFont = "SF Pro"
 var symbolFont = ".SF Symbols Fallback"

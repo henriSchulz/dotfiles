@@ -2,6 +2,9 @@
  * apple-gtk.css (GTK): change a value in all three. Motion stays in
  * henri-ui/motion.css. Load at runtime from ~/.local/share/apple-ui/apple.css
  * (never copy) — see ~/.claude/skills/henri-ui/references/apple.md.
+ * Scope: geometry, radii and glass values are measured on the Control Center
+ * and apply to menu-bar popups. An app window gets its own measured section;
+ * only the NSColor/typography tokens are surface-independent.
  *
  * Sources: ~/macos-scrape/dist/macos-tokens.json (NSColor light, typography),
  * ~/macos-scrape/controlCenter-fixed/ax.json (geometry in pt) and screen.png

@@ -59,7 +59,11 @@ Material = `AUi.Material` als `appleMaterial` am obersten Inhalts-Item, dunkel/h
 Wallpaper (`AUi.Backdrop`). Katalog: `apple-ui/README.md`, Referenz:
 `~/.config/omarchy/plugins/henri.control-center-v2/`. Nur einsetzen, wenn Henri den
 Apple-Look ausdrücklich will (bewusster Bruch mit „Farben aus dem Theme“); sonst henri-ui.
-**Rohdaten (Scrape, Referenz-Screenshots, Scraper), Messmethode und Scraper-Lücken →
+**Geltungsbereich: die vorhandenen Werte/Komponenten sind am Control Center gemessen und
+gelten für Menüleisten-Popups (Control Center, Batterie-Menü). Eine App (Fenster, Sidebar,
+Toolbar, Sheet) hat einen anderen Aufbau — dafür nicht diese Kacheln/Radien/Alphas
+übernehmen, sondern die passende macOS-Fläche scrapen und nachmessen, die Werte als
+eigenen Abschnitt in apple-ui ablegen. Rohdaten, Messmethode und Scraper-Lücken →
 `references/apple.md` — lesen, bevor eine neue macOS-Fläche nachgebaut wird.**
 
 **Globale Schalter** (in `Motion.js`, CSS analog): `speed` (1.0 = normal, 1.2 = alles

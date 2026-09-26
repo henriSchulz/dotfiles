@@ -6,6 +6,34 @@ die gemessenen Apple-Werte. Bewegung bleibt immer henri-ui (`Motion.js`/`motion.
 Alles andere (Größen ≥ 20 px, Kontrast, Tastatur, Reduce Motion, Choreografie §3b) gilt
 weiter.
 
+## Geltungsbereich — Menüleisten-Popups, nicht Apps
+
+Alles, was bisher in `apple-ui` steckt (Tokens, Geometrie, Glas-Alphas, Komponenten), ist
+am **Control Center** gemessen und gilt für **Menüleisten-Popups**: Control Center,
+Batterie-Menü, Wi-Fi/Bluetooth-Menüs, Popover unter einem Bar-Icon. Dort 1:1 verwenden.
+
+**Eine App (Fenster) ist etwas anderes.** Fenster, Sidebars, Toolbars, Listen, Formulare,
+Sheets und Dialoge haben unter macOS einen anderen Aufbau, andere Maße, andere
+Materialien (z. B. `windowBackground`, Sidebar-Vibrancy, Toolbar-Höhe, 13-pt-Body auf
+opakem Grund statt Glas). Für eine App also **nicht** die Control-Center-Kacheln,
+-Radien oder -Alphas übernehmen, sondern:
+
+1. Die passende macOS-Fläche als Referenz holen (Screenshot + AX-Tree auf dem Mac,
+   Scraper in `~/Projects/MacOSUICapture`) — ohne Referenz nicht raten.
+2. Nach der Messmethode unten die Werte dieser Fläche bestimmen (Geometrie aus dem
+   AX-Tree, Farben/Alphas/Radien per Pixelmessung, Schriftgrößen über Cap-Höhe).
+3. Die gescrapten NSColor-/Typografie-Tokens aus `macos-tokens.json` bleiben die
+   Farb- und Schriftbasis (`Apple.js` → `label`, `secondaryLabel`, `separator`,
+   `systemFill`, `accent`, `body` …) — die sind flächenunabhängig.
+4. Die neuen Werte als **eigenen Abschnitt** in `Apple.js`/`apple.css`/`apple-gtk.css`
+   ablegen (z. B. `window`, `sidebar`, `toolbar`), nicht die Popup-Werte überschreiben,
+   und neue Komponenten daneben anlegen (z. B. `AUi.SidebarRow`, `AUi.Toolbar`).
+5. Bewegung weiterhin henri-ui; Fenster-Choreografie (Sheets, Drill-in, Sidebar) aus
+   SKILL.md §3/§3b.
+
+Kurz: apple-ui wächst pro Fläche mit — jede Fläche bekommt ihre eigenen gemessenen
+Werte, die Popup-Werte sind nur der erste Abschnitt.
+
 ## Bibliothek
 
 `~/.local/share/apple-ui/` (dotfiles `stow/apple-ui`) — Gegenstück zu henri-ui:
