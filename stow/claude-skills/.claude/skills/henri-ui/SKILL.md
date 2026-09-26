@@ -253,8 +253,13 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   ein Popover kommt, weil sie dutzende Male am Tag aufgeht. Auswahlwechsel 0 ms.
 - Kategorie-Buttons nur an der Kapsel (⌃1–⌃4, Super+Ziffer wären Workspaces): Fade +
   8-px-Slide, `Motion.stagger`; im Panel übernehmen die Filter-Kapseln, aktiv = Chip
-  im Feld. Inline-Vervollständigung in tertiärem Grau, „— Art“ dahinter; letzte Suche
-  kommt markiert zurück.
+  im Feld. Inline-Vervollständigung in tertiärem Grau, „— Art“ dahinter (Tab übernimmt);
+  letzte Suche kommt markiert zurück.
+- → auf einem Treffer öffnet die **Aktionsseite** (Drill-in nach §3b: Liste 30 % nach
+  links + Fade, Aktionen von rechts, `slow` easeInOut; Chip im Feld trägt den Namen,
+  Tippen filtert, ↩ führt aus, →/Tab nur in Unterseiten — Open With…, Copy To…, Move To…,
+  Get Info —, ←/Esc/⌫ zurück mit gemerkter Auswahl). Zerstörendes (Trash, Uninstall)
+  fragt über den einen ConfirmDialog.
 
 **Switcher (Super+Tab, wie Cmd/Alt+Tab)**
 - Streifen erscheint erst nach `Motion.switcherDelay` (50 ms) Halten; kurzes Antippen

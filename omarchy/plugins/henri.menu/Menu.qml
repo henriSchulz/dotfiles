@@ -623,18 +623,18 @@ Item {
     root.fileSearchConfig = fileSearch
   }
   property bool deleteConfirmOpen: false
-  property var deleteTarget: null
   onOpenedChanged: if (!opened) {
     // The query comes back, fully selected, on the next open (spec §8) — only
     // from the plain root search; a submenu, dmenu or category starts blank.
     lastQuery = (mode === "menu" && activeMenu === "root" && category === "") ? filterText : ""
     deleteConfirmOpen = false
-    deleteTarget = null
+    confirmSpec = null
     fileScanProc.running = false
     fileRows = []
     category = ""
     querySelected = false
     buttonsPinned = false
+    closePages()
   }
   // ------------------------------------------------------------ spotlight look
   //
@@ -704,7 +704,7 @@ Item {
   readonly property int capsuleGap: pt(sp.capsuleGap)
   readonly property int capsuleFontSize: pt(sp.capsuleFont)
   // Filter capsules only outside a dmenu prompt; rows start right under the field then.
-  readonly property bool showCapsules: !root.dmenuActive
+  readonly property bool showCapsules: !root.dmenuActive && !root.pageOpen
   readonly property int rowsTop: root.showCapsules ? pt(sp.rowsTop) : root.fieldRow + pt(sp.rowInset)
   readonly property int rowInset: pt(sp.rowInset)
   readonly property int rowHeight: pt(sp.rowHeight)
@@ -952,7 +952,7 @@ Item {
   // keystroke away, and a submenu, category or dmenu prompt lists its rows.
   readonly property bool blankRoot: !root.dmenuActive && !root.fileSearchActive
     && root.activeMenu === "root" && root.filterText.trim().length === 0 && root.category === ""
-  readonly property bool resultsShown: root.opened && !root.blankRoot && !(root.dmenuActive && root.mode === "input")
+  readonly property bool resultsShown: root.opened && (root.pageOpen || (!root.blankRoot && !(root.dmenuActive && root.mode === "input")))
 
   readonly property string emptyStateText: {
     if (root.fileSearchActive)
@@ -980,7 +980,8 @@ Item {
   property int cardWidth: Math.min(root.dmenuActive
     ? Math.max(root.pt(root.dmenuWidth), root.spotWidth)
     : (root.blankRoot ? root.compactWidth : root.spotWidth), panel.width - Style.gapsOut * 2)
-  property int visibleRowsHeight: root.blankRoot ? 0 : (root.dmenuActive ? dmenuRowListHeight(layoutSerial, displayModel.count, filterText) : (root.isAppsGrid ? root.gridRowsHeight() : rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)))
+  property int visibleRowsHeight: root.pageOpen ? pageRowListHeight(layoutSerial, pageModel.count, pageFilter)
+    : root.blankRoot ? 0 : (root.dmenuActive ? dmenuRowListHeight(layoutSerial, displayModel.count, filterText) : (root.isAppsGrid ? root.gridRowsHeight() : rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)))
   property bool searchDivider: false
 
   function finishRequest(selection) {
@@ -1064,6 +1065,20 @@ Item {
     }
 
     return foldedListHeight(totals, available, heads)
+  }
+
+  function pageRowListHeight(_serial, _count, _filter) {
+    if (pageModel.count === 0) return root.emptyStateHeight
+    var available = availableRowsHeight()
+    var totals = []
+    var total = 0
+    for (var i = 0; i < pageModel.count; i++) {
+      if (i > 0) total += root.rowSpacing
+      total += root.rowHeight
+      totals.push(total)
+      if (total > available) break
+    }
+    return foldedListHeight(totals, available)
   }
 
   function dmenuRowListHeight(_serial, _count, _filter) {
@@ -1748,6 +1763,7 @@ Item {
   function setActiveMenu(id, pushHistory, fromPointer) {
     root.querySelected = false
     root.category = ""
+    root.closePages()
     if (!root.item(id)) id = "root"
     if (pushHistory && id !== root.activeMenu) root.navStack = root.navStack.concat([root.activeMenu])
     root.activeMenu = id
@@ -1829,31 +1845,45 @@ Item {
     }
   }
 
+  // Anything destructive asks first through the one ConfirmDialog: the
+  // spec names what it asks and what runs on "yes".
+  property var confirmSpec: null
+  function askConfirm(spec) {
+    root.confirmSpec = spec
+    deleteConfirm.selectedIndex = 1
+    root.deleteConfirmOpen = true
+  }
   function requestDeleteSelected() {
     if (!root.cursorActive || root.selectedIndex < 0 || root.selectedIndex >= displayModel.count) return
     var row = displayModel.get(root.selectedIndex)
     if (!row || row.kind !== "app") return
-    root.deleteTarget = { appId: row.appId, label: row.label }
-    deleteConfirm.selectedIndex = 1
-    root.deleteConfirmOpen = true
+    root.requestUninstall(row.appId, row.label)
+  }
+  function requestUninstall(appId, label) {
+    root.askConfirm({
+      message: "Do you want to uninstall " + label + "?",
+      confirmText: "Uninstall",
+      run: function() {
+        root.cancel()
+        if (root.appLibrary) root.appLibrary.remove(appId, label)
+        else root.fallbackRemove(appId, label)
+      }
+    })
   }
 
   function cancelDelete() {
     root.deleteConfirmOpen = false
-    root.deleteTarget = null
+    root.confirmSpec = null
     deleteConfirm.selectedIndex = 1
     root.disarmPointer()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
   function confirmDelete() {
-    var target = root.deleteTarget
+    var spec = root.confirmSpec
     root.deleteConfirmOpen = false
-    root.deleteTarget = null
-    if (!target) return
-    root.cancel()
-    if (root.appLibrary) root.appLibrary.remove(target.appId, target.label)
-    else root.fallbackRemove(target.appId, target.label)
+    root.confirmSpec = null
+    if (spec && spec.run) spec.run()
   }
 
   function applyDmenuSelection(value) {
@@ -1944,6 +1974,317 @@ Item {
 
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
+
+  // ------------------------------------------------------------ item actions
+  //
+  // → on a result opens a page of actions for that item (Raycast-style): the
+  // list slides out to the left, the actions come in from the right (henri-ui
+  // drill-in). Typing filters the actions, ↩ runs one, → or Tab descends into
+  // a sub-page (Open With…, Copy To…, Move To…, Get Info), ← / Esc / ⌫ on an
+  // empty filter go back. Rows carry their `run` in `pages`; the ListModel
+  // only holds what is drawn plus the index back into the page.
+  property var pages: []
+  readonly property bool pageOpen: root.pages.length > 0
+  readonly property var page: root.pageOpen ? root.pages[root.pages.length - 1] : null
+  property string pageFilter: ""
+  property int pageSelected: 0
+  ListModel { id: pageModel }
+  readonly property string pagePlaceholder: !root.page ? "" :
+    root.page.kind === "apps" ? "Search applications"
+    : root.page.kind === "folders" ? "Search folders"
+    : root.page.kind === "info" ? "Info"
+    : "Search actions"
+
+  function rowCopy(row) {
+    return {
+      itemId: String(row.itemId || ""), kind: String(row.kind || ""), icon: String(row.icon || ""),
+      iconFont: String(row.iconFont || ""), appIcon: String(row.appIcon || ""), appId: String(row.appId || ""),
+      isDir: !!row.isDir, label: String(row.label || ""), target: String(row.target || ""),
+      detail: String(row.detail || ""), action: String(row.action || "")
+    }
+  }
+  function pushPage(p, replacing) {
+    // The page being left remembers its selection for the way back; a page
+    // replacing its sibling (folder picker browsing) leaves that memory alone.
+    if (root.page && !replacing) root.page.selected = root.pageSelected
+    root.pages = root.pages.concat([p])
+    root.pageFilter = ""
+    root.pageSelected = 0
+    root.disarmPointer()
+    root.rebuildPage()
+    if (p.kind === "folders") root.scanPickerDir(p.dir)
+    if (p.kind === "info") root.gatherInfo(p)
+  }
+  function replacePage(p) {
+    root.pages = root.pages.slice(0, root.pages.length - 1)
+    root.pushPage(p, true)
+  }
+  function popPage() {
+    if (!root.pageOpen) return false
+    root.pages = root.pages.slice(0, root.pages.length - 1)
+    root.pageFilter = ""
+    root.pageSelected = root.page && root.page.selected ? root.page.selected : 0
+    root.disarmPointer()
+    root.rebuildPage()
+    return true
+  }
+  function closePages() {
+    if (!root.pageOpen && root.pageFilter === "") return
+    root.pages = []
+    root.pageFilter = ""
+    root.pageSelected = 0
+    pageModel.clear()
+    layoutSerial += 1
+  }
+  function setPageFilter(text) {
+    root.pageFilter = text
+    root.pageSelected = 0
+    root.caretOn = true
+    root.disarmPointer()
+    root.rebuildPage()
+  }
+  function rebuildPage() {
+    pageModel.clear()
+    if (root.page) {
+      var q = root.pageFilter.trim().toLowerCase()
+      var rows = root.page.rows || []
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i]
+        if (q && (r.label + " " + (r.detail || "")).toLowerCase().indexOf(q) < 0) continue
+        pageModel.append({
+          label: String(r.label || ""), detail: String(r.detail || ""), icon: String(r.icon || ""),
+          iconFont: String(r.iconFont || ""), appIcon: String(r.appIcon || ""),
+          hasMore: !!r.more, rowIndex: i
+        })
+      }
+    }
+    layoutSerial += 1
+    if (pageModel.count === 0) root.pageSelected = 0
+    else if (root.pageSelected >= pageModel.count) root.pageSelected = pageModel.count - 1
+    Qt.callLater(function() { if (pageModel.count > 0) pageList.positionViewAtIndex(root.pageSelected, ListView.Contain) })
+  }
+  function selectPage(delta) {
+    if (pageModel.count === 0) return
+    root.disarmPointer()
+    root.pageSelected = Math.max(0, Math.min(pageModel.count - 1, root.pageSelected + delta))
+    pageList.positionViewAtIndex(root.pageSelected, ListView.Contain)
+  }
+  function pageRowAt(index) {
+    if (!root.page || index < 0 || index >= pageModel.count) return null
+    return root.page.rows[pageModel.get(index).rowIndex] || null
+  }
+  // ↩ runs the row (a row that only leads on descends); → and Tab only
+  // descend, so a stray → never fires an action.
+  function activatePageRow(index, descend) {
+    var r = root.pageRowAt(index)
+    if (!r) return
+    if (r.more && (descend || !r.run)) { r.more(); return }
+    if (!descend && r.run) r.run()
+  }
+  function openActionsForSelected() {
+    root.flushRebuild()
+    if (root.dmenuActive || !root.cursorActive || root.selectedIndex < 0 || root.selectedIndex >= displayModel.count) return false
+    var row = root.rowCopy(displayModel.get(root.selectedIndex))
+    var rows = root.actionsFor(row)
+    if (rows.length === 0) return false
+    root.pushPage({ kind: "actions", title: row.label, target: row, rows: rows })
+    return true
+  }
+
+  // Closes Spotlight and runs the deed.
+  function finishWith(fn) {
+    applySerial = requestSerial
+    opened = false
+    filterText = ""
+    if (fn) fn()
+  }
+  function isUrl(text) { return /^(https?:\/\/|www\.)\S+$/i.test(String(text || "").trim()) }
+  function terminalAt(dir) {
+    Util.execArgv(["uwsm-app", "--", "bash", "-c", 'cd "$1" && exec xdg-terminal-exec', "bash", String(dir)])
+  }
+  function copyFileToClipboard(path) {
+    Quickshell.execDetached(["bash", "-c", "printf 'file://%s' \"$1\" | wl-copy --type text/uri-list", "bash", String(path)])
+  }
+  function openWith(appId, path) {
+    var id = String(appId || "")
+    if (id.slice(-8) === ".desktop") id = id.slice(0, -8)
+    Quickshell.execDetached(["uwsm-app", "--", "gtk-launch", id + ".desktop", String(path)])
+  }
+
+  // Glyphs for the action rows (SF Symbols, see memory sf-symbols-codepoints).
+  readonly property var glyph: ({
+    open: Apple.sf(0x100202),      // square.and.arrow.up
+    folder: Apple.sf(0x100215),    // folder
+    doc: Apple.sf(0x100237),       // doc
+    copy: Apple.sf(0x100241),      // doc.on.doc
+    clipboard: Apple.sf(0x100243), // doc.on.clipboard
+    trash: Apple.sf(0x100211),     // trash
+    info: Apple.sf(0x1002F2),      // list.bullet
+    web: Apple.sf(0x1002AB),       // magnifyingglass
+    move: Apple.sf(0x100C13),      // arrow.right.circle.fill
+    apps: Apple.sf(0x1001F7),      // square.grid.2x2
+    remove: Apple.sf(0x100184),    // xmark
+    terminal: Apple.sf(0x100194),  // command
+    run: Apple.sf(0x1002E5)        // bolt
+  })
+  function act(label, glyphKey, run, detail, more) {
+    return { label: label, detail: detail || "", icon: root.glyph[glyphKey] || "", iconFont: Apple.symbolFont, run: run || null, more: more || null }
+  }
+  function webAction(text) {
+    var q = String(text || "").trim()
+    return root.act("Search the Web", "web", function() { root.webSearch(q) }, "“" + (q.length > 40 ? q.slice(0, 39) + "…" : q) + "”")
+  }
+
+  function actionsFor(row) {
+    var rows = []
+    var path = row.target
+    if (row.kind === "file") {
+      var pretty = root.prettyPath(path)
+      var parent = root.dirNameOf(path) || "/"
+      if (row.isDir) {
+        rows.push(root.act("Browse Folder", "folder", function() { root.closePages(); root.setFilter(" " + pretty + "/") }, "in Spotlight"))
+        rows.push(root.act("Open", "open", function() { root.finishWith(function() { root.openPath(path) }) }, "in Files"))
+        rows.push(root.act("Open in Terminal", "terminal", function() { root.finishWith(function() { root.terminalAt(path) }) }))
+      } else {
+        rows.push(root.act("Open", "open", function() { root.finishWith(function() { root.openPath(path) }) }))
+        rows.push(root.act("Open With…", "apps", null, "", function() { root.pushPage(root.openWithPage(path)) }))
+      }
+      rows.push(root.act("Show in Files", "folder", function() { root.finishWith(function() { root.openPath(parent) }) }, root.prettyPath(parent)))
+      rows.push(root.act("Get Info", "info", null, "", function() { root.pushPage({ kind: "info", title: "Info", path: path, rows: [] }) }))
+      rows.push(root.act("Copy Path", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(path) }) }, pretty))
+      rows.push(root.act(row.isDir ? "Copy Folder" : "Copy File", "copy", function() { root.finishWith(function() { root.copyFileToClipboard(path) }) }, "for pasting in Files"))
+      rows.push(root.act("Copy To…", "copy", null, "", function() { root.pushPage(root.folderPage("Copy To", parent, function(dest) {
+        root.finishWith(function() { Quickshell.execDetached(["cp", "-r", "--", path, dest + "/"]) }) })) }))
+      rows.push(root.act("Move To…", "move", null, "", function() { root.pushPage(root.folderPage("Move To", parent, function(dest) {
+        root.finishWith(function() { Quickshell.execDetached(["mv", "--", path, dest + "/"]) }) })) }))
+      rows.push(root.act("Move to Trash", "trash", function() {
+        root.askConfirm({ message: "Move “" + row.label + "” to the trash?", confirmText: "Move to Trash",
+          run: function() { root.finishWith(function() { Quickshell.execDetached(["gio", "trash", path]) }) } })
+      }))
+    } else if (row.kind === "app") {
+      var appId = row.appId, label = row.label
+      rows.push(root.act("Open", "open", function() { root.finishWith(function() {
+        if (root.appLibrary) root.appLibrary.launch(appId, label); else root.fallbackLaunch(appId) }) }))
+      rows.push(root.act("Copy Name", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(label) }) }, label))
+      rows.push(root.act("Copy App ID", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(appId) }) }, appId))
+      rows.push(root.webAction(label))
+      rows.push(root.act("Uninstall", "remove", function() { root.requestUninstall(appId, label) }))
+    } else if (row.kind === "menu" || row.kind === "link") {
+      rows.push(root.act("Open Menu", "open", function() { root.closePages(); root.setActiveMenu(row.target || row.itemId, true, false) }))
+      rows.push(root.act("Copy Name", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(row.label) }) }, row.label))
+    } else if (row.kind === "action") {
+      rows.push(root.act("Run", "run", function() { root.finishWith(function() { root.runAction(row.action) }) }))
+      if (row.action) rows.push(root.act("Copy Command", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(row.action) }) }, row.action))
+      rows.push(root.act("Copy Name", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(row.label) }) }, row.label))
+    } else if (row.kind === "calc") {
+      var result = String(row.label || "").replace(/^=\s*/, "")
+      rows.push(root.act("Copy Result", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(result) }) }, result))
+      rows.push(root.act("Copy Expression", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(root.filterText.trim()) }) }, root.filterText.trim()))
+      rows.push(root.webAction(root.filterText.trim()))
+    } else if (row.kind === "clip") {
+      if (row.appId) {
+        rows.push(root.act("Copy Image", "copy", function() { root.finishWith(function() { root.copyImageToClipboard(row.target, row.appId) }) }))
+        rows.push(root.act("Open Image", "open", function() { root.finishWith(function() { root.openPath(row.target) }) }))
+        rows.push(root.act("Copy Image Path", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(row.target) }) }, root.prettyPath(row.target)))
+      } else {
+        rows.push(root.act("Copy", "copy", function() { root.finishWith(function() { root.copyToClipboard(row.target) }) }))
+        if (root.isUrl(row.target)) rows.push(root.act("Open Link", "open", function() { root.finishWith(function() { root.runAction("omarchy-launch-webapp " + Util.shellQuote(row.target.trim())) }) }))
+        rows.push(root.webAction(row.target))
+      }
+    }
+    return rows
+  }
+
+  // Sub-page: every application, ↩ opens the file with it.
+  function openWithPage(path) {
+    var rows = []
+    for (var i = 0; i < root.itemOrder.length; i++) {
+      var entry = root.item(root.itemOrder[i])
+      if (!entry || entry.kind !== "app") continue
+      rows.push((function(e) {
+        return { label: e.label, detail: e.description || "", icon: "", iconFont: "", appIcon: e.appIcon || "",
+          run: function() { root.finishWith(function() { root.openWith(e.appId, path) }) } }
+      })(entry))
+    }
+    rows.sort(function(a, b) { return a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1 })
+    return { kind: "apps", title: "Open With", rows: rows }
+  }
+
+  // Sub-page: a folder picker. The first row takes the folder being shown,
+  // the rest are its sub-folders: ↩ picks one, → or Tab browses into it.
+  function folderPage(title, dir, choose) {
+    return { kind: "folders", title: title, dir: dir, choose: choose, rows: root.folderRows(title, dir, [], choose) }
+  }
+  function folderRows(title, dir, subdirs, choose) {
+    var rows = [root.act("Here: " + root.prettyPath(dir), "folder", function() { choose(dir) }, "this folder")]
+    var parent = root.dirNameOf(dir)
+    if (parent && parent !== dir) rows.push(root.act("..", "folder", null, root.prettyPath(parent), function() {
+      root.replacePage(root.folderPage(title, parent, choose)) }))
+    for (var i = 0; i < subdirs.length; i++) {
+      rows.push((function(sub) {
+        return root.act(root.baseNameOf(sub), "folder", function() { choose(sub) }, "", function() {
+          root.replacePage(root.folderPage(title, sub, choose)) })
+      })(subdirs[i]))
+    }
+    return rows
+  }
+  function scanPickerDir(dir) {
+    pickerProc.running = false
+    pickerProc.collected = ""
+    pickerProc.dir = dir
+    pickerProc.command = ["bash", "-c", 'fd --max-depth 1 --type d --color never --absolute-path --exclude .git . "$1" 2>/dev/null | sort -f', "bash", String(dir)]
+    pickerProc.running = true
+  }
+  Process {
+    id: pickerProc
+    property string dir: ""
+    property string collected: ""
+    stdout: SplitParser { onRead: function(line) { pickerProc.collected += line + "\n" } }
+    onExited: {
+      if (!root.page || root.page.kind !== "folders" || root.page.dir !== pickerProc.dir) return
+      var subs = pickerProc.collected.split("\n").filter(function(l) { return l.length > 0 }).map(function(l) { return l.replace(/\/+$/, "") })
+      root.page.rows = root.folderRows(root.page.title, root.page.dir, subs, root.page.choose)
+      root.rebuildPage()
+    }
+  }
+
+  // Sub-page: Get Info. Rows fill in once stat/file/du answer; ↩ copies a value.
+  function gatherInfo(p) {
+    infoProc.running = false
+    infoProc.collected = ""
+    infoProc.path = p.path
+    infoProc.command = ["bash", "-c", 'stat -c "%s\t%y" -- "$1"; file -b --mime-type -- "$1"; du -sh -- "$1" 2>/dev/null | cut -f1', "bash", String(p.path)]
+    infoProc.running = true
+  }
+  Process {
+    id: infoProc
+    property string path: ""
+    property string collected: ""
+    stdout: SplitParser { onRead: function(line) { infoProc.collected += line + "\n" } }
+    onExited: {
+      if (!root.page || root.page.kind !== "info" || root.page.path !== infoProc.path) return
+      var lines = infoProc.collected.split("\n")
+      var statParts = (lines[0] || "").split("\t")
+      var modified = String(statParts[1] || "").replace(/\.\d+ .*$/, "")
+      var path = infoProc.path
+      var entries = [
+        ["Name", root.baseNameOf(path), "doc"],
+        ["Kind", String(lines[1] || ""), "info"],
+        ["Size", String(lines[2] || statParts[0] || ""), "info"],
+        ["Modified", modified, "info"],
+        ["Where", root.prettyPath(root.dirNameOf(path) || "/"), "folder"]
+      ]
+      var rows = []
+      for (var i = 0; i < entries.length; i++) {
+        rows.push((function(e) {
+          return root.act(e[0], e[2], function() { root.finishWith(function() { root.copyToClipboard(e[1]) }) }, e[1])
+        })(entries[i]))
+      }
+      root.page.rows = rows
+      root.rebuildPage()
+    }
+  }
+
   ListModel { id: displayModel }
 
   // ----------------------------------------------------------- route surface
@@ -2317,7 +2658,7 @@ Item {
           // front of the query; ⌫ on an empty field or a click removes it.
           Rectangle {
             id: chip
-            readonly property bool shown: root.category !== ""
+            readonly property bool shown: root.pageOpen || root.category !== ""
             anchors.left: searchGlyph.right
             anchors.leftMargin: root.fieldGap
             anchors.verticalCenter: parent.verticalCenter
@@ -2334,13 +2675,13 @@ Item {
             Text {
               id: chipLabel
               anchors.centerIn: parent
-              text: root.categoryLabel(root.category)
+              text: root.pageOpen ? root.page.title : root.categoryLabel(root.category)
               color: root.ink
               font.family: root.uiFont
               font.pixelSize: root.chipFontSize
               font.weight: Font.Medium
             }
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.setCategory("") }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.pageOpen ? root.popPage() : root.setCategory("") }
           }
 
           Item {
@@ -2354,8 +2695,8 @@ Item {
             clip: true
 
             readonly property int caretGap: root.pt(2)
-            readonly property string shownQuery: root.fileSearchActive && root.category !== "files"
-              ? panel.shownFilter.slice(1) : panel.shownFilter
+            readonly property string shownQuery: root.pageOpen ? root.pageFilter
+              : root.fileSearchActive && root.category !== "files" ? panel.shownFilter.slice(1) : panel.shownFilter
             readonly property bool hasQuery: shownQuery.length > 0
 
             // The restored query is drawn selected (spec §8).
@@ -2400,7 +2741,7 @@ Item {
             Text {
               id: completionText
               textFormat: Text.PlainText
-              visible: queryRow.hasQuery && root.opened && text.length > 0
+              visible: queryRow.hasQuery && root.opened && !root.pageOpen && text.length > 0
               text: root.completionRest ? root.completionRest + root.completionSuffix : ""
               color: root.inkTertiary
               font.family: root.uiFont
@@ -2415,7 +2756,7 @@ Item {
               id: placeholderText
               textFormat: Text.PlainText
               visible: !queryRow.hasQuery
-              text: root.searchPlaceholder
+              text: root.pageOpen ? root.pagePlaceholder : root.searchPlaceholder
               width: parent.width - caret.width - queryRow.caretGap
               x: caret.width + queryRow.caretGap
               color: root.inkTertiary
@@ -2506,8 +2847,10 @@ Item {
           y: root.rowsTop
           width: parent.width - root.rowInset * 2
           height: root.visibleRowsHeight
+          clip: true
           opacity: spot.expanded ? 1 : 0
           visible: opacity > 0
+          Behavior on y { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
           Behavior on opacity {
             NumberAnimation {
               duration: spot.expanded ? Motion.fast : Motion.exit(Motion.fast)
@@ -2515,6 +2858,18 @@ Item {
               easing.bezierCurve: spot.expanded ? Motion.easeOut : Motion.easeExit
             }
           }
+
+          // Drill-in (henri-ui §3b): the list moves 30 % left and fades while
+          // the action page slides in from the right; back is the mirror.
+          Item {
+            id: mainPane
+            width: parent.width
+            height: parent.height
+            x: root.pageOpen && !Motion.reduceMotion ? -Math.round(width * Motion.pageParallax) : 0
+            opacity: root.pageOpen ? 0 : 1
+            visible: opacity > 0
+            Behavior on x { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
+            Behavior on opacity { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
           ListView {
             id: resultList
@@ -2822,6 +3177,153 @@ Item {
             elide: Text.ElideRight
             width: parent.width - root.rowInset * 2
           }
+          }
+
+          Item {
+            id: pagePane
+            width: parent.width
+            height: parent.height
+            x: root.pageOpen ? 0 : (Motion.reduceMotion ? 0 : width)
+            opacity: root.pageOpen ? 1 : 0
+            visible: opacity > 0
+            Behavior on x { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
+            Behavior on opacity { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
+
+            ListView {
+              id: pageList
+              anchors.fill: parent
+              model: pageModel
+              clip: true
+              boundsBehavior: Flickable.DragAndOvershootBounds
+              flickDeceleration: Motion.flickDeceleration
+              maximumFlickVelocity: Motion.maximumFlickVelocity
+              Accessible.role: Accessible.List
+
+              delegate: Rectangle {
+                id: prow
+                required property int index
+                required property string label
+                required property string detail
+                required property string icon
+                required property string iconFont
+                required property string appIcon
+                required property bool hasMore
+                readonly property bool hasCursor: prow.index === root.pageSelected
+                readonly property bool isApp: appIcon.length > 0
+                width: ListView.view.width
+                height: root.rowHeight
+                radius: root.rowRadius
+                color: hasCursor ? root.selection : pmouse.containsMouse ? root.hoverFill : Util.alpha(root.hoverFill, 0)
+                border.width: 1
+                border.color: hasCursor ? root.selectionBorder : Util.alpha(root.selectionBorder, 0)
+                Accessible.role: Accessible.ListItem
+                Accessible.name: prow.label
+
+                Text {
+                  textFormat: Text.PlainText
+                  visible: !prow.isApp && prow.icon.length > 0
+                  text: prow.icon
+                  color: root.ink
+                  font.family: prow.iconFont.length > 0 ? prow.iconFont : root.fontFamily
+                  font.pixelSize: Math.round(root.rowIcon * 0.72)
+                  width: root.rowIcon
+                  horizontalAlignment: Text.AlignHCenter
+                  verticalAlignment: Text.AlignVCenter
+                  anchors.left: parent.left
+                  anchors.leftMargin: root.rowIconInset
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+                Image {
+                  visible: prow.isApp
+                  width: root.rowIcon
+                  height: root.rowIcon
+                  fillMode: Image.PreserveAspectFit
+                  sourceSize.width: width * Screen.devicePixelRatio
+                  sourceSize.height: height * Screen.devicePixelRatio
+                  source: prow.isApp ? (root.appLibrary ? root.appLibrary.iconSource(prow.appIcon) : root.fallbackIcon(prow.appIcon)) : ""
+                  asynchronous: true
+                  anchors.left: parent.left
+                  anchors.leftMargin: root.rowIconInset
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+                Column {
+                  anchors.left: parent.left
+                  anchors.leftMargin: root.rowTextX
+                  anchors.right: ptrail.left
+                  anchors.rightMargin: root.pt(8)
+                  anchors.verticalCenter: parent.verticalCenter
+                  Text {
+                    textFormat: Text.PlainText
+                    width: parent.width
+                    text: prow.label
+                    color: root.ink
+                    font.family: root.uiFont
+                    font.pixelSize: root.titleFontSize
+                    elide: Text.ElideRight
+                  }
+                  Text {
+                    textFormat: Text.PlainText
+                    width: parent.width
+                    visible: prow.detail.length > 0
+                    text: prow.detail
+                    color: root.inkSecondary
+                    font.family: root.uiFont
+                    font.pixelSize: root.subtitleFontSize
+                    elide: Text.ElideMiddle
+                  }
+                }
+                Row {
+                  id: ptrail
+                  anchors.right: parent.right
+                  anchors.rightMargin: root.metaInset
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: root.pt(8)
+                  Text {
+                    textFormat: Text.PlainText
+                    visible: prow.hasMore
+                    text: "›"
+                    color: root.inkTertiary
+                    font.family: root.uiFont
+                    font.pixelSize: root.titleFontSize
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+                  Rectangle {
+                    visible: prow.hasCursor && !prow.hasMore
+                    width: root.shortcutW
+                    height: root.shortcutH
+                    radius: root.shortcutRadius
+                    color: root.shortcutFill
+                    border.width: 1
+                    border.color: root.glassBorder
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text { anchors.centerIn: parent; text: "↩"; color: root.inkSecondary; font.family: root.uiFont; font.pixelSize: root.shortcutFontSize }
+                  }
+                }
+                MouseArea {
+                  id: pmouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onEntered: if (pointerGate.moved(prow, { x: pmouse.mouseX, y: pmouse.mouseY })) root.pageSelected = prow.index
+                  onPositionChanged: function(mouse) { if (pointerGate.moved(prow, mouse)) root.pageSelected = prow.index }
+                  onClicked: { root.pageSelected = prow.index; root.activatePageRow(prow.index, false) }
+                }
+              }
+            }
+
+            Text {
+              anchors.centerIn: parent
+              visible: pageModel.count === 0
+              textFormat: Text.PlainText
+              text: root.page && root.page.kind === "info" && !root.pageFilter ? "Reading…" : "Nothing matches “" + root.pageFilter + "”"
+              color: root.inkSecondary
+              font.family: root.uiFont
+              font.pixelSize: root.subtitleFontSize
+              width: parent.width - root.rowInset * 2
+              horizontalAlignment: Text.AlignHCenter
+              elide: Text.ElideRight
+            }
+          }
         }
       }
 
@@ -2935,7 +3437,30 @@ Item {
         var arrowLeft = event.key === Qt.Key_Left || (event.key === Qt.Key_H && ctrl)
         var arrowRight = event.key === Qt.Key_Right || (event.key === Qt.Key_L && ctrl)
 
-        if (ctrl && event.key >= Qt.Key_1 && event.key <= Qt.Key_4 && !root.dmenuActive) {
+        if (root.pageOpen) {
+          // Action page: ↑↓ move, ↩ runs, → / Tab descend, ← / Esc / ⌫ on an
+          // empty filter go back, typing filters.
+          event.accepted = true
+          if (event.key === Qt.Key_Escape || (arrowLeft && !root.pageFilter) || (event.key === Qt.Key_Backspace && !root.pageFilter)) root.popPage()
+          else if (event.key === Qt.Key_Up || ((event.key === Qt.Key_K || event.key === Qt.Key_P) && ctrl)) root.selectPage(-1)
+          else if (event.key === Qt.Key_Down || ((event.key === Qt.Key_J || event.key === Qt.Key_N) && ctrl)) root.selectPage(1)
+          else if (event.key === Qt.Key_Home) root.selectPage(-pageModel.count)
+          else if (event.key === Qt.Key_End) root.selectPage(pageModel.count)
+          else if (event.key === Qt.Key_PageUp) root.selectPage(-6)
+          else if (event.key === Qt.Key_PageDown) root.selectPage(6)
+          else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) root.activatePageRow(root.pageSelected, false)
+          else if (arrowRight || event.key === Qt.Key_Tab) root.activatePageRow(root.pageSelected, true)
+          else if (Util.editsFilter(event, root.pageFilter)) root.setPageFilter(Util.editedFilter(event, root.pageFilter))
+          else if (printable) root.setPageFilter(root.pageFilter + event.text)
+          else event.accepted = false
+          return
+        }
+
+        if (event.key === Qt.Key_Right && event.modifiers === Qt.ControlModifier && root.isAppsGrid) {
+          // In the grid → moves the cursor, so ⌃→ opens the actions there.
+          root.openActionsForSelected()
+          event.accepted = true
+        } else if (ctrl && event.key >= Qt.Key_1 && event.key <= Qt.Key_4 && !root.dmenuActive) {
           // ⌃1–⌃4 stand in for ⌘1–⌘4 (spec §9): Super+digits are workspaces.
           root.setCategory(root.categories[event.key - Qt.Key_1].id)
           event.accepted = true
@@ -3013,9 +3538,11 @@ Item {
         } else if (event.key === Qt.Key_PageDown) {
           root.select(root.isAppsGrid ? root.gridColumns * 3 : 6)
           event.accepted = true
-        } else if (arrowRight && !root.isAppsGrid && root.acceptCompletion()) {
+        } else if (arrowRight && !root.isAppsGrid) {
+          // → opens the actions for the selected result (Tab still takes the completion).
+          if (!root.openActionsForSelected() && displayModel.count > 0) root.cursorActive = true
           event.accepted = true
-        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || (arrowRight && !root.isAppsGrid)) {
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
           var reveal = (event.modifiers & Qt.ControlModifier) !== 0
           if (root.dmenuActive) {
             if (root.mode === "input") root.applyDmenuSelection(root.filterText)
@@ -3035,8 +3562,8 @@ Item {
         anchors.fill: parent
         opened: root.deleteConfirmOpen
         z: 10
-        message: "Do you want to uninstall " + ((root.deleteTarget && root.deleteTarget.label) || "") + "?"
-        confirmText: "Uninstall"
+        message: root.confirmSpec ? root.confirmSpec.message : ""
+        confirmText: root.confirmSpec ? root.confirmSpec.confirmText : "Confirm"
         background: root.background
         foreground: root.foreground
         scrim: root.scrim
