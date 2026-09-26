@@ -74,7 +74,6 @@ Panel {
     && Date.now() / 1000 - Number(padStream.updated) < 4
   property var padOverride: null
   property double padOverrideSetAt: 0
-  readonly property bool padOn: padOverride !== null ? padOverride : padBridgeUp
   readonly property bool padStreaming: padBridgeUp
     && Number(padStream.last_packet || 0) > 0
     && Date.now() / 1000 - Number(padStream.last_packet) < 3
@@ -83,9 +82,17 @@ Panel {
   readonly property bool padKeyboard: padStream.keyboard === "1"
   readonly property int padKeysHeld: Number(padStream.keys_held || 0)
   readonly property bool padLinked: padStream.linked === "1"
-  readonly property string padSubtitle: !padBridgeUp ? "Off"
-    : padStreaming ? (padTransport !== "" ? "Over " + padTransport : "Connected")
-    : padLinked ? (padTransport !== "" ? "Idle · " + padTransport : "Connected")
+  // A real handshake with the Mac, not just the local receiver being alive --
+  // the switch must never read "on" while nothing has actually connected.
+  // While it's on its way there (override "on" and not yet linked), that's a
+  // loading state, never a false "on".
+  readonly property bool padConnected: padBridgeUp && padLinked
+  readonly property bool padConnecting: padOverride === true && !padConnected
+  readonly property bool padOn: padConnected && padOverride !== false
+  readonly property string padSubtitle: padConnecting ? "Connecting …"
+    : padConnected ? (padStreaming ? (padTransport !== "" ? "Over " + padTransport : "Connected")
+      : (padTransport !== "" ? "Idle · " + padTransport : "Connected"))
+    : !padBridgeUp ? "Off"
     : padLinkUp ? "Cable up · not connected" : "Not connected"
 
   // ---- The Mac's screen, arriving as H.264 (mac-stream status file + heartbeat).
@@ -333,8 +340,8 @@ Panel {
       macModeFile.reload()
       root.battTick()
       if (root.padOverride !== null
-          && (root.padBridgeUp === root.padOverride
-              || Date.now() - root.padOverrideSetAt > 5000))
+          && (root.padConnected === root.padOverride
+              || Date.now() - root.padOverrideSetAt > 10000))
         root.padOverride = null
       if (root.padPendingActivate) {
         if (root.padLinked && !root.padStreaming) {
@@ -1082,6 +1089,10 @@ Panel {
     run("ssh -o ConnectTimeout=3 -o BatchMode=yes henrischulz@192.168.178.126 pkill -USR1 -x mtsend")
   }
   function launchMacScreen() { close(); run("omarchy-launch-or-focus gst-launch-1.0 'setsid -f mac-stream'") }
+  function toggleMacScreen() {
+    if (root.screenOn) run("kill " + (root.screenState.pid || 0))
+    else launchMacScreen()
+  }
   function setMacMode(mode) {
     macModeOverride = mode
     macModeOverrideSetAt = Date.now()
@@ -2876,19 +2887,24 @@ Panel {
             enterDelay: root.rowDelay(0)
             icon: root.sf(0x100A33)
             active: root.padOn
+            busy: root.padConnecting
+            badgeToggles: true
             title: "Mac Input"
             subtitle: root.padSubtitle
             trailing: root.sf(0x10018A)
             onClicked: root.showPage("trackpad")
+            onToggled: root.toggleTrackpad()
           }
           AUi.ListRow {
             enterDelay: root.rowDelay(1)
             icon: root.sf(0x1008B9)
             active: root.screenOn
+            badgeToggles: true
             title: "Mac Screen"
             subtitle: root.screenSubtitle
             trailing: root.sf(0x10018A)
             onClicked: root.showPage("screen")
+            onToggled: root.toggleMacScreen()
           }
           AUi.ListRow {
             enterDelay: root.rowDelay(2)

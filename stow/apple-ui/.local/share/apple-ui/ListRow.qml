@@ -18,8 +18,10 @@ Rectangle {
   property string trailing: ""
   property string trailingFont: trailing.codePointAt(0) >= 0x100000 ? Apple.symbolFont : Apple.uiFont
   property bool busy: false
+  property bool badgeToggles: false
   property int enterDelay: -1
   signal clicked()
+  signal toggled()
   width: parent ? parent.width : 0
   height: Style.space(Apple.rowH)
   radius: Style.space(Apple.radiusRow)
@@ -59,8 +61,16 @@ Rectangle {
     color: lr.active ? m.badgeOn : m.badgeOff
     antialiasing: true
     Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
-    scale: activeScale.value
+    scale: activeScale.value * badgePress.value
     HUi.SpringValue { id: activeScale; preset: Motion.snappy; to: lr.active || Motion.reduceMotion ? 1 : 0.94 }
+    HUi.SpringValue { id: badgePress; preset: Motion.snappy; to: lr.badgeToggles && badgeMouse.pressed && !Motion.reduceMotion ? Motion.pressScale : 1 }
+    SequentialAnimation on opacity {
+      running: lr.busy
+      loops: Animation.Infinite
+      onRunningChanged: if (!running) circle.opacity = 1
+      NumberAnimation { to: Motion.disabledOpacity; duration: Motion.slower; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
+      NumberAnimation { to: 1; duration: Motion.slower; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
+    }
     Text {
       anchors.centerIn: parent
       text: lr.icon
@@ -68,6 +78,18 @@ Rectangle {
       Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
       font.family: lr.iconFont
       font.pixelSize: Style.space(14)
+    }
+    Rectangle {
+      anchors.fill: parent
+      radius: parent.radius
+      visible: lr.badgeToggles
+      color: Qt.rgba(m.ink.r, m.ink.g, m.ink.b, badgeMouse.pressed ? Motion.pressedAlpha : badgeMouse.containsMouse ? Motion.hoverAlpha : 0)
+      Behavior on color {
+        ColorAnimation {
+          duration: badgeMouse.containsMouse || badgeMouse.pressed ? Motion.instant : Motion.fast
+          easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+        }
+      }
     }
   }
   Column {
@@ -119,5 +141,17 @@ Rectangle {
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
     onClicked: lr.clicked()
+  }
+  // Sits on top of the row's own click area (declared after it), so a tap on
+  // the badge toggles the connection directly -- the rest of the row still
+  // opens the detail page. Transparent to input when disabled (badgeToggles:
+  // false, the default), so every other ListRow keeps its old behavior.
+  MouseArea {
+    id: badgeMouse
+    anchors.fill: circle
+    enabled: lr.badgeToggles
+    hoverEnabled: lr.badgeToggles
+    cursorShape: Qt.PointingHandCursor
+    onClicked: lr.toggled()
   }
 }
