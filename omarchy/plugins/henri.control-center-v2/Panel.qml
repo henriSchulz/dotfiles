@@ -135,14 +135,11 @@ Panel {
   // the Mac's own word comes back as charge= in the macmode file.
   property var macPowerState: ({})
   readonly property string macPowerMode: macPowerState.mode || "off"
-  readonly property string macPowerDirection: macPowerState.direction || "to-mac"
   readonly property string macCharge: macModeState.charge || ""
   property var macPowerOverride: null
   property double macPowerOverrideSetAt: 0
   readonly property string macPowerShown: macPowerOverride !== null ? macPowerOverride : macPowerMode
   readonly property bool macPowerOn: macPowerShown !== "off"
-  readonly property string macPowerDirShown: macPowerOverride !== null && macPowerOverride !== "off"
-    ? macPowerOverride : macPowerDirection
   readonly property string macPowerSubtitle: {
     if (macPowerOverride !== null) return "Applying…"
     var linux = macPowerState.linux || ""
@@ -157,9 +154,9 @@ Panel {
       return linux === "no-mac" ? "Linux → Mac · no cable"
         : macCharge === "normal" ? "Linux → Mac · " + (macModeState.charging === "Yes" ? "charging" : "5 V / 3 A")
         : macCharge === "inhibited" ? "Linux → Mac · waiting for the Mac" : "Linux → Mac"
-    return linux === "no-mac" ? "Mac → Linux · no cable"
-      : linux === "swap-refused" ? "Mac → Linux · the Mac declined the swap"
-      : macPowerState.role === "sink" ? "Mac → Linux · 15 W at most" : "Mac → Linux · swapping roles"
+    // to-linux is still reachable from the shell (mac-power set to-linux) but
+    // not from here: measured useless on the XPS, and it fools the battery icon.
+    return macPowerState.role === "sink" ? "Mac → Linux · 15 W at most" : "Mac → Linux · swapping roles"
   }
   function setMacPower(mode) {
     macPowerOverride = mode
@@ -2956,35 +2953,13 @@ Panel {
             title: "Power over the cable"
             caption: root.macPowerSubtitle
             checked: root.macPowerOn
-            onToggled: function(on) { root.setMacPower(on ? root.macPowerDirShown : "off") }
-          }
-          Row {
-            width: macPage.innerWidth
-            spacing: root.pt(5)
-            enabled: root.macPowerOn
-            opacity: root.macPowerOn ? 1 : Motion.disabledOpacity
-            Behavior on opacity {
-              NumberAnimation {
-                duration: Motion.fast
-                easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
-              }
-            }
-            Repeater {
-              model: [ { id: "to-mac", label: "Linux → Mac" }, { id: "to-linux", label: "Mac → Linux" } ]
-              delegate: AUi.Capsule {
-                required property var modelData
-                width: Math.floor((macPage.innerWidth - root.pt(5)) / 2)
-                label: modelData.label
-                selected: root.macPowerDirShown === modelData.id
-                onClicked: if (!selected) root.setMacPower(modelData.id)
-              }
-            }
+            onToggled: function(on) { root.setMacPower(on ? "to-mac" : "off") }
           }
           AUi.Caption {
             width: macPage.innerWidth
             text: "Off makes the Mac ignore the cable and run on its own battery, so nothing leaves this port. "
-              + "Below 15 % it tops itself up to 40 % and lets go again. "
-              + "Linux → Mac charges the Mac at 15 W. Mac → Linux hands the Mac's 15 W ceiling to this machine, which barely covers idle."
+              + "Below 15 % it tops itself up to 40 % and lets go again. On charges the Mac at 15 W. "
+              + "The other way round is not offered: this machine won't draw from the Mac's 7.5 W, but its battery icon would claim it does."
           }
 
           AUi.Separator { width: macPage.innerWidth }
