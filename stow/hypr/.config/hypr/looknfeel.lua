@@ -53,9 +53,19 @@ hl.config({
 --   },
 -- })
 
--- Apple-artiger Workspace-Wechsel: weiches Gleiten statt hartem Sprung.
-hl.curve("appleSlide", { type = "bezier", points = { { 0.25, 1 }, { 0.5, 1 } } })
-hl.animation({ leaf = "workspaces", enabled = true, speed = 4, bezier = "appleSlide", style = "slide" })
+-- Fenster, Layer und Workspaces auf den Kurven der Mission-Control-Spec
+-- (henri.missioncontrol/docs/ANIMATION-SPEC.md). speed in Zehntelsekunden:
+-- 2 = 200 ms. Schließen ist immer schneller als Öffnen.
+hl.curve("mcOut", { type = "bezier", points = { { 0.23, 1 }, { 0.32, 1 } } })
+hl.curve("mcIn", { type = "bezier", points = { { 0.4, 0 }, { 1, 1 } } })
+hl.curve("mcInOut", { type = "bezier", points = { { 0.65, 0 }, { 0.35, 1 } } })
+hl.animation({ leaf = "windowsIn", enabled = true, speed = 2, bezier = "mcOut", style = "popin 96%" })
+hl.animation({ leaf = "windowsOut", enabled = true, speed = 1.4, bezier = "mcIn", style = "popin 98%" })
+hl.animation({ leaf = "windowsMove", enabled = true, speed = 2, bezier = "mcInOut" })
+hl.animation({ leaf = "fade", enabled = true, speed = 1.4, bezier = "mcOut" })
+hl.animation({ leaf = "layersIn", enabled = true, speed = 2, bezier = "mcOut", style = "fade" })
+hl.animation({ leaf = "layersOut", enabled = true, speed = 1.4, bezier = "mcIn", style = "fade" })
+hl.animation({ leaf = "workspaces", enabled = true, speed = 2.6, bezier = "mcInOut", style = "slide" })
 
 -- Maus bleibt, wo sie ist. Omarchy setzt warp_on_change_workspace = 1; beim
 -- Zurückholen eines minimierten Fensters aus dem Dock springt der Zeiger damit

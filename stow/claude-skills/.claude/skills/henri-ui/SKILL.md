@@ -226,10 +226,14 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   selbst gleitet mit. Tasten per `hl.dsp.event`, kein Prozess pro Druck (`henri.osd`).
 
 **Vollbild-Umbau (Overview, Mission Control)**
+- **Ausnahme `henri.missioncontrol`:** folgt seit 2026-09-26 auf Henris Wunsch nicht
+  henri-ui, sondern seiner eigenen Spec (`docs/ANIMATION-SPEC.md` + `CLAUDE.md` im
+  Plugin-Repo, Tokens in dessen `Motion.qml`). Dort nichts aus diesem Skill anwenden
+  und keine henri-ui-Kopie einbetten.
 - Hintergrund dimmt/blurt per Opacity eines vorgerenderten Layers (Blur-Radius nie
   animieren). Fenster/Kacheln skalieren von ihrer echten Position aus, `gentle`/`slower`;
-  Mission Control mit den gemessenen `overview`/`overviewExit` (250/165 ms, Öffnen
-  easeInOut, Schließen easeOut — macOS startet den Rückweg schnell).
+  die gemessenen `overview`/`overviewExit` (250/165 ms, Öffnen easeInOut, Schließen
+  easeOut — macOS startet den Rückweg schnell) bleiben als Tokens für andere Overviews.
 - **Nur wo der ganze Bildschirm umgebaut wird.** Ein Launcher/Spotlight ist trotz
   Vollbild-Fläche nur eine Karte über einem Scrim — der folgt dem Popover-Rezept
   (`slow` + `smooth`). `slower` fühlt sich dort träge an.
