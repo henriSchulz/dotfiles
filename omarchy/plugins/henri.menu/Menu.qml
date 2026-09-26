@@ -1538,9 +1538,9 @@ Item {
             appIcon: "",
             appId: "",
             isDir: false,
-            label: "= " + String(calcResult),
+            label: String(calcResult),
             target: "",
-            detail: "Calculator · ↩ copies the result",
+            detail: "Calculator",
             path: "",
             childCount: 0,
             action: "",
@@ -2585,7 +2585,9 @@ Item {
                 readonly property bool isApp: row.kind === "app"
                 readonly property bool isTop: row.section === "top"
                 readonly property bool isCalc: row.kind === "calc"
-                readonly property bool twoLine: isTop || (row.kind === "dmenu" && row.detail.length > 0)
+                // The calculator's top hit is one line: the "=" glyph, the big
+                // number, "Calculator" on the right (spec §8).
+                readonly property bool twoLine: (isTop && !isCalc) || (row.kind === "dmenu" && row.detail.length > 0)
                 readonly property bool hasIcon: row.icon.length > 0 || row.isApp
                 readonly property int glyphSize: isTop ? root.topIcon : root.rowIcon
                 readonly property bool isMenu: row.kind === "menu" || row.kind === "link" || row.isDir
