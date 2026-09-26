@@ -141,6 +141,22 @@ Panel {
   readonly property string macModeSubtitle: !macModeFresh && macModeOverride === null ? "Unreachable"
     : (macModeIsDesktop ? "Desktop" : "Server") + (macModePinShown === "auto" ? " · Auto" : " · Forced")
 
+  // ---- One status for the whole Mac, synthesized from all three channels:
+  // actively streaming beats merely reachable beats nothing answering at
+  // all. This is what the single Mac tile leads with; Input and Screen are
+  // a level below it, and Mode's picker is simple enough to sit right here
+  // with nothing further to drill into.
+  readonly property string macOverall: (padStreaming || screenOn) ? "connected"
+    : (padBridgeUp || padLinkUp || macModeFresh) ? "possible" : "unreachable"
+  readonly property string macOverallLabel: macOverall === "connected" ? "Connected"
+    : macOverall === "possible" ? "Connection possible" : "Not reachable"
+  readonly property string macOverallDetail: macOverall === "connected"
+      ? (padStreaming && screenOn ? "Trackpad and screen are both active."
+         : padStreaming ? "Fingers are arriving from the Mac."
+         : "The screen is mirroring.")
+    : macOverall === "possible" ? "The Mac is reachable, but nothing is streaming right now."
+    : "No cable and no answer over the network. Check that the Mac is awake."
+
   function padParse(text) {
     var out = {}
     var lines = String(text || "").split("\n")
@@ -244,10 +260,21 @@ Panel {
   // ---- Detail pages. Like macOS, a tile's label swaps the grid for a list
   //      inside the same popup ("main" | "wifi" | "bluetooth" | "sound" | "hardware").
   property string page: "main"
-  function showPage(name) {
+  // Almost every page is one level below "main" -- but Mac Input/Screen sit a
+  // level below the new Mac overview, so back has to know which page it came
+  // from rather than always landing on "main".
+  property string pageParent: "main"
+  function showPage(name, back) {
     // Opening the outputs list is the moment the plug state has to be current.
     if (name === "sound" && !sinkPortProc.running) sinkPortProc.running = true
+    pageParent = back || "main"
     page = name
+  }
+  function goBack() {
+    if (page === "main") return
+    var target = pageParent
+    pageParent = "main"
+    page = target
   }
 
   // ---- Motion. `detailPage` keeps the last detail page mounted while it
@@ -913,7 +940,7 @@ Panel {
   property int mainCursorIndex: 0
   property int playbackCursorIndex: 1  // 0 previous, 1 play/pause, 2 next
   readonly property var mainStops: {
-    var s = ["wifi", "bluetooth", "airdrop", "trackpad", "screen", "macmode", "display", "sound"]
+    var s = ["wifi", "bluetooth", "airdrop", "mac", "display", "sound"]
     if (player) s.push("playback")
     s.push("hardware")
     return s
@@ -932,9 +959,8 @@ Panel {
     if (f === "display") setBrightness(brightness + dx * 5)
     else if (f === "playback") playbackCursorIndex = Math.max(0, Math.min(2, playbackCursorIndex + dx))
     else if (dx > 0) {
-      if (f === "wifi" || f === "bluetooth" || f === "trackpad") showPage(f)
-      else if (f === "screen") showPage("screen")
-      else if (f === "macmode") showPage("macmode")
+      if (f === "wifi" || f === "bluetooth") showPage(f)
+      else if (f === "mac") showPage("mac")
       else if (f === "airdrop") openAirdrop()
       else if (f === "sound") showPage(airpodsActive ? "airpods" : "sound")
     }
@@ -945,9 +971,7 @@ Panel {
     if (f === "wifi") toggleWifi()
     else if (f === "bluetooth") toggleBluetooth()
     else if (f === "airdrop") toggleAirdrop()
-    else if (f === "trackpad") toggleTrackpad()
-    else if (f === "screen") launchMacScreen()
-    else if (f === "macmode") showPage("macmode")
+    else if (f === "mac") showPage("mac")
     else if (f === "display") displayExpanded = !displayExpanded
     else if (f === "sound") toggleMute()
     else if (f === "playback") { if (media) media.runAction(["previous", "playPause", "next"][playbackCursorIndex], false) }
@@ -1672,7 +1696,7 @@ Panel {
       id: backMouse
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onClicked: root.page = "main"
+      onClicked: root.goBack()
     }
 
     // macOS-style switch.
@@ -2249,16 +2273,17 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       onCloseRequested: {
-        if (root.page !== "main") root.page = "main"
+        if (root.page !== "main") root.goBack()
         else root.close()
       }
       onTabRequested: function(direction) { root.switchPanel(direction) }
       // Main page: dy moves the cursor between tiles, dx acts on the focused
       // one (open its detail page, nudge brightness, pick a transport
       // button). Detail pages have no cursor yet — ← (or h) there still just
-      // goes back, like Esc (drill-in flow).
+      // goes back, one level at a time (Mac Input/Screen land on the Mac
+      // overview, not straight past it to main).
       onMoveRequested: function(dx, dy) {
-        if (root.page !== "main") { if (dx < 0) root.page = "main"; return }
+        if (root.page !== "main") { if (dx < 0) root.goBack(); return }
         if (dy !== 0) root.mainMoveCursor(dy)
         else if (dx !== 0) root.mainMoveHorizontal(dx)
       }
@@ -2349,69 +2374,59 @@ Panel {
           }
         }
 
-        // The Mac side of the desk: trackpad/keyboard, screen, and the
-        // power/background mode it runs in — one card, three rows, same
-        // pattern as Wi-Fi/Bluetooth/AirDrop on the left (Henri: three was
-        // one too many for separate single-row tiles).
+        // The Mac side of the desk: one row leading with whether it's there
+        // at all right now, same shape as the Hardware tile below. Input,
+        // Screen and Mode all live one level in, on the Mac overview page.
         Tile {
           revealIndex: 1
           width: root.colWidth
-          height: macColumn.implicitHeight + Style.space(20)
+          height: Style.space(52)
+          hoverable: true
+          hasCursor: root.mainFocus === "mac"
+          onClicked: root.showPage("mac")
 
-          Column {
-            id: macColumn
+          Circle {
             anchors.left: parent.left
-            anchors.right: parent.right
             anchors.leftMargin: Style.space(10)
-            anchors.rightMargin: Style.space(10)
             anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(4)
-
-            ToggleRow {
+            icon: root.sf(0x100657)
+            on: root.macOverall === "connected"
+            squircle: true
+            onClicked: root.showPage("mac")
+          }
+          Column {
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(52)
+            anchors.right: macChevron.left
+            anchors.rightMargin: Style.space(6)
+            anchors.verticalCenter: parent.verticalCenter
+            Text {
               width: parent.width
-              // Was the mouse glyph, a stand-in for "trackpad" -- there is no
-              // SF Symbol actually named trackpad (checked against Apple's
-              // full published catalog through 7.0, all versions), and mouse
-              // reads wrong now that this tile also carries the keyboard.
-              // keyboard is the closer single glyph for "input from the Mac".
-              icon: root.sf(0x100A33)
-              on: root.padOn
-              squircle: true
-              title: "Mac Input"
-              subtitle: root.padSubtitle
-              hasCursor: root.mainFocus === "trackpad"
-              onToggled: root.toggleTrackpad()
-              onDetails: root.showPage("trackpad")
+              text: "Mac"
+              color: root.fg
+              font.family: root.uiFont
+              font.pixelSize: Style.font.subtitle
+              font.weight: Font.DemiBold
+              elide: Text.ElideRight
             }
-            LaunchRow {
+            HUi.CrossfadeText {
               width: parent.width
-              icon: root.sf(0x1008B9)
-              on: root.screenOn
-              squircle: true
-              title: "Mac Screen"
-              subtitle: root.screenSubtitle
-              action: root.screenOn ? "Show" : "Open"
-              hasCursor: root.mainFocus === "screen"
-              // Already running means raise the window it is in, not start a
-              // second one. Closing it is what closing a window is for; the
-              // detail page has the switch for when it is on another
-              // workspace.
-              onLaunched: root.launchMacScreen()
-              onDetails: root.showPage("screen")
+              text: root.macOverallLabel
+              color: root.macOverall === "unreachable" ? Color.urgent : root.dimText
+              fontFamily: root.uiFont
+              fontSize: Style.font.bodySmall
+              elide: Text.ElideRight
             }
-            ToggleRow {
-              width: parent.width
-              icon: root.sf(0x100657)
-              on: root.macModeIsDesktop
-              squircle: true
-              title: "Mac Mode"
-              subtitle: root.macModeSubtitle
-              hasCursor: root.mainFocus === "macmode"
-              // Three states don't fit a switch -- both the icon and the row
-              // just open the picker on the detail page.
-              onToggled: root.showPage("macmode")
-              onDetails: root.showPage("macmode")
-            }
+          }
+          Text {
+            id: macChevron
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(14)
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.sf(0x10018A)
+            color: root.dimText
+            font.family: root.symbolFont
+            font.pixelSize: Style.font.icon
           }
         }
       }
@@ -3687,17 +3702,17 @@ Panel {
         }
       }
 
-      // Mac Mode — server (quiet in the background) vs desktop (someone is
-      // at an attached monitor). Auto follows the Mac's own display count;
-      // Server/Desktop pin it regardless of what's plugged in.
+      // Mac — leads with whether it's there at all right now (status, not a
+      // switch: three states don't fit one). Mode's picker is simple enough
+      // to live right here; Input and Screen open a level further in.
       PageHeader {
-        visible: root.detailPage === "macmode"
-        title: "Mac Mode"
+        visible: root.detailPage === "mac"
+        title: "Mac"
       }
-      Separator { visible: root.detailPage === "macmode" }
+      Separator { visible: root.detailPage === "mac" }
       Column {
-        id: modePage
-        visible: root.detailPage === "macmode"
+        id: macPage
+        visible: root.detailPage === "mac"
         width: root.panelWidth
         leftPadding: Style.space(6)
         rightPadding: Style.space(6)
@@ -3708,31 +3723,26 @@ Panel {
         readonly property int cellWidth: Math.floor((innerWidth - Style.space(16)) / 2)
 
         UsageHeader {
-          width: modePage.innerWidth
+          width: macPage.innerWidth
           title: "Right now"
-          value: !root.macModeFresh && root.macModeOverride === null ? "Unreachable"
-            : root.macModeIsDesktop ? "Desktop" : "Server"
-          valueColor: !root.macModeFresh && root.macModeOverride === null ? Color.urgent
-            : root.macModeIsDesktop ? Color.accent : root.dimText
+          value: root.macOverallLabel
+          valueColor: root.macOverall === "connected" ? Color.accent
+            : root.macOverall === "unreachable" ? Color.urgent : root.dimText
         }
         Text {
-          width: modePage.innerWidth
+          width: macPage.innerWidth
           wrapMode: Text.WordWrap
           color: root.dimText
           font.family: root.uiFont
           font.pixelSize: Style.font.caption
-          text: !root.macModeFresh && root.macModeOverride === null
-              ? "No answer from the Mac in the last poll. It may be asleep or off the network."
-            : root.macModeIsDesktop
-              ? "Background apps (App Store, Notes, Calendar, Alfred) may run. Low Power Mode follows the Mac's own battery/AC setting, not this."
-              : "App Store, Notes, Calendar, Alfred and Siri's speech service are kept quit to save RAM and CPU."
+          text: root.macOverallDetail
         }
 
-        Separator { width: modePage.innerWidth }
+        Separator { width: macPage.innerWidth }
 
-        SectionLabel { text: "Choose" }
+        SectionLabel { text: "Mode" }
         Row {
-          width: modePage.innerWidth
+          width: macPage.innerWidth
           spacing: Style.space(5)
           Pill {
             width: Math.floor((parent.width - parent.spacing * 2) / 3)
@@ -3754,30 +3764,41 @@ Panel {
           }
         }
         Text {
-          width: modePage.innerWidth
+          width: macPage.innerWidth
           wrapMode: Text.WordWrap
           color: root.dimText
           font.family: root.uiFont
           font.pixelSize: Style.font.caption
           text: "Auto follows the Mac's own monitor: attached → Desktop, "
-            + "unplugged → Server. Server/Desktop here pin it regardless."
+            + "unplugged → Server. Server/Desktop here pin it regardless. "
+            + (root.macModeFresh
+               ? root.macModeDisplays + " display" + (root.macModeDisplays === 1 ? "" : "s") + " detected."
+               : "No recent answer to say which.")
         }
 
-        Separator { width: modePage.innerWidth }
+        Separator { width: macPage.innerWidth }
 
-        ListLabel { text: "Detected" }
-        Grid {
-          columns: 2
-          columnSpacing: Style.space(16)
-          rowSpacing: Style.space(2)
-          Stat { width: modePage.cellWidth; label: "Displays"; value: root.macModeFresh ? String(root.macModeDisplays) : "--" }
-          Stat {
-            width: modePage.cellWidth
-            label: "Checked"
-            value: root.macModeFresh
-              ? root.formatUptime(Math.max(0, Math.floor(Date.now() / 1000 - Number(root.macModeState.updated)))) + " ago"
-              : "--"
-          }
+        SectionLabel { text: "More" }
+        ToggleRow {
+          width: macPage.innerWidth
+          icon: root.sf(0x100A33)
+          on: root.padOn
+          squircle: true
+          title: "Mac Input"
+          subtitle: root.padSubtitle
+          onToggled: root.toggleTrackpad()
+          onDetails: root.showPage("trackpad", "mac")
+        }
+        LaunchRow {
+          width: macPage.innerWidth
+          icon: root.sf(0x1008B9)
+          on: root.screenOn
+          squircle: true
+          title: "Mac Screen"
+          subtitle: root.screenSubtitle
+          action: root.screenOn ? "Show" : "Open"
+          onLaunched: root.launchMacScreen()
+          onDetails: root.showPage("screen", "mac")
         }
       }
     }
