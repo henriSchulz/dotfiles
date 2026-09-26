@@ -46,7 +46,7 @@ Eingabe-Test (echte Tasten-/Maus-Events: Esc, Pfeile, Drill-in-Zurück, Klick in
 
 | Komponente | Wofür | Wichtigste API |
 |------------|-------|----------------|
-| `HUi.PopupPanel` | **Bar-Popup** (Drop-in für Shell-`KeyboardPanel`, gleiche API) | `kind: popover\|panel` + alles von KeyboardPanel (`anchorItem`, `owner`, `bar`, `open`, `focusTarget`, `contentWidth/Height`, `fittedContent*()`); Esc/Klick daneben/Bar-Wechsel eingebaut |
+| `HUi.PopupPanel` | **Bar-Popup** (Drop-in für Shell-`KeyboardPanel`, gleiche API) | `kind: popover\|panel` + alles von KeyboardPanel (`anchorItem`, `owner`, `bar`, `open`, `focusTarget`, `contentWidth/Height`, `fittedContent*()`); `cardColor` (Kartenfüllung, Default Theme-Popup-Hintergrund bei `glassPanelAlpha` — nur überschreiben, wenn ein Plugin bewusst ein eigenes Material rendert); Esc/Klick daneben/Bar-Wechsel eingebaut |
 | `HUi.Reveal` | Ein-/Ausblenden jeder Fläche + Esc | `open`, `kind: menu\|popover\|panel\|toast`, `origin`, `fromX/fromY`, `settled`, `shown`, `closed()`, **`dismissRequested()`** (Esc + Klick ins Leere), `closeOnEscape`, `closeOnOutsideClick`, `insideWindows` |
 | `HUi.Surface` | Material (Theme-Hintergrund, Haarlinie, Radius) | `role: popups\|menu\|tooltip\|notifications`, `kind: panel\|popover\|menu\|chip`, `padding`, `contentLeftInset`… (BorderSurface) |
 | `HUi.Pressable` | Basis alles Klickbaren | `clicked()`, `secondaryClicked()`, `tint`, `prominent`, `selected`, `showFill`, `pressScaleEnabled`, `contentColor`, `radius` |
