@@ -121,14 +121,21 @@ Panel {
   // simple enough to sit right there with nothing further to drill into,
   // Input and Screen are a level below it.
   readonly property string macOverall: (padStreaming || screenOn) ? "connected"
-    : (padBridgeUp || padLinkUp || macModeFresh) ? "possible" : "unreachable"
+    : (padBridgeUp || padLinkUp || macModeFresh) ? "idle" : "offline"
   readonly property string macOverallLabel: macOverall === "connected" ? "Connected"
-    : macOverall === "possible" ? "Connection possible" : "Not reachable"
+    : macOverall === "idle" ? "Idle" : "Offline"
+  // Which physical link is actually carrying it -- the pad's own transport
+  // beats the screen's (it's pinged continuously, so it's known even while
+  // idle), and mac-mode-poll only ever reaches the Mac over its Wi-Fi
+  // address, so a bare macModeFresh reachability still means Wi-Fi.
+  readonly property string macRoute: padTransport !== "" ? padTransport
+    : screenRoute !== "" ? screenRoute
+    : macModeFresh ? "Wi-Fi" : ""
   readonly property string macOverallDetail: macOverall === "connected"
       ? (padStreaming && screenOn ? "Trackpad and screen are both active."
          : padStreaming ? "Fingers are arriving from the Mac."
          : "The screen is mirroring.")
-    : macOverall === "possible" ? "The Mac is reachable, but nothing is streaming right now."
+    : macOverall === "idle" ? "The Mac is reachable, but nothing is streaming right now."
     : "No cable and no answer over the network. Check that the Mac is awake."
   readonly property var macPages: ["trackpad", "screen"]
   function backPage() { return macPages.indexOf(page) >= 0 ? "mac" : "main" }
@@ -1452,7 +1459,7 @@ Panel {
             on: root.macOverall === "connected"
             squircle: true
             title: "Mac"
-            subtitle: root.macOverallLabel
+            subtitle: root.macOverallLabel + (root.macOverall !== "offline" && root.macRoute !== "" ? " · " + root.macRoute : "")
             hasCursor: root.mainFocus === "mac"
             badgeToggles: false
             onDetails: root.showPage("mac")
@@ -2388,9 +2395,9 @@ Panel {
           AUi.UsageHeader {
             width: macPage.innerWidth
             title: "Right now"
-            value: root.macOverallLabel
+            value: root.macOverallLabel + (root.macOverall !== "offline" && root.macRoute !== "" ? " · " + root.macRoute : "")
             valueColor: root.macOverall === "connected" ? root.m.accent
-              : root.macOverall === "unreachable" ? root.m.urgent : root.m.inkMuted
+              : root.macOverall === "offline" ? root.m.urgent : root.m.inkMuted
           }
           AUi.Caption { width: macPage.innerWidth; text: root.macOverallDetail }
 

@@ -147,14 +147,21 @@ Panel {
   // a level below it, and Mode's picker is simple enough to sit right here
   // with nothing further to drill into.
   readonly property string macOverall: (padStreaming || screenOn) ? "connected"
-    : (padBridgeUp || padLinkUp || macModeFresh) ? "possible" : "unreachable"
+    : (padBridgeUp || padLinkUp || macModeFresh) ? "idle" : "offline"
   readonly property string macOverallLabel: macOverall === "connected" ? "Connected"
-    : macOverall === "possible" ? "Connection possible" : "Not reachable"
+    : macOverall === "idle" ? "Idle" : "Offline"
+  // Which physical link is actually carrying it -- the pad's own transport
+  // beats the screen's (it's pinged continuously, so it's known even while
+  // idle), and mac-mode-poll only ever reaches the Mac over its Wi-Fi
+  // address, so a bare macModeFresh reachability still means Wi-Fi.
+  readonly property string macRoute: padTransport !== "" ? padTransport
+    : screenRoute !== "" ? screenRoute
+    : macModeFresh ? "Wi-Fi" : ""
   readonly property string macOverallDetail: macOverall === "connected"
       ? (padStreaming && screenOn ? "Trackpad and screen are both active."
          : padStreaming ? "Fingers are arriving from the Mac."
          : "The screen is mirroring.")
-    : macOverall === "possible" ? "The Mac is reachable, but nothing is streaming right now."
+    : macOverall === "idle" ? "The Mac is reachable, but nothing is streaming right now."
     : "No cable and no answer over the network. Check that the Mac is awake."
 
   function padParse(text) {
@@ -2411,8 +2418,9 @@ Panel {
             }
             HUi.CrossfadeText {
               width: parent.width
-              text: root.macOverallLabel
-              color: root.macOverall === "unreachable" ? Color.urgent : root.dimText
+              text: root.macOverallLabel + (root.macOverall !== "offline" && root.macRoute !== "" ? " · " + root.macRoute : "")
+              color: root.macOverall === "connected" ? Color.accent
+                : root.macOverall === "offline" ? Color.urgent : root.dimText
               fontFamily: root.uiFont
               fontSize: Style.font.bodySmall
               elide: Text.ElideRight
@@ -3725,9 +3733,9 @@ Panel {
         UsageHeader {
           width: macPage.innerWidth
           title: "Right now"
-          value: root.macOverallLabel
+          value: root.macOverallLabel + (root.macOverall !== "offline" && root.macRoute !== "" ? " · " + root.macRoute : "")
           valueColor: root.macOverall === "connected" ? Color.accent
-            : root.macOverall === "unreachable" ? Color.urgent : root.dimText
+            : root.macOverall === "offline" ? Color.urgent : root.dimText
         }
         Text {
           width: macPage.innerWidth
