@@ -336,6 +336,14 @@ Panel {
           && (root.padBridgeUp === root.padOverride
               || Date.now() - root.padOverrideSetAt > 5000))
         root.padOverride = null
+      if (root.padPendingActivate) {
+        if (root.padLinked && !root.padStreaming) {
+          root.wakeTrackpad()
+          root.padPendingActivate = false
+        } else if (Date.now() - root.padPendingActivateSetAt > 10000) {
+          root.padPendingActivate = false
+        }
+      }
       if (root.macModeOverride !== null
           && (root.macModePin === root.macModeOverride
               || Date.now() - root.macModeOverrideSetAt > 6000))
@@ -1047,11 +1055,26 @@ Panel {
     else { run("setsid -f localsend >/dev/null 2>&1"); localsendRunning = true }
   }
   function openAirdrop() { close(); run("omarchy-launch-or-focus localsend 'setsid -f localsend'") }
+  // Turning the receiver on here doesn't put the Mac into trackpad mode --
+  // mtsend idles in --wait until its hotkey fires, and the receiver coming
+  // up just makes it reachable ("Idle"). So watch for exactly that
+  // transition and fire the same toggle the hotkey would, over SSH: a
+  // signal to an already-running GUI-session process, not a new one
+  // started from an SSH session, so it doesn't hit the no-window-server
+  // limitation. Guarded by a deadline so an unreachable Mac doesn't leave
+  // this armed to fire minutes later.
+  property bool padPendingActivate: false
+  property double padPendingActivateSetAt: 0
   function toggleTrackpad() {
     var goingUp = !padOn
     padOverride = goingUp
     padOverrideSetAt = Date.now()
+    padPendingActivate = goingUp
+    padPendingActivateSetAt = Date.now()
     run(goingUp ? "systemctl --user start mtbridge" : "systemctl --user stop mtbridge")
+  }
+  function wakeTrackpad() {
+    run("ssh -o ConnectTimeout=3 -o BatchMode=yes henrischulz@192.168.178.126 pkill -USR1 -x mtsend")
   }
   function launchMacScreen() { close(); run("omarchy-launch-or-focus gst-launch-1.0 'setsid -f mac-stream'") }
   function setMacMode(mode) {
