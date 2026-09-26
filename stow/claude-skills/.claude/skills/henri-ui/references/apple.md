@@ -39,6 +39,7 @@ Werte, die Popup-Werte sind nur der erste Abschnitt.
 |---|---|---|
 | Popup (Tokens oben in `Apple.js`, `--apple-*`) | Control Center | `henri.control-center-v2`, `henri.power` |
 | `Apple.window` / `--apple-win-*` | Finder-Fenster (icon/list/column, `system/finder.*`) | `~/Projects/finder` (GTK4) |
+| `Apple.notificationCenter` / `--apple-nc-*` | Spec-Werte (`spec-mitteilungszentrale-macos.md`), nicht gemessen | `henri.clock/NotificationCenter.qml` |
 | `Apple.spotlight` / `--apple-sp-*` | Spotlight Tahoe — Apples Support-Screenshots (`~/Downloads/f8089fdb…png` Kapsel + Buttons, `ba1156d1…png` aufgeklappt), Skala über SF-Pro-Textbreiten (22/15/13/12 pt), Farben per Pixelmessung; dunkle Palette abgeleitet | `henri.menu` (Quickshell) |
 
 Fenster-Werte in Kürze: Sidebar-Karte 226 pt, Radius 18, 8 pt Einzug, Ampel innen

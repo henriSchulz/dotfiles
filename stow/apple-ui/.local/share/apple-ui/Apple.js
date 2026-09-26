@@ -334,3 +334,67 @@ var spotlight = {
   }
 }
 function spotlightPalette(dark) { return dark ? spotlight.dark : spotlight.light }
+
+// ---- Mitteilungszentrale (macOS 14/15). Eigener Abschnitt, nicht die
+// Popup-Werte oben. Werte aus der Spec ~/Downloads/spec-mitteilungszentrale-macos.md
+// (Näherungen, noch nicht am Screenshot nachgemessen — beim Nachmessen hier
+// ersetzen). Referenz-Plugin: ~/.config/omarchy/plugins/henri.clock
+// (NotificationCenter.qml). Punkt-Werte → Style.space(pt).
+var notificationCenter = {
+  width: 344,            // Spaltenbreite
+  edgeInset: 12,         // Abstand zum Bildschirmrand und unter der Menüleiste
+  gap: 12,               // Abstand zwischen Karten und zwischen kleinen Widgets
+  cardPadding: 12,
+  icon: 32,              // App-Symbol
+  iconGap: 10,           // Symbol → Text
+  iconRadius: 0.22,      // Symbolmaske, Anteil der Kantenlänge
+  thumb: 40,             // Vorschaubild rechts
+  thumbRadius: 6,
+  cardMinHeight: 64,
+  radiusCard: 16,        // Mitteilungskarte (Tahoe: 20)
+  radiusWidget: 20,
+  closeButton: 18,       // X-Kreis links oben
+  minusButton: 20,       // Bearbeitungsmodus
+  capsuleHeight: 24,     // „Weniger anzeigen“, „Alle löschen“
+  editButtonHeight: 28,  // „Widgets bearbeiten“
+  widgetSmall: 164,      // klein 164 × 164, mittel 344 × 164, groß 344 × 344
+  stripOffset: 8,        // Stapel: Ebene 2/3 um 8/16 pt nach unten
+  stripScale2: 0.94, stripScale3: 0.88,
+  stripAlpha2: 0.8, stripAlpha3: 0.6,
+  swipeActions: 140,     // Breite von Optionen + Löschen hinter der Karte
+  swipeDelete: 0.6,      // ab 60 % Kartenbreite sofort löschen
+  titleFont: 13,         // semibold
+  bodyFont: 13,
+  metaFont: 11,          // Zeitstempel, Gruppenzähler
+  lineHeight: 16,
+  bodyLines: 4,          // zugeklappt
+  blur: 30,
+  saturate: 1.8,
+  light: {
+    dark: false,
+    tint: "#b8f6f6f6",          // rgba(246,246,246,0.72)
+    borderInner: "#73ffffff",   // Weiß α 0.45, 0.5 pt
+    borderOuter: "#14000000",   // Schwarz α 0.08
+    shadow: "#1f000000",        // 0 4 16 α 0.12
+    textPrimary: "#d9000000",   // 0.85
+    textSecondary: "#8c000000", // 0.55
+    capsule: "#14000000",
+    capsuleHover: "#29000000",
+    opaque: "#ffececec",        // „Transparenz reduzieren“
+    face: "#b3ffffff"           // Zifferblatt der Uhr
+  },
+  dark: {
+    dark: true,
+    tint: "#b3282828",          // rgba(40,40,40,0.70)
+    borderInner: "#1fffffff",   // Weiß α 0.12
+    borderOuter: "#80000000",   // Schwarz α 0.50
+    shadow: "#59000000",        // 0 4 16 α 0.35
+    textPrimary: "#e6ffffff",   // 0.90
+    textSecondary: "#8cffffff", // 0.55
+    capsule: "#1fffffff",
+    capsuleHover: "#33ffffff",
+    opaque: "#ff2a2a2a",
+    face: "#1fffffff"
+  }
+}
+function ncPalette(dark) { return dark ? notificationCenter.dark : notificationCenter.light }

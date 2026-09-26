@@ -145,3 +145,17 @@
   --apple-sp-hover: rgba(0, 0, 0, 0.05);
 }
 @define-color apple_sp_opaque_fill #ececec;
+
+/* Notification Center (spec values, see Apple.js `notificationCenter`) */
+@define-color apple_nc_tint rgba(246, 246, 246, 0.72);
+@define-color apple_nc_border_inner rgba(255, 255, 255, 0.45);
+@define-color apple_nc_border_outer rgba(0, 0, 0, 0.08);
+@define-color apple_nc_text_primary rgba(0, 0, 0, 0.85);
+@define-color apple_nc_text_secondary rgba(0, 0, 0, 0.55);
+@define-color apple_nc_capsule rgba(0, 0, 0, 0.08);
+@define-color apple_nc_tint_dark rgba(40, 40, 40, 0.70);
+@define-color apple_nc_border_inner_dark rgba(255, 255, 255, 0.12);
+@define-color apple_nc_border_outer_dark rgba(0, 0, 0, 0.50);
+@define-color apple_nc_text_primary_dark rgba(255, 255, 255, 0.90);
+@define-color apple_nc_text_secondary_dark rgba(255, 255, 255, 0.55);
+@define-color apple_nc_capsule_dark rgba(255, 255, 255, 0.12);

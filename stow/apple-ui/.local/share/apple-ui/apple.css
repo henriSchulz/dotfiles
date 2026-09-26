@@ -154,6 +154,26 @@
   --apple-win-text: 13px;
   --apple-win-small: 11px;
   --apple-win-disabled: rgba(0, 0, 0, 0.259);
+
+  /* ---- Notification Center (spec values, see Apple.js `notificationCenter`) */
+  --apple-nc-width: 344px;
+  --apple-nc-edge-inset: 12px;
+  --apple-nc-gap: 12px;
+  --apple-nc-card-padding: 12px;
+  --apple-nc-icon: 32px;
+  --apple-nc-radius-card: 16px;
+  --apple-nc-radius-widget: 20px;
+  --apple-nc-widget-small: 164px;
+  --apple-nc-tint: rgba(246, 246, 246, 0.72);
+  --apple-nc-border-inner: rgba(255, 255, 255, 0.45);
+  --apple-nc-border-outer: rgba(0, 0, 0, 0.08);
+  --apple-nc-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --apple-nc-text-primary: rgba(0, 0, 0, 0.85);
+  --apple-nc-text-secondary: rgba(0, 0, 0, 0.55);
+  --apple-nc-capsule: rgba(0, 0, 0, 0.08);
+  --apple-nc-opaque: #ececec;
+  --apple-nc-blur: 30px;
+  --apple-nc-saturate: 180%;
 }
 
 /* dark glass — measured on the real Control Center over a dark wallpaper.
@@ -177,6 +197,14 @@
   --apple-row-hover: rgba(255, 255, 255, 0.15);
   --apple-field: rgba(255, 255, 255, 0.15);
   --apple-cursor-ring: #fff;
+  --apple-nc-tint: rgba(40, 40, 40, 0.70);
+  --apple-nc-border-inner: rgba(255, 255, 255, 0.12);
+  --apple-nc-border-outer: rgba(0, 0, 0, 0.50);
+  --apple-nc-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --apple-nc-text-primary: rgba(255, 255, 255, 0.90);
+  --apple-nc-text-secondary: rgba(255, 255, 255, 0.55);
+  --apple-nc-capsule: rgba(255, 255, 255, 0.12);
+  --apple-nc-opaque: #2a2a2a;
 }
 
 /* ready-made surfaces */

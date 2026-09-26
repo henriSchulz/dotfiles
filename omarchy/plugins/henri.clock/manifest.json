@@ -4,7 +4,7 @@
   "name": "My Clock",
   "version": "1.0.0",
   "author": "Omarchy",
-  "description": "Date/time label with a calendar popup",
+  "description": "Date/time label; click opens the Notification Center (stacks, widgets), middle click the calendar",
   "kinds": [
     "bar-widget"
   ],
@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "My Clock",
-    "description": "Date/time label with a calendar popup",
+    "description": "Date/time label with Notification Center and calendar",
     "category": "Time",
     "allowMultiple": false
   },

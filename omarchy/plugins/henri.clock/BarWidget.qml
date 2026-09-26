@@ -5,11 +5,13 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// Date/time label for the bar, and the host for the calendar popup.
+// Date/time label for the bar, and the host for two popups: the Notification
+// Center (NotificationCenter.qml — like macOS, a click on the date opens the
+// column of notifications and widgets) and the calendar (Panel.qml).
 //
-// Left click reveals the calendar — asking "what is the date?" is what a
-// click on a clock means — right click walks the common label formats, and
-// middle click opens the timezone picker.
+// Left click opens the Notification Center, right click walks the common
+// label formats, middle click opens the calendar. The timezone picker moved
+// to IPC (`omarchy-shell omarchy.clock timezone`).
 BarWidget {
   id: root
   moduleName: "omarchy.clock"
@@ -60,18 +62,34 @@ BarWidget {
   // ---- Calendar popup. Shape contract for shell.summon/hide/toggle
   //      routing: Bar.findPanelWidget requires open/close/opened on the
   //      bar-widget root.
-  readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
+  readonly property bool calendarOpened: panelLoader.item ? panelLoader.item.opened === true : false
+  readonly property bool centerOpened: centerLoader.item ? centerLoader.item.opened === true : false
+  readonly property bool opened: calendarOpened || centerOpened
 
+  // open/close/toggle are the bar's summon contract: they mean the Notification
+  // Center now. The calendar keeps its own entry points.
   function open() {
-    if (panelLoader.item) panelLoader.item.open()
+    if (centerLoader.item) centerLoader.item.open()
   }
 
   function close() {
     if (panelLoader.item) panelLoader.item.close()
+    if (centerLoader.item) centerLoader.item.close()
   }
 
   function togglePanel() {
-    if (panelLoader.item) panelLoader.item.toggle()
+    if (centerLoader.item) centerLoader.item.toggle()
+  }
+
+  function openCalendar() {
+    if (centerLoader.item) centerLoader.item.close()
+    if (panelLoader.item) panelLoader.item.open()
+  }
+
+  function toggleCalendar() {
+    if (!panelLoader.item) return
+    if (panelLoader.item.opened) panelLoader.item.close()
+    else openCalendar()
   }
 
   function toggleWeekStart() {
@@ -89,14 +107,20 @@ BarWidget {
   // Forwarded so this widget can stand in for the panel as the bar's popout
   // identity: Bar.requestPopout prefers closeForPopoutSwitch over close, and
   // KeyboardPanel reads popoutSwitchClosing back off its owner.
-  readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
+  readonly property bool popoutSwitchClosing: (panelLoader.item && panelLoader.item.popoutSwitchClosing === true)
+    || (centerLoader.item && centerLoader.item.popoutSwitchClosing === true)
 
   function closeForPopoutSwitch() {
-    if (panelLoader.item) panelLoader.item.closeForPopoutSwitch()
+    if (panelLoader.item && panelLoader.item.opened) panelLoader.item.closeForPopoutSwitch()
+    if (centerLoader.item && centerLoader.item.opened) centerLoader.item.closeForPopoutSwitch()
   }
 
   function injectPanel() {
-    var target = panelLoader.item
+    injectInto(panelLoader.item)
+    injectInto(centerLoader.item)
+  }
+
+  function injectInto(target) {
     if (!target) return
     if ("bar" in target) target.bar = root.bar
     if ("settings" in target) target.settings = root.settings
@@ -127,6 +151,17 @@ BarWidget {
     }
   }
 
+  Loader {
+    id: centerLoader
+    active: true
+    source: Qt.resolvedUrl("NotificationCenter.qml")
+    visible: false
+    onLoaded: {
+      root.injectPanel()
+      Qt.callLater(root.injectPanel)
+    }
+  }
+
   IpcHandler {
     target: "omarchy.clock"
 
@@ -138,6 +173,9 @@ BarWidget {
     function show(): void { root.open() }
     function hide(): void { root.close() }
     function toggle(): void { root.togglePanel() }
+    function calendar(): void { root.toggleCalendar() }
+    function notifications(): void { root.togglePanel() }
+    function timezone(): void { if (root.bar) root.bar.run("omarchy-menu-timezone") }
   }
 
   WidgetButton {
@@ -153,7 +191,7 @@ BarWidget {
 
     onPressed: function(b) {
       if (b === Qt.RightButton) root.cycleFormat()
-      else if (b === Qt.MiddleButton) { if (root.bar) root.bar.run("omarchy-menu-timezone") }
+      else if (b === Qt.MiddleButton) root.toggleCalendar()
       else root.togglePanel()
     }
 

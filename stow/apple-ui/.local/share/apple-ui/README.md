@@ -83,6 +83,16 @@ und dunkel (abgeleitet); dazu die Aktionsseite (`actionHeader` 49, `actionRowHei
 36, `sectionFont` 11 — Spec-Werte, nicht gemessen). `Apple.spotlightPalette(dark)` liefert die Palette.
 Referenz-Plugin: `~/.config/omarchy/plugins/henri.menu`.
 
+## Mitteilungszentrale
+
+`Apple.notificationCenter` in `Apple.js` bzw. `--apple-nc-*` / `apple_nc_*` in den
+CSS-Dateien: Spalte 344 pt, 12 pt Rand, schwebende Karten (Radius 16, Widgets 20),
+Stapel-Streifen, Material hell/dunkel (`Apple.ncPalette(dark)`), Typografie. Werte
+aus der Spec `spec-mitteilungszentrale-macos.md`, noch nicht am Screenshot
+nachgemessen. Referenz-Plugin: `henri.clock/NotificationCenter.qml` (Klick auf die
+Uhr). Öffnet als `HUi.PopupPanel { kind: "toast"; revealFromX: … }` ohne eigene
+Karte (`cardColor: "transparent"`), jede Karte trägt ihr Material selbst.
+
 ## Fenster (Apps)
 
 `Apple.window` in `Apple.js` bzw. `--apple-win-*` in beiden CSS-Dateien: die am
