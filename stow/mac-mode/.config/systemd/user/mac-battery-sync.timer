@@ -1,0 +1,10 @@
+[Unit]
+Description=Mirror the Mac's battery history every 60s
+
+[Timer]
+OnBootSec=10
+OnUnitActiveSec=60
+AccuracySec=2
+
+[Install]
+WantedBy=timers.target

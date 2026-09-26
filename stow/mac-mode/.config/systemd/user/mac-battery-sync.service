@@ -1,0 +1,6 @@
+[Unit]
+Description=Mirror the Mac's battery history CSVs locally
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/mac-battery-sync

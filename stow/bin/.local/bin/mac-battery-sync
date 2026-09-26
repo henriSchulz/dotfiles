@@ -1,0 +1,13 @@
+#!/bin/bash
+# Mirrors the Mac's battery CSVs locally, so the control-center History page
+# reads a local file and never shells out at panel-open time. Safe to run
+# whether or not the Mac currently answers -- rsync just fails quietly.
+set -euo pipefail
+
+DEST="$HOME/.local/share/mt-bridge/battery"
+mkdir -p "$DEST"
+
+rsync -az --timeout=5 \
+  -e "ssh -o ConnectTimeout=3 -o BatchMode=yes" \
+  "henrischulz@192.168.178.126:.local/share/mt-bridge/battery/" \
+  "$DEST/" 2>/dev/null || exit 0

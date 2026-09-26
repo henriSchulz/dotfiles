@@ -11,6 +11,7 @@ import "Network.js" as Net
 import "AirPods.js" as Pods
 import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
 import "file:///home/henri/.local/share/henri-ui" as HUi
+import "file:///home/henri/.local/share/henri-ui/BatteryHistory.js" as BatteryHistory
 import "file:///home/henri/.local/share/apple-ui/Apple.js" as Apple
 import "file:///home/henri/.local/share/apple-ui" as AUi
 
@@ -137,7 +138,7 @@ Panel {
          : "The screen is mirroring.")
     : macOverall === "idle" ? "The Mac is reachable, but nothing is streaming right now."
     : "No cable and no answer over the network. Check that the Mac is awake."
-  readonly property var macPages: ["trackpad", "screen"]
+  readonly property var macPages: ["trackpad", "screen", "macbattery"]
   function backPage() { return macPages.indexOf(page) >= 0 ? "mac" : "main" }
   function goBack() { page = backPage() }
 
@@ -149,6 +150,124 @@ Panel {
       if (eq > 0) out[lines[i].substring(0, eq)] = lines[i].substring(eq + 1)
     }
     return out
+  }
+
+  // ---- Mac battery history: mac-battery-log on the Mac writes a CSV in the
+  // same shape as Henri's Linux akku-aufzeichnung logger (see
+  // BatteryHistory.js's header comment), mac-battery-sync mirrors it here
+  // every 60s over rsync, and the same bucketing/axis math the Linux
+  // henri.power History page uses turns it into bars -- so both read the
+  // same shape without duplicating that math.
+  readonly property string battDir: Quickshell.env("HOME") + "/.local/share/mt-bridge/battery"
+  property string battRange: BatteryHistory.HISTORY_DEFAULT_RANGE
+  property string battMetricKey: BatteryHistory.HISTORY_DEFAULT_METRIC
+  readonly property var battRangeInfo: BatteryHistory.historyRange(battRange) || BatteryHistory.historyRange(BatteryHistory.HISTORY_DEFAULT_RANGE)
+  readonly property var battMetric: BatteryHistory.historyMetric(battMetricKey) || BatteryHistory.historyMetric(BatteryHistory.HISTORY_DEFAULT_METRIC)
+  property var battFiles: []
+  property var battTexts: ({})
+  property var battParsedCache: ({})
+  property var battPoints: []
+  property var battStats: null
+  property var battBars: []
+  property double battNow: 0
+  // The live reading on the Mac overview page: whatever the newest sample
+  // says, even if the History window (which may be much shorter) doesn't
+  // reach back to catch it -- so "now" always means now.
+  readonly property var battLatest: {
+    var last = null
+    for (var i = 0; i < battPoints.length; i++) if (!battPoints[i].gap) last = battPoints[i]
+    return last
+  }
+  readonly property bool battFresh: battLatest !== null && Date.now() - battLatest.t < 180000
+  readonly property string battSummary: !battFresh ? "No data yet"
+    : Math.round(battLatest.pct) + "% · " + battLatest.status
+      + (battLatest.w !== null ? " · " + battLatest.w.toFixed(1) + " W" : "")
+
+  function battFileList() {
+    var info = battRangeInfo || BatteryHistory.historyRange(BatteryHistory.HISTORY_DEFAULT_RANGE)
+    return BatteryHistory.historyDays("battery-", new Date(), info.hours)
+  }
+  // Returns true when the file list itself changed (a new day rolled in, or
+  // the range now spans more/fewer days) -- the FileView Repeater's model
+  // changing is what loads them; a same-day range switch just rebuilds.
+  function battRefreshFiles() {
+    var days = battFileList()
+    var names = days.map(function (d) { return d.name }).join(",")
+    var have = battFiles.map(function (d) { return d.name }).join(",")
+    if (names === have) return false
+    battFiles = days
+    return true
+  }
+  function battRebuild() {
+    var now = new Date()
+    var samples = []
+    var cache = {}
+    for (var i = 0; i < battFiles.length; i++) {
+      var f = battFiles[i]
+      var text = battTexts[f.name] || ""
+      var c = battParsedCache[f.name]
+      if (!c || c.len !== text.length) c = { len: text.length, samples: BatteryHistory.parseHistoryCsv(text, f.day) }
+      cache[f.name] = c
+      samples = samples.concat(c.samples)
+    }
+    battParsedCache = cache
+    battNow = now.getTime()
+    var info = battRangeInfo || BatteryHistory.historyRange(BatteryHistory.HISTORY_DEFAULT_RANGE)
+    battPoints = BatteryHistory.historyWindow(samples, battNow, info.hours)
+    battStats = BatteryHistory.historyStats(battPoints)
+    battBars = BatteryHistory.historyBuckets(battPoints, battNow, info.hours, info.bars)
+  }
+  function setBattRange(key) {
+    var r = BatteryHistory.historyRange(key)
+    if (!r || r.key === battRange) return
+    battRange = r.key
+  }
+  function setBattMetric(key) {
+    var m = BatteryHistory.historyMetric(key)
+    if (!m || m.key === battMetricKey) return
+    battMetricKey = m.key
+  }
+  onBattRangeChanged: {
+    if (!battRefreshFiles()) Qt.callLater(battRebuild)
+  }
+  // The parse is cheap (cached by text length) but historyWindow/Buckets
+  // walk every sample in range, up to ~20k of them on the 7-day view -- so
+  // this runs on its own slower beat, not the 1 Hz status tick.
+  // Starts one short of the modulus so the very first 1 Hz tick -- when the
+  // panel just opened and battFiles is still empty -- loads right away.
+  property int battTickCounter: 9
+  function battTick() {
+    battTickCounter++
+    if (battTickCounter % 10 !== 0) return
+    if (battRefreshFiles()) return
+    for (var i = Math.max(0, battFileViews.count - 2); i < battFileViews.count; i++) {
+      var fv = battFileViews.objectAt(i)
+      if (fv) fv.reload()
+    }
+    Qt.callLater(battRebuild)
+  }
+  function syncBattery() { run("systemctl --user start mac-battery-sync.service") }
+
+  function battWatt(w) { return w === null || w === undefined || !isFinite(w) ? "—" : w.toFixed(1) + " W" }
+  function battWh(wh) { return wh === null || wh === undefined || !isFinite(wh) ? "—" : wh.toFixed(1) + " Wh" }
+  function battValue(v, m) { return v === null || v === undefined || !isFinite(v) ? "—" : v.toFixed(m.decimals) + " " + m.unit }
+  // Carries only the decimals it needs, so gridlines read "20 W" rather than "20.0 W".
+  function battAxisLabel(v, m) {
+    if (v === null || v === undefined || !isFinite(v)) return "—"
+    var txt = Math.abs(v - Math.round(v)) < 1e-6 ? String(Math.round(v))
+      : v.toFixed(m.decimals).replace(/0+$/, "").replace(/\.$/, "")
+    return txt + " " + m.unit
+  }
+  function battClockText(t) { return Qt.formatTime(new Date(t), "HH:mm") }
+  readonly property string battDischargeText: {
+    var st = battStats
+    if (!st || !st.discharging || st.cycleWh === null || st.cycleStart === null) return ""
+    return "This discharge: " + battWh(st.cycleWh) + " since " + battClockText(st.cycleStart)
+  }
+  readonly property string battChargeText: {
+    var st = battStats
+    if (!st || !st.samples) return ""
+    return st.chargingH > 0 ? "Charged " + battWh(st.chargedWh) + " in " + BatteryHistory.durationText(st.chargingH) : ""
   }
 
   FileView {
@@ -183,6 +302,24 @@ Panel {
     onFileChanged: reload()
     onLoaded: root.macModeState = root.padParse(text())
   }
+  // Instantiator, not Repeater: FileView has no visual Item to delegate.
+  Instantiator {
+    id: battFileViews
+    model: root.battFiles
+    delegate: FileView {
+      required property var modelData
+      path: root.battDir + "/" + modelData.name
+      watchChanges: true
+      printErrors: false
+      onFileChanged: reload()
+      onLoaded: {
+        var t = Object.assign({}, root.battTexts)
+        t[modelData.name] = text()
+        root.battTexts = t
+        Qt.callLater(root.battRebuild)
+      }
+    }
+  }
   Timer {
     running: root.opened
     interval: 1000
@@ -194,6 +331,7 @@ Panel {
       padStreamFile.reload()
       screenFile.reload()
       macModeFile.reload()
+      root.battTick()
       if (root.padOverride !== null
           && (root.padBridgeUp === root.padOverride
               || Date.now() - root.padOverrideSetAt > 5000))
@@ -1229,6 +1367,284 @@ Panel {
     spacing: root.pt(6)
     readonly property int innerWidth: root.panelWidth - root.pt(12)
     readonly property int cellWidth: Math.floor((innerWidth - root.pt(16)) / 2)
+  }
+
+  // ---- Mac Battery History (the drill-in page under "Battery" on the Mac
+  // overview) -- same shape as henri.power's own History page, rebuilt on
+  // apple-ui instead of henri-ui tiles.
+
+  // Time-range picker: label + chevron, opens BattRangeMenu below it. Sized
+  // for the widest label so switching never resizes it.
+  component BattRangeButton: HUi.Pressable {
+    id: pop
+    property string text: ""
+    property bool open: false
+    property string widest: "30 min"
+    implicitWidth: widestMetrics.advanceWidth + chevron.implicitWidth + popRow.spacing + root.pt(20)
+    implicitHeight: root.pt(Apple.capsuleH)
+    width: implicitWidth
+    height: implicitHeight
+    tint: root.m.ink
+    showFill: false
+    activeFocusOnTab: false
+
+    TextMetrics { id: widestMetrics; font.family: root.uiFont; font.pixelSize: root.pt(Apple.callout); font.weight: Font.DemiBold; text: pop.widest }
+
+    Rectangle {
+      anchors.fill: parent
+      radius: pop.radius
+      color: pop.pressed || pop.open || pop.hovered ? root.m.tileHover : root.m.capsule
+      border.width: 1
+      border.color: root.m.hairline
+      Behavior on color {
+        ColorAnimation {
+          duration: pop.hovered || pop.pressed ? Motion.instant : Motion.fast
+          easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+        }
+      }
+    }
+    Row {
+      id: popRow
+      anchors.centerIn: parent
+      spacing: root.pt(6)
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: pop.text
+        color: root.m.ink
+        font.family: root.uiFont
+        font.pixelSize: root.pt(Apple.callout)
+        font.weight: Font.DemiBold
+      }
+      Text {
+        id: chevron
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.sf(0x10018A)
+        color: root.m.inkMuted
+        font.family: root.symbolFont
+        font.pixelSize: root.pt(Apple.footnote)
+        rotation: pop.open ? -90 : 90
+        Behavior on rotation { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+      }
+    }
+  }
+
+  // Overview tile: small secondary label over the value.
+  component BattStatTile: Rectangle {
+    id: stat
+    property string label: ""
+    property string value: ""
+    implicitHeight: statCol.implicitHeight + root.pt(16)
+    radius: root.pt(Apple.radiusRow)
+    color: root.m.tile
+    border.width: 1
+    border.color: root.m.hairline
+    Column {
+      id: statCol
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.leftMargin: root.pt(10)
+      anchors.rightMargin: root.pt(10)
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: root.pt(2)
+      HUi.CrossfadeText { fontFamily: root.uiFont; width: parent.width; text: stat.label; color: root.m.inkMuted; elide: Text.ElideRight; fontSize: root.pt(Apple.footnote) }
+      HUi.CrossfadeText { fontFamily: root.uiFont; width: parent.width; text: stat.value; color: root.m.ink; elide: Text.ElideRight; fontSize: root.pt(Apple.body); fontWeight: Font.DemiBold }
+    }
+  }
+
+  component BattCaption: HUi.CrossfadeText {
+    width: parent.width
+    color: root.m.inkMuted
+    elide: Text.ElideRight
+    fontFamily: root.uiFont
+    fontSize: root.pt(Apple.footnote)
+  }
+
+  // macOS segmented control: the accent selection glides between segments.
+  component BattSegmented: Item {
+    id: seg
+    property var options: []
+    property var labels: []
+    property string current: ""
+    property int columns: Math.max(1, options.length)
+    readonly property int currentIndex: options.indexOf(current)
+    signal picked(string value)
+    implicitHeight: segGrid.implicitHeight + inset * 2
+    readonly property real inset: root.pt(2)
+
+    Rectangle { anchors.fill: parent; radius: height / 2; color: root.m.tile; border.width: 1; border.color: root.m.hairline }
+
+    Item {
+      anchors.fill: parent
+      anchors.margins: seg.inset
+      HUi.Highlight {
+        glide: true
+        color: root.m.accent
+        radius: height / 2
+        target: seg.currentIndex >= 0 && seg.currentIndex < segRep.count ? segRep.itemAt(seg.currentIndex) : null
+      }
+      Grid {
+        id: segGrid
+        width: parent.width
+        columns: seg.columns
+        spacing: seg.inset
+        readonly property real cellWidth: (width - spacing * (columns - 1)) / columns
+        Repeater {
+          id: segRep
+          model: seg.options
+          HUi.Pressable {
+            id: cell
+            required property var modelData
+            required property int index
+            readonly property bool isCurrent: index === seg.currentIndex
+            width: segGrid.cellWidth
+            height: root.pt(Motion.controlHeight) - seg.inset * 2
+            radius: height / 2
+            tint: root.m.ink
+            showFill: !isCurrent
+            activeFocusOnTab: false
+            onClicked: seg.picked(String(modelData))
+            Text {
+              anchors.fill: parent
+              horizontalAlignment: Text.AlignHCenter
+              verticalAlignment: Text.AlignVCenter
+              elide: Text.ElideRight
+              text: seg.labels[cell.index] !== undefined ? seg.labels[cell.index] : String(cell.modelData)
+              color: cell.isCurrent ? "#ffffff" : root.m.ink
+              font.family: root.uiFont
+              font.pixelSize: root.pt(Apple.callout)
+              font.weight: cell.isCurrent ? Font.DemiBold : Font.Normal
+              Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // The chosen metric over the history window as bars, like the macOS
+  // battery graph: accent on battery, pale accent while plugged in, urgent
+  // at 20% and below on the charge view. Slots without samples (sleep, Mac
+  // off) stay empty. Hovering a bar reads it out and dims the rest.
+  component BattHistoryGraph: Item {
+    id: graph
+    readonly property real gutter: gutterMetrics.advanceWidth + root.pt(8)
+    readonly property real plotW: Math.max(1, width - gutter)
+    readonly property real plotH: root.pt(88)
+    readonly property real from: root.battNow - root.battRangeInfo.hours * 3600000
+    readonly property var metric: root.battMetric
+    readonly property var axis: BatteryHistory.historyAxis(root.battBars, metric.key)
+    readonly property real axisSpan: Math.max(1e-9, axis.max - axis.min)
+    readonly property bool multiDay: root.battRangeInfo.hours > 24
+    function barValue(b) { return b ? b[metric.field] : null }
+    function valueOf(b) {
+      var v = barValue(b)
+      if (v === null || v === undefined || !isFinite(v)) return 0
+      return Math.max(0, Math.min(1, (v - axis.min) / axisSpan))
+    }
+    function stamp(t) { return multiDay ? Qt.formatDateTime(new Date(t), "ddd HH:mm") : root.battClockText(t) }
+    readonly property int barCount: Math.max(1, root.battBars.length)
+    readonly property real slotW: plotW / barCount
+    readonly property real barGap: Math.max(1, Math.round(slotW * 0.3))
+    readonly property color batteryInk: root.m.accent
+    readonly property color pluggedInk: Qt.rgba(root.m.accent.r, root.m.accent.g, root.m.accent.b, 0.35)
+    property int hoverIndex: -1
+    readonly property var hoverBar: hoverIndex >= 0 ? root.battBars[hoverIndex] || null : null
+    readonly property string readout: {
+      var b = graph.hoverBar
+      if (b) return graph.stamp(b.t0) + " · " + root.battValue(graph.barValue(b), graph.metric)
+      var st = root.battStats
+      if (!st || !st.samples) return ""
+      if (graph.metric.key === "percent") return "Now " + Math.round(st.lastPct) + " %"
+      return "Now " + root.battValue(
+        graph.metric.key === "watts" ? st.lastW : graph.metric.key === "volts" ? st.lastV : st.lastA,
+        graph.metric)
+    }
+    implicitHeight: plotH + timeRow.height + root.pt(12)
+
+    TextMetrics { id: gutterMetrics; font.family: root.uiFont; font.pixelSize: root.pt(Apple.footnote); text: "888 W" }
+
+    function xOf(t) { return (t - from) / (root.battRangeInfo.hours * 3600000) * plotW }
+    function yOf(pct) { return plotH - Math.max(0, Math.min(100, pct)) / 100 * plotH }
+
+    readonly property var tickInfo: BatteryHistory.historyTicks(graph.from, root.battNow, graph.multiDay ? 7 : 6)
+    readonly property var ticks: tickInfo.ticks
+    function tickText(t) {
+      var d = new Date(t)
+      return graph.multiDay && d.getHours() === 0 && d.getMinutes() === 0 ? Qt.formatDate(d, "ddd") : root.battClockText(t)
+    }
+
+    Repeater {
+      model: [100, 50, 0]
+      Item {
+        required property var modelData
+        y: Math.round(graph.yOf(modelData))
+        width: graph.width
+        Rectangle { width: graph.plotW; height: 1; color: root.m.hairline }
+        HUi.CrossfadeText {
+          fontFamily: root.uiFont
+          x: graph.plotW + root.pt(6)
+          anchors.verticalCenter: parent.top
+          text: root.battAxisLabel(graph.axis.min + graph.axisSpan * modelData / 100, graph.metric)
+          color: root.m.inkMuted
+          fontSize: root.pt(Apple.footnote)
+        }
+      }
+    }
+
+    Repeater {
+      model: root.battBars.length
+      Rectangle {
+        id: bar
+        required property int index
+        readonly property var bucket: root.battBars[index] || null
+        x: Math.round(index * graph.slotW + graph.barGap / 2)
+        width: Math.max(1, Math.round(graph.slotW - graph.barGap))
+        height: graph.plotH
+        color: !bucket ? "transparent"
+          : (graph.metric.key === "percent" && bucket.pct <= 20 ? root.m.urgent
+            : (bucket.battery ? graph.batteryInk : graph.pluggedInk))
+        opacity: !bucket ? 0 : (graph.hoverIndex < 0 || graph.hoverIndex === index ? 1 : 0.45)
+        transform: Scale {
+          origin.y: graph.plotH
+          yScale: bar.bucket ? Math.max(0.02, graph.valueOf(bar.bucket)) : 0
+          Behavior on yScale { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        }
+        Behavior on opacity { NumberAnimation { duration: graph.hoverIndex >= 0 ? Motion.instant : Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+      }
+    }
+
+    MouseArea {
+      width: graph.plotW
+      height: graph.plotH
+      hoverEnabled: true
+      acceptedButtons: Qt.NoButton
+      onExited: graph.hoverIndex = -1
+      onPositionChanged: function(mouse) {
+        var i = Math.max(0, Math.min(graph.barCount - 1, Math.floor(mouse.x / graph.slotW)))
+        graph.hoverIndex = root.battBars[i] ? i : -1
+      }
+    }
+
+    Item {
+      id: timeRow
+      y: graph.plotH + root.pt(4)
+      width: graph.plotW
+      height: tickMetrics.height
+      TextMetrics { id: tickMetrics; font.family: root.uiFont; font.pixelSize: root.pt(Apple.footnote); text: "00:00" }
+      Repeater {
+        model: graph.ticks
+        Text {
+          required property var modelData
+          readonly property real cx: graph.xOf(modelData)
+          x: Math.max(0, Math.min(graph.plotW - width, cx - width / 2))
+          text: graph.tickText(modelData)
+          color: root.m.inkMuted
+          font.family: root.uiFont
+          font.pixelSize: root.pt(Apple.footnote)
+        }
+      }
+    }
   }
 
   Component {
@@ -2446,6 +2862,15 @@ Panel {
             trailing: root.sf(0x10018A)
             onClicked: root.showPage("screen")
           }
+          AUi.ListRow {
+            enterDelay: root.rowDelay(2)
+            icon: root.sf(0x100657)
+            active: root.battFresh && root.battLatest.status === "Charging"
+            title: "Battery"
+            subtitle: root.battSummary
+            trailing: root.sf(0x10018A)
+            onClicked: root.showPage("macbattery")
+          }
           Item { width: 1; height: root.pt(4) }
         }
 
@@ -2576,6 +3001,150 @@ Panel {
           AUi.Caption {
             width: padPage.innerWidth
             text: "Keys map by position: this machine's layout decides the character. Both hotkeys stay on the Mac."
+          }
+        }
+
+        // Mac Battery History
+        AUi.PageHeader {
+          id: battHeader
+          visible: root.detailPage === "macbattery"
+          title: "Battery History"
+          onBack: root.page = "mac"
+
+          AUi.Capsule {
+            label: "Sync"
+            onClicked: root.syncBattery()
+          }
+          BattRangeButton {
+            id: battRangeButton
+            text: root.battRangeInfo.short
+            open: battRangeMenu.open
+            Accessible.name: "Time range"
+            onClicked: battRangeMenu.open ? battRangeMenu.dismiss() : battRangeMenu.show()
+          }
+        }
+        AUi.Separator { visible: root.detailPage === "macbattery" }
+        PageBody {
+          id: battPage
+          visible: root.detailPage === "macbattery"
+          spacing: root.pt(8)
+
+          Item {
+            width: parent.width
+            height: Math.max(battTitle.implicitHeight, battReadout.implicitHeight)
+            BattSegmented {
+              id: battTitle
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              width: root.pt(212)
+              options: BatteryHistory.HISTORY_METRICS.map(function(m) { return m.key })
+              labels: BatteryHistory.HISTORY_METRICS.map(function(m) { return m.label })
+              current: root.battMetricKey
+              onPicked: function(value) { root.setBattMetric(value) }
+            }
+            HUi.CrossfadeText {
+              fontFamily: root.uiFont
+              id: battReadout
+              anchors.right: parent.right
+              anchors.left: battTitle.right
+              anchors.leftMargin: root.pt(8)
+              anchors.verticalCenter: parent.verticalCenter
+              horizontalAlignment: Text.AlignRight
+              elide: Text.ElideLeft
+              text: battGraph.readout
+              color: root.m.ink
+              fontSize: root.pt(Apple.footnote)
+              fontWeight: Font.Medium
+            }
+          }
+
+          BattHistoryGraph { id: battGraph; width: parent.width }
+
+          Grid {
+            id: battGrid
+            width: parent.width
+            columns: 2
+            spacing: root.pt(8)
+            visible: root.battStats !== null && root.battStats.samples
+            readonly property real cellWidth: (width - spacing) / 2
+            BattStatTile { width: battGrid.cellWidth; label: "Time on battery"; value: root.battStats ? BatteryHistory.durationText(root.battStats.onBatteryH) : "—" }
+            BattStatTile { width: battGrid.cellWidth; label: "Used on battery"; value: root.battStats ? root.battWh(root.battStats.usedWh) : "—" }
+            BattStatTile { width: battGrid.cellWidth; label: "Average draw"; value: root.battStats ? root.battWatt(root.battStats.avgDrawW) : "—" }
+            BattStatTile {
+              width: battGrid.cellWidth
+              label: "A full charge lasts"
+              value: root.battStats && root.battStats.runtimeH !== null ? "≈ " + BatteryHistory.durationText(root.battStats.runtimeH) : "—"
+            }
+          }
+
+          AUi.Caption {
+            visible: text !== ""
+            text: root.battStats === null ? ""
+              : (root.battStats.samples ? root.battDischargeText : "No samples yet -- mac-battery-sync runs every 60s.")
+          }
+          AUi.Caption { visible: text !== ""; text: root.battChargeText }
+        }
+
+        MouseArea {
+          anchors.fill: parent
+          z: 9
+          enabled: root.detailPage === "macbattery" && battRangeMenu.open
+          visible: enabled
+          acceptedButtons: Qt.AllButtons
+          onPressed: battRangeMenu.dismiss()
+        }
+
+        HUi.Reveal {
+          id: battRangeMenu
+          kind: "menu"
+          origin: Item.TopRight
+          closeOnOutsideClick: false
+          z: 10
+          x: root.panelWidth - width - root.pt(4)
+          y: battHeader.y + battHeader.height / 2 + battRangeButton.height / 2 + root.pt(4)
+          width: battRangeSurface.implicitWidth
+          height: battRangeSurface.implicitHeight
+
+          function show() {
+            var m = battRangeList.model
+            for (var i = 0; i < m.length; i++) if (m[i].checked === true) battRangeList.currentIndex = i
+            open = true
+          }
+          function dismiss() { open = false }
+          onDismissRequested: dismiss()
+
+          HUi.Surface {
+            id: battRangeSurface
+            anchors.fill: parent
+            role: "menu"
+            kind: "menu"
+            padding: root.pt(5)
+            implicitWidth: battRangeList.implicitWidth + padding * 2
+            implicitHeight: battRangeList.implicitHeight + padding * 2
+            HUi.MenuList {
+              id: battRangeList
+              x: battRangeSurface.contentLeftInset
+              y: battRangeSurface.contentTopInset
+              width: parent.width - battRangeSurface.contentLeftInset - battRangeSurface.contentRightInset
+              minWidth: root.pt(140)
+              focus: battRangeMenu.open
+              model: {
+                var cur = root.battRangeInfo
+                var out = []
+                var list = BatteryHistory.HISTORY_RANGES
+                for (var i = 0; i < list.length; i++) {
+                  if (i > 0 && list[i].hours >= 1 !== list[i - 1].hours >= 1
+                      || i > 0 && list[i].hours > 24 !== list[i - 1].hours > 24)
+                    out.push({ separator: true })
+                  out.push({ text: list[i].label, checked: list[i] === cur, key: list[i].key })
+                }
+                return out
+              }
+              onActivated: function(index, entry) {
+                battRangeMenu.dismiss()
+                root.setBattRange(entry.key)
+              }
+            }
           }
         }
 
