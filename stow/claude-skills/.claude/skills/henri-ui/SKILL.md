@@ -251,9 +251,10 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   Öffnen: Fade + Scale `Motion.launcherFromScale` (0.98 → 1) in `fast`/easeOut;
   Schließen: nur Fade in `exit(fast)`/easeExit — die einzige Fläche, die schneller als
   ein Popover kommt, weil sie dutzende Male am Tag aufgeht. Auswahlwechsel 0 ms.
-- Kategorie-Buttons nur an der Kapsel (⌃1–⌃4, Super+Ziffer wären Workspaces): Fade +
-  8-px-Slide, `Motion.stagger`; im Panel übernehmen die Filter-Kapseln, aktiv = Chip
-  im Feld. Inline-Vervollständigung in tertiärem Grau, „— Art“ dahinter (Tab übernimmt).
+- Kategorie-Buttons nur an der Kapsel (⌃1–⌃4, Super+Ziffer wären Workspaces; bei
+  leerem Feld wandern →/←/↓/↑/Tab über die Buttons — Fokus = Hover-Fill + Akzent-Ring
+  `Motion.focusRing` —, ↩ wählt, Esc lässt los): Fade + 8-px-Slide, `Motion.stagger`;
+  im Panel übernehmen die Filter-Kapseln, aktiv = Chip im Feld. Inline-Vervollständigung in tertiärem Grau, „— Art“ dahinter (Tab übernimmt).
   Jedes Öffnen startet leer — keine gemerkte Suche, Kategorie oder Seite (Henris
   Entscheidung gegen Spec §8).
 - → auf einem Treffer öffnet die **Aktionsseite** (Drill-in nach §3b: Liste 30 % nach

@@ -634,6 +634,7 @@ Item {
     category = ""
     querySelected = false
     buttonsPinned = false
+    buttonFocus = -1
     closePages()
   }
   // ------------------------------------------------------------ spotlight look
@@ -1718,6 +1719,7 @@ Item {
 
   function setFilter(nextFilter) {
     root.querySelected = false
+    root.buttonFocus = -1
     root.caretOn = true
     caretTimer.restart()
     root.filterText = nextFilter
@@ -1998,6 +2000,32 @@ Item {
   // a sub-page (Open With…, Copy To…, Move To…, Get Info), ← / Esc / ⌫ on an
   // empty filter go back. Rows carry their `run` in `pages`; the ListModel
   // only holds what is drawn plus the index back into the page.
+  // While the field is empty the arrow keys walk the four category buttons
+  // (they show as if hovered); ↩ picks the focused one, Esc lets go.
+  property int buttonFocus: -1
+  function moveButtonFocus(delta) {
+    if (!root.blankRoot || root.dmenuActive) return false
+    var next = root.buttonFocus < 0 ? (delta > 0 ? 0 : -1) : root.buttonFocus + delta
+    if (next >= root.categories.length) next = root.categories.length - 1
+    if (next < 0) { root.buttonFocus = -1; root.buttonsPinned = false; return true }
+    root.buttonFocus = next
+    root.buttonsPinned = true
+    return true
+  }
+  function clearButtonFocus() {
+    if (root.buttonFocus < 0) return false
+    root.buttonFocus = -1
+    root.buttonsPinned = false
+    return true
+  }
+  function activateButtonFocus() {
+    if (root.buttonFocus < 0) return false
+    var id = root.categories[root.buttonFocus].id
+    root.buttonFocus = -1
+    root.setCategory(id)
+    return true
+  }
+
   property var pages: []
   readonly property bool pageOpen: root.pages.length > 0
   readonly property var page: root.pageOpen ? root.pages[root.pages.length - 1] : null
@@ -3500,6 +3528,7 @@ Item {
             required property int index
             required property var modelData
             readonly property bool active: root.category === modelData.id
+            readonly property bool focused: root.buttonFocus === index
             readonly property bool shown: spot.buttonsShown
             width: root.buttonSize
             height: root.buttonSize
@@ -3536,6 +3565,23 @@ Item {
               color: root.glassFill
               border.width: 1
               border.color: root.glassBorder
+            }
+            // Keyboard focus: hover-strength fill plus the accent ring (henri-ui §3).
+            Rectangle {
+              anchors.fill: parent
+              radius: width / 2
+              color: Util.alpha(root.ink, catButton.focused ? Motion.hoverAlpha : 0)
+              Behavior on color { ColorAnimation { duration: catButton.focused ? Motion.instant : Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+            }
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: -Style.space(Motion.focusRing)
+              radius: width / 2
+              color: "transparent"
+              border.width: Style.space(Motion.focusRing)
+              border.color: Util.alpha(Color.accent, 0.6)
+              opacity: catButton.focused ? 1 : 0
+              Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
             }
             HUi.Pressable {
               id: press
@@ -3603,7 +3649,19 @@ Item {
           return
         }
 
-        if (event.key === Qt.Key_Right && event.modifiers === Qt.ControlModifier && root.isAppsGrid) {
+        if (root.blankRoot && !root.dmenuActive && (event.key === Qt.Key_Right || event.key === Qt.Key_Down
+            || event.key === Qt.Key_Left || event.key === Qt.Key_Up || event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)) {
+          // Empty field: the arrows walk the category buttons.
+          var forward = event.key === Qt.Key_Right || event.key === Qt.Key_Down || event.key === Qt.Key_Tab
+          root.moveButtonFocus(forward ? 1 : -1)
+          event.accepted = true
+        } else if (root.blankRoot && root.buttonFocus >= 0 && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+          root.activateButtonFocus()
+          event.accepted = true
+        } else if (root.blankRoot && root.buttonFocus >= 0 && event.key === Qt.Key_Escape) {
+          root.clearButtonFocus()
+          event.accepted = true
+        } else if (event.key === Qt.Key_Right && event.modifiers === Qt.ControlModifier && root.isAppsGrid) {
           // In the grid → moves the cursor, so ⌃→ opens the actions there.
           root.openActionsForSelected()
           event.accepted = true
