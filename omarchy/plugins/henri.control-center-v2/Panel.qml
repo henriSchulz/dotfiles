@@ -113,6 +113,11 @@ Panel {
   readonly property bool macModeFresh: macModeTick >= 0
     && Number(macModeState.updated || 0) > 0
     && Date.now() / 1000 - Number(macModeState.updated) < 40
+  // mac-mode-poll piggybacks a `pgrep mtsend` onto its SSH round-trip, so
+  // this is a real answer to "is the bridge software actually running over
+  // there" -- unlike macModeFresh alone, which only proves sshd answered and
+  // used to get treated as if it proved the bridge was reachable too.
+  readonly property bool macSenderAlive: macModeFresh && macModeState.mtsend === "1"
   property var macModeOverride: null
   property double macModeOverrideSetAt: 0
   readonly property string macModePinShown: macModeOverride !== null ? macModeOverride : macModePin
@@ -130,23 +135,26 @@ Panel {
   // Input and Screen are a level below it.
   readonly property string macOverall: (padStreaming || screenOn) ? "connected"
     : padConnecting ? "connecting"
-    : (padConnected || macModeFresh) ? "idle" : "offline"
+    : (padConnected || macSenderAlive) ? "idle" : "offline"
   readonly property string macOverallLabel: macOverall === "connected" ? "Connected"
     : macOverall === "connecting" ? "Connecting …"
     : macOverall === "idle" ? "Idle" : "Offline"
   // Which physical link is actually carrying it -- the pad's own transport
   // beats the screen's (it's pinged continuously, so it's known even while
-  // idle), and mac-mode-poll only ever reaches the Mac over its Wi-Fi
-  // address, so a bare macModeFresh reachability still means Wi-Fi.
+  // idle). Falling back to macSenderAlive rather than bare macModeFresh
+  // means this only guesses "Wi-Fi" once mtsend is confirmed running --
+  // sshd answering says nothing about the bridge, which used to make an
+  // unreachable mtsend look like an idle Wi-Fi link.
   readonly property string macRoute: padTransport !== "" ? padTransport
     : screenRoute !== "" ? screenRoute
-    : macModeFresh ? "Wi-Fi" : ""
+    : macSenderAlive ? "Wi-Fi" : ""
   readonly property string macOverallDetail: macOverall === "connected"
       ? (padStreaming && screenOn ? "Trackpad and screen are both active."
          : padStreaming ? "Fingers are arriving from the Mac."
          : "The screen is mirroring.")
     : macOverall === "connecting" ? "Waiting for the Mac to answer -- this can take a few seconds."
     : macOverall === "idle" ? "The Mac is reachable, but nothing is streaming right now."
+    : macModeFresh ? "The Mac answers, but mt-bridge isn't running there."
     : "No cable and no answer over the network. Check that the Mac is awake."
   readonly property var macPages: ["trackpad", "screen", "macbattery"]
   function backPage() { return macPages.indexOf(page) >= 0 ? "mac" : "main" }
