@@ -115,16 +115,22 @@ Panel {
   readonly property string macModeSubtitle: !macModeFresh && macModeOverride === null ? "Unreachable"
     : (macModeIsDesktop ? "Desktop" : "Server") + (macModePinShown === "auto" ? " · Auto" : " · Forced")
 
-  // One "Mac" tile stands for the three mt-bridge features; its page lists them.
-  readonly property bool macAnyOn: padOn || screenOn
-  readonly property string macSubtitle: {
-    var parts = []
-    if (padOn) parts.push(padStreaming ? "Input live" : "Input on")
-    if (screenOn) parts.push("Screen")
-    if (macModeFresh || macModeOverride !== null) parts.push(macModeIsDesktop ? "Desktop" : "Server")
-    return parts.length ? parts.join(" · ") : "Off"
-  }
-  readonly property var macPages: ["trackpad", "screen", "macmode"]
+  // One "Mac" tile stands for the three mt-bridge features. Its page leads
+  // with one status synthesized across all three (actively streaming beats
+  // merely reachable beats nothing answering at all); Mode's picker is
+  // simple enough to sit right there with nothing further to drill into,
+  // Input and Screen are a level below it.
+  readonly property string macOverall: (padStreaming || screenOn) ? "connected"
+    : (padBridgeUp || padLinkUp || macModeFresh) ? "possible" : "unreachable"
+  readonly property string macOverallLabel: macOverall === "connected" ? "Connected"
+    : macOverall === "possible" ? "Connection possible" : "Not reachable"
+  readonly property string macOverallDetail: macOverall === "connected"
+      ? (padStreaming && screenOn ? "Trackpad and screen are both active."
+         : padStreaming ? "Fingers are arriving from the Mac."
+         : "The screen is mirroring.")
+    : macOverall === "possible" ? "The Mac is reachable, but nothing is streaming right now."
+    : "No cable and no answer over the network. Check that the Mac is awake."
+  readonly property var macPages: ["trackpad", "screen"]
   function backPage() { return macPages.indexOf(page) >= 0 ? "mac" : "main" }
   function goBack() { page = backPage() }
 
@@ -1443,10 +1449,10 @@ Panel {
           ToggleTile {
             revealIndex: 4
             icon: root.sf(0x100657)
-            on: root.macAnyOn
+            on: root.macOverall === "connected"
             squircle: true
             title: "Mac"
-            subtitle: root.macSubtitle
+            subtitle: root.macOverallLabel
             hasCursor: root.mainFocus === "mac"
             badgeToggles: false
             onDetails: root.showPage("mac")
@@ -2375,9 +2381,46 @@ Panel {
         // Mac — everything this machine borrows from the MacBook, one row each.
         AUi.PageHeader { visible: root.detailPage === "mac"; title: "Mac"; onBack: root.page = "main" }
         AUi.Separator { visible: root.detailPage === "mac" }
-        Column {
+        PageBody {
+          id: macPage
           visible: root.detailPage === "mac"
-          width: root.panelWidth
+          spacing: root.pt(10)
+          AUi.UsageHeader {
+            width: macPage.innerWidth
+            title: "Right now"
+            value: root.macOverallLabel
+            valueColor: root.macOverall === "connected" ? root.m.accent
+              : root.macOverall === "unreachable" ? root.m.urgent : root.m.inkMuted
+          }
+          AUi.Caption { width: macPage.innerWidth; text: root.macOverallDetail }
+
+          AUi.Separator { width: macPage.innerWidth }
+          AUi.SectionLabel { leftPadding: 0; text: "Mode" }
+          Row {
+            width: macPage.innerWidth
+            spacing: root.pt(5)
+            Repeater {
+              model: [ { id: "auto", label: "Auto" }, { id: "server", label: "Server" }, { id: "desktop", label: "Desktop" } ]
+              delegate: AUi.Capsule {
+                required property var modelData
+                width: Math.floor((macPage.innerWidth - root.pt(10)) / 3)
+                label: modelData.label
+                selected: root.macModePinShown === modelData.id
+                onClicked: if (!selected) root.setMacMode(modelData.id)
+              }
+            }
+          }
+          AUi.Caption {
+            width: macPage.innerWidth
+            text: "Auto follows the Mac's own monitor: attached → Desktop, unplugged → Server. "
+              + "Server/Desktop here pin it regardless. "
+              + (root.macModeFresh
+                 ? root.macModeDisplays + " display" + (root.macModeDisplays === 1 ? "" : "s") + " detected."
+                 : "No recent answer to say which.")
+          }
+
+          AUi.Separator { width: macPage.innerWidth }
+          AUi.SectionLabel { leftPadding: 0; text: "More" }
           AUi.ListRow {
             enterDelay: root.rowDelay(0)
             icon: root.sf(0x100A33)
@@ -2395,15 +2438,6 @@ Panel {
             subtitle: root.screenSubtitle
             trailing: root.sf(0x10018A)
             onClicked: root.showPage("screen")
-          }
-          AUi.ListRow {
-            enterDelay: root.rowDelay(2)
-            icon: root.sf(0x100657)
-            active: root.macModeIsDesktop
-            title: "Mac Mode"
-            subtitle: root.macModeSubtitle
-            trailing: root.sf(0x10018A)
-            onClicked: root.showPage("macmode")
           }
           Item { width: 1; height: root.pt(4) }
         }
@@ -2538,63 +2572,6 @@ Panel {
           }
         }
 
-        // Mac Mode
-        AUi.PageHeader { visible: root.detailPage === "macmode"; title: "Mac Mode"; onBack: root.page = "mac" }
-        AUi.Separator { visible: root.detailPage === "macmode" }
-        PageBody {
-          id: modePage
-          visible: root.detailPage === "macmode"
-          spacing: root.pt(10)
-          AUi.UsageHeader {
-            width: modePage.innerWidth
-            title: "Right now"
-            value: !root.macModeFresh && root.macModeOverride === null ? "Unreachable" : root.macModeIsDesktop ? "Desktop" : "Server"
-            valueColor: !root.macModeFresh && root.macModeOverride === null ? root.m.urgent : root.macModeIsDesktop ? root.m.accent : root.m.inkMuted
-          }
-          AUi.Caption {
-            width: modePage.innerWidth
-            text: !root.macModeFresh && root.macModeOverride === null
-                ? "No answer from the Mac in the last poll. It may be asleep or off the network."
-              : root.macModeIsDesktop
-                ? "Background apps (App Store, Notes, Calendar, Alfred) may run. Low Power Mode follows the Mac's own battery/AC setting, not this."
-                : "App Store, Notes, Calendar, Alfred and Siri's speech service are kept quit to save RAM and CPU."
-          }
-          AUi.Separator { width: modePage.innerWidth }
-          AUi.SectionLabel { leftPadding: 0; text: "Choose" }
-          Row {
-            width: modePage.innerWidth
-            spacing: root.pt(5)
-            Repeater {
-              model: [ { id: "auto", label: "Auto" }, { id: "server", label: "Server" }, { id: "desktop", label: "Desktop" } ]
-              delegate: AUi.Capsule {
-                required property var modelData
-                width: Math.floor((modePage.innerWidth - root.pt(10)) / 3)
-                label: modelData.label
-                selected: root.macModePinShown === modelData.id
-                onClicked: if (!selected) root.setMacMode(modelData.id)
-              }
-            }
-          }
-          AUi.Caption {
-            width: modePage.innerWidth
-            text: "Auto follows the Mac's own monitor: attached → Desktop, unplugged → Server. Server/Desktop here pin it regardless."
-          }
-          AUi.Separator { width: modePage.innerWidth }
-          AUi.SectionLabel { leftPadding: 0; text: "Detected" }
-          Grid {
-            columns: 2
-            columnSpacing: root.pt(16)
-            rowSpacing: root.pt(2)
-            AUi.Stat { width: modePage.cellWidth; label: "Displays"; value: root.macModeFresh ? String(root.macModeDisplays) : "--" }
-            AUi.Stat {
-              width: modePage.cellWidth
-              label: "Checked"
-              value: root.macModeFresh
-                ? root.formatUptime(Math.max(0, Math.floor(Date.now() / 1000 - Number(root.macModeState.updated)))) + " ago"
-                : "--"
-            }
-          }
-        }
       }
     }
   }
