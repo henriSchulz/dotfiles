@@ -624,9 +624,9 @@ Item {
   }
   property bool deleteConfirmOpen: false
   onOpenedChanged: if (!opened) {
-    // The query comes back, fully selected, on the next open (spec §8) — only
-    // from the plain root search; a submenu, dmenu or category starts blank.
-    lastQuery = (mode === "menu" && activeMenu === "root" && category === "") ? filterText : ""
+    // Nothing carries over: every open starts blank (Henri's call, replacing
+    // spec §8's restored query).
+    lastQuery = ""
     deleteConfirmOpen = false
     confirmSpec = null
     fileScanProc.running = false
@@ -1932,9 +1932,9 @@ Item {
     activeMenu = root.item(initialMenu) ? initialMenu : "root"
     navStack = []
     category = ""
-    // The last query comes back fully selected, so typing replaces it (spec §8).
-    filterText = activeMenu === "root" ? lastQuery : ""
-    querySelected = filterText.length > 0
+    // Every open starts blank — no query, no category, no page from last time.
+    filterText = ""
+    querySelected = false
     selectedIndex = 0
     cursorActive = true
     root.disarmPointer()

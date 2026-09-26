@@ -253,8 +253,9 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   ein Popover kommt, weil sie dutzende Male am Tag aufgeht. Auswahlwechsel 0 ms.
 - Kategorie-Buttons nur an der Kapsel (⌃1–⌃4, Super+Ziffer wären Workspaces): Fade +
   8-px-Slide, `Motion.stagger`; im Panel übernehmen die Filter-Kapseln, aktiv = Chip
-  im Feld. Inline-Vervollständigung in tertiärem Grau, „— Art“ dahinter (Tab übernimmt);
-  letzte Suche kommt markiert zurück.
+  im Feld. Inline-Vervollständigung in tertiärem Grau, „— Art“ dahinter (Tab übernimmt).
+  Jedes Öffnen startet leer — keine gemerkte Suche, Kategorie oder Seite (Henris
+  Entscheidung gegen Spec §8).
 - → auf einem Treffer öffnet die **Aktionsseite** (Drill-in nach §3b: Liste 30 % nach
   links + Fade, Aktionen von rechts, `slow` easeInOut). Sie sieht bewusst anders aus als
   die Suche: Kopf mit Icon, Name und Art des Treffers über einer Haarlinie, darunter
