@@ -238,6 +238,18 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   Vollbild-Fläche nur eine Karte über einem Scrim — der folgt dem Popover-Rezept
   (`slow` + `smooth`). `slower` fühlt sich dort träge an.
 
+**Spotlight (`henri.menu`, seit 2026-09-26 nach Henris Design-Spec, Tahoe-Variante)**
+- Look aus `apple-ui` (`Apple.spotlight`: Kapsel 620 × 52, Ergebnispanel Radius 24,
+  Zeilen 36, Top-Treffer 48, Glas α 0.70 hell/dunkel nach Theme-Helligkeit), Auswahl =
+  `Color.accent`, kein Scrim, Blur per `layer_rule` auf `omarchy-menu`.
+- Öffnen: Fade + Scale `Motion.launcherFromScale` (0.98 → 1) in `fast`/easeOut;
+  Schließen: nur Fade in `exit(fast)`/easeExit — die einzige Fläche, die schneller als
+  ein Popover kommt, weil sie dutzende Male am Tag aufgeht. Ergebnispanel wächst nur
+  nach unten (Höhe per `smooth`-Spring im Clip-Container), Auswahlwechsel 0 ms.
+- Kategorie-Buttons (⌃1–⌃4, Super+Ziffer wären Workspaces): Fade + 8-px-Slide,
+  `Motion.stagger`; aktiv = Akzent + Chip im Feld. Inline-Vervollständigung in
+  tertiärem Grau, „— Art“ dahinter; letzte Suche kommt markiert zurück.
+
 **Switcher (Super+Tab, wie Cmd/Alt+Tab)**
 - Streifen erscheint erst nach `Motion.switcherDelay` (50 ms) Halten; kurzes Antippen
   wechselt direkt, ohne dass der Streifen aufblitzt.

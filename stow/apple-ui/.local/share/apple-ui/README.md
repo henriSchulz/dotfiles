@@ -71,6 +71,17 @@ dunkle Glas, fertige `.apple-sheet/.apple-tile/.apple-capsule/.apple-slider`) un
 
 Messmethode, Rohdaten und Scraper-Lücken: `~/.claude/skills/henri-ui/references/apple.md`.
 
+## Spotlight
+
+`Apple.spotlight` in `Apple.js` bzw. `--apple-sp-*` in beiden CSS-Dateien: die
+Tahoe-Spotlight-Suche (Kapsel-Suchfeld 620 × 52, separates Ergebnispanel mit
+Radius 24, Zeilen 36 / Top-Treffer 48, runde 44-pt-Kategorie-Buttons, Glas-
+Paletten hell/dunkel mit Text-Alphas, Schatten). Die Werte stammen aus Henris
+Design-Spec (aus Screenshots abgeleitete Näherungen), nicht aus einem Scrape —
+wer pixelgenau will, misst nach. `Apple.spotlightPalette(dark)` liefert die
+passende Palette; die Auswahlfarbe folgt der Akzentfarbe des Systems.
+Referenz-Plugin: `~/.config/omarchy/plugins/henri.menu`.
+
 ## Fenster (Apps)
 
 `Apple.window` in `Apple.js` bzw. `--apple-win-*` in beiden CSS-Dateien: die am

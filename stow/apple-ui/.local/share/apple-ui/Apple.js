@@ -222,3 +222,93 @@ function lookup(item, name, fallback) {
   return fallback
 }
 function material(item) { return lookup(item, "appleMaterial", light) }
+
+// ---- Spotlight (macOS 26 „Tahoe“, Liquid Glass). Eigener Abschnitt, nicht
+// die Popup-Werte oben. Quelle: Henris Design-Spec (spotlight-design-spec.md,
+// aus Retina-Screenshots abgeleitete Näherungen, 1 pt = 1 px), nicht gescrapt —
+// wer pixelgenau will, misst am eigenen Mac nach (references/apple.md).
+// Referenz-Plugin: ~/.config/omarchy/plugins/henri.menu. Punkt-Werte werden
+// mit Style.space(pt) auf die Shell-Skala gebracht. Die Auswahlfarbe folgt der
+// Akzentfarbe des Systems (Omarchy: Color.accent); `selection` ist der Fallback.
+var spotlight = {
+  width: 620,            // Suchfeld und Ergebnispanel (600–640)
+  topFraction: 0.23,     // Oberkante des Suchfelds bei 23 % der Bildschirmhöhe
+  fieldHeight: 52,
+  fieldRadius: 999,      // Kapsel
+  fieldInset: 18,        // links bis zur Lupe, rechts bis zum Text
+  fieldIcon: 20,         // SF `magnifyingglass`
+  fieldGap: 10,          // Lupe → Text
+  fieldFont: 22,         // Light
+  fieldLine: 1.2,
+  caret: 2,
+  chipHeight: 22,        // Kategorie-Token links im Feld
+  chipFont: 12,
+  chipPadX: 8,
+  button: 44,            // runde Kategorie-Buttons rechts neben dem Feld
+  buttonIcon: 18,
+  buttonGap: 8,
+  buttonOffset: 10,      // Abstand Feld → erster Button
+  buttonSlide: 8,        // Einblenden: von links hineingleiten
+  resultsGap: 8,         // Feld → Ergebnispanel
+  resultsRadius: 24,     // 22–26
+  resultsPadding: 8,
+  resultsMaxHeight: 480,
+  rowHeight: 36,
+  rowIcon: 24,
+  rowGap: 8,             // Icon → Text
+  rowInset: 10,
+  rowRadius: 10,         // 10–12
+  rowFont: 13,
+  metaFont: 11,          // Pfad/Art rechts, Tastaturkürzel
+  metaAlpha: 0.7,        // Kürzel-Hinweis: Zeilentextfarbe bei 70 %
+  topHeight: 48,         // Top-Treffer 44–52
+  topIcon: 32,
+  topGap: 10,
+  topFont: 15,           // Medium
+  calcFont: 28,          // Rechenergebnis
+  sectionFont: 11,       // Semibold, normale Schreibung
+  sectionInset: 10,
+  sectionTop: 8,
+  sectionTopFirst: 4,
+  sectionBottom: 2,
+  shadowOffset: 22,      // 0 22px 70px 4px
+  shadowBlur: 70,
+  shadowSpread: 4,
+  contactOffset: 4,      // 0 4px 12px
+  contactBlur: 12,
+  contactAlpha: 0.12,
+  pressedDarken: 1.1,    // Auswahlfarbe gedrückt: ~10 % dunkler
+  light: {
+    dark: false,
+    fill: "#b8f6f6f6",          // rgba(246,246,246,0.72)
+    opaqueFill: "#ffececec",    // „Transparenz reduzieren“
+    border: "#1a000000",        // 0.10
+    highlight: "#99ffffff",     // obere Lichtkante 0.60
+    textPrimary: "#d9000000",   // 0.85
+    textSecondary: "#80000000", // 0.50
+    textTertiary: "#4d000000",  // 0.30 (Platzhalter, Vervollständigung)
+    separator: "#1a000000",
+    selection: "#ff0064e1",
+    selectionText: "#ffffffff",
+    hover: "#0d000000",         // 0.05
+    inactiveSelection: "#40808080",
+    shadowAlpha: 0.35
+  },
+  dark: {
+    dark: true,
+    fill: "#b328282a",          // rgba(40,40,42,0.70)
+    opaqueFill: "#ff2a2a2c",
+    border: "#24ffffff",        // 0.14
+    highlight: "#38ffffff",     // 0.22
+    textPrimary: "#e6ffffff",   // 0.90
+    textSecondary: "#8cffffff", // 0.55
+    textTertiary: "#4dffffff",  // 0.30
+    separator: "#1affffff",
+    selection: "#ff0a84ff",
+    selectionText: "#ffffffff",
+    hover: "#12ffffff",         // 0.07
+    inactiveSelection: "#40808080",
+    shadowAlpha: 0.55
+  }
+}
+function spotlightPalette(dark) { return dark ? spotlight.dark : spotlight.light }

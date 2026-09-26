@@ -37,6 +37,7 @@
   --press-scale: 0.97;
   --lift-scale: 1.05;      /* dragged item while held (reorder) */
   --icon-from-scale: 0.8;
+  --launcher-from-scale: 0.98;  /* Spotlight card enter (fast, easeOut); exit is fade only */
   --flash-duration: 70ms;
   --stagger-step: 15ms;
   --shake-distance: 6px;   /* wrong password: 3 swings */

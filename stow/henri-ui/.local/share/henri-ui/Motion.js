@@ -56,6 +56,10 @@ var liftScale = 1.05
 var menuFromScale = 0.96
 var popoverFromScale = 0.95
 var exitToScale = 0.98
+// Spotlight/launcher card: asked for dozens of times a day, so it enters from
+// almost full size (0.98 → 1, `fast`, easeOut) and leaves with a plain fade
+// (exit(fast), easeExit) — spotlight-design-spec §10.
+var launcherFromScale = 0.98
 var iconFromScale = 0.8     // icon/glyph/dot crossfade: scales up from this
 var menuOffsetY = -4          // menus drop 4 px out of their anchor
 var toastOffset = 16          // toasts slide in from the screen edge

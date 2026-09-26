@@ -118,6 +118,11 @@ hl.layer_rule({ match = { namespace = "workspace-switcher" }, no_anim = true, an
 -- Hyprlands eigener Layer-Fade (layersIn, speed 4 = 400 ms) legte eine zweite
 -- Blende darüber: nach dem Tastendruck stand die Karte spürbar lange halb da.
 hl.layer_rule({ match = { namespace = "omarchy-menu" }, no_anim = true, animation = "none" })
+-- Spotlight ist Milchglas (zwei Glasflächen bei α 0.70, spotlight-design-spec
+-- §3): der Compositor-Blur macht aus der blassen Fläche erst Glas. ignore_alpha
+-- lässt den fast durchsichtigen Rest der Vollbild-Ebene und den weichen
+-- Schatten ungeblurt.
+hl.layer_rule({ match = { namespace = "omarchy-menu" }, blur = true, ignore_alpha = 0.3 })
 
 -- Lautstärke-/Helligkeits-HUD (henri.osd) blendet sich selbst ein und aus.
 hl.layer_rule({ match = { namespace = "henri-osd" }, no_anim = true, animation = "none" })

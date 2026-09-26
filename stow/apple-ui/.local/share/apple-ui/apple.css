@@ -215,3 +215,71 @@
 .apple-capsule[data-selected] { background: var(--apple-badge-on); color: var(--apple-badge-on-glyph); font-weight: 600; }
 .apple-slider { position: relative; height: var(--apple-slider-h); border-radius: 2px; background: var(--apple-slider-track); }
 .apple-slider > .fill { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--apple-slider-fill); }
+
+/* ---- Spotlight (macOS 26 Tahoe) — see Apple.js `spotlight`; values from the
+   design spec (screenshot-derived), light by default, `.apple-dark` overrides. */
+:root {
+  --apple-sp-width: 620px;
+  --apple-sp-top: 23vh;
+  --apple-sp-field-h: 52px;
+  --apple-sp-field-radius: 999px;
+  --apple-sp-field-inset: 18px;
+  --apple-sp-field-icon: 20px;
+  --apple-sp-field-gap: 10px;
+  --apple-sp-field-font: 300 22px/1.2 var(--apple-ui-font);
+  --apple-sp-chip-h: 22px;
+  --apple-sp-chip-font: 12px;
+  --apple-sp-button: 44px;
+  --apple-sp-button-icon: 18px;
+  --apple-sp-button-gap: 8px;
+  --apple-sp-button-offset: 10px;
+  --apple-sp-results-gap: 8px;
+  --apple-sp-results-radius: 24px;
+  --apple-sp-results-padding: 8px;
+  --apple-sp-results-max-h: 480px;
+  --apple-sp-row-h: 36px;
+  --apple-sp-row-icon: 24px;
+  --apple-sp-row-gap: 8px;
+  --apple-sp-row-inset: 10px;
+  --apple-sp-row-radius: 10px;
+  --apple-sp-row-font: 13px;
+  --apple-sp-meta-font: 11px;
+  --apple-sp-top-h: 48px;
+  --apple-sp-top-icon: 32px;
+  --apple-sp-top-font: 500 15px var(--apple-ui-font);
+  --apple-sp-calc-font: 28px;
+  --apple-sp-section-font: 600 11px var(--apple-ui-font);
+  --apple-sp-fill: rgba(246, 246, 246, 0.72);
+  --apple-sp-opaque-fill: #ececec;
+  --apple-sp-border: rgba(0, 0, 0, 0.10);
+  --apple-sp-highlight: rgba(255, 255, 255, 0.60);
+  --apple-sp-text-primary: rgba(0, 0, 0, 0.85);
+  --apple-sp-text-secondary: rgba(0, 0, 0, 0.50);
+  --apple-sp-text-tertiary: rgba(0, 0, 0, 0.30);
+  --apple-sp-separator: rgba(0, 0, 0, 0.10);
+  --apple-sp-selection: #0064e1;
+  --apple-sp-selection-text: #ffffff;
+  --apple-sp-hover: rgba(0, 0, 0, 0.05);
+  --apple-sp-shadow: 0 0 0 0.5px var(--apple-sp-border), 0 22px 70px 4px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+.apple-dark {
+  --apple-sp-fill: rgba(40, 40, 42, 0.70);
+  --apple-sp-opaque-fill: #2a2a2c;
+  --apple-sp-border: rgba(255, 255, 255, 0.14);
+  --apple-sp-highlight: rgba(255, 255, 255, 0.22);
+  --apple-sp-text-primary: rgba(255, 255, 255, 0.90);
+  --apple-sp-text-secondary: rgba(255, 255, 255, 0.55);
+  --apple-sp-text-tertiary: rgba(255, 255, 255, 0.30);
+  --apple-sp-separator: rgba(255, 255, 255, 0.10);
+  --apple-sp-selection: #0a84ff;
+  --apple-sp-hover: rgba(255, 255, 255, 0.07);
+  --apple-sp-shadow: 0 0 0 0.5px var(--apple-sp-border), 0 22px 70px 4px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+.apple-sp-glass {
+  background: var(--apple-sp-fill);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  backdrop-filter: blur(40px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--apple-sp-highlight), var(--apple-sp-shadow);
+}
+@supports not (backdrop-filter: blur(1px)) { .apple-sp-glass { background: var(--apple-sp-opaque-fill); } }
+@media (prefers-reduced-transparency: reduce) { .apple-sp-glass { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--apple-sp-opaque-fill); } }

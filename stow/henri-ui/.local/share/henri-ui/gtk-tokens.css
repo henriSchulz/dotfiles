@@ -26,6 +26,7 @@
 
   --press-scale: 0.97;
   --lift-scale: 1.05;
+  --launcher-from-scale: 0.98;
   --hover-alpha: 8%;
   --pressed-alpha: 14%;
   --hairline-alpha: 12%;

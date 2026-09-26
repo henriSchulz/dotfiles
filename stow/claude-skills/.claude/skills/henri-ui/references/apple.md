@@ -39,6 +39,7 @@ Werte, die Popup-Werte sind nur der erste Abschnitt.
 |---|---|---|
 | Popup (Tokens oben in `Apple.js`, `--apple-*`) | Control Center | `henri.control-center-v2`, `henri.power` |
 | `Apple.window` / `--apple-win-*` | Finder-Fenster (icon/list/column, `system/finder.*`) | `~/Projects/finder` (GTK4) |
+| `Apple.spotlight` / `--apple-sp-*` | Spotlight Tahoe — **nicht gescrapt**, aus Henris Design-Spec (Screenshot-Näherungen) | `henri.menu` (Quickshell) |
 
 Fenster-Werte in Kürze: Sidebar-Karte 226 pt, Radius 18, 8 pt Einzug, Ampel innen
 (12 pt, Pitch 23, Mitte 18/18); Toolbar 52 mit weißen 38-pt-Kapseln und 36-pt-
