@@ -1,0 +1,10 @@
+# Runtime power management for the on-package PCI devices that boot with
+# power/control=on on the XPS 13 9310 (powertop, 2026-09-26). "auto" lets the
+# kernel put the link to sleep while idle; wake-up is microseconds, nothing
+# user-visible. Installed by dotfiles install/48-power-tunables.sh.
+#
+# Intel: host bridge 9a14, dynamic tuning 9a03, telemetry 9a0d, sensor hub a0fc,
+# shared SRAM a0ef, Wi-Fi AX201 a0f0, eSPI a082, SPI flash a0a4.
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x8086", ATTR{device}=="0x9a14|0x9a03|0x9a0d|0xa0fc|0xa0ef|0xa0f0|0xa082|0xa0a4", ATTR{power/control}="auto"
+# Samsung PM9A1 NVMe (APST is already on; this lets the PCI function suspend too).
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x144d", ATTR{device}=="0xa80a", ATTR{power/control}="auto"
