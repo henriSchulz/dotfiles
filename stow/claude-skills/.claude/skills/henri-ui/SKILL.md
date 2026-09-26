@@ -46,6 +46,18 @@ danach gebaut wurden, automatisch mitziehen. Deshalb:
    überall mit, nicht nur Zahlen.
 4. Farben kommen ohnehin zentral aus dem Omarchy-Theme.
 
+**Apple-Look (echtes macOS statt Omarchy-Theme): `~/.local/share/apple-ui/`**
+(Symlink auf `~/Projects/dotfiles/stow/apple-ui/.local/share/apple-ui/`). Gegenstück zu
+henri-ui für Plugins, die 1:1 wie macOS Tahoe aussehen sollen — Farben, Typografie,
+Geometrie, Radien und Glas-Material sind an echtem macOS gemessen/gescrapt
+(`Apple.js`), Bewegung bleibt `Motion.js`. Import `as Apple` (Tokens) und `as AUi`
+(Komponenten: `Tile`, `IconTile`, `Badge`, `Slider`, `Capsule`, `Switch`, `PageHeader`,
+`ListRow`, `SwitchRow`, `Stat`, `Meter`, `TextField`, `Backdrop`, `Material` …).
+Material = `AUi.Material` als `appleMaterial` am obersten Inhalts-Item, dunkel/hell nach
+Wallpaper (`AUi.Backdrop`). Katalog: `apple-ui/README.md`, Referenz:
+`~/.config/omarchy/plugins/henri.control-center-v2/`. Nur einsetzen, wenn Henri den
+Apple-Look ausdrücklich will (bewusster Bruch mit „Farben aus dem Theme“); sonst henri-ui.
+
 **Globale Schalter** (in `Motion.js`, CSS analog): `speed` (1.0 = normal, 1.2 = alles
 20 % langsamer — Dauern *und* Springs) und `reduceMotion` (nur noch Crossfades).
 „Alles etwas langsamer/schneller“ = nur `speed` ändern.
