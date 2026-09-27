@@ -257,6 +257,14 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   wiederholung unterbrechbar. Helligkeit auf wahrnehmungsgleicher Kurve, das Backlight
   selbst gleitet mit. Tasten per `hl.dsp.event`, kein Prozess pro Druck (`henri.osd`).
 
+**Menüleiste versteckt (bar-off oder Vollbild-Fenster), seit 2026-09-27**
+- Wie macOS im Vollbild: die Bar bleibt gemappt, transparent und mit Eingabemaske nur
+  auf `Motion.edgeTrigger` (2 px) Bildschirmkante; über einem Vollbild-Fenster liegt sie
+  auf dem Overlay-Layer. Zeiger an die Kante → nach `Motion.edgeRevealDelay` (250 ms)
+  gleitet die Fläche herein (`slow` easeOut), verlässt der Zeiger sie → nach
+  `Motion.edgeHideDelay` (350 ms) wieder hinaus (`exit(slow)` easeExit); ein offenes
+  Popout hält sie. Reduce Motion: nur Fade. (`henri.bar`, `BarPanel`.)
+
 **Vollbild-Umbau (Overview, Mission Control)**
 - **Ausnahme `henri.missioncontrol`:** folgt seit 2026-09-26 auf Henris Wunsch nicht
   henri-ui, sondern seiner eigenen Spec (`docs/ANIMATION-SPEC.md` + `CLAUDE.md` im

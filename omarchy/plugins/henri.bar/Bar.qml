@@ -1034,24 +1034,43 @@ Item {
   component BarPanel: PanelWindow {
     id: barWindow
 
-    // Hiding parks the bar just past its screen edge instead of unmapping it.
-    // Unmapping frees the layer surface and the whole scene graph, so every
-    // reveal has to rebuild them — new surface, re-shaped glyphs, re-uploaded
-    // textures — which measures ~150ms against ~20ms to tear down. Parking
-    // keeps the surface alive, so showing is only a margin change.
+    // Out of the way, but never gone (macOS): with the bar-off flag, or while a
+    // fullscreen window on this screen covers the top layer, the bar keeps its
+    // surface (unmapping and rebuilding it measures ~150ms against ~20ms) and
+    // slides its face past the screen edge instead. The window stays where it
+    // is, transparent, and only a `Motion.edgeTrigger` strip along the edge
+    // takes input; pushing the pointer against that strip slides the bar in
+    // over everything, and it slides back once the pointer has left it and no
+    // popout is open. Over a fullscreen window this needs the overlay layer —
+    // Hyprland draws "top" layers underneath fullscreen windows.
+    readonly property var hyprMonitor: Hyprland.monitorFor(barWindow.screen)
+    readonly property bool fullscreenHere: hyprMonitor && hyprMonitor.activeWorkspace
+      ? hyprMonitor.activeWorkspace.hasFullscreen === true : false
+    readonly property bool peekMode: root.barHidden || fullscreenHere
+    property bool peeked: false
+    readonly property bool faceShown: !peekMode || peeked
+    onPeekModeChanged: {
+      edgeRevealTimer.stop()
+      edgeHideTimer.stop()
+      if (!peekMode) peeked = false
+    }
+
     visible: !remapGuard.remapping
     exclusionMode: root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto
+    // Hidden = only the edge strip is clickable; everything else falls through
+    // to whatever is under the (transparent) bar.
+    mask: barWindow.peekMode && !barWindow.peeked ? edgeMask : null
+    Region {
+      id: edgeMask
+      x: root.position === "right" ? barWindow.width - Motion.edgeTrigger : 0
+      y: root.position === "bottom" ? barWindow.height - Motion.edgeTrigger : 0
+      width: root.vertical ? Motion.edgeTrigger : barWindow.width
+      height: root.vertical ? barWindow.height : Motion.edgeTrigger
+    }
 
     ScreenMoveRemap {
       id: remapGuard
       window: barWindow
-    }
-
-    margins {
-      top: root.barHidden && root.position === "top" ? -root.barSize : 0
-      bottom: root.barHidden && root.position === "bottom" ? -root.barSize : 0
-      left: root.barHidden && root.position === "left" ? -root.barSize : 0
-      right: root.barHidden && root.position === "right" ? -root.barSize : 0
     }
 
     anchors {
@@ -1063,23 +1082,82 @@ Item {
 
     implicitWidth: root.vertical ? root.barSize : 0
     implicitHeight: root.vertical ? 0 : root.barSize
-    color: root.transparent ? "transparent" : root.background
+    // The face (background included) travels with the slide below; the window
+    // itself stays clear so a hidden bar leaves nothing over the screen edge.
+    color: "transparent"
     surfaceFormat.opaque: false
     WlrLayershell.namespace: "omarchy-bar"
-    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.layer: barWindow.fullscreenHere ? WlrLayer.Overlay : WlrLayer.Top
 
-    Loader {
+    // Sees the pointer on the edge strip while hidden and anywhere on the bar
+    // while shown — the loader's own handler only covers the (slid-away) face.
+    HoverHandler {
+      id: edgeHover
+      onHoveredChanged: {
+        if (!barWindow.peekMode) return
+        if (hovered) {
+          edgeHideTimer.stop()
+          if (!barWindow.peeked) edgeRevealTimer.restart()
+        } else {
+          edgeRevealTimer.stop()
+          edgeHideTimer.restart()
+        }
+      }
+    }
+    Timer {
+      id: edgeRevealTimer
+      interval: Motion.edgeRevealDelay
+      onTriggered: if (edgeHover.hovered && barWindow.peekMode) barWindow.peeked = true
+    }
+    Timer {
+      id: edgeHideTimer
+      interval: Motion.edgeHideDelay
+      onTriggered: if (!edgeHover.hovered && root.activePopout === null) barWindow.peeked = false
+    }
+    // A popout that closes after the pointer already left the bar lets it go.
+    Connections {
+      target: root
+      function onActivePopoutChanged() {
+        if (root.activePopout === null && barWindow.peekMode && barWindow.peeked && !edgeHover.hovered) edgeHideTimer.restart()
+      }
+    }
+
+    Item {
+      id: slide
       anchors.fill: parent
-      sourceComponent: root.vertical ? verticalBar : horizontalBar
+      // 0 = in place, 1 = fully past the screen edge.
+      property real offset: barWindow.faceShown ? 0 : 1
+      Behavior on offset {
+        NumberAnimation {
+          duration: barWindow.faceShown ? Motion.slow : Motion.exit(Motion.slow)
+          easing.type: Easing.BezierSpline
+          easing.bezierCurve: barWindow.faceShown ? Motion.easeOut : Motion.easeExit
+        }
+      }
+      opacity: Motion.reduceMotion ? 1 - offset : 1
+      transform: Translate {
+        x: Motion.reduceMotion ? 0 : (root.position === "left" ? -slide.offset * root.barSize : root.position === "right" ? slide.offset * root.barSize : 0)
+        y: Motion.reduceMotion ? 0 : (root.position === "top" ? -slide.offset * root.barSize : root.position === "bottom" ? slide.offset * root.barSize : 0)
+      }
 
-      // A child of the loader, not a sibling of the sections: an ancestor stays
-      // hovered while the pointer is over a widget, where a sibling would lose
-      // hover to the section the pointer entered.
-      HoverHandler {
-        onHoveredChanged: root.setBarHovered(hovered)
-        // Unplugging a monitor destroys its bar without a leave event, which
-        // would strand this surface's tally and hold the peek open for good.
-        Component.onDestruction: if (hovered) root.setBarHovered(false)
+      Rectangle {
+        anchors.fill: parent
+        color: root.transparent ? "transparent" : root.background
+      }
+
+      Loader {
+        anchors.fill: parent
+        sourceComponent: root.vertical ? verticalBar : horizontalBar
+
+        // A child of the loader, not a sibling of the sections: an ancestor stays
+        // hovered while the pointer is over a widget, where a sibling would lose
+        // hover to the section the pointer entered.
+        HoverHandler {
+          onHoveredChanged: root.setBarHovered(hovered)
+          // Unplugging a monitor destroys its bar without a leave event, which
+          // would strand this surface's tally and hold the peek open for good.
+          Component.onDestruction: if (hovered) root.setBarHovered(false)
+        }
       }
     }
 

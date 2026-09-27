@@ -13,6 +13,9 @@
   --dur-slower: 520ms;
   --dur-overview: 250ms;      /* Mission Control open, measured on macOS */
   --dur-overview-exit: 165ms; /* ...and close (ease-out) */
+  --edge-reveal-delay: 250ms; /* hidden menu bar: pointer at the edge → slides in */
+  --edge-hide-delay: 350ms;   /* ...and back out after the pointer left it */
+  --edge-trigger: 2px;        /* px of screen edge that catch the pointer */
 
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.45, 0, 0.15, 1);

@@ -80,6 +80,13 @@ var switcherDelay = 50
 var carryOffset = 24
 // Volume/brightness HUD: stays this long after the last key press (macOS).
 var hudHold = ms(1500)
+// Menu bar out of the way (bar-off flag, or a fullscreen window covers it):
+// pushing the pointer against its screen edge slides it in after this delay,
+// and it slides back this long after the pointer left it (macOS fullscreen
+// menu bar). edgeTrigger = how many px of the screen edge catch the pointer.
+var edgeRevealDelay = 250
+var edgeHideDelay = 350
+var edgeTrigger = 2
 // One full cycle of a "thinking" indicator (the three pulsing dots while an
 // agent composes an answer). Slower than any transition on purpose: it is a
 // heartbeat, not a reaction, and at transition speed it reads as impatience.
