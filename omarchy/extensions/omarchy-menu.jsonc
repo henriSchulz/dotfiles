@@ -48,5 +48,4 @@
   "mac.ssh": {"icon": "􀪏", "iconFont": ".SF Symbols Fallback", "label": "SSH to Mac", "title": "SSH to Mac"},
   "mac.ssh.cable": {"icon": "􀪏", "iconFont": ".SF Symbols Fallback", "label": "SSH · USB-C", "action": "omarchy-launch-terminal ssh henrischulz@10.55.0.2"},
   "mac.ssh.wifi": {"icon": "􀪏", "iconFont": ".SF Symbols Fallback", "label": "SSH · Wi-Fi", "action": "omarchy-launch-terminal ssh henrischulz@192.168.178.126"},
-  "setup.settings": {"icon": "􀣋", "iconFont": ".SF Symbols Fallback","label":"Settings","aliases":["system settings","preferences","einstellungen"],"description":"Wi-Fi, displays, sound, appearance — the whole system","when":"omarchy-cmd-present omarchy-settings","action":"omarchy-settings"},
 }
