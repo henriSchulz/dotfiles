@@ -91,6 +91,7 @@ Panel {
     root.now = Date.now()
     reader.reload()
     events.refresh()
+    photosSettle.restart()
   }
 
   Process {
@@ -244,11 +245,12 @@ Panel {
     { id: "calendar", title: "Kalender", sizes: ["small", "medium", "large"] },
     { id: "clock", title: "Uhr", sizes: ["small"] },
     { id: "media", title: "Wiedergabe", sizes: ["medium"] },
-    { id: "battery", title: "Batterie", sizes: ["small", "medium"] }
+    { id: "battery", title: "Batterie", sizes: ["small", "medium"] },
+    { id: "photos", title: "Fotos", sizes: ["small", "medium"] }
   ]
   readonly property var defaultWidgets: [
     { id: "calendar", size: "small" }, { id: "clock", size: "small" },
-    { id: "media", size: "medium" }, { id: "battery", size: "small" }
+    { id: "media", size: "medium" }, { id: "battery", size: "small" }, { id: "photos", size: "small" }
   ]
   ListModel { id: widgetModel }
   function catalogueEntry(id) {
@@ -288,7 +290,38 @@ Panel {
     return widgetCatalogue.filter(function(d) { return !shown[d.id] })
   }
   onSettingsChanged: loadWidgets()
-  Component.onCompleted: loadWidgets()
+  Component.onCompleted: { loadWidgets(); photosReader.reload() }
+
+  // ---- Photos widget: four tiles with the newest camera photos (the ones
+  // with a location — screenshots and saved images have none) from the
+  // iCloud Photos catalogue. Read-only query against the app's SQLite; the
+  // thumbnails are the app's own cache. Refreshed once the Center has
+  // settled after opening, never during the slide.
+  readonly property string photosDb: Quickshell.env("HOME") + "/.local/share/icloud-photos/catalog.sqlite"
+  readonly property string photosApp: Quickshell.env("HOME") + "/.local/share/icloud-photos/bin/icloud-photos"
+  property var photos: []
+  Process {
+    id: photosReader
+    running: false
+    command: ["sqlite3", "-readonly", "-json", root.photosDb,
+      "select id, thumb_path from photos where item_type = 'image' and thumb_path is not null and thumb_path != '' and lat is not null " +
+      "order by coalesce(asset_date, added_date) desc, id desc limit 4"]
+    stdout: StdioCollector { id: photosOut; waitForEnd: true }
+    function reload() { photosReader.running = false; photosReader.running = true }
+    onExited: function(code) {
+      if (code !== 0) return
+      var list = []
+      try { list = JSON.parse(String(photosOut.text || "").trim() || "[]") } catch (e) { list = [] }
+      var out = []
+      for (var i = 0; i < list.length; i++) out.push({ id: String(list[i].id || ""), thumb: String(list[i].thumb_path || "") })
+      root.photos = out
+    }
+  }
+  Timer { id: photosSettle; interval: Motion.settleDelay; onTriggered: photosReader.reload() }
+  function openPhotos() {
+    root.run("omarchy-launch-or-focus de.henri.IcloudPhotos " + Util.shellQuote(root.photosApp))
+    root.close()
+  }
 
   // Same write path as the calendar panel: the widget entry in shell.json.
   function persistSettings(values) {
@@ -973,6 +1006,7 @@ Panel {
         onTapped: {
           if (tile.widgetId === "calendar") root.hostWidget && root.hostWidget.openCalendar ? root.hostWidget.openCalendar() : root.close()
           else if (tile.widgetId === "media") root.run("omarchy-launch-or-focus spotify")
+          else if (tile.widgetId === "photos") root.openPhotos()
           else root.close()
         }
       }
@@ -1035,11 +1069,13 @@ Panel {
     readonly property int pad: root.pt(14)
     Loader {
       anchors.fill: parent
-      anchors.margins: wface.pad
+      // Photos run full-bleed to the card edge; everything else keeps the inset.
+      anchors.margins: wface.widgetId === "photos" ? 0 : wface.pad
       sourceComponent: wface.widgetId === "calendar" ? calendarWidget
         : wface.widgetId === "clock" ? clockWidget
         : wface.widgetId === "media" ? mediaWidget
-        : wface.widgetId === "battery" ? batteryWidget : null
+        : wface.widgetId === "battery" ? batteryWidget
+        : wface.widgetId === "photos" ? photosWidget : null
       property string size: wface.size
     }
   }
@@ -1188,6 +1224,23 @@ Panel {
           }
         }
       }
+    }
+  }
+
+  Component {
+    id: photosWidget
+    PhotoGrid {
+      readonly property string size: parent ? parent.size : "small"
+      photos: root.photos
+      columns: size === "small" ? 2 : 4
+      rows: size === "small" ? 2 : 1
+      gap: root.pt(2)
+      radius: root.pt(nc.radiusWidget)
+      placeholderColor: pal.capsule
+      placeholderInk: root.inkSecondary
+      placeholderText: "Keine Fotos"
+      placeholderFont: root.uiFont
+      placeholderFontSize: root.pt(nc.metaFont)
     }
   }
 
