@@ -1,7 +1,7 @@
 {
-  "tileSize": 48,
+  "tileSize": 56,
   "magnification": true,
-  "magnifiedSize": 72,
+  "magnifiedSize": 84,
   "magnificationRadius": 3,
   "position": "bottom",
   "minimizeEffect": "genie",
