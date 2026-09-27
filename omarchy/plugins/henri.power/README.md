@@ -18,7 +18,7 @@ Battery menu for the Omarchy bar in the henri-ui style. Fork of
   lasts and the current discharge. Power and current start at zero; the
   voltage axis fits the window, since the pack only swings about a volt. Reads the `akku-YYYY-MM-DD.csv`
   files the `akku-aufzeichnung` logger writes (setting `historyDir`, default
-  `~/Documents/akku-test/verlauf`); off with `showHistory`.
+  `~/Projects/akku-test/verlauf`); off with `showHistory`.
 - **Power profile** (on the overview, right under the stat tiles): the
   power-profiles-daemon profiles as a segmented switch.
 - **Advanced** (a drill-in page; scrolls when taller than the screen): fans &

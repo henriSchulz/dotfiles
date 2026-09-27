@@ -87,7 +87,7 @@ Panel {
   readonly property bool showHistory: setting("showHistory", true) === true
   readonly property string historyDir: {
     var d = String(setting("historyDir", "") || "")
-    return d !== "" ? d : Quickshell.env("HOME") + "/Documents/akku-test/verlauf"
+    return d !== "" ? d : Quickshell.env("HOME") + "/Projects/akku-test/verlauf"
   }
   // Every spawned process runs with absolute executables and a closed,
   // minimal environment: a shadowed binary earlier in the shell PATH must

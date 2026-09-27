@@ -45,7 +45,7 @@
         "type": "path",
         "label": "Battery log folder",
         "defaultValue": "",
-        "description": "Folder with the akku-YYYY-MM-DD.csv files. Empty: ~/Documents/akku-test/verlauf"
+        "description": "Folder with the akku-YYYY-MM-DD.csv files. Empty: ~/Projects/akku-test/verlauf"
       },
       {
         "key": "historyRange",
