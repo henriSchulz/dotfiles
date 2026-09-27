@@ -18,7 +18,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 log "Omarchy configuration"
 
 dest_root="$HOME/.config/omarchy"
-run mkdir -p "$dest_root/defaults" "$dest_root/hooks/theme-set.d"
+run mkdir -p "$dest_root/defaults" "$dest_root/hooks/theme-set.d" "$dest_root/extensions"
 
 # "<repo-relative path>  <mode>"
 files=(
@@ -27,6 +27,7 @@ files=(
   "dock.json       644"
   "menu.json       644"
   "app-aliases.jsonc  644"
+  "extensions/omarchy-menu.jsonc  644"
   "defaults/agent  644"
   "hooks/theme-set.d/global-wallpaper  755"
   "hooks/theme-set.d/henri-ui-gtk-colors  755"

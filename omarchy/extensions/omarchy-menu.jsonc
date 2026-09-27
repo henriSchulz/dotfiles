@@ -1,0 +1,51 @@
+{
+  // Extend the Quickshell Omarchy menu with JSONC.
+  //
+  // IDs are object keys. The parent is inferred from the dotted id, so
+  // "personal.notes" appears under "personal", and "personal" appears on the
+  // root menu. Reuse an existing id to override/extend it.
+  //
+  // Fields:
+  //   icon        Nerd Font glyph shown in the icon column.
+  //   label       Visible row title.
+  //   action      Shell command to run. If omitted, the row is a submenu.
+  //   target      Existing submenu id to open. Use for links/aliases.
+  //   provider    Runtime provider function/command returning JSON rows.
+  //   aliases     alternate `omarchy menu summon <name>` routes; also searchable.
+  //   description Optional subtitle and extra search text.
+  //   when        Shell condition; hide row when it fails.
+  //   checked     Shell condition; append ✓ when it succeeds.
+  //
+  // Examples:
+  // "personal": {"icon":"","label":"Personal"},
+  // "personal.notes": {"icon":"󰎞","label":"Notes","action":"omarchy-launch-editor ~/notes"},
+  // "personal.files": {"icon":"","label":"Files","action":"uwsm-app -- nautilus ~/Documents"},
+  //
+  // Only use provider when a provider_name function or command named "name"
+  // returns JSON rows. Static submenus only need dotted ids.
+  //
+  // Example: replace the default About action by reusing the same id. Existing
+  // fields are kept unless overridden.
+  // "about": {"icon":"","label":"About","action":"omarchy-launch-or-focus-tui \"zsh -c 'fastfetch; read -k 1'\""},
+
+  // Mac (mt-bridge): the Control Center → Mac operations as Spotlight rows.
+  // Each action is a mac-do verb that ends in a notification; the checked:
+  // guards read the daemons' status files only, never the network. Icons
+  // are SF Symbols (local font, see the sf-symbols memory), like the rest
+  // of Spotlight's own rows.
+  "mac": {"icon": "􀟛", "iconFont": ".SF Symbols Fallback", "label": "Mac", "title": "Mac", "description": "The MacBook over the cable", "aliases": ["mac", "macbook", "mt-bridge"], "when": "omarchy-cmd-present mac-do"},
+  "mac.status": {"icon": "􀅴", "iconFont": ".SF Symbols Fallback", "label": "Mac Status", "description": "Connection, mode, power and battery in one notification", "action": "mac-do status"},
+  "mac.input": {"icon": "􀨳", "iconFont": ".SF Symbols Fallback", "label": "Mac Input", "description": "Trackpad and keyboard from the MacBook", "aliases": ["trackpad", "mac keyboard"], "checked": "mac-do is input", "action": "mac-do input toggle"},
+  "mac.screen": {"icon": "􀢹", "iconFont": ".SF Symbols Fallback", "label": "Mac Screen", "description": "The MacBook's display, mirrored here", "aliases": ["mac mirror", "mac stream"], "checked": "mac-do is screen", "action": "mac-do screen toggle"},
+  "mac.power": {"icon": "􀆨", "iconFont": ".SF Symbols Fallback", "label": "Power over the Cable", "description": "Feed the Mac from this machine", "aliases": ["mac power", "mac charge"], "checked": "mac-do is power", "action": "mac-do power toggle"},
+  "mac.battery": {"icon": "􀛨", "iconFont": ".SF Symbols Fallback", "label": "Mac Battery", "description": "Charge level now, and pull the history", "action": "mac-do battery"},
+  "mac.mode": {"icon": "􀙗", "iconFont": ".SF Symbols Fallback", "label": "Mac Mode", "title": "Mac Mode", "description": "Server or desktop"},
+  "mac.mode.auto": {"icon": "􀙗", "iconFont": ".SF Symbols Fallback", "label": "Auto", "description": "Desktop with an external display, server otherwise", "checked": "mac-do is mode auto", "action": "mac-do mode auto"},
+  "mac.mode.server": {"icon": "􀙗", "iconFont": ".SF Symbols Fallback", "label": "Server", "description": "No desktop apps on the Mac", "checked": "mac-do is mode server", "action": "mac-do mode server"},
+  "mac.mode.desktop": {"icon": "􀙗", "iconFont": ".SF Symbols Fallback", "label": "Desktop", "description": "Keep the Mac's desktop apps running", "checked": "mac-do is mode desktop", "action": "mac-do mode desktop"},
+  "mac.airplay": {"icon": "􀢹", "iconFont": ".SF Symbols Fallback", "label": "Mac Screen via AirPlay", "description": "Slow start -- for when the stream fails", "action": "mac-do airplay"},
+  "mac.vnc": {"icon": "􀢹", "iconFont": ".SF Symbols Fallback", "label": "Mac Screen via VNC", "description": "For the login window, before any session exists", "action": "mac-do vnc"},
+  "mac.ssh": {"icon": "􀪏", "iconFont": ".SF Symbols Fallback", "label": "SSH to Mac", "title": "SSH to Mac"},
+  "mac.ssh.cable": {"icon": "􀪏", "iconFont": ".SF Symbols Fallback", "label": "SSH · USB-C", "action": "omarchy-launch-terminal ssh henrischulz@10.55.0.2"},
+  "mac.ssh.wifi": {"icon": "􀪏", "iconFont": ".SF Symbols Fallback", "label": "SSH · Wi-Fi", "action": "omarchy-launch-terminal ssh henrischulz@192.168.178.126"},
+}
