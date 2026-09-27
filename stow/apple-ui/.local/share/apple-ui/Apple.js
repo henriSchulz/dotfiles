@@ -351,9 +351,11 @@ var notificationCenter = {
   thumb: 40,             // Vorschaubild rechts
   thumbRadius: 6,
   cardMinHeight: 64,
-  radiusCard: 16,        // Mitteilungskarte (Tahoe: 20)
+  radiusCard: 20,        // Mitteilungskarte — Tahoe: dieselbe Karte wie das Banner.
+                         // henri.clock zeichnet sie mit Apple.banner (gemessen);
+                         // radiusCard/closeButton hier nur noch für Altlasten.
   radiusWidget: 20,
-  closeButton: 18,       // X-Kreis links oben
+  closeButton: 22,       // X-Kreis links oben (= banner.closeButton)
   minusButton: 20,       // Bearbeitungsmodus
   capsuleHeight: 24,     // „Weniger anzeigen“, „Alle löschen“
   editButtonHeight: 28,  // „Widgets bearbeiten“

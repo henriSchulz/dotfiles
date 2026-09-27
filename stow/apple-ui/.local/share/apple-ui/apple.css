@@ -161,7 +161,7 @@
   --apple-nc-gap: 12px;
   --apple-nc-card-padding: 12px;
   --apple-nc-icon: 32px;
-  --apple-nc-radius-card: 16px;
+  --apple-nc-radius-card: 20px; /* Tahoe: = --apple-bn-radius */
   --apple-nc-radius-widget: 20px;
   --apple-nc-widget-small: 164px;
   --apple-nc-tint: rgba(246, 246, 246, 0.72);

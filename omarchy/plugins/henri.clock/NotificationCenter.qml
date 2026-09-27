@@ -2,7 +2,6 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.UPower
-import Quickshell.Services.Mpris
 import qs.Commons
 import qs.Ui
 import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
@@ -32,20 +31,34 @@ Panel {
   readonly property var barIdentity: hostWidget || root
   readonly property var notificationService: bar && bar.shell && typeof bar.shell.firstPartyServiceFor === "function"
     ? bar.shell.firstPartyServiceFor("omarchy.notifications") : null
-  readonly property var mediaService: bar && bar.shell && typeof bar.shell.firstPartyServiceFor === "function"
-    ? bar.shell.firstPartyServiceFor("omarchy.media") : null
 
   // ---- Material: light or dark glass after the wallpaper under the column.
   AUi.Backdrop { id: backdrop; region: "30%x100%+0+0"; gravity: "NorthEast" }
   readonly property bool dark: backdrop.dark
   readonly property var nc: Apple.notificationCenter
   readonly property var pal: Apple.ncPalette(dark)
+  // The notification cards are the measured Tahoe banner (henri.notifications):
+  // same geometry and glass, so a card in the Center looks like the toast it was.
+  readonly property var bn: Apple.banner
+  readonly property var cardPal: Apple.bannerPalette(dark)
   readonly property string uiFont: Apple.uiFont
   readonly property string symbolFont: Apple.symbolFont
   function pt(v) { return Style.space(v) }
   function sf(cp) { return String.fromCodePoint(cp) }
   readonly property color ink: pal.textPrimary
   readonly property color inkSecondary: pal.textSecondary
+  readonly property color cardInk: cardPal.textPrimary
+  readonly property color cardInkSecondary: cardPal.textSecondary
+
+  // Icon/image reference from the daemon's file → URL (same rules as the banner).
+  function iconUrl(icon) {
+    var value = String(icon || "")
+    if (value.length === 0) return ""
+    if (value.indexOf("image://icon/") === 0) return Quickshell.iconPath(value.slice("image://icon/".length), true)
+    if (value.indexOf("file://") === 0 || value.indexOf("image://") === 0) return value
+    if (value.charAt(0) === "/") return Util.fileUrl(value)
+    return Quickshell.iconPath(value, true)
+  }
 
   readonly property int columnWidth: pt(nc.width)
   readonly property int inset: pt(nc.edgeInset)
@@ -142,7 +155,7 @@ Panel {
       var key = stackKey(e)
       var g = byKey[key]
       if (!g) {
-        g = { key: key, app: String(e.app || "Mitteilung"), items: [], sig: "" }
+        g = { key: key, app: String(e.app || "Notification"), items: [], sig: "" }
         byKey[key] = g
         groups.push(g)
       }
@@ -177,18 +190,19 @@ Panel {
     for (var i = 0; i < stackModel.count; i++) if (stackModel.get(i).key === key) stackModel.setProperty(i, "expanded", on)
   }
 
+  // Timestamp like macOS: "now", "5m ago", "2h ago", "Yesterday", weekday, date.
   function relativeTime(t) {
     var diff = now - t
     var min = Math.floor(diff / 60000)
-    if (min < 1) return "jetzt"
-    if (min < 60) return "vor " + min + " Min."
+    if (min < 1) return "now"
+    if (min < 60) return min + "m ago"
     var d = new Date(t), today = new Date(now)
-    var loc = Qt.locale("de_DE")
-    if (d.toDateString() === today.toDateString()) return loc.toString(d, "HH:mm")
+    var loc = Qt.locale("en_US")
+    if (d.toDateString() === today.toDateString()) return Math.floor(min / 60) + "h ago"
     var yesterday = new Date(now - 86400000)
-    if (d.toDateString() === yesterday.toDateString()) return "gestern"
+    if (d.toDateString() === yesterday.toDateString()) return "Yesterday"
     if (diff < 6 * 86400000) return loc.toString(d, "dddd")
-    return loc.toString(d, "d. MMM")
+    return loc.toString(d, "MMM d")
   }
 
   // Dismissing removes the daemon's file (history) or dismisses the live toast
@@ -241,16 +255,14 @@ Panel {
 
   // ---- Widgets -----------------------------------------------------------------------------
 
+  // Only these three (Henri, 2026-09-27): Calendar, Batteries, Photos.
   readonly property var widgetCatalogue: [
-    { id: "calendar", title: "Kalender", sizes: ["small", "medium", "large"] },
-    { id: "clock", title: "Uhr", sizes: ["small"] },
-    { id: "media", title: "Wiedergabe", sizes: ["medium"] },
-    { id: "battery", title: "Batterie", sizes: ["small", "medium"] },
-    { id: "photos", title: "Fotos", sizes: ["large"] }
+    { id: "calendar", title: "Calendar", sizes: ["small", "medium", "large"] },
+    { id: "battery", title: "Batteries", sizes: ["small", "medium"] },
+    { id: "photos", title: "Photos", sizes: ["large"] }
   ]
   readonly property var defaultWidgets: [
-    { id: "calendar", size: "small" }, { id: "clock", size: "small" },
-    { id: "media", size: "medium" }, { id: "battery", size: "small" }, { id: "photos", size: "large" }
+    { id: "calendar", size: "small" }, { id: "battery", size: "small" }, { id: "photos", size: "large" }
   ]
   ListModel { id: widgetModel }
   function catalogueEntry(id) {
@@ -357,7 +369,6 @@ Panel {
     }
     return out
   }
-  SystemClock { id: clock; precision: SystemClock.Seconds }
 
   // ---- The window ----------------------------------------------------------------------------
 
@@ -432,7 +443,7 @@ Panel {
             NumberAnimation { properties: "x,y"; duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
           }
 
-          // "Nicht stören" hint (spec §9, Fokus-Modus)
+          // "Do Not Disturb" hint (spec §9, focus mode)
           NcCard {
             visible: root.notificationService ? root.notificationService.doNotDisturb : false
             width: column.width
@@ -442,7 +453,7 @@ Panel {
               anchors.centerIn: parent
               spacing: root.pt(8)
               Text { text: root.sf(0x1002DD); font.family: root.symbolFont; font.pixelSize: root.pt(12); color: root.inkSecondary; anchors.verticalCenter: parent.verticalCenter }
-              Text { text: "„Nicht stören“ ist aktiv"; font.family: root.uiFont; font.pixelSize: root.pt(nc.metaFont); color: root.inkSecondary; anchors.verticalCenter: parent.verticalCenter }
+              Text { text: "Do Not Disturb is on"; font.family: root.uiFont; font.pixelSize: root.pt(nc.metaFont); color: root.inkSecondary; anchors.verticalCenter: parent.verticalCenter }
             }
           }
 
@@ -482,7 +493,7 @@ Panel {
               x: root.pt(nc.cardPadding); y: root.pt(nc.cardPadding)
               width: parent.width - root.pt(nc.cardPadding) * 2
               spacing: root.pt(6)
-              Text { text: "Widgets hinzufügen"; font.family: root.uiFont; font.pixelSize: root.pt(nc.metaFont); font.weight: Font.DemiBold; color: root.inkSecondary }
+              Text { text: "Add Widgets"; font.family: root.uiFont; font.pixelSize: root.pt(nc.metaFont); font.weight: Font.DemiBold; color: root.inkSecondary }
               Repeater {
                 model: root.editing ? root.hiddenWidgets() : []
                 delegate: Row {
@@ -496,7 +507,7 @@ Panel {
                       required property string modelData
                       required property int index
                       readonly property string sizeId: modelData
-                      label: sizeId === "small" ? "Klein" : sizeId === "medium" ? "Mittel" : "Groß"
+                      label: sizeId === "small" ? "Small" : sizeId === "medium" ? "Medium" : "Large"
                       onClicked: root.addWidget(parent.modelData.id, sizeId)
                     }
                   }
@@ -514,7 +525,7 @@ Panel {
               anchors.bottom: parent.bottom
               height: root.pt(nc.editButtonHeight)
               radius: height / 2
-              label: root.editing ? "Fertig" : "Widgets bearbeiten"
+              label: root.editing ? "Done" : "Edit Widgets"
               fontWeight: Font.Medium
               fontSize: root.pt(nc.bodyFont)
               glass: true
@@ -601,10 +612,12 @@ Panel {
 
   // ---- Components ----------------------------------------------------------------------------
 
-  // A floating card: the shared apple-ui component with this Center's palette.
+  // A floating card: the shared apple-ui component with this Center's palette (widgets, hints).
   component NcCard: AUi.NcCard { palette: root.pal }
+  // A notification card face: the banner's glass and radius (Apple.banner, measured).
+  component NcNoteCard: AUi.NcCard { palette: root.cardPal; radius: root.pt(root.bn.radius) }
 
-  // Capsule button: "Weniger anzeigen", "Alle löschen", "Widgets bearbeiten".
+  // Capsule button: "Show Less", the stack "X", "Edit Widgets".
   component NcCapsule: HUi.Pressable {
     id: cap
     property string label: ""
@@ -621,9 +634,9 @@ Panel {
     Rectangle {
       anchors.fill: parent
       radius: cap.radius
-      color: cap.danger ? Apple.systemRed : cap.glass ? (Motion.glass ? pal.tint : pal.opaque) : (cap.hovered ? pal.capsuleHover : pal.capsule)
+      color: cap.danger ? Apple.systemRed : cap.glass ? (Motion.glass ? root.cardPal.tint : root.cardPal.opaque) : (cap.hovered ? pal.capsuleHover : pal.capsule)
       border.width: cap.glass ? 1 : 0
-      border.color: pal.borderOuter
+      border.color: root.cardPal.borderOuter
       Behavior on color { ColorAnimation { duration: cap.hovered ? Motion.instant : Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
     }
     Row {
@@ -671,11 +684,11 @@ Panel {
     // Strips behind the top card (collapsed group).
     Repeater {
       model: stack.group && !stack.expanded ? Math.min(2, stack.count - 1) : 0
-      delegate: NcCard {
+      delegate: NcNoteCard {
         required property int index
         readonly property int level: index + 1
         width: stack.width
-        height: root.pt(nc.cardMinHeight)
+        height: root.pt(bn.minHeight)
         y: topCard.h - height + root.pt(nc.stripOffset) * level
         transformOrigin: Item.Top
         scale: level === 1 ? nc.stripScale2 : nc.stripScale3
@@ -700,6 +713,9 @@ Panel {
         visible: stack.expanded
         opacity: visible ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        // The app name sits straight on the desktop (no card, like macOS), so it
+        // carries a soft shadow to stay readable on a bright wallpaper; the
+        // capsules are glass for the same reason.
         Text {
           anchors.left: parent.left
           anchors.leftMargin: root.pt(4)
@@ -708,14 +724,16 @@ Panel {
           font.family: root.uiFont
           font.pixelSize: root.pt(nc.titleFont)
           font.weight: Font.DemiBold
-          color: root.ink
+          color: root.cardInk
+          style: Text.Outline
+          styleColor: root.cardPal.shadow
         }
         Row {
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           spacing: root.pt(6)
-          NcCapsule { label: "Weniger anzeigen"; onClicked: root.setExpanded(stack.key, false) }
-          NcCapsule { symbol: root.sf(0x100184); onClicked: stack.dismissAll() }
+          NcCapsule { label: "Show Less"; glass: true; onClicked: root.setExpanded(stack.key, false) }
+          NcCapsule { symbol: root.sf(0x100184); glass: true; onClicked: stack.dismissAll() }
         }
       }
 
@@ -733,10 +751,12 @@ Panel {
         }
       }
     }
-    QtObject { id: topCard; readonly property real h: cardRepeater.count > 0 && cardRepeater.itemAt(0) ? cardRepeater.itemAt(0).height : root.pt(nc.cardMinHeight) }
+    QtObject { id: topCard; readonly property real h: cardRepeater.count > 0 && cardRepeater.itemAt(0) ? cardRepeater.itemAt(0).height : root.pt(bn.minHeight) }
   }
 
-  // A notification card. Hover shows the close button; swipe reveals Optionen/Löschen.
+  // A notification card: the measured Tahoe banner (henri.notifications) plus
+  // what only the Center has — timestamp, stack count, swipe actions and the
+  // corner button that grows into "Clear All" on a stack.
   component NcNotificationCard: Item {
     id: card
     property var entry: null
@@ -745,9 +765,11 @@ Panel {
     property bool leaving: false
     property real swipeX: 0
     readonly property bool revealed: swipeX <= -root.pt(nc.swipeActions) + 1
-    readonly property int padding: root.pt(nc.cardPadding)
-    readonly property int iconSize: root.pt(nc.icon)
-    implicitHeight: Math.max(root.pt(nc.cardMinHeight), textColumn.implicitHeight + padding * 2)
+    readonly property int padding: root.pt(bn.padding)
+    readonly property int iconSize: root.pt(bn.icon)
+    readonly property string iconSource: entry ? root.iconUrl(entry.appIcon) : ""
+    readonly property string imageSource: entry && entry.image !== "" ? root.iconUrl(entry.image) : ""
+    implicitHeight: Math.max(root.pt(bn.minHeight), textColumn.implicitHeight + padding * 2)
     height: implicitHeight
     opacity: leaving ? 0 : 1
     transform: Translate { x: card.leaving ? card.width + root.inset : 0
@@ -788,20 +810,20 @@ Panel {
         Rectangle {
           width: root.pt(nc.swipeActions) / 2; height: parent.height
           color: Apple.systemGray
-          topLeftRadius: root.pt(nc.radiusCard); bottomLeftRadius: root.pt(nc.radiusCard)
-          Text { anchors.centerIn: parent; text: "Optionen"; color: "#ffffff"; font.family: root.uiFont; font.pixelSize: root.pt(12); font.weight: Font.DemiBold }
+          topLeftRadius: root.pt(bn.radius); bottomLeftRadius: root.pt(bn.radius)
+          Text { anchors.centerIn: parent; text: "Options"; color: "#ffffff"; font.family: root.uiFont; font.pixelSize: root.pt(12); font.weight: Font.DemiBold }
           MouseArea { anchors.fill: parent; onClicked: function(m) { var p = mapToItem(null, m.x, m.y); card.showMenu(p.x, p.y) } }
         }
         Rectangle {
           width: root.pt(nc.swipeActions) / 2; height: parent.height
           color: Apple.systemRed
-          topRightRadius: root.pt(nc.radiusCard); bottomRightRadius: root.pt(nc.radiusCard)
-          Text { anchors.centerIn: parent; text: "Löschen"; color: "#ffffff"; font.family: root.uiFont; font.pixelSize: root.pt(12); font.weight: Font.DemiBold }
+          topRightRadius: root.pt(bn.radius); bottomRightRadius: root.pt(bn.radius)
+          Text { anchors.centerIn: parent; text: "Clear"; color: "#ffffff"; font.family: root.uiFont; font.pixelSize: root.pt(12); font.weight: Font.DemiBold }
           MouseArea { anchors.fill: parent; onClicked: card.dismiss() }
         }
       }
 
-      NcCard {
+      NcNoteCard {
         id: face
         anchors.fill: parent
         transform: Translate { x: slideX.value }
@@ -840,44 +862,64 @@ Panel {
           }
         }
 
-        // App symbol
+        // App symbol, vertically centred — like the banner: a notification
+        // picture takes the slot and the app icon becomes a small badge.
         Item {
           id: iconBox
-          x: card.padding; y: card.padding
+          x: card.padding
+          anchors.verticalCenter: parent.verticalCenter
           width: card.iconSize; height: card.iconSize
           Rectangle {
             anchors.fill: parent
             radius: width * nc.iconRadius
-            color: pal.capsule
-            visible: !appImage.visible
+            color: root.cardPal.capsule
+            visible: !picture.visible
             Text {
               anchors.centerIn: parent
               text: card.entry && card.entry.glyph !== "" ? card.entry.glyph : root.sf(0x1002DA)
               font.family: card.entry && card.entry.glyph !== "" ? Style.font.family : root.symbolFont
               font.pixelSize: root.pt(16)
-              color: root.ink
+              color: root.cardInk
             }
           }
           Image {
-            id: appImage
+            id: picture
             anchors.fill: parent
-            source: card.entry && card.entry.appIcon !== "" ? (card.entry.appIcon.indexOf("/") === 0 ? "file://" + card.entry.appIcon : Quickshell.iconPath(card.entry.appIcon, true)) : ""
+            source: card.imageSource !== "" ? card.imageSource : card.iconSource
             visible: status === Image.Ready
+            fillMode: card.imageSource !== "" ? Image.PreserveAspectCrop : Image.PreserveAspectFit
             sourceSize.width: width * 2
             sourceSize.height: height * 2
+            asynchronous: true
+            smooth: true
+          }
+          Image {
+            id: badge
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.rightMargin: -root.pt(2)
+            anchors.bottomMargin: -root.pt(2)
+            width: root.pt(bn.badge); height: width
+            source: card.imageSource !== "" ? card.iconSource : ""
+            visible: card.imageSource !== "" && picture.visible && status === Image.Ready
+            fillMode: Image.PreserveAspectFit
+            sourceSize.width: width * 2
+            sourceSize.height: height * 2
+            asynchronous: true
             smooth: true
           }
         }
 
         Column {
           id: textColumn
-          x: card.padding + card.iconSize + root.pt(nc.iconGap)
-          y: card.padding
-          width: parent.width - x - card.padding - (thumb.visible ? thumb.width + root.pt(10) : 0)
-          spacing: root.pt(1)
+          x: card.padding + card.iconSize + root.pt(bn.iconGap)
+          anchors.verticalCenter: parent.verticalCenter
+          width: parent.width - x - card.padding
+          spacing: 0
+          // Title line, timestamp on the right (the Center's addition to the banner).
           Item {
             width: parent.width
-            height: root.pt(nc.lineHeight)
+            height: root.pt(bn.lineHeight)
             Text {
               anchors.left: parent.left
               anchors.right: timeText.left
@@ -885,10 +927,11 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               text: card.entry ? (card.entry.summary !== "" ? card.entry.summary : card.entry.app) : ""
               font.family: root.uiFont
-              font.pixelSize: root.pt(nc.titleFont)
+              font.pixelSize: root.pt(bn.titleFont)
               font.weight: Font.DemiBold
-              color: root.ink
+              color: root.cardInk
               elide: Text.ElideRight
+              textFormat: Text.PlainText
             }
             Text {
               id: timeText
@@ -897,53 +940,44 @@ Panel {
               text: card.entry ? root.relativeTime(card.entry.timestamp) : ""
               font.family: root.uiFont
               font.pixelSize: root.pt(nc.metaFont)
-              color: root.inkSecondary
+              color: root.cardInkSecondary
             }
           }
           Text {
             width: parent.width
             text: card.entry ? card.entry.body : ""
             font.family: root.uiFont
-            font.pixelSize: root.pt(nc.bodyFont)
-            lineHeight: root.pt(nc.lineHeight)
+            font.pixelSize: root.pt(bn.bodyFont)
+            lineHeight: root.pt(bn.lineHeight)
             lineHeightMode: Text.FixedHeight
-            color: root.ink
-            wrapMode: Text.Wrap
-            maximumLineCount: nc.bodyLines
+            color: root.cardInk
+            wrapMode: Text.WordWrap
+            maximumLineCount: bn.bodyLines
             elide: Text.ElideRight
             textFormat: Text.PlainText
             visible: text !== ""
           }
           Text {
             visible: card.collapsedGroup
-            text: (card.stackItem ? card.stackItem.count - 1 : 0) + " weitere " + ((card.stackItem && card.stackItem.count - 1 === 1) ? "Mitteilung" : "Mitteilungen")
+            text: (card.stackItem ? card.stackItem.count - 1 : 0) + " more " + ((card.stackItem && card.stackItem.count - 1 === 1) ? "notification" : "notifications")
             font.family: root.uiFont
             font.pixelSize: root.pt(nc.metaFont)
-            color: root.inkSecondary
+            lineHeight: root.pt(bn.lineHeight)
+            lineHeightMode: Text.FixedHeight
+            color: root.cardInkSecondary
           }
-        }
-
-        Image {
-          id: thumb
-          anchors.right: parent.right
-          anchors.rightMargin: card.padding
-          anchors.top: parent.top
-          anchors.topMargin: card.padding
-          width: root.pt(nc.thumb); height: width
-          source: card.entry && card.entry.image !== "" ? (card.entry.image.indexOf("/") === 0 ? "file://" + card.entry.image : card.entry.image) : ""
-          visible: status === Image.Ready
-          fillMode: Image.PreserveAspectCrop
-          sourceSize.width: width * 2
-          sourceSize.height: height * 2
         }
       }
 
-      // Close button, overlapping the top-left corner; on a stack it grows into "Alle löschen".
+      // Close circle overlapping the top-left corner (banner geometry); on a stack it grows into "Clear All".
       NcCornerButton {
-        x: -root.pt(6); y: -root.pt(6)
-        label: card.collapsedGroup ? "Alle löschen" : ""
+        palette: root.cardPal
+        size: root.pt(bn.closeButton)
+        x: root.pt(bn.closeCenterX) - width / 2
+        y: root.pt(bn.closeCenterY) - height / 2
+        label: card.collapsedGroup ? "Clear All" : ""
         opacity: hover.hovered || hovered ? 1 : 0
-        scale: hover.hovered || hovered ? 1 : 0.8
+        scale: hover.hovered || hovered ? 1 : Motion.iconFromScale
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
         Behavior on scale { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
@@ -954,10 +988,10 @@ Panel {
 
   function contextMenuFor(entry, sx, sy) {
     var list = [
-      { text: "Für 1 Stunde stummschalten", id: "hour" },
-      { text: "Heute stummschalten", id: "today" },
+      { text: "Mute for 1 Hour", id: "hour" },
+      { text: "Mute for Today", id: "today" },
       { separator: true },
-      { text: "Mitteilungseinstellungen …", id: "settings" }
+      { text: "Notification Settings…", id: "settings" }
     ]
     contextMenu.show(sx, sy, list, function(e) {
       if (e.id === "hour") root.mute(3600000)
@@ -970,13 +1004,13 @@ Panel {
     var row = widgetModel.get(index)
     var def = catalogueEntry(row.wid)
     var list = []
-    var sizes = [["small", "Klein"], ["medium", "Mittel"], ["large", "Groß"]]
+    var sizes = [["small", "Small"], ["medium", "Medium"], ["large", "Large"]]
     for (var i = 0; i < sizes.length; i++)
       list.push({ text: sizes[i][1], id: "size:" + sizes[i][0], enabled: def.sizes.indexOf(sizes[i][0]) >= 0, checked: row.size === sizes[i][0] })
     list.push({ separator: true })
-    list.push({ text: "Widget entfernen", id: "remove", danger: true })
+    list.push({ text: "Remove Widget", id: "remove", danger: true })
     list.push({ separator: true })
-    list.push({ text: "Widgets bearbeiten …", id: "edit" })
+    list.push({ text: "Edit Widgets…", id: "edit" })
     contextMenu.show(sx, sy, list, function(e) {
       if (String(e.id).indexOf("size:") === 0) root.setWidgetSize(index, String(e.id).slice(5))
       else if (e.id === "remove") root.removeWidget(index)
@@ -1009,7 +1043,6 @@ Panel {
         enabled: !root.editing
         onTapped: {
           if (tile.widgetId === "calendar") root.hostWidget && root.hostWidget.openCalendar ? root.hostWidget.openCalendar() : root.close()
-          else if (tile.widgetId === "media") root.run("omarchy-launch-or-focus spotify")
           else if (tile.widgetId === "photos") root.openPhotos()
           else root.close()
         }
@@ -1076,8 +1109,6 @@ Panel {
       // Photos run full-bleed to the card edge; everything else keeps the inset.
       anchors.margins: wface.widgetId === "photos" ? 0 : wface.pad
       sourceComponent: wface.widgetId === "calendar" ? calendarWidget
-        : wface.widgetId === "clock" ? clockWidget
-        : wface.widgetId === "media" ? mediaWidget
         : wface.widgetId === "battery" ? batteryWidget
         : wface.widgetId === "photos" ? photosWidget : null
       property string size: wface.size
@@ -1105,10 +1136,10 @@ Panel {
       readonly property var upcoming: root.upcomingEvents(size === "large" ? 9 : size === "medium" ? 3 : 0)
       spacing: root.pt(2)
       Text {
-        text: Qt.locale("de_DE").toString(new Date(root.now), "dddd").toUpperCase()
+        text: Qt.locale("en_US").toString(new Date(root.now), "dddd").toUpperCase()
         font.family: root.uiFont; font.pixelSize: root.pt(11); font.weight: Font.Bold; color: Apple.systemRed
       }
-      WidgetBig { text: Qt.locale("de_DE").toString(new Date(root.now), "d") }
+      WidgetBig { text: Qt.locale("en_US").toString(new Date(root.now), "d") }
       Item { width: 1; height: root.pt(4) }
       Repeater {
         model: cal.upcoming
@@ -1118,7 +1149,7 @@ Panel {
           height: root.pt(18)
           Rectangle { width: root.pt(3); height: root.pt(13); radius: root.pt(1.5); color: modelData.color !== "" ? modelData.color : Apple.accent; anchors.verticalCenter: parent.verticalCenter }
           Text {
-            text: (modelData.day === 0 ? "" : modelData.day === 1 ? "Mo. " : Qt.locale("de_DE").toString(new Date(root.now + modelData.day * 86400000), "ddd") + " ")
+            text: (modelData.day === 0 ? "" : modelData.day === 1 ? "Tomorrow " : Qt.locale("en_US").toString(new Date(root.now + modelData.day * 86400000), "ddd") + " ")
               + (modelData.allDay ? "" : String(modelData.start).slice(11, 16) + "  ") + modelData.summary
             font.family: root.uiFont; font.pixelSize: root.pt(12); color: root.ink
             width: cal.width - root.pt(11); elide: Text.ElideRight
@@ -1128,105 +1159,7 @@ Panel {
       }
       WidgetCaption {
         visible: cal.size !== "small" && cal.upcoming.length === 0
-        text: events.synced ? "Keine Termine in den nächsten Tagen" : "Kalender nicht synchronisiert"
-      }
-    }
-  }
-
-  Component {
-    id: clockWidget
-    Item {
-      Canvas {
-        id: faceCanvas
-        anchors.centerIn: parent
-        width: Math.min(parent.width, parent.height)
-        height: width
-        readonly property date t: clock.date
-        onTChanged: requestPaint()
-        onPaint: {
-          var ctx = getContext("2d")
-          var w = width, c = w / 2
-          ctx.reset()
-          ctx.clearRect(0, 0, w, w)
-          ctx.beginPath(); ctx.arc(c, c, c - 1, 0, Math.PI * 2); ctx.fillStyle = pal.face; ctx.fill()
-          ctx.strokeStyle = root.inkSecondary; ctx.lineWidth = Math.max(1, w / 60); ctx.lineCap = "round"
-          for (var i = 0; i < 12; i++) {
-            var a = i * Math.PI / 6
-            ctx.beginPath(); ctx.moveTo(c + Math.cos(a) * c * 0.8, c + Math.sin(a) * c * 0.8); ctx.lineTo(c + Math.cos(a) * c * 0.9, c + Math.sin(a) * c * 0.9); ctx.stroke()
-          }
-          function hand(angle, len, width, color) {
-            var r = (angle - 90) * Math.PI / 180
-            ctx.beginPath(); ctx.moveTo(c, c); ctx.lineTo(c + Math.cos(r) * c * len, c + Math.sin(r) * c * len)
-            ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke()
-          }
-          var h = (t.getHours() % 12 + t.getMinutes() / 60) * 30
-          hand(h, 0.5, Math.max(2, w / 28), root.ink)
-          hand(t.getMinutes() * 6 + t.getSeconds() / 10, 0.72, Math.max(2, w / 36), root.ink)
-          hand(t.getSeconds() * 6, 0.8, Math.max(1, w / 90), Apple.systemOrange)
-          ctx.beginPath(); ctx.arc(c, c, Math.max(2, w / 40), 0, Math.PI * 2); ctx.fillStyle = root.ink; ctx.fill()
-        }
-      }
-    }
-  }
-
-  Component {
-    id: mediaWidget
-    Row {
-      id: media
-      width: parent ? parent.width : 0
-      readonly property var svc: root.mediaService
-      readonly property var player: svc && svc.activePlayer ? svc.activePlayer
-        : (Mpris.players && Mpris.players.values.length > 0 ? Mpris.players.values[0] : null)
-      readonly property bool has: !!(player && (player.trackTitle || player.trackArtist))
-      readonly property string artUrl: player && player.trackArtUrl ? String(player.trackArtUrl) : ""
-      spacing: root.pt(12)
-      Rectangle {
-        width: root.pt(56); height: width
-        radius: root.pt(10)
-        color: pal.capsule
-        anchors.verticalCenter: parent.verticalCenter
-        Image {
-          anchors.fill: parent
-          source: media.artUrl
-          visible: status === Image.Ready
-          fillMode: Image.PreserveAspectCrop
-          layer.enabled: visible
-        }
-        Text { anchors.centerIn: parent; visible: media.artUrl === ""; text: root.sf(0x1002A8); font.family: root.symbolFont; font.pixelSize: root.pt(22); color: root.inkSecondary }
-      }
-      Column {
-        width: media.width - root.pt(56) - root.pt(12) - transportRow.width - root.pt(12)
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: root.pt(2)
-        Text { width: parent.width; text: media.has ? String(media.player.trackTitle || "") : "Nichts in Wiedergabe"; font.family: root.uiFont; font.pixelSize: root.pt(13); font.weight: Font.DemiBold; color: root.ink; elide: Text.ElideRight }
-        WidgetCaption { width: parent.width; text: media.has ? String(media.player.trackArtist || "") : "" }
-      }
-      Row {
-        id: transportRow
-        spacing: root.pt(2)
-        anchors.verticalCenter: parent.verticalCenter
-        Repeater {
-          model: [[0x10028A, "previous"], [-1, "toggle"], [0x10028C, "next"]]
-          delegate: HUi.Pressable {
-            required property var modelData
-            width: root.pt(28); height: root.pt(28)
-            radius: width / 2
-            tint: root.ink
-            enabled: !!media.player
-            Text {
-              anchors.centerIn: parent
-              text: modelData[0] === -1 ? (media.player && media.player.isPlaying ? root.sf(0x100286) : root.sf(0x100284)) : root.sf(modelData[0])
-              font.family: root.symbolFont; font.pixelSize: root.pt(13); color: root.ink
-            }
-            onClicked: {
-              var p = media.player
-              if (!p) return
-              if (modelData[1] === "toggle") p.togglePlaying()
-              else if (modelData[1] === "next") p.next()
-              else p.previous()
-            }
-          }
-        }
+        text: events.synced ? "No upcoming events" : "Calendar not synced"
       }
     }
   }
@@ -1238,13 +1171,13 @@ Panel {
       radius: root.pt(nc.radiusWidget)
       placeholderColor: pal.capsule
       placeholderInk: root.inkSecondary
-      placeholderText: "Keine Fotos"
+      placeholderText: "No Photos"
       captionFont: root.uiFont
       captionFontSize: root.pt(nc.titleFont)
       caption: {
         if (!root.photo || !root.photo.taken) return ""
         var d = new Date(root.photo.taken)
-        return isNaN(d.getTime()) ? "" : Qt.locale("de_DE").toString(d, "d. MMMM yyyy")
+        return isNaN(d.getTime()) ? "" : Qt.locale("en_US").toString(d, "MMMM d, yyyy")
       }
     }
   }
@@ -1258,9 +1191,9 @@ Panel {
       Column {
         anchors.left: parent.left; anchors.top: parent.top
         spacing: root.pt(2)
-        WidgetCaption { text: "Batterie" }
+        WidgetCaption { text: "Battery" }
         WidgetBig { text: Math.round(level * 100) + " %" }
-        WidgetCaption { text: charging ? "Lädt" : dev && dev.state === UPowerDeviceState.FullyCharged ? "Voll geladen" : "Entlädt" }
+        WidgetCaption { text: charging ? "Charging" : dev && dev.state === UPowerDeviceState.FullyCharged ? "Fully Charged" : "On Battery" }
       }
       Item {
         anchors.right: parent.right; anchors.bottom: parent.bottom

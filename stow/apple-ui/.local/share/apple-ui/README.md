@@ -88,10 +88,13 @@ Referenz-Plugin: `~/.config/omarchy/plugins/henri.menu`.
 ## Mitteilungszentrale
 
 `Apple.notificationCenter` in `Apple.js` bzw. `--apple-nc-*` / `apple_nc_*` in den
-CSS-Dateien: Spalte 344 pt, 12 pt Rand, schwebende Karten (Radius 16, Widgets 20),
+CSS-Dateien: Spalte 344 pt, 12 pt Rand, schwebende Karten, Widgets (Radius 20),
 Stapel-Streifen, Material hell/dunkel (`Apple.ncPalette(dark)`), Typografie. Werte
 aus der Spec `spec-mitteilungszentrale-macos.md`, noch nicht am Screenshot
-nachgemessen. Referenz-Plugin: `henri.clock/NotificationCenter.qml` (Klick auf die
+nachgemessen. **Die Mitteilungskarten selbst** sind seit 2026-09-27 in Tahoe dieselbe
+Karte wie das Banner und nehmen deshalb `Apple.banner` / `Apple.bannerPalette(dark)`
+(gemessen, siehe unten) — `ncPalette` bleibt für Widgets und Kapseln.
+Referenz-Plugin: `henri.clock/NotificationCenter.qml` (Klick auf die
 Uhr). Öffnet als `HUi.PopupPanel { kind: "toast"; revealFromX: … }` ohne eigene
 Karte (`cardColor: "transparent"`), jede Karte trägt ihr Material selbst.
 
