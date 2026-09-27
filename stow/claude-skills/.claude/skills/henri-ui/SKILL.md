@@ -216,6 +216,14 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
 **Toast / Notification**
 - Rein: von der Bildschirmkante gleiten + faden, `gentle`. Raus: zurück zur Kante,
   schneller. Nachrückende Einträge gleiten nach (`smooth`).
+- Systembenachrichtigungen (`henri.notifications`, seit 2026-09-27) sehen aus wie
+  macOS-Tahoe-Banner aus `apple-ui` (`Apple.banner`, gemessen): 312-pt-Glaskarte,
+  Radius 20, Schließen-Kreis links oben und „Options ⌄“ beim Hover, Aktionen des
+  Senders im Menü, `TIME SENSITIVE` für urgency=critical. Stapel = ListView mit
+  `add`/`remove`/`displaced` (`slow` easeOut rein, `exit(slow)` easeExit raus,
+  `base` easeInOut nachrücken) — Höhe **nicht** an `contentHeight` binden, sonst
+  läuft die remove-Transition nie. Karte und Eck-Knopf sind `AUi.NcCard` /
+  `AUi.NcCornerButton`, geteilt mit der Mitteilungszentrale.
 
 **HUD (Lautstärke/Helligkeit, wie macOS)**
 - Karte oben rechts unter der Bar (Control-Center-Modul „Sound“/„Display“), klick-durch,

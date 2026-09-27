@@ -145,6 +145,12 @@ hl.layer_rule({ match = { namespace = "henri-assistant" }, blur = true, ignore_a
 hl.layer_rule({ match = { namespace = "omarchy-keyboard-panel" }, no_anim = true, animation = "none" })
 hl.layer_rule({ match = { namespace = "omarchy-keyboard-panel" }, blur = true, ignore_alpha = 0.3 })
 
+-- Mitteilungs-Banner (henri.notifications, Apple-Look): Glas wie beim Control
+-- Center. Die Karte gleitet mit eigener Animation von der Kante herein —
+-- Hyprlands Layer-Fade auf dem Vollbild-Overlay würde doppelt laufen.
+hl.layer_rule({ match = { namespace = "omarchy-notifications" }, no_anim = true, animation = "none" })
+hl.layer_rule({ match = { namespace = "omarchy-notifications" }, blur = true, ignore_alpha = 0.3 })
+
 -- Quick Look (GNOME Sushi): Hyprland maps the window at a size of its own and
 -- only a frame later gets the preview's real size, so the default pop-in
 -- (87 %) reads as the card shrinking into place. Starting the pop-in from

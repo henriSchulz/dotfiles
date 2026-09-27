@@ -60,6 +60,8 @@ bekommt `cardColor: mat.sheet` und `borderSpec: Border.flat(mat.hairline, 1)`.
 | `TextField` | Eingabefeld | `text`, `placeholder`, `password`, `submitIcon`, `error`, `submitted()`, `cancelled()`, `edited()` |
 | `Link` | Textlink | `text`, `clicked()` |
 | `Backdrop` | Wallpaper-Messung + inotify | `luma`, `threshold`, `dark`, `set(v)`, `remeasure()` |
+| `NcCard` | schwebende Karte (Mitteilungszentrale, Banner) | `palette`, `radius`, `color` |
+| `NcCornerButton` | Schließen-/Minus-Kreis auf der Kartenecke | `palette`, `label`, `symbol`, `grey`, `size`, `clicked()` |
 | `Material` | Palette-Objekt | `dark` → alle Farben |
 
 ## Andere Toolkits
@@ -92,6 +94,24 @@ aus der Spec `spec-mitteilungszentrale-macos.md`, noch nicht am Screenshot
 nachgemessen. Referenz-Plugin: `henri.clock/NotificationCenter.qml` (Klick auf die
 Uhr). Öffnet als `HUi.PopupPanel { kind: "toast"; revealFromX: … }` ohne eigene
 Karte (`cardColor: "transparent"`), jede Karte trägt ihr Material selbst.
+
+## Banner (Mitteilung oben rechts)
+
+`Apple.banner` in `Apple.js` bzw. `--apple-bn-*` / `apple_bn_*` in den CSS-Dateien:
+die Tahoe-Mitteilung, am 2026-09-27 an Apples Support-Screenshot gemessen (Skala
+über SF-Pro-Textbreiten): Karte 312 × ≥ 64, Radius 20, 12 pt Innenabstand, Symbol
+32 vertikal zentriert, Text ab 53 pt (Overline „TIME SENSITIVE“ 11 semibold für
+urgency=critical, Titel 13 semibold, Text 13, Zeile 16), Schließen-Kreis 22 links
+oben (Mitte 5/7 pt innerhalb der Ecke), „Options ⌄“-Kapsel 72 × 22 unten rechts,
+14 pt zum Bildschirmrand; Glas Weiß α 0.42 (gemessen) bzw. das dunkle
+Control-Center-Glas. `Apple.bannerPalette(dark)` liefert die Palette.
+Komponenten: `NcCard` (Karte mit Tönung, Haarlinien und Kontaktschatten, `palette`,
+`radius`) und `NcCornerButton` (Schließen-/Minus-Kreis, `label` wächst zur Kapsel)
+— dieselben, die die Mitteilungszentrale nutzt.
+Referenz-Plugin: `~/.config/omarchy/plugins/henri.notifications` (Klon des
+Omarchy-Daemons: Karte in `components/NotificationCard.qml`, Stapel als ListView
+mit add/remove/displaced in `Service.qml`, Blur per `layer_rule` auf
+`omarchy-notifications`).
 
 ## Fenster (Apps)
 

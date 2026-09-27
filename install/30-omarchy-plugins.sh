@@ -46,6 +46,8 @@ done
 #   henri.bar   — clone of omarchy.bar: translucent macOS-style menu bar
 #   henri.workspaces — clone of omarchy.workspaces, occupied workspaces only
 #   henri.clock — clone of omarchy.clock, German day and month names
+#   henri.notifications — clone of omarchy.notifications: macOS-Tahoe-style
+#                 notification banners on apple-ui (Apple.banner)
 #   henri.system-menu — own plugin, macOS-style Apple menu behind the
 #                 Omarchy logo in the bar's left corner
 #   henri.active-window — clone of omarchy.active-window, app name that opens

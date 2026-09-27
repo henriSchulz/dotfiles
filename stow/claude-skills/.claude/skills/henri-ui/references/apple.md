@@ -34,12 +34,13 @@ opakem Grund statt Glas). Für eine App also **nicht** die Control-Center-Kachel
 Kurz: apple-ui wächst pro Fläche mit — jede Fläche bekommt ihre eigenen gemessenen
 Werte, die Popup-Werte sind nur der erste Abschnitt.
 
-**Vorhandene Abschnitte** (Stand 2026-09-26):
+**Vorhandene Abschnitte** (Stand 2026-09-27):
 | Abschnitt | Gemessen an | Referenz-Implementierung |
 |---|---|---|
 | Popup (Tokens oben in `Apple.js`, `--apple-*`) | Control Center | `henri.control-center-v2`, `henri.power` |
 | `Apple.window` / `--apple-win-*` | Finder-Fenster (icon/list/column, `system/finder.*`) | `~/Projects/finder` (GTK4) |
 | `Apple.notificationCenter` / `--apple-nc-*` | Spec-Werte (`spec-mitteilungszentrale-macos.md`), nicht gemessen | `henri.clock/NotificationCenter.qml` |
+| `Apple.banner` / `--apple-bn-*` | Tahoe-Mitteilungsbanner — Apples Support-Screenshot (mac-help `mh40609`, `help.apple.com/assets/…/dde97adb….png`, Erinnerung im Hover-Zustand), Skala 2,17 px/pt über fünf SF-Pro-Textbreiten inkl. Menüleisten-Uhr, Radius per Kreisfit ans Kantenprofil, Tönung per Kanal gegen die Umgebung | `henri.notifications` (Klon von `omarchy.notifications`) |
 | `Apple.spotlight` / `--apple-sp-*` | Spotlight Tahoe — Apples Support-Screenshots (`~/Downloads/f8089fdb…png` Kapsel + Buttons, `ba1156d1…png` aufgeklappt), Skala über SF-Pro-Textbreiten (22/15/13/12 pt), Farben per Pixelmessung; dunkle Palette abgeleitet | `henri.menu` (Quickshell) |
 
 Fenster-Werte in Kürze: Sidebar-Karte 226 pt, Radius 18, 8 pt Einzug, Ampel innen

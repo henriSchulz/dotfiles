@@ -1,10 +1,13 @@
 {
   "bar": {
-    "position": "top",
-    "transparent": false,
-    "lockLayout": true,
     "centerAnchor": "",
+    "id": "henri.bar",
     "layout": {
+      "center": [
+        {
+          "id": "henri.workspaces"
+        }
+      ],
       "left": [
         {
           "id": "henri.system-menu"
@@ -13,38 +16,36 @@
           "id": "henri.active-window"
         }
       ],
-      "center": [
-        {
-          "id": "henri.workspaces"
-        }
-      ],
       "right": [
         {
-          "id": "henri.power",
           "chargeLimitStep": 5,
           "historyHours": "24",
           "historyMetric": "watts",
-          "historyRange": "3h",
+          "historyRange": "30m",
+          "id": "henri.power",
           "showPercentage": true
         },
         {
           "id": "henri.control-center-v2"
         },
         {
-          "id": "henri.clock",
           "format": "ddd d. MMM HH:mm",
           "formatAlt": "d. MMMM 'KW'ww yyyy",
+          "id": "henri.clock",
           "verticalFormat": "HH\n—\nmm"
         }
       ]
     },
-    "id": "henri.bar"
+    "lockLayout": true,
+    "position": "top",
+    "transparent": true
   },
   "cloneSourceRestores": [
     "henri.menu",
     "io.github.sirjul1337.lock-explorer",
     "henri.idle",
-    "henri.background"
+    "henri.background",
+    "henri.notifications"
   ],
   "disabledPlugins": [
     "omarchy.menu",
@@ -53,7 +54,8 @@
     "omarchy.background",
     "evindor.keystroke",
     "io.github.andyweiboan.missioncontrol",
-    "bibek.menu"
+    "bibek.menu",
+    "omarchy.notifications"
   ],
   "idle": {
     "lock": 600,
@@ -67,11 +69,8 @@
       "id": "henri.dictation"
     },
     {
-      "id": "henri.missioncontrol"
-    },
-    {
-      "id": "io.github.sirjul1337.lock-explorer",
-      "design": "poster"
+      "design": "poster",
+      "id": "io.github.sirjul1337.lock-explorer"
     },
     {
       "id": "henri.idle"
@@ -96,6 +95,12 @@
     },
     {
       "id": "omadock"
+    },
+    {
+      "id": "henri.missioncontrol"
+    },
+    {
+      "id": "henri.notifications"
     }
   ],
   "version": 1

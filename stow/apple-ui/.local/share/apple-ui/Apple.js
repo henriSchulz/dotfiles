@@ -398,3 +398,58 @@ var notificationCenter = {
   }
 }
 function ncPalette(dark) { return dark ? notificationCenter.dark : notificationCenter.light }
+
+// ---- Banner: die Mitteilung oben rechts (macOS 26 Tahoe). Gemessen am
+// 2026-09-27 an Apples Support-Screenshot (mac-help mh40609: Erinnerungs-
+// Banner im Hover-Zustand mit Schließen-Kreis und „Options“-Kapsel; Skala
+// 2,17 px/pt über fünf SF-Pro-Textbreiten, Menüleisten-Uhr inklusive).
+// Referenz-Plugin: henri.notifications (Klon des Omarchy-Daemons).
+var banner = {
+  width: 312,            // Karte (gemessen 311)
+  edgeInset: 14,         // zum rechten Bildschirmrand (gemessen 13,8)
+  gap: 8,                // zwischen gestapelten Bannern (nicht gemessen)
+  padding: 12,           // rundum; Text beginnt bei 53 pt (12 + 32 + 10)
+  icon: 32,              // App-Symbol, vertikal zentriert
+  iconGap: 10,
+  badge: 14,             // App-Symbol unten rechts, wenn ein Bild das Symbol ersetzt
+  minHeight: 64,         // gemessen 67 mit Overline + Titel + Text
+  radius: 20,            // Kantenprofil ≈ 40-px-Kreis → 18–20 pt
+  closeButton: 22,       // Schließen-Kreis (gemessen 21,7)
+  closeCenterX: 5,       // Kreismitte ab Kartenecke
+  closeCenterY: 7,
+  capsuleHeight: 22,     // „Options ⌄“ 72 × 22, unten rechts
+  capsulePadX: 12,
+  capsuleRight: 10,
+  capsuleBottom: 6,
+  capsuleReserve: 80,    // Textbreite, die die Kapsel abzieht, wenn Aktionen da sind
+  overlineFont: 11,      // „TIME SENSITIVE“: semibold, Versalien, sekundär
+  titleFont: 13,         // semibold
+  bodyFont: 13,
+  lineHeight: 16,
+  bodyLines: 4,
+  light: {
+    dark: false,
+    tint: "#6bffffff",          // Weiß α 0.42 (gemessen 0.38/0.44/0.45 je Kanal)
+    borderInner: "#73ffffff",   // Weiß α 0.45
+    borderOuter: "#14000000",   // Schwarz α 0.08
+    shadow: "#1f000000",
+    textPrimary: "#d9000000",
+    textSecondary: "#8c000000",
+    capsule: "#0f000000",       // Schwarz α 0.06 (gemessen ≈ 0.05)
+    capsuleHover: "#1a000000",
+    opaque: "#ffececec"         // „Transparenz reduzieren“
+  },
+  dark: {
+    dark: true,
+    tint: "#59292929",          // wie das dunkle Control-Center-Glas (Grau 0.16 α 0.35)
+    borderInner: "#1fffffff",
+    borderOuter: "#80000000",
+    shadow: "#59000000",
+    textPrimary: "#e6ffffff",
+    textSecondary: "#8cffffff",
+    capsule: "#40ffffff",       // Weiß α 0.25 (Control Center, gemessen)
+    capsuleHover: "#59ffffff",
+    opaque: "#ff2a2a2a"
+  }
+}
+function bannerPalette(dark) { return dark ? banner.dark : banner.light }

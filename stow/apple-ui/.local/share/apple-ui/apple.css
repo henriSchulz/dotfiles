@@ -174,6 +174,32 @@
   --apple-nc-opaque: #ececec;
   --apple-nc-blur: 30px;
   --apple-nc-saturate: 180%;
+
+  /* ---- Banner (macOS 26 Tahoe, measured on Apple's support screenshot, see Apple.js `banner`) */
+  --apple-bn-width: 312px;
+  --apple-bn-edge-inset: 14px;
+  --apple-bn-gap: 8px;
+  --apple-bn-padding: 12px;
+  --apple-bn-icon: 32px;
+  --apple-bn-icon-gap: 10px;
+  --apple-bn-min-height: 64px;
+  --apple-bn-radius: 20px;
+  --apple-bn-close: 22px;
+  --apple-bn-capsule-height: 22px;
+  --apple-bn-capsule-pad-x: 12px;
+  --apple-bn-overline: 11px;
+  --apple-bn-title: 13px;
+  --apple-bn-body: 13px;
+  --apple-bn-line-height: 16px;
+  --apple-bn-tint: rgba(255, 255, 255, 0.42);
+  --apple-bn-border-inner: rgba(255, 255, 255, 0.45);
+  --apple-bn-border-outer: rgba(0, 0, 0, 0.08);
+  --apple-bn-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --apple-bn-text-primary: rgba(0, 0, 0, 0.85);
+  --apple-bn-text-secondary: rgba(0, 0, 0, 0.55);
+  --apple-bn-capsule: rgba(0, 0, 0, 0.06);
+  --apple-bn-capsule-hover: rgba(0, 0, 0, 0.10);
+  --apple-bn-opaque: #ececec;
 }
 
 /* dark glass — measured on the real Control Center over a dark wallpaper.
@@ -205,6 +231,15 @@
   --apple-nc-text-secondary: rgba(255, 255, 255, 0.55);
   --apple-nc-capsule: rgba(255, 255, 255, 0.12);
   --apple-nc-opaque: #2a2a2a;
+  --apple-bn-tint: rgba(41, 41, 41, 0.35);
+  --apple-bn-border-inner: rgba(255, 255, 255, 0.12);
+  --apple-bn-border-outer: rgba(0, 0, 0, 0.50);
+  --apple-bn-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --apple-bn-text-primary: rgba(255, 255, 255, 0.90);
+  --apple-bn-text-secondary: rgba(255, 255, 255, 0.55);
+  --apple-bn-capsule: rgba(255, 255, 255, 0.25);
+  --apple-bn-capsule-hover: rgba(255, 255, 255, 0.35);
+  --apple-bn-opaque: #2a2a2a;
 }
 
 /* ready-made surfaces */

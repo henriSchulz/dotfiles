@@ -159,3 +159,24 @@
 @define-color apple_nc_text_primary_dark rgba(255, 255, 255, 0.90);
 @define-color apple_nc_text_secondary_dark rgba(255, 255, 255, 0.55);
 @define-color apple_nc_capsule_dark rgba(255, 255, 255, 0.12);
+
+/* Banner (macOS 26 Tahoe, measured on Apple's support screenshot, see Apple.js `banner`) */
+@define-color apple_bn_tint rgba(255, 255, 255, 0.42);
+@define-color apple_bn_border_inner rgba(255, 255, 255, 0.45);
+@define-color apple_bn_border_outer rgba(0, 0, 0, 0.08);
+@define-color apple_bn_text_primary rgba(0, 0, 0, 0.85);
+@define-color apple_bn_text_secondary rgba(0, 0, 0, 0.55);
+@define-color apple_bn_capsule rgba(0, 0, 0, 0.06);
+@define-color apple_bn_tint_dark rgba(41, 41, 41, 0.35);
+@define-color apple_bn_border_inner_dark rgba(255, 255, 255, 0.12);
+@define-color apple_bn_border_outer_dark rgba(0, 0, 0, 0.50);
+@define-color apple_bn_text_primary_dark rgba(255, 255, 255, 0.90);
+@define-color apple_bn_text_secondary_dark rgba(255, 255, 255, 0.55);
+@define-color apple_bn_capsule_dark rgba(255, 255, 255, 0.25);
+:root {
+  --apple-bn-width: 312px; --apple-bn-edge-inset: 14px; --apple-bn-gap: 8px;
+  --apple-bn-padding: 12px; --apple-bn-icon: 32px; --apple-bn-icon-gap: 10px;
+  --apple-bn-min-height: 64px; --apple-bn-radius: 20px; --apple-bn-close: 22px;
+  --apple-bn-capsule-height: 22px; --apple-bn-capsule-pad-x: 12px;
+  --apple-bn-overline: 11px; --apple-bn-title: 13px; --apple-bn-body: 13px; --apple-bn-line-height: 16px;
+}

@@ -564,41 +564,8 @@ Panel {
 
   // ---- Components ----------------------------------------------------------------------------
 
-  // A floating card: tint, inner highlight hairline, outer hairline, contact shadow.
-  component NcCard: Item {
-    id: card
-    property real radius: root.pt(nc.radiusCard)
-    property alias color: fill.color
-    default property alias content: fill.data
-    Rectangle {
-      // Shadow stand-in (no blur: a soft plate slightly below the card).
-      anchors.fill: fill
-      anchors.topMargin: root.pt(3)
-      anchors.leftMargin: root.pt(1)
-      anchors.rightMargin: root.pt(1)
-      radius: card.radius
-      color: pal.shadow
-    }
-    Rectangle {
-      id: fill
-      anchors.fill: parent
-      radius: card.radius
-      color: Motion.glass ? pal.tint : pal.opaque
-      border.width: 1
-      border.color: pal.borderOuter
-      antialiasing: true
-      Behavior on color { ColorAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
-      Rectangle {
-        anchors.fill: parent
-        anchors.margins: 1
-        radius: parent.radius - 1
-        color: "transparent"
-        border.width: 1
-        border.color: pal.borderInner
-        antialiasing: true
-      }
-    }
-  }
+  // A floating card: the shared apple-ui component with this Center's palette.
+  component NcCard: AUi.NcCard { palette: root.pal }
 
   // Capsule button: "Weniger anzeigen", "Alle löschen", "Widgets bearbeiten".
   component NcCapsule: HUi.Pressable {
@@ -631,49 +598,8 @@ Panel {
     }
   }
 
-  // Round close/minus button that overlaps a card's top-left corner.
-  component NcCornerButton: HUi.Pressable {
-    id: corner
-    property string label: ""
-    property string symbol: root.sf(0x100184)
-    property bool grey: false
-    property real size: root.pt(nc.closeButton)
-    implicitHeight: size
-    implicitWidth: size + (label !== "" && corner.hovered ? labelText.implicitWidth + root.pt(10) : 0)
-    radius: height / 2
-    showFill: false
-    tint: root.ink
-    Behavior on implicitWidth { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
-    Rectangle {
-      anchors.fill: parent
-      radius: corner.radius
-      color: corner.grey ? Apple.systemGray : (Motion.glass ? pal.tint : pal.opaque)
-      border.width: 1
-      border.color: pal.borderOuter
-      Rectangle { anchors.fill: parent; anchors.margins: 1; radius: parent.radius - 1; color: "transparent"; border.width: 1; border.color: pal.borderInner }
-    }
-    Text {
-      x: (corner.size - width) / 2
-      anchors.verticalCenter: parent.verticalCenter
-      text: corner.symbol
-      font.family: root.symbolFont
-      font.pixelSize: corner.size * 0.5
-      font.weight: Font.Bold
-      color: corner.grey ? "#ffffff" : root.ink
-    }
-    Text {
-      id: labelText
-      x: corner.size - root.pt(2)
-      anchors.verticalCenter: parent.verticalCenter
-      text: corner.label
-      font.family: root.uiFont
-      font.pixelSize: root.pt(11)
-      font.weight: Font.DemiBold
-      color: root.ink
-      opacity: corner.label !== "" && corner.hovered ? 1 : 0
-      Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
-    }
-  }
+  // Round close/minus button that overlaps a card's top-left corner (shared apple-ui component).
+  component NcCornerButton: AUi.NcCornerButton { palette: root.pal }
 
   // One app's notifications: collapsed = newest card + up to two strips; expanded = header + all.
   component NcStack: Item {
