@@ -246,11 +246,11 @@ Panel {
     { id: "clock", title: "Uhr", sizes: ["small"] },
     { id: "media", title: "Wiedergabe", sizes: ["medium"] },
     { id: "battery", title: "Batterie", sizes: ["small", "medium"] },
-    { id: "photos", title: "Fotos", sizes: ["small", "medium"] }
+    { id: "photos", title: "Fotos", sizes: ["large"] }
   ]
   readonly property var defaultWidgets: [
     { id: "calendar", size: "small" }, { id: "clock", size: "small" },
-    { id: "media", size: "medium" }, { id: "battery", size: "small" }, { id: "photos", size: "small" }
+    { id: "media", size: "medium" }, { id: "battery", size: "small" }, { id: "photos", size: "large" }
   ]
   ListModel { id: widgetModel }
   function catalogueEntry(id) {
@@ -292,32 +292,36 @@ Panel {
   onSettingsChanged: loadWidgets()
   Component.onCompleted: { loadWidgets(); photosReader.reload() }
 
-  // ---- Photos widget: four tiles with the newest camera photos (the ones
-  // with a location — screenshots and saved images have none) from the
-  // iCloud Photos catalogue. Read-only query against the app's SQLite; the
-  // thumbnails are the app's own cache. Refreshed once the Center has
-  // settled after opening, never during the slide.
+  // ---- Photos widget: one large tile with a random photo from the whole
+  // iCloud Photos library — a new one every time the Center opens and every
+  // photosCycle ms while it stays open.
+  // Read-only query against the app's SQLite; the picture is the app's own
+  // full-res copy when cached, else its thumbnail. Loaded once the Center
+  // has settled after opening, never during the slide.
   readonly property string photosDb: Quickshell.env("HOME") + "/.local/share/icloud-photos/catalog.sqlite"
   readonly property string photosApp: Quickshell.env("HOME") + "/.local/share/icloud-photos/bin/icloud-photos"
-  property var photos: []
+  property var photo: null
   Process {
     id: photosReader
     running: false
     command: ["sqlite3", "-readonly", "-json", root.photosDb,
-      "select id, thumb_path from photos where item_type = 'image' and thumb_path is not null and thumb_path != '' and lat is not null " +
-      "order by coalesce(asset_date, added_date) desc, id desc limit 4"]
+      "select id, case when is_orig_cached = 1 and orig_path is not null and orig_path != '' then orig_path else thumb_path end as src, " +
+      "coalesce(asset_date, added_date) as taken from photos " +
+      "where item_type = 'image' and thumb_path is not null and thumb_path != '' " +
+      "order by random() limit 1"]
     stdout: StdioCollector { id: photosOut; waitForEnd: true }
     function reload() { photosReader.running = false; photosReader.running = true }
     onExited: function(code) {
       if (code !== 0) return
       var list = []
       try { list = JSON.parse(String(photosOut.text || "").trim() || "[]") } catch (e) { list = [] }
-      var out = []
-      for (var i = 0; i < list.length; i++) out.push({ id: String(list[i].id || ""), thumb: String(list[i].thumb_path || "") })
-      root.photos = out
+      var row = list.length > 0 ? list[0] : null
+      root.photo = row && row.src ? { id: String(row.id || ""), src: String(row.src), taken: String(row.taken || "") } : null
     }
   }
   Timer { id: photosSettle; interval: Motion.settleDelay; onTriggered: photosReader.reload() }
+  readonly property int photosCycle: 20000
+  Timer { interval: root.photosCycle; repeat: true; running: root.opened; onTriggered: photosReader.reload() }
   function openPhotos() {
     root.run("omarchy-launch-or-focus de.henri.IcloudPhotos " + Util.shellQuote(root.photosApp))
     root.close()
@@ -1229,18 +1233,19 @@ Panel {
 
   Component {
     id: photosWidget
-    PhotoGrid {
-      readonly property string size: parent ? parent.size : "small"
-      photos: root.photos
-      columns: size === "small" ? 2 : 4
-      rows: size === "small" ? 2 : 1
-      gap: root.pt(2)
+    PhotoTile {
+      photo: root.photo
       radius: root.pt(nc.radiusWidget)
       placeholderColor: pal.capsule
       placeholderInk: root.inkSecondary
       placeholderText: "Keine Fotos"
-      placeholderFont: root.uiFont
-      placeholderFontSize: root.pt(nc.metaFont)
+      captionFont: root.uiFont
+      captionFontSize: root.pt(nc.titleFont)
+      caption: {
+        if (!root.photo || !root.photo.taken) return ""
+        var d = new Date(root.photo.taken)
+        return isNaN(d.getTime()) ? "" : Qt.locale("de_DE").toString(d, "d. MMMM yyyy")
+      }
     }
   }
 
