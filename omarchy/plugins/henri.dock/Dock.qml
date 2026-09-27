@@ -66,6 +66,10 @@ Item {
     loginApps: [],
     // app key (lower-case desktop id) → icon name or absolute path, e.g. a MacTahoe SVG
     iconOverrides: {},
+    // Only apps with a visible desktop entry get a tile (pinned ones always). Windows of
+    // helpers without an entry or with NoDisplay (portal dialogs, agents, nested
+    // compositors) stay out; they remain reachable via the app switcher.
+    showUnknownApps: false,
     // window classes that never appear in the dock (portal dialogs and other helpers)
     ignoredApps: ["xdg-desktop-portal-gtk", "xdg-desktop-portal-gnome", "xdg-desktop-portal-kde", "xdg-desktop-portal-hyprland", "polkit-gnome-authentication-agent-1"]
   })
@@ -291,6 +295,10 @@ Item {
     var fmEntry = lookupEntry(fmId)
     var fmKey = keyFor(fmEntry, fmId)
 
+    var pinnedKeySet = {}
+    pinnedKeySet[fmKey] = true
+    for (var pp = 0; pp < pinnedIds.length; pp++) pinnedKeySet[keyFor(lookupEntry(pinnedIds[pp]), pinnedIds[pp])] = true
+
     // -- running windows grouped by app
     var groups = {}
     var tls = Hyprland.toplevels ? Hyprland.toplevels.values : []
@@ -305,6 +313,7 @@ Item {
       var entry = lookupEntry(appId)
       var key = keyFor(entry, appId)
       if (isIgnoredApp(appId, key)) continue
+      if (settings.showUnknownApps !== true && (!entry || entry.noDisplay) && !pinnedKeySet[key]) continue
       var ws = t.workspace
       var wsName = ws ? String(ws.name || "") : String(ipc.workspace && ipc.workspace.name || "")
       var g = groups[key]
