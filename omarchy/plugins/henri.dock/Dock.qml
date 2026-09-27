@@ -1279,7 +1279,19 @@ Item {
 
   onAutoHideChanged: { if (autoHide) armAutoHide(); else dockHidden = false }
   onHiddenNowChanged: if (!swapAnim.running) hideAnim.go(hiddenNow ? 1 : 0)
-  function toggleDock() { manualHidden = !manualHidden; if (!manualHidden) dockHidden = false; return manualHidden ? "hidden" : "shown" }
+  // Fullscreen: Hyprland draws "top" layers under a fullscreen window, so the
+  // dock vanishes with it. Super+D then lifts both surfaces to the overlay
+  // layer (visible above the window); Super+D again drops them back. When the
+  // fullscreen ends the dock returns to its normal layer by itself.
+  readonly property bool fullscreenActive: Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.hasFullscreen === true : false
+  property bool overFullscreen: false
+  onFullscreenActiveChanged: if (!fullscreenActive) overFullscreen = false
+  function toggleDock() {
+    if (fullscreenActive && !manualHidden) { overFullscreen = !overFullscreen; return overFullscreen ? "shown over fullscreen" : "under fullscreen" }
+    manualHidden = !manualHidden
+    if (!manualHidden) dockHidden = false
+    return manualHidden ? "hidden" : "shown"
+  }
   NumberAnimation {
     id: hideAnim
     target: root
@@ -1384,6 +1396,7 @@ Item {
       }
       if (n === "openwindow" || n === "closewindow" || n === "movewindow" || n === "movewindowv2" || n === "windowtitle" || n === "windowtitlev2"
           || n === "workspace" || n === "workspacev2" || n === "activewindow" || n === "activewindowv2" || n === "configreloaded") root.scheduleRebuild()
+      if (n === "fullscreen" || n === "workspace" || n === "workspacev2" || n === "closewindow") Hyprland.refreshWorkspaces()
     }
   }
   Connections {
@@ -1403,6 +1416,7 @@ Item {
     function toggleAutoHide(): string { root.setSetting("autoHide", !root.autoHide); return root.autoHide ? "hidden" : "shown" }
     function focus(): string { return root.focusDock() }
     function toggle(): string { return root.toggleDock() }
+    function probeOverlayLayer(on: string): string { root.overFullscreen = on === "true"; return String(root.overFullscreen) }
     function requestAttention(appId: string, repeat: int): string {
       var e = root.lookupEntry(appId); var key = root.keyFor(e, appId)
       root.requestAttention(key, repeat); return key
@@ -1423,7 +1437,7 @@ Item {
     function state(): string {
       var rows = []
       for (var i = 0; i < tiles.count; i++) { var t = rep.itemAt(i); var it = root.items[tiles.get(i).itemId]; rows.push(tiles.get(i).itemId + (it && it.running ? "*" : "") + (it && it.gone ? "~" : "") + "@" + (t ? Math.round(t.main) + "/" + Math.round(t.visSize) : "?")) }
-      return JSON.stringify({ position: root.position, tileSize: root.tileSize, bg: [Math.round(root.bgStart), Math.round(root.bgLength)], hidden: root.dockHidden, manualHidden: root.manualHidden, dark: root.dark, hover: root.hoverIndex, menu: root.menuOpen, stack: root.stackOpen, drag: root.dragging, rows: rows })
+      return JSON.stringify({ position: root.position, tileSize: root.tileSize, bg: [Math.round(root.bgStart), Math.round(root.bgLength)], hidden: root.dockHidden, manualHidden: root.manualHidden, fullscreen: root.fullscreenActive, overFullscreen: root.overFullscreen, dark: root.dark, hover: root.hoverIndex, menu: root.menuOpen, stack: root.stackOpen, drag: root.dragging, rows: rows })
     }
     // Test hooks: drive the pointer without a real mouse.
     function probeHover(x: string, y: string): string { root.hovering = true; root.moveTo(Number(x), Number(y), false, 0); root.relayout(); return root.state ? "ok" : "ok" }
@@ -1460,7 +1474,7 @@ Item {
     screen: root.screen
     color: "transparent"
     WlrLayershell.namespace: "henri-dock-overlay"
-    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.layer: root.overFullscreen ? WlrLayer.Overlay : WlrLayer.Top
     WlrLayershell.keyboardFocus: root.kbMode ? WlrKeyboardFocus.Exclusive : (root.popupOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None)
     exclusionMode: ExclusionMode.Ignore
     anchors { top: true; bottom: true; left: true; right: true }
@@ -1643,7 +1657,7 @@ Item {
     screen: root.screen
     color: "transparent"
     WlrLayershell.namespace: "henri-dock"
-    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.layer: root.overFullscreen ? WlrLayer.Overlay : WlrLayer.Top
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Normal
     exclusiveZone: root.autoHide || root.manualHidden ? 0 : Math.round(root.bgThickness)
