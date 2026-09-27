@@ -113,6 +113,41 @@
   --apple-win-disabled: rgba(0, 0, 0, 0.259);
 }
 
+/* ---- Window, dark appearance -------------------------------------------
+   Measured on the dark-mode Finder capture (~/macos-scrape/
+   dark-20260926T081844Z/system/finder.{listView,columnView,infoWindow}),
+   sampled per pixel the same way the light values were. Only colours differ
+   in dark mode; every geometry token above stays as it is.
+
+   Note on the tint: the captured greys carry a slight warm cast (blue is
+   3–4/255 below red and green) because macOS 26 tints window chrome by the
+   wallpaper. That is kept here as measured — at ~1% it is imperceptible, and
+   inventing neutral greys instead would no longer be measured values. */
+:root {
+  --apple-win-dark-bg: #23231f;              /* window + toolbar */
+  --apple-win-dark-content: #23231f;         /* list/icon background */
+  --apple-win-dark-sidebar: #1e1e1b;         /* the sidebar card */
+  --apple-win-dark-sidebar-highlight: rgba(255, 255, 255, 0.06);
+  --apple-win-dark-sidebar-shadow: 0 0 8px rgba(0, 0, 0, 0.35);
+  --apple-win-dark-sidebar-selected: #2f2e2b;
+  --apple-win-dark-capsule-fill: #252520;
+  --apple-win-dark-capsule-shadow: 0 1px 2px rgba(0, 0, 0, 0.30);
+  /* In dark mode the capsule fill is only 2/255 lighter than the bar it sits
+     on; what makes it read is a 1 px stroke, measured at #444 over #232320. */
+  --apple-win-dark-capsule-border: rgba(255, 255, 255, 0.15);
+  --apple-win-dark-popover: #252620;         /* Get Info panel */
+  --apple-win-dark-title-color: #dcdcdb;
+  --apple-win-dark-zebra: #2d2d2a;           /* alternating list row */
+  --apple-win-dark-grid: #393935;            /* column rules, hairlines */
+  --apple-win-dark-line: #393935;
+  --apple-win-dark-ink: rgba(255, 255, 255, 0.85);
+  --apple-win-dark-ink-2: rgba(255, 255, 255, 0.55);
+  --apple-win-dark-disabled: rgba(255, 255, 255, 0.26);
+  /* Derived, not measured: the captures have no inactive window. Mirrors the
+     light value's relationship to its background. */
+  --apple-win-dark-traffic-inactive: #4e4e4a;
+}
+
 /* ---- Spotlight (macOS 26 Tahoe) — see Apple.js `spotlight`, measured on
    Apple's screenshots (light values; dark: fill rgba(40,40,42,0.70), selection
    white 0.15, capsules white 0.12, text 0.90/0.55/0.30 white). */
