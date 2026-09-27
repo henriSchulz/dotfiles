@@ -830,6 +830,12 @@ Item {
             "/usr/local/share/applications/" + id + ".desktop", "/var/lib/flatpak/exports/share/applications/" + id + ".desktop",
             home + "/.local/share/flatpak/exports/share/applications/" + id + ".desktop"]
   }
+  // Folders and trash:/// go straight to the file manager: xdg-open has no
+  // handler for the trash scheme here and falls back to the browser.
+  function openInFileManager(target) {
+    var cands = desktopFileCandidates(settings.fileManager)
+    Quickshell.execDetached(["sh", "-c", 'for c in "$@"; do [ -f "$c" ] && exec gio launch "$c" "$0"; done; exec xdg-open "$0"', target].concat(cands))
+  }
   function openWith(item, paths) {
     var script = 'for f in "$@"; do shift; [ -f "$f" ] && { exec gio launch "$f" "$@"; }; done'
     // the candidate list comes first, paths after a marker handled by the shell loop above
@@ -920,7 +926,7 @@ Item {
     else if (item.kind === "folder") toggleStack(id)
     else if (item.kind === "file") Quickshell.execDetached(["xdg-open", item.path])
     else if (item.kind === "minimizedWindow") restoreWindow(item.address, false)
-    else if (item.kind === "trash") Quickshell.execDetached(["xdg-open", "trash:///"])
+    else if (item.kind === "trash") openInFileManager("trash:///")
   }
   function activateApp(item) {
     clearAttention(item.id)
@@ -1053,7 +1059,7 @@ Item {
     else if (a === "forceQuit") { var pids = {}; var fq = item.windows || []; for (var k = 0; k < fq.length; k++) { var o = fq[k].hypr ? fq[k].hypr.lastIpcObject : null; if (o && o.pid) pids[o.pid] = true } var cmd = ["kill", "-9"]; for (var pk in pids) cmd.push(String(pk)); if (cmd.length > 2) Quickshell.execDetached(cmd) }
     else if (a === "sortBy" || a === "displayAs" || a === "viewAs") updateFolder(item, a === "sortBy" ? "sortBy" : a === "displayAs" ? "displayAs" : "viewContentAs", entry.arg)
     else if (a === "removeDoc") removeDocItem(item)
-    else if (a === "openFolder") Quickshell.execDetached(["xdg-open", item.path])
+    else if (a === "openFolder") openInFileManager(item.path)
     else if (a === "openFile") Quickshell.execDetached(["xdg-open", item.path])
     else if (a === "showFile") Quickshell.execDetached(["nautilus", "--select", item.path])
     else if (a === "toggleMag") setSetting("magnification", !magnificationOn)
@@ -1061,7 +1067,7 @@ Item {
     else if (a === "effect") setSetting("minimizeEffect", entry.arg)
     else if (a === "toggleHide") setSetting("autoHide", !autoHide)
     else if (a === "settings") { settingsOpen = true }
-    else if (a === "openTrash") Quickshell.execDetached(["xdg-open", "trash:///"])
+    else if (a === "openTrash") openInFileManager("trash:///")
     else if (a === "emptyTrash") { Quickshell.execDetached(["gio", "trash", "--empty"]); trashRecount.restart() }
     else if (a === "restore") restoreWindow(item.address, false)
     else if (a === "closeWindow") { if (item.window && item.window.wayland) item.window.wayland.close() }
@@ -1610,7 +1616,7 @@ Item {
           z: 45
           onDismissRequested: root.closeStack()
           onOpenEntry: function (entry) { root.closeStack(); if (entry) Quickshell.execDetached(["xdg-open", entry.path]) }
-          onOpenFolder: { var f = stack.folder; root.closeStack(); if (f) Quickshell.execDetached(["xdg-open", f.path]) }
+          onOpenFolder: { var f = stack.folder; root.closeStack(); if (f) root.openInFileManager(f.path) }
         }
 
         SettingsPanel {
