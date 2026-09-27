@@ -1423,7 +1423,7 @@ Item {
     function state(): string {
       var rows = []
       for (var i = 0; i < tiles.count; i++) { var t = rep.itemAt(i); var it = root.items[tiles.get(i).itemId]; rows.push(tiles.get(i).itemId + (it && it.running ? "*" : "") + (it && it.gone ? "~" : "") + "@" + (t ? Math.round(t.main) + "/" + Math.round(t.visSize) : "?")) }
-      return JSON.stringify({ position: root.position, tileSize: root.tileSize, bg: [Math.round(root.bgStart), Math.round(root.bgLength)], hidden: root.dockHidden, dark: root.dark, hover: root.hoverIndex, menu: root.menuOpen, stack: root.stackOpen, drag: root.dragging, rows: rows })
+      return JSON.stringify({ position: root.position, tileSize: root.tileSize, bg: [Math.round(root.bgStart), Math.round(root.bgLength)], hidden: root.dockHidden, manualHidden: root.manualHidden, dark: root.dark, hover: root.hoverIndex, menu: root.menuOpen, stack: root.stackOpen, drag: root.dragging, rows: rows })
     }
     // Test hooks: drive the pointer without a real mouse.
     function probeHover(x: string, y: string): string { root.hovering = true; root.moveTo(Number(x), Number(y), false, 0); root.relayout(); return root.state ? "ok" : "ok" }
