@@ -468,14 +468,6 @@ Panel {
               // and flip back to "off" right as the Mac was about to answer.
               || Date.now() - root.padOverrideSetAt > 20000))
         root.padOverride = null
-      if (root.padPendingActivate) {
-        if (root.padLinked && !root.padStreaming) {
-          root.wakeTrackpad()
-          root.padPendingActivate = false
-        } else if (Date.now() - root.padPendingActivateSetAt > 20000) {
-          root.padPendingActivate = false
-        }
-      }
       if (root.macModeOverride !== null
           && (root.macModePin === root.macModeOverride
               || Date.now() - root.macModeOverrideSetAt > 6000))
@@ -1195,28 +1187,22 @@ Panel {
   // Turning the receiver on here doesn't put the Mac into trackpad mode --
   // mtsend idles in --wait until its hotkey fires, and the receiver coming
   // up just makes it reachable ("Idle"). So watch for exactly that
-  // transition and fire the same toggle the hotkey would, over SSH: a
-  // signal to an already-running GUI-session process, not a new one
-  // started from an SSH session, so it doesn't hit the no-window-server
-  // limitation. Guarded by a deadline so an unreachable Mac doesn't leave
-  // this armed to fire minutes later.
-  property bool padPendingActivate: false
-  property double padPendingActivateSetAt: 0
+  // transition; mac-do does the work.
+  //
+  // This used to hand-roll the whole sequence here -- start the receiver,
+  // arm a timer, then SSH `pkill -USR1 -x mtsend` at the Mac's Wi-Fi
+  // address -- in parallel with mac-do doing the same thing differently.
+  // Two implementations of one protocol is a trap, and it shut on the
+  // first change: once SIGUSR1 came to mean "on" rather than "toggle",
+  // this file's *off* path was sending "on", and nothing here would have
+  // said so. mac-do owns what on and off mean, including which signal is
+  // which, which address to try first, and releasing the Mac's own pointer
+  // before the receiver goes away.
   function toggleTrackpad() {
     var goingUp = !padOn
     padOverride = goingUp
     padOverrideSetAt = Date.now()
-    padPendingActivate = goingUp
-    padPendingActivateSetAt = Date.now()
-    // Turning it off here only stops the local receiver -- if the Mac is
-    // still actively grabbed (streaming), leaving it there traps its own
-    // pointer and keyboard with nothing on this end to send them to. Same
-    // toggle as activating, just the other direction.
-    if (!goingUp && padStreaming) wakeTrackpad()
-    run(goingUp ? "systemctl --user start mtbridge" : "systemctl --user stop mtbridge")
-  }
-  function wakeTrackpad() {
-    run("ssh -o ConnectTimeout=3 -o BatchMode=yes henrischulz@192.168.178.126 pkill -USR1 -x mtsend")
+    run("~/.local/bin/mac-do input " + (goingUp ? "on" : "off"))
   }
   function launchMacScreen() { close(); run("omarchy-launch-or-focus gst-launch-1.0 'setsid -f mac-stream'") }
   function toggleMacScreen() {
