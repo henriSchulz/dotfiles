@@ -64,6 +64,24 @@ input_stream()    { kv "$RUN/status" stream; }
 input_reachable() { kv "$RUN/status" reachable; }
 input_route()     { local r; r=$(input_stream); [[ -n $r ]] || r=$(input_transport); echo "$r"; }
 mac_sender_alive() { mode_fresh && [[ $(kv "$RUN/macmode" mtsend) == 1 ]]; }
+
+# The sender pings on a timer whether or not it is capturing, so `linked`
+# only ever proved the process was alive over there. This is the question
+# that actually matters: is it reading the trackpad. A sender too old to say
+# reports "unknown", and then the weaker old proof is all there is.
+input_sender()      { kv "$RUN/status" sender; }
+input_capturing()   { input_linked && [[ $(input_sender) == capturing ]]; }
+input_sender_says() { local v; v=$(input_sender); [[ $v == capturing || $v == idle ]]; }
+input_really_on()   { if input_sender_says; then input_capturing; else input_linked; fi; }
+
+# The LaunchAgent is what puts mtsend inside the logged-in desktop session;
+# kickstart is the only door in from SSH, which has no window server of its
+# own. Without -k, so a sender that is already running is left alone.
+mac_sender_start()      { mac_ssh 'launchctl kickstart gui/$(id -u)/com.mtbridge.mtsend' >/dev/null 2>&1; }
+# On and off, not toggle: a toggle sent over a network cannot be made
+# idempotent, and a lost reply would leave the two ends disagreeing.
+mac_sender_activate()   { mac_ssh pkill -USR1 -x mtsend >/dev/null 2>&1; }
+mac_sender_deactivate() { mac_ssh pkill -USR2 -x mtsend >/dev/null 2>&1; }
 input_service()   { systemctl --user is-active --quiet mtbridge; }
 screen_on()       { fresh "$RUN/screen" 6; }
 mode_fresh()      { fresh "$RUN/macmode" 40; }
@@ -155,6 +173,8 @@ overall_text() {
   [[ -n $route ]] || { mac_sender_alive && route=$(kv "$RUN/macmode" transport); }
   if input_streaming || screen_on; then echo "Connected${route:+ over $route}"
   elif input_service && ! input_linked; then echo "Connecting …"
+  elif input_capturing; then echo "Idle${route:+ · $route}"
+  elif input_linked && [[ $(input_sender) == idle ]]; then echo "Mac ready · not capturing"
   elif input_linked; then echo "Idle${route:+ · $route}"
   # Nothing may read as a working link unless both halves have spoken to each
   # other. "Idle" used to cover the case where sshd merely found an mtsend
@@ -169,21 +189,40 @@ overall_text() {
 
 # ---- operations -------------------------------------------------------------
 input_on() {
-  if input_linked; then notify "Mac input is on" "Trackpad and keyboard arrive over $(input_route)."; return; fi
+  if input_really_on; then notify "Mac input is on" "Trackpad and keyboard arrive over $(input_route)."; return; fi
   systemctl --user start mtbridge
   notify "Connecting Mac input …" "Waiting for the MacBook to answer."
-  if wait_for 15 input_linked; then
-    notify "Mac input on" "Trackpad and keyboard arrive over $(input_route)."
-  else
+
+  # Starting the receiver here and hoping was the whole of this before, which
+  # left the switch on with nothing running on the Mac to answer it. Start the
+  # sender over there too.
+  mac_sender_start
+  if ! wait_for 15 input_linked; then
     fail "Mac input didn't connect" "No answer from the MacBook. The receiver keeps listening -- check that the Mac is awake and mt-bridge runs there."
+    return
   fi
+
+  # Linked only means the process is there. It can sit in --wait with nothing
+  # grabbed and nothing read, which is exactly the state that used to show up
+  # here as a working connection.
+  if ! input_really_on; then
+    mac_sender_activate
+    if ! wait_for 8 input_really_on; then
+      fail "The Mac answers but isn't capturing" "mtsend is running there and did not start reading the trackpad. Check ~/Library/Logs/mtbridge.log on the Mac."
+      return
+    fi
+  fi
+  notify "Mac input on" "Trackpad and keyboard arrive over $(input_route)."
 }
 
 input_off() {
   if ! input_service && ! input_linked; then notify "Mac input is off" ""; return; fi
   # Turning the receiver off while the Mac is still grabbed would trap its own
   # pointer and keyboard there with nowhere to send them: release it first.
-  input_streaming && mac_ssh pkill -USR1 -x mtsend >/dev/null 2>&1
+  # This used to send SIGUSR1, which mtsend had no handler for -- so the
+  # "release" killed the sender outright, and turning input off here was how
+  # the app died over there.
+  input_linked && mac_sender_deactivate
   systemctl --user stop mtbridge
   notify "Mac input off" "Trackpad and keyboard stay with the Mac."
 }

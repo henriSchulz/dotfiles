@@ -88,11 +88,25 @@ Panel {
   readonly property bool padKeyboard: padStream.keyboard === "1"
   readonly property int padKeysHeld: Number(padStream.keys_held || 0)
   readonly property bool padLinked: padStream.linked === "1"
+  // What the sender says it is doing: "capturing", "idle", or "unknown" from
+  // one too old to say. linked cannot answer this -- mtsend pings on a timer
+  // whether or not it is reading the trackpad -- and the difference is
+  // whether the pointer will move at all.
+  readonly property string padSender: padStream.sender || ""
+  readonly property bool padSenderSays: padSender === "capturing" || padSender === "idle"
+  readonly property bool padCapturing: padLinked && padSender === "capturing"
   // A real handshake with the Mac, not just the local receiver being alive --
   // the switch must never read "on" while nothing has actually connected.
   // While it's on its way there (override "on" and not yet linked), that's a
   // loading state, never a false "on".
+  // A sender sitting in --wait, grabbing nothing and reading nothing, is not
+  // a connection however cheerfully it answers pings. Older senders cannot
+  // say, and for those the weaker old proof is all there is.
   readonly property bool padConnected: padBridgeUp && padLinked
+    && (padSenderSays ? padCapturing : true)
+  // Linked, but explicitly not capturing: its own state, so the panel can
+  // say so instead of showing a switch that is on while nothing is read.
+  readonly property bool padSenderIdle: padBridgeUp && padLinked && padSender === "idle"
   readonly property bool padConnecting: padOverride === true && !padConnected
   readonly property bool padOn: padConnected && padOverride !== false
   // While frames are flowing the stream's own link is the honest answer;
@@ -102,6 +116,7 @@ Panel {
     : padConnected ? (padStreaming ? (padRoute !== "" ? "Over " + padRoute : "Connected")
       : (padRoute !== "" ? "Idle · " + padRoute : "Connected"))
     : !padBridgeUp ? "Off"
+    : padSenderIdle ? "The Mac answers but isn't capturing"
     // The receiver is up and the Mac is not answering it: a cable that is
     // merely plugged in proves nothing, so say which half is missing rather
     // than the bare "not connected" that sent us looking at the wrong end.
@@ -192,6 +207,7 @@ Panel {
   readonly property string macOverall: (padStreaming || screenOn) ? "connected"
     : padConnecting ? "connecting"
     : padConnected ? "idle"
+    : padSenderIdle ? "not-capturing"
     : macSenderAlive ? (padBridgeUp ? "no-answer" : "receiver-off")
     : macModeFresh ? "sender-off"
     : "offline"
@@ -199,6 +215,7 @@ Panel {
     : macOverall === "connecting" ? "Connecting …"
     : macOverall === "idle" ? "Idle"
     : macOverall === "receiver-off" ? "Receiver off"
+    : macOverall === "not-capturing" ? "Not capturing"
     : macOverall === "no-answer" ? "No answer"
     : macOverall === "sender-off" ? "Bridge off on the Mac"
     : "Offline"
@@ -206,6 +223,7 @@ Panel {
   // turned off on purpose, so it is not an alarm either.
   readonly property bool macOverallWrong: macOverall === "no-answer"
     || macOverall === "sender-off" || macOverall === "offline"
+    || macOverall === "not-capturing"
   // Which physical link is actually carrying it -- the pad's own transport
   // beats the screen's (it's pinged continuously, so it's known even while
   // idle). With the receiver stopped neither exists, and this used to fill
@@ -234,6 +252,8 @@ Panel {
     : macOverall === "receiver-off" ? "The Mac is ready"
         + (macRoute !== "" ? " over " + macRoute : "")
         + ", but the receiver on this machine is stopped. Turn Input on."
+    : macOverall === "not-capturing" ? "mtsend is running on the Mac and answering, but it is not "
+        + "reading the trackpad -- it is sitting idle. Turning Input on here wakes it."
     : macOverall === "no-answer" ? "The receiver is listening and the Mac is not answering it. "
         + "mtsend is running there, so this is the link, not the app."
     : macOverall === "sender-off" ? "The Mac answers, but mt-bridge isn't running there."
