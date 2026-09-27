@@ -849,7 +849,15 @@ Item {
     relayout()
     pressPoint = { m: m, c: c }
     pressMoved = false
-    if (popupOpen) return
+    if (popupOpen) {
+      // An open stack closes on any dock click; on its own tile the click is
+      // only that (toggle), elsewhere it goes on as a normal press.
+      if (stackOpen && !menuOpen && !settingsOpen) {
+        var same = hoverIndex >= 0 && tiles.get(hoverIndex).itemId === stackItemId
+        closeStack()
+        if (same) return
+      } else return
+    }
     if (hoverIndex < 0) return
     if (button === Qt.RightButton || (mods & Qt.ControlModifier)) { openMenuFor(hoverIndex); return }
     if (hoverSeparator) { resizing = true; resizeStart = tileSize; resizeCross = c; return }
@@ -1478,6 +1486,16 @@ Item {
         anchors.fill: parent
         Accessible.role: Accessible.ToolBar
         Accessible.name: "Dock"
+
+        // A click anywhere else on the screen closes an open stack (its fan
+        // has no surface of its own for HUi.Reveal's outside-click catcher).
+        MouseArea {
+          anchors.fill: parent
+          z: -1
+          enabled: root.stackOpen && !root.menuOpen && !root.settingsOpen
+          acceptedButtons: Qt.AllButtons
+          onPressed: root.closeStack()
+        }
 
         // Off-screen vault for window snapshots (ShaderEffectSource reads them
         // as textures; the clip keeps them invisible).
