@@ -185,3 +185,9 @@ if low_power_render then
     decoration = { blur = { passes = 2, size = 8 } },
   })
 end
+
+-- System Settings (omarchy-settings, ~/Projects/settings): a macOS-27-shaped
+-- settings window. Fixed 715 × 640 pt like the original, floating and
+-- centred; its sidebar is translucent, so it gets the compositor blur.
+hl.window_rule({ match = { title = "^System Settings$" }, float = true, size = "715 640", center = true })
+hl.window_rule({ match = { title = "^System Settings$" }, opacity = "1.0 override" })
