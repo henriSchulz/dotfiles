@@ -192,7 +192,7 @@ Panel {
     : macOverall === "idle" ? "The Mac is reachable, but nothing is streaming right now."
     : macModeFresh ? "The Mac answers, but mt-bridge isn't running there."
     : "No cable and no answer over the network. Check that the Mac is awake."
-  readonly property var macPages: ["trackpad", "screen", "macbattery"]
+  readonly property var macPages: ["trackpad", "screen", "macpower", "macbattery"]
   function backPage() { return macPages.indexOf(page) >= 0 ? "mac" : "main" }
   function goBack() { page = backPage() }
 
@@ -2965,22 +2965,6 @@ Panel {
             }
 
             AUi.Separator { width: macPage.innerWidth }
-            AUi.SectionLabel { leftPadding: 0; text: "Power" }
-            AUi.SwitchRow {
-              width: macPage.innerWidth
-              title: "Power over the cable"
-              caption: root.macPowerSubtitle
-              checked: root.macPowerOn
-              onToggled: function(on) { root.setMacPower(on ? "to-mac" : "off") }
-            }
-            AUi.Caption {
-              width: macPage.innerWidth
-              text: "Off makes the Mac ignore the cable and run on its own battery, so nothing leaves this port. "
-                + "Below 15 % it tops itself up to 40 % and lets go again. On charges the Mac at 15 W. "
-                + "The other way round is not offered: this machine won't draw from the Mac's 7.5 W, but its battery icon would claim it does."
-            }
-
-            AUi.Separator { width: macPage.innerWidth }
             AUi.SectionLabel { leftPadding: 0; text: "More" }
             AUi.ListRow {
               enterDelay: root.rowDelay(0)
@@ -3007,6 +2991,18 @@ Panel {
             }
             AUi.ListRow {
               enterDelay: root.rowDelay(2)
+              icon: root.sf(0x1001A8)
+              active: root.macPowerOn
+              busy: root.macPowerOverride !== null
+              badgeToggles: true
+              title: "Power"
+              subtitle: root.macPowerSubtitle
+              trailing: root.sf(0x10018A)
+              onClicked: root.showPage("macpower")
+              onToggled: root.setMacPower(root.macPowerOn ? "off" : "to-mac")
+            }
+            AUi.ListRow {
+              enterDelay: root.rowDelay(3)
               icon: root.sf(0x100657)
               active: root.battFresh && root.battLatest.status === "Charging"
               title: "Battery"
@@ -3148,6 +3144,35 @@ Panel {
                 : "--"
             }
           }
+        }
+
+        // Mac Power -- the USB-PD direction on the cable, one switch and the why.
+        AUi.PageHeader { visible: root.detailPage === "macpower"; title: "Power"; onBack: root.page = "mac" }
+        AUi.Separator { visible: root.detailPage === "macpower" }
+        PageBody {
+          id: powerPage
+          visible: root.detailPage === "macpower"
+          spacing: root.pt(10)
+          AUi.UsageHeader {
+            width: powerPage.innerWidth
+            title: "Right now"
+            value: root.macPowerOverride !== null ? "Applying…" : root.macPowerOn ? "Linux → Mac" : "Off"
+            valueColor: root.macPowerOn ? root.m.accent : root.m.inkMuted
+          }
+          AUi.SwitchRow {
+            width: powerPage.innerWidth
+            title: "Power over the cable"
+            caption: root.macPowerSubtitle
+            checked: root.macPowerOn
+            onToggled: function(on) { root.setMacPower(on ? "to-mac" : "off") }
+          }
+          AUi.Caption {
+            width: powerPage.innerWidth
+            text: "Off makes the Mac ignore the cable and run on its own battery, so nothing leaves this port. "
+              + "Below 15 % it tops itself up to 40 % and lets go again. On charges the Mac at 15 W. "
+              + "The other way round is not offered: this machine won't draw from the Mac's 7.5 W, but its battery icon would claim it does."
+          }
+          Item { width: 1; height: root.pt(4) }
         }
 
         // Mac Input
