@@ -65,7 +65,9 @@ Item {
     files: [],
     loginApps: [],
     // app key (lower-case desktop id) → icon name or absolute path, e.g. a MacTahoe SVG
-    iconOverrides: {}
+    iconOverrides: {},
+    // window classes that never appear in the dock (portal dialogs and other helpers)
+    ignoredApps: ["xdg-desktop-portal-gtk", "xdg-desktop-portal-gnome", "xdg-desktop-portal-kde", "xdg-desktop-portal-hyprland", "polkit-gnome-authentication-agent-1"]
   })
   property var settings: defaults
   property bool settingsLoaded: false
@@ -250,6 +252,12 @@ Item {
     if (id) { tries.push(id); tries.push(id.toLowerCase()); tries.push(DockModel.shortId(id).toLowerCase()) }
     return iconFor(tries)
   }
+  function isIgnoredApp(appId, key) {
+    var list = Array.isArray(settings.ignoredApps) ? settings.ignoredApps : []
+    var a = DockModel.lower(appId)
+    for (var i = 0; i < list.length; i++) { var x = DockModel.lower(list[i]); if (x === a || x === key) return true }
+    return false
+  }
   function iconOverride(key) {
     var o = settings.iconOverrides
     if (!o || typeof o !== "object") return ""
@@ -296,6 +304,7 @@ Item {
       if (!appId) continue
       var entry = lookupEntry(appId)
       var key = keyFor(entry, appId)
+      if (isIgnoredApp(appId, key)) continue
       var ws = t.workspace
       var wsName = ws ? String(ws.name || "") : String(ipc.workspace && ipc.workspace.name || "")
       var g = groups[key]
@@ -322,7 +331,9 @@ Item {
       if (!groups[ro[r]]) {
         var goneKey = ro[r]
         ro.splice(r, 1)
-        if (old["app:" + goneKey] && !old["app:" + goneKey].pinned) {
+        // helpers with NoDisplay desktop entries (portal dialogs …) never become recents
+        var goneItem = old["app:" + goneKey]
+        if (goneItem && !goneItem.pinned && !(goneItem.entry && goneItem.entry.noDisplay)) {
           var rec = recents.filter(function (x) { return x.key !== goneKey })
           rec.unshift({ key: goneKey, entryId: old["app:" + goneKey].entryId || "", appId: old["app:" + goneKey].appId || "" })
           recents = rec.slice(0, 3)
