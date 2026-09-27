@@ -1,0 +1,58 @@
+#!/bin/bash
+# Remove virtual (headless) outputs that no longer belong to a running test and
+# bring their workspaces back to a real display.
+#
+# Why this exists: `hyprctl output create headless` makes an output that is
+# invisible but otherwise real. Hyprland hands it the lowest free workspace ID
+# right away — usually 2. Switching to that workspace then moves the focus to
+# the invisible output: the screen does not change, while the bar reports the
+# new workspace, and windows opened there are never seen. A leftover output
+# survives every shell restart, which is why the session used to need a reboot.
+#
+# A virtual output has no EDID, so make, model and description are all empty;
+# real connectors report at least a make. The last remaining output is never
+# removed — in a session without any real display it is all there is.
+#
+#   hypr-ghost-monitor-clean          remove them, report what came back
+#   hypr-ghost-monitor-clean --list   only report, change nothing
+set -euo pipefail
+
+list_only=false
+[[ ${1:-} == --list ]] && list_only=true
+
+monitors=$(hyprctl -j monitors) || { echo "Hyprland is not reachable." >&2; exit 1; }
+ghosts=$(jq -r '.[] | select(.make == "" and .model == "" and .description == "") | .name' <<<"$monitors")
+real=$(jq -r '.[] | select(.make != "" or .model != "" or .description != "") | .name' <<<"$monitors")
+
+if [[ -z $ghosts ]]; then
+  echo "No ghost monitors. Workspaces are all on real displays."
+  exit 0
+fi
+
+echo "Ghost monitors:"
+while read -r name; do
+  [[ -n $name ]] || continue
+  ws=$(jq -r --arg m "$name" '[.[] | select(.monitor == $m) | "\(.id) (\(.windows) windows)"] | join(", ") // ""' <<<"$(hyprctl -j workspaces)")
+  echo "  $name — workspaces: ${ws:-none}"
+done <<<"$ghosts"
+
+$list_only && exit 0
+
+if [[ -z $real ]]; then
+  echo "Refusing to remove them: no real display left in this session." >&2
+  exit 1
+fi
+
+# Where to land afterwards: the workspace currently shown on a real display.
+home_ws=$(jq -r --arg m "$(head -1 <<<"$real")" '.[] | select(.name == $m) | .activeWorkspace.id' <<<"$monitors")
+
+while read -r name; do
+  [[ -n $name ]] || continue
+  hyprctl output remove "$name" >/dev/null && echo "Removed $name"
+done <<<"$ghosts"
+
+sleep 0.3
+[[ -n $home_ws ]] && hyprctl dispatch "hl.dsp.focus({ workspace = $home_ws })" >/dev/null || true
+
+echo "Workspaces now:"
+hyprctl -j workspaces | jq -r 'sort_by(.id)[] | "  \(.id) on \(.monitor) — \(.windows) windows"'
