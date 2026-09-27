@@ -334,8 +334,14 @@ Panel {
   Timer { id: photosSettle; interval: Motion.settleDelay; onTriggered: photosReader.reload() }
   readonly property int photosCycle: 20000
   Timer { interval: root.photosCycle; repeat: true; running: root.opened; onTriggered: photosReader.reload() }
+  // The photo the tile shows opens in the app (`icloud-photos --open <id>`):
+  // a running instance takes the id over D-Bus and presents its window,
+  // which Hyprland's focus_on_activate brings to the front. No photo → the
+  // app just opens.
   function openPhotos() {
-    root.run("omarchy-launch-or-focus de.henri.IcloudPhotos " + Util.shellQuote(root.photosApp))
+    var id = root.photo && root.photo.id ? String(root.photo.id) : ""
+    if (id !== "") root.run("setsid -f " + Util.shellQuote(root.photosApp) + " --open " + Util.shellQuote(id))
+    else root.run("omarchy-launch-or-focus de.henri.IcloudPhotos " + Util.shellQuote(root.photosApp))
     root.close()
   }
 
