@@ -65,6 +65,10 @@ Panel {
   readonly property int gap: pt(nc.gap)
   readonly property int smallW: Math.floor((columnWidth - gap) / 2)
   readonly property int smallH: pt(nc.widgetSmall)
+  // The corner buttons (close / "Clear All", edit-mode minus) overhang a
+  // card's top-left corner; the scroller clips, so the column keeps this
+  // much room on its left and top for them.
+  readonly property int overhang: Math.max(0, Math.ceil(pt(bn.closeButton) / 2 - pt(Math.min(bn.closeCenterX, bn.closeCenterY)))) + pt(1)
 
   // ---- open / close (same contract as the calendar Panel)
   function open() {
@@ -392,9 +396,9 @@ Panel {
     padding: 0
     cardColor: "transparent"
     borderSpec: Border.none()
-    contentWidth: panel.fittedContentWidth(root.columnWidth)
+    contentWidth: panel.fittedContentWidth(root.columnWidth + root.overhang)
     contentHeight: panel.availableCardHeight > 0 ? Math.round(panel.availableCardHeight) : root.pt(600)
-    revealFromX: root.columnWidth + root.inset
+    revealFromX: root.columnWidth + root.overhang + root.inset
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -410,7 +414,7 @@ Panel {
         id: scroller
         anchors.fill: parent
         contentWidth: width
-        contentHeight: column.implicitHeight + root.inset
+        contentHeight: column.implicitHeight + root.overhang + root.inset
         clip: true
         boundsBehavior: Flickable.DragAndOvershootBounds
         flickDeceleration: Motion.flickDeceleration
@@ -443,7 +447,9 @@ Panel {
 
         Column {
           id: column
-          width: scroller.width
+          x: root.overhang
+          y: root.overhang
+          width: scroller.width - root.overhang
           spacing: root.gap
           move: Transition {
             NumberAnimation { properties: "x,y"; duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
@@ -687,20 +693,29 @@ Panel {
     }
     Timer { id: dismissDelay; interval: Motion.exit(Motion.slow); onTriggered: root.dismissEntries(stack.allItems()) }
 
-    // Strips behind the top card (collapsed group).
-    Repeater {
-      model: stack.group && !stack.expanded ? Math.min(2, stack.count - 1) : 0
-      delegate: NcNoteCard {
-        required property int index
-        readonly property int level: index + 1
-        width: stack.width
-        height: root.pt(bn.minHeight)
-        y: topCard.h - height + root.pt(nc.stripOffset) * level
-        transformOrigin: Item.Top
-        scale: level === 1 ? nc.stripScale2 : nc.stripScale3
-        opacity: level === 1 ? nc.stripAlpha2 : nc.stripAlpha3
-        z: -level
-        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+    // Strips behind the top card (collapsed group): only the slice below the
+    // card is drawn — the glass is translucent, a whole card behind it would
+    // tint the front one's lower half.
+    Item {
+      y: topCard.h
+      width: stack.width
+      height: root.pt(nc.stripOffset) * 2
+      clip: true
+      z: -1
+      Repeater {
+        model: stack.group && !stack.expanded ? Math.min(2, stack.count - 1) : 0
+        delegate: NcNoteCard {
+          required property int index
+          readonly property int level: index + 1
+          readonly property real shrink: level === 1 ? nc.stripScale2 : nc.stripScale3
+          width: Math.round(stack.width * shrink)
+          x: Math.round((stack.width - width) / 2)
+          height: root.pt(bn.minHeight)
+          y: -height + root.pt(nc.stripOffset) * level
+          opacity: level === 1 ? nc.stripAlpha2 : nc.stripAlpha3
+          z: -level
+          Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        }
       }
     }
 
