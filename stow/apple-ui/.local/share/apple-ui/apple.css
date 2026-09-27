@@ -398,3 +398,41 @@
 }
 @supports not (backdrop-filter: blur(1px)) { .apple-sp-glass { background: var(--apple-sp-opaque-fill); } }
 @media (prefers-reduced-transparency: reduce) { .apple-sp-glass { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--apple-sp-opaque-fill); } }
+
+/* System Settings window (macOS 27, spec values — see Apple.js `settings`) */
+:root {
+  --apple-st-width: 715px; --apple-st-height: 640px; --apple-st-min-height: 440px;
+  --apple-st-sidebar: 215px; --apple-st-toolbar: 52px;
+  --apple-st-row: 28px; --apple-st-row-tile: 20px; --apple-st-row-tile-radius: 5px; --apple-st-selection-radius: 7px;
+  --apple-st-content-pad: 20px; --apple-st-content-width: 460px; --apple-st-content-max: 620px;
+  --apple-st-group-radius: 10px; --apple-st-group-gap: 16px; --apple-st-row-min: 32px; --apple-st-row-pad: 14px;
+  --apple-st-control: 22px; --apple-st-control-radius: 6px; --apple-st-menu-radius: 12px; --apple-st-menu-row: 22px;
+  --apple-st-popover-radius: 10px; --apple-st-sheet-radius: 12px; --apple-st-card-radius: 8px;
+  --apple-st-switch: 26px 15px; --apple-st-switch-knob: 13px; --apple-st-checkbox: 14px; --apple-st-slider-knob: 20px;
+  --apple-st-badge: 16px; --apple-st-scrollbar: 7px; --apple-st-focus-ring: 3.5px;
+  --apple-st-window-bg: #ececec; --apple-st-sidebar-tint: rgba(242, 242, 242, 0.62);
+  --apple-st-group-fill: rgba(255, 255, 255, 0.60); --apple-st-group-stroke: rgba(0, 0, 0, 0.08);
+  --apple-st-row-separator: rgba(0, 0, 0, 0.07); --apple-st-separator: rgba(0, 0, 0, 0.10);
+  --apple-st-label: rgba(0, 0, 0, 0.85); --apple-st-label-secondary: rgba(0, 0, 0, 0.50);
+  --apple-st-label-tertiary: rgba(0, 0, 0, 0.26); --apple-st-label-quaternary: rgba(0, 0, 0, 0.10);
+  --apple-st-accent: #007aff; --apple-st-selection-inactive: rgba(0, 0, 0, 0.10);
+  --apple-st-control-bg: #ffffff; --apple-st-control-stroke: rgba(0, 0, 0, 0.12); --apple-st-control-pressed: rgba(0, 0, 0, 0.08);
+  --apple-st-switch-off: #e9e9ea; --apple-st-slider-track: rgba(0, 0, 0, 0.10); --apple-st-chevron-badge: rgba(0, 0, 0, 0.06);
+  --apple-st-inactive-dim: rgba(0, 0, 0, 0.08); --apple-st-link: #0068da; --apple-st-destructive: #ff3b30;
+  --apple-st-menu: rgba(246, 246, 246, 0.72); --apple-st-sheet: rgba(240, 240, 240, 0.85);
+  --apple-st-shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.20); --apple-st-shadow-popover: 0 6px 18px rgba(0, 0, 0, 0.18);
+  --apple-st-shadow-sheet: 0 12px 36px rgba(0, 0, 0, 0.25);
+}
+.apple-dark {
+  --apple-st-window-bg: #2a2a2a; --apple-st-sidebar-tint: rgba(30, 30, 30, 0.70);
+  --apple-st-group-fill: rgba(255, 255, 255, 0.05); --apple-st-group-stroke: rgba(255, 255, 255, 0.08);
+  --apple-st-row-separator: rgba(255, 255, 255, 0.08); --apple-st-separator: rgba(255, 255, 255, 0.10);
+  --apple-st-label: rgba(255, 255, 255, 0.85); --apple-st-label-secondary: rgba(255, 255, 255, 0.55);
+  --apple-st-label-tertiary: rgba(255, 255, 255, 0.25); --apple-st-label-quaternary: rgba(255, 255, 255, 0.10);
+  --apple-st-accent: #0a84ff; --apple-st-selection-inactive: rgba(255, 255, 255, 0.12);
+  --apple-st-control-bg: rgba(255, 255, 255, 0.10); --apple-st-control-stroke: rgba(255, 255, 255, 0.10); --apple-st-control-pressed: rgba(255, 255, 255, 0.10);
+  --apple-st-switch-off: rgba(255, 255, 255, 0.24); --apple-st-slider-track: rgba(255, 255, 255, 0.18); --apple-st-chevron-badge: rgba(255, 255, 255, 0.10);
+  --apple-st-inactive-dim: rgba(0, 0, 0, 0.12); --apple-st-link: #419cff; --apple-st-destructive: #ff453a;
+  --apple-st-menu: rgba(44, 44, 46, 0.72); --apple-st-sheet: rgba(38, 38, 38, 0.85);
+  --apple-st-shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.55);
+}

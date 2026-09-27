@@ -35,6 +35,9 @@ FocusScope {
   property color selectedBackground: Color.menu.selectedBackground
   property color selectedText: Color.menu.selectedText
   property color hairline: Util.alpha(Color.foreground, Motion.hairlineAlpha)
+  // Corner radius of the selected row. macOS draws a small one (5 pt);
+  // the default keeps henri-ui's row radius for existing callers.
+  property real itemRadius: Style.space(Motion.radiusRow)
   property bool flashing: false
   // Row whose submenu is open: stays highlighted while the pointer is elsewhere.
   property int lockedIndex: -1
@@ -118,6 +121,7 @@ FocusScope {
   Highlight {
     id: hl
     glide: false
+    radius: root.itemRadius
     color: root.selectedBackground           // theme-authored (cupertino: blue)
     target: root.highlightIndex >= 0 ? rep.itemAt(root.highlightIndex) : null
   }

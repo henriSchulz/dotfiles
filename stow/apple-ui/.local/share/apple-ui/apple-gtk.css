@@ -206,3 +206,30 @@
   --apple-dock-menu-min-width: 180px;
 }
 
+
+/* System Settings window (macOS 27, spec values — see Apple.js `settings`) */
+@define-color apple_st_window_bg #ececec;
+@define-color apple_st_sidebar_tint rgba(242, 242, 242, 0.62);
+@define-color apple_st_group_fill rgba(255, 255, 255, 0.60);
+@define-color apple_st_group_stroke rgba(0, 0, 0, 0.08);
+@define-color apple_st_row_separator rgba(0, 0, 0, 0.07);
+@define-color apple_st_separator rgba(0, 0, 0, 0.10);
+@define-color apple_st_label rgba(0, 0, 0, 0.85);
+@define-color apple_st_label_secondary rgba(0, 0, 0, 0.50);
+@define-color apple_st_accent #007aff;
+@define-color apple_st_control_bg #ffffff;
+@define-color apple_st_control_stroke rgba(0, 0, 0, 0.12);
+@define-color apple_st_switch_off #e9e9ea;
+@define-color apple_st_window_bg_dark #2a2a2a;
+@define-color apple_st_sidebar_tint_dark rgba(30, 30, 30, 0.70);
+@define-color apple_st_group_fill_dark rgba(255, 255, 255, 0.05);
+@define-color apple_st_group_stroke_dark rgba(255, 255, 255, 0.08);
+@define-color apple_st_label_dark rgba(255, 255, 255, 0.85);
+@define-color apple_st_label_secondary_dark rgba(255, 255, 255, 0.55);
+@define-color apple_st_accent_dark #0a84ff;
+:root {
+  --apple-st-width: 715px; --apple-st-sidebar: 215px; --apple-st-toolbar: 52px; --apple-st-row: 28px;
+  --apple-st-content-pad: 20px; --apple-st-group-radius: 10px; --apple-st-group-gap: 16px;
+  --apple-st-row-min: 32px; --apple-st-row-pad: 14px; --apple-st-control: 22px; --apple-st-control-radius: 6px;
+  --apple-st-switch-w: 26px; --apple-st-switch-h: 15px; --apple-st-checkbox: 14px; --apple-st-badge: 16px;
+}

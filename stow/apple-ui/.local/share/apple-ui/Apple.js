@@ -536,3 +536,142 @@ var dock = {
 }
 function dockPalette(dark) { return dark ? dock.dark : dock.light }
 
+
+// ---- System Settings (Fenster, macOS 27 „Golden Gate“). Eigener Abschnitt
+// nach der Spec ~/Projects/settings/docs/spec-macos-systemeinstellungen-omarchy.md
+// (Kapitel 2–4, 6): Werte mit „≈“ dort sind aus Screenshots/AppKit-Standards
+// abgeleitet, nicht nachgemessen. Referenz-App: ~/Projects/settings
+// (omarchy-settings, Quickshell). Punkt-Werte → Style.space(pt) bzw. direkt
+// in logischen Pixeln in der App. `settingsPalette(dark)` liefert die Farben.
+var settings = {
+  // Fenster und Zonen (2.1–2.3)
+  // Am echten Mac nachgemessen (macOS 27, Screenshots 2026-09-27, 1 px = 1 pt):
+  // Fenster 723 breit = Sidebar 223 + Detail 500.
+  width: 723, height: 640, minHeight: 440,
+  sidebarWidth: 223, detailWidth: 500,
+  trafficLight: 13, trafficPitch: 23, trafficX: 19, trafficY: 25.5,   // Ø, Mitte→Mitte, erste Mitte
+  searchTop: 61, searchHeight: 28, searchInset: 10, searchIconInset: 8, searchIcon: 13,
+  accountTop: 101, accountHeight: 60, accountAvatar: 44,
+  sidebarPad: 18,            // Fensterkante → Auswahl (rechts bleiben 10)
+  sidebarPadRight: 10,
+  rowPad: 8,                 // Zeilen-Innenabstand
+  rowHeight: 32, rowHeightSearch: 44, rowTile: 20, rowTileRadius: 5, rowTileGap: 8,
+  groupGap: 14,              // Abstand zwischen Sidebar-Gruppen
+  selectionRadius: 7,
+  toolbar: 44, navButton: 24, navGlyph: 11, navGap: 4, navInset: 16, titleGap: 8,
+  contentPadX: 20, contentPadTop: 8, contentPadBottom: 20, contentWidth: 460, contentMax: 620,
+  scrollEdge: 24,
+  // Gruppen und Zeilen (2.4)
+  groupRadius: 10, groupSpacing: 10, groupTitleGap: 6, footerGap: 4,
+  // Zeile 45 = 44 Füllung + 1 Haarlinie; zweizeilig 58; die Haarlinie ist
+  // links und rechts 10 eingerückt (nicht bis zum Label).
+  rowMin: 45, rowSubtitle: 58, rowIcon: 45, rowApp: 52,
+  rowPadX: 11, rowIconGap: 12, rowAppIcon: 28, rowSeparatorInset: 10,
+  // Controls (3.4, 4.x)
+  control: 22, controlSmall: 18, controlMini: 15, controlRadius: 6,
+  buttonPadX: 12, buttonMin: 60,
+  segmentRadius: 7, segmentPillRadius: 5, segmentPad: 2,
+  popupMin: 120, popupBadge: 16, popupBadgeRadius: 4, popupBadgeInset: 3, popupTextPad: 10,
+  menuRadius: 12, menuPad: 5, menuRow: 24, menuItemRadius: 5, menuIndent: 22, menuCheck: 10,   // Zeile 24 gemessen
+  popoverRadius: 10, popoverPad: 12, popoverMax: 320, popoverArrowW: 10, popoverArrowH: 6,
+  sheetRadius: 12, sheetMax: 600,
+  cardW: 68, cardH: 44, cardRadius: 8, cardSelRadius: 10, cardLabelGap: 6,
+  tileSmall: 20, tileMedium: 32, tileLarge: 44, tileRadiusS: 5, tileRadiusM: 7, tileRadiusL: 10,
+  avatarSidebar: 44, avatarPage: 80, avatarList: 32,
+  switchW: 26, switchH: 15, switchKnob: 13, switchInset: 1, switchTravel: 11,
+  checkbox: 14, checkboxRadius: 3, radio: 14, radioDot: 6,
+  sliderTrack: 4, sliderKnob: 20, sliderTick: 8, sliderTickGap: 3,
+  stepperW: 13, stepperH: 22, stepperField: 60,
+  badge: 16, badgeGlyph: 9,
+  statusDot: 9,
+  scrollbar: 7, scrollbarHover: 11, scrollbarInset: 2,
+  progress: 6, spinner: 16,
+  tooltipPadX: 6, tooltipPadY: 4, tooltipRadius: 4,
+  focusRing: 3.5, focusRingFrom: 6,
+  listRow: 32, listRowIcon: 45, listRowApp: 58, listSelRadius: 5, listSelInset: 2, listButton: 20,
+  chartBarGap: 2, chartBarRadius: 1, storageBar: 12, storageRadius: 6, legendDot: 8,
+  helpButton: 20,
+  // Typografie (3.3)
+  largeTitle: 26, title1: 22, title2: 17, title3: 15, headline: 13, body: 13,
+  callout: 12, subheadline: 11, footnote: 10, caption: 10, mono: 11,
+  // Material (3.2): Blur-Radien und Tint-Alphas, vom Liquid-Glass-Regler skaliert
+  blurSidebar: 30, blurToolbar: 20, blurMenu: 24, blurControl: 12,
+  glassClear: 0.5, glassTinted: 1.4, glassMax: 0.95,   // Regler: Tint-α × Faktor
+  reducedTint: 0.96,
+  // Kachelfarben der Sidebar (3.1), oben ≈ +6 % heller
+  tileLighten: 0.06,
+  tiles: {
+    blue: "#ff007aff", green: "#ff28cd41", gray: "#ff8e8e93", dark: "#ff1c1c1e",
+    teal: "#ff5ac8fa", red: "#ffff3b30", pink: "#ffff2d55", indigo: "#ff5856d6",
+    white: "#ffffffff", orange: "#ffff9500", yellow: "#ffffcc00", purple: "#ffaf52de"
+  },
+  accents: [
+    { id: "blue", name: "Blue", light: "#ff007aff", dark: "#ff0a84ff" },
+    { id: "purple", name: "Purple", light: "#ffaf52de", dark: "#ffbf5af2" },
+    { id: "pink", name: "Pink", light: "#ffff2d55", dark: "#ffff375f" },
+    { id: "red", name: "Red", light: "#ffff3b30", dark: "#ffff453a" },
+    { id: "orange", name: "Orange", light: "#ffff9500", dark: "#ffff9f0a" },
+    { id: "yellow", name: "Yellow", light: "#ffffcc00", dark: "#ffffd60a" },
+    { id: "green", name: "Green", light: "#ff28cd41", dark: "#ff32d74b" },
+    { id: "graphite", name: "Graphite", light: "#ff8e8e93", dark: "#ff98989d" }
+  ],
+  storage: { apps: "#ffff9500", documents: "#ff007aff", photos: "#ffff2d55", cloud: "#ff5ac8fa",
+             system: "#ff8e8e93", os: "#ff636366", free: "#ffe5e5ea" },
+  light: {
+    dark: false,
+    windowBg: "#ffffffff",
+    sidebarTint: "#f2f2f2", sidebarAlpha: 0.62,
+    groupFill: "#fff7f7f7",         // gemessen: #F7F7F7 deckend
+    groupStroke: "#0a000000",       // Schwarz α 0.04
+    rowSeparator: "#1f000000",      // gemessen: #EBEBEB auf #F7F7F7
+    separator: "#1a000000",         // α 0.10
+    label: "#d9000000", labelSecondary: "#80000000", labelTertiary: "#42000000", labelQuaternary: "#1a000000",
+    accent: "#ff007aff", accentText: "#ffffffff",
+    selectionInactive: "#1a000000",
+    controlBg: "#ffffffff", controlStroke: "#1f000000", controlPressed: "#14000000", controlHoverGlass: "#0fffffff",
+    switchOff: "#ffe9e9ea", switchKnob: "#ffffffff",
+    sliderTrack: "#1a000000",
+    chevronBadgeBg: "#0f000000",
+    focusRingAlpha: 0.5,
+    inactiveDim: "#14000000",
+    link: "#ff0068da", destructive: "#ffff3b30",
+    statusGreen: "#ff28cd41", statusYellow: "#ffffcc00", statusRed: "#ffff3b30",
+    menu: "#f6f6f6", menuAlpha: 0.72, sheet: "#f0f0f0", sheetAlpha: 0.85,
+    glassControl: "#59ffffff",      // Weiß α 0.35
+    toolbarAlpha: 0.8,
+    segmentFill: "#0d000000", segmentPill: "#ffffffff",
+    scrollThumb: "#59000000",
+    shadowMenu: "#33000000", shadowPopover: "#2e000000", shadowSheet: "#40000000",
+    refractTop: "#59ffffff", refractBottom: "#0dffffff",
+    cardShadow: "#1f000000"
+  },
+  dark: {
+    dark: true,
+    windowBg: "#ff2a2a2a",
+    sidebarTint: "#1e1e1e", sidebarAlpha: 0.70,
+    groupFill: "#0dffffff",         // Weiß α 0.05
+    groupStroke: "#14ffffff",
+    rowSeparator: "#14ffffff",
+    separator: "#1affffff",
+    label: "#d9ffffff", labelSecondary: "#8cffffff", labelTertiary: "#40ffffff", labelQuaternary: "#1affffff",
+    accent: "#ff0a84ff", accentText: "#ffffffff",
+    selectionInactive: "#1fffffff",
+    controlBg: "#1affffff", controlStroke: "#1affffff", controlPressed: "#1affffff", controlHoverGlass: "#0fffffff",
+    switchOff: "#3dffffff", switchKnob: "#ffffffff",
+    sliderTrack: "#2effffff",
+    chevronBadgeBg: "#1affffff",
+    focusRingAlpha: 0.6,
+    inactiveDim: "#1f000000",
+    link: "#ff419cff", destructive: "#ffff453a",
+    statusGreen: "#ff32d74b", statusYellow: "#ffffd60a", statusRed: "#ffff453a",
+    menu: "#2c2c2e", menuAlpha: 0.72, sheet: "#262626", sheetAlpha: 0.85,
+    glassControl: "#24ffffff",      // Weiß α 0.14
+    toolbarAlpha: 0.8,
+    segmentFill: "#14ffffff", segmentPill: "#ff5f5f5f",
+    scrollThumb: "#59ffffff",
+    shadowMenu: "#8c000000", shadowPopover: "#66000000", shadowSheet: "#80000000",
+    refractTop: "#2effffff", refractBottom: "#05ffffff",
+    cardShadow: "#40000000"
+  }
+}
+function settingsPalette(dark) { return dark ? settings.dark : settings.light }
