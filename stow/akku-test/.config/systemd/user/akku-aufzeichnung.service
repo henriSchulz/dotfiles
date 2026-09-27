@@ -1,0 +1,18 @@
+[Unit]
+Description=Akku-Aufzeichnung (30-Sekunden-Takt, eine CSV pro Tag)
+Documentation=file:///home/henri/Projects/akku-test/XPS13-Laptop-Test-TODO.md
+# Das Skript liegt im akku-test-Projekt, nicht in diesem Repo. Fehlt es, soll
+# der Dienst sauber übersprungen werden statt alle 10 s neu zu starten.
+ConditionPathExists=%h/Projects/akku-test/hintergrund.py
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/Projects/akku-test/hintergrund.py
+Restart=always
+RestartSec=10
+# Soll den Akku nicht selbst belasten.
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=default.target
