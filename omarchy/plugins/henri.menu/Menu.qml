@@ -2417,7 +2417,7 @@ Item {
 
   PointerMoveGate {
     id: pointerGate
-    referenceItem: card
+    referenceItem: panel.contentItem
   }
 
   Connections {
