@@ -226,4 +226,5 @@ o.bind("SUPER + SHIFT + P", "App Exposé", hl.dsp.event("mission-control toggle 
 -- (`omarchy-shell dock minimizeActiveSlow`).
 o.bind("SUPER + M", "Minimize window into the Dock", hl.dsp.event("dock minimize"))
 o.bind("SUPER + ALT + D", "Toggle Dock hiding", hl.dsp.event("dock toggle-autohide"))
+o.bind("SUPER + D", "Show or hide the Dock", hl.dsp.event("dock toggle"))
 o.bind("CTRL + F3", "Focus the Dock", hl.dsp.event("dock focus"))

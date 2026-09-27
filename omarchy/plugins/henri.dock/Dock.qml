@@ -522,7 +522,7 @@ Item {
   property bool hoverSeparator: false
   property bool invertMagnification: false
   readonly property bool layoutActive: hovering || dragging || landing || resizing || activeSprings > 0 || hideAnim.running || swapAnim.running || fx.running || kbMode || externalDrag
-  readonly property bool magnifyNow: (magnificationOn !== invertMagnification) && (hovering || dragging || kbMode) && !resizing && !menuFrozen && !dockHidden
+  readonly property bool magnifyNow: (magnificationOn !== invertMagnification) && (hovering || dragging || kbMode) && !resizing && !menuFrozen && !hiddenNow
 
   function springRunning(on) { activeSprings = Math.max(0, activeSprings + (on ? 1 : -1)) }
   function layoutDirty() { Qt.callLater(relayout) }
@@ -1267,6 +1267,10 @@ Item {
 
   // ======================================================== auto-hide (§13) and position swap (§15)
   property bool dockHidden: false
+  // Hidden by hand (Super+D / `dock toggle`): slides out, gives the space back
+  // and stays out until toggled again — no edge trigger.
+  property bool manualHidden: false
+  readonly property bool hiddenNow: manualHidden || (autoHide && dockHidden)
   property real hideOffset: 0
   readonly property real hiddenDistance: bgThickness + Style.space(2)
   readonly property real hideDX: reduceMotion ? 0 : (position === "left" ? -hideOffset * hiddenDistance : position === "right" ? hideOffset * hiddenDistance : 0)
@@ -1274,14 +1278,15 @@ Item {
   readonly property real hideOpacity: reduceMotion ? 1 - hideOffset : 1
 
   onAutoHideChanged: { if (autoHide) armAutoHide(); else dockHidden = false }
-  onDockHiddenChanged: if (!swapAnim.running) hideAnim.go(dockHidden ? 1 : 0)
+  onHiddenNowChanged: if (!swapAnim.running) hideAnim.go(hiddenNow ? 1 : 0)
+  function toggleDock() { manualHidden = !manualHidden; if (!manualHidden) dockHidden = false; return manualHidden ? "hidden" : "shown" }
   NumberAnimation {
     id: hideAnim
     target: root
     property: "hideOffset"
     duration: Number(root.settings.autoHideDuration) || Motion.dock.autoHideDuration
     easing.type: Easing.BezierSpline
-    easing.bezierCurve: root.dockHidden ? Motion.easeExit : Motion.easeOut
+    easing.bezierCurve: root.hiddenNow ? Motion.easeExit : Motion.easeOut
     function go(v) { stop(); to = v; start() }
   }
   Timer { id: revealTimer; interval: Number(root.settings.autoHideDelay) || Motion.dock.autoHideDelay; onTriggered: root.dockHidden = false }
@@ -1301,7 +1306,7 @@ Item {
     NumberAnimation { target: root; property: "hideOffset"; to: 1; duration: Motion.dock.positionSwap; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeExit }
     ScriptAction { script: { root.position = root.pendingPosition; root.layoutDirty() } }
     PauseAnimation { duration: 30 }
-    NumberAnimation { target: root; property: "hideOffset"; to: root.autoHide && root.dockHidden ? 1 : 0; duration: Motion.dock.positionSwap; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+    NumberAnimation { target: root; property: "hideOffset"; to: root.hiddenNow ? 1 : 0; duration: Motion.dock.positionSwap; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
   }
 
   // ======================================================== keyboard (§17)
@@ -1309,6 +1314,7 @@ Item {
   property int kbIndex: 0
   function focusDock() {
     dockHidden = false
+    manualHidden = false
     kbMode = true
     kbIndex = 0
     hovering = false
@@ -1361,6 +1367,7 @@ Item {
         else if (d === "dock restore-last") root.restoreLast()
         else if (d === "dock toggle-autohide") root.setSetting("autoHide", !root.autoHide)
         else if (d === "dock focus") root.focusDock()
+        else if (d === "dock toggle") root.toggleDock()
         else if (d === "dock settings") root.settingsOpen = true
         return
       }
@@ -1395,6 +1402,7 @@ Item {
     function restore(address: string): string { return root.restoreWindow(DockModel.normalizeAddress(address), false) ? "ok" : "failed" }
     function toggleAutoHide(): string { root.setSetting("autoHide", !root.autoHide); return root.autoHide ? "hidden" : "shown" }
     function focus(): string { return root.focusDock() }
+    function toggle(): string { return root.toggleDock() }
     function requestAttention(appId: string, repeat: int): string {
       var e = root.lookupEntry(appId); var key = root.keyFor(e, appId)
       root.requestAttention(key, repeat); return key
@@ -1459,12 +1467,12 @@ Item {
 
     readonly property bool captureAll: root.popupOpen || root.dragging || root.landing || root.resizing
     readonly property var zoneRect: {
-      var visibleDock = !(root.autoHide && root.dockHidden && !root.hovering)
+      var visibleDock = !root.manualHidden && !(root.autoHide && root.dockHidden && !root.hovering)
       if (!visibleDock || root.bgLength <= 0) return { x: 0, y: 0, w: 0, h: 0 }
       var pad = root.gap + Style.space(4)
       return root.rectFor(root.bgStart + root.bgLength / 2, 0, root.bgLength + pad * 2, root.dockBaseline + root.maxVis + root.padCross)
     }
-    readonly property var triggerRect: root.autoHide && root.dockHidden
+    readonly property var triggerRect: root.autoHide && root.dockHidden && !root.manualHidden
       ? root.rectFor(root.bgStart + root.bgLength / 2, 0, Math.max(root.bgLength, 200), Style.space(Apple.dock.triggerZone)) : { x: 0, y: 0, w: 0, h: 0 }
 
     mask: Region {
@@ -1638,7 +1646,7 @@ Item {
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Normal
-    exclusiveZone: root.autoHide ? 0 : Math.round(root.bgThickness)
+    exclusiveZone: root.autoHide || root.manualHidden ? 0 : Math.round(root.bgThickness)
     anchors {
       bottom: root.position === "bottom" || !root.horizontal
       top: !root.horizontal
