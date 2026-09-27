@@ -152,11 +152,12 @@ Panel {
     : macOverall === "idle" ? "Idle" : "Offline"
   // Which physical link is actually carrying it -- the pad's own transport
   // beats the screen's (it's pinged continuously, so it's known even while
-  // idle), and mac-mode-poll only ever reaches the Mac over its Wi-Fi
-  // address, so a bare macModeFresh reachability still means Wi-Fi.
+  // idle). mac-mode-poll tries the cable before Wi-Fi and reports which one
+  // answered, so the fallback names the link that was actually used instead
+  // of assuming the wireless one.
   readonly property string macRoute: padTransport !== "" ? padTransport
     : screenRoute !== "" ? screenRoute
-    : macModeFresh ? "Wi-Fi" : ""
+    : macModeFresh ? (macModeState.transport || "") : ""
   readonly property string macOverallDetail: macOverall === "connected"
       ? (padStreaming && screenOn ? "Trackpad and screen are both active."
          : padStreaming ? "Fingers are arriving from the Mac."

@@ -56,6 +56,14 @@ recent() { local v; v=$(kv "$1" "$2") || return 1; [[ -n $v && $v != 0 ]] && (( 
 input_linked()    { fresh "$RUN/status" 4 && [[ $(kv "$RUN/status" linked) == 1 ]]; }
 input_streaming() { input_linked && recent "$RUN/status" last_packet 3; }
 input_transport() { kv "$RUN/status" transport; }
+# transport is the best link the Mac answers on; stream is the one frames are
+# really arriving over, and is empty while nothing is. Prefer the second when
+# there is one, because that is the question somebody looking at a live
+# pointer is actually asking.
+input_stream()    { kv "$RUN/status" stream; }
+input_reachable() { kv "$RUN/status" reachable; }
+input_route()     { local r; r=$(input_stream); [[ -n $r ]] || r=$(input_transport); echo "$r"; }
+mac_sender_alive() { mode_fresh && [[ $(kv "$RUN/macmode" mtsend) == 1 ]]; }
 input_service()   { systemctl --user is-active --quiet mtbridge; }
 screen_on()       { fresh "$RUN/screen" 6; }
 mode_fresh()      { fresh "$RUN/macmode" 40; }
@@ -138,22 +146,34 @@ battery_text() {
 
 overall_text() {
   local route
-  route=$(input_transport)
+  route=$(input_route)
   [[ -n $route ]] || route=$(kv "$RUN/screen" route)
-  [[ -n $route ]] || { mode_fresh && [[ $(kv "$RUN/macmode" mtsend) == 1 ]] && route="Wi-Fi"; }
+  # With the receiver stopped there is no transport of our own; mac-mode-poll
+  # records which address its round trip came back on, which is the honest
+  # answer. It used to say "Wi-Fi" flatly and was wrong whenever the cable
+  # was in.
+  [[ -n $route ]] || { mac_sender_alive && route=$(kv "$RUN/macmode" transport); }
   if input_streaming || screen_on; then echo "Connected${route:+ over $route}"
   elif input_service && ! input_linked; then echo "Connecting …"
-  elif input_linked || { mode_fresh && [[ $(kv "$RUN/macmode" mtsend) == 1 ]]; }; then echo "Idle${route:+ · $route}"
+  elif input_linked; then echo "Idle${route:+ · $route}"
+  # Nothing may read as a working link unless both halves have spoken to each
+  # other. "Idle" used to cover the case where sshd merely found an mtsend
+  # process, which says nothing about a handshake -- so each half-open state
+  # now names the half that is missing.
+  elif mac_sender_alive; then
+    if input_service; then echo "No answer${route:+ · $route}"
+    else echo "Receiver off${route:+ · $route}"; fi
+  elif mode_fresh; then echo "Bridge off on the Mac"
   else echo "Offline"; fi
 }
 
 # ---- operations -------------------------------------------------------------
 input_on() {
-  if input_linked; then notify "Mac input is on" "Trackpad and keyboard arrive over $(input_transport)."; return; fi
+  if input_linked; then notify "Mac input is on" "Trackpad and keyboard arrive over $(input_route)."; return; fi
   systemctl --user start mtbridge
   notify "Connecting Mac input …" "Waiting for the MacBook to answer."
   if wait_for 15 input_linked; then
-    notify "Mac input on" "Trackpad and keyboard arrive over $(input_transport)."
+    notify "Mac input on" "Trackpad and keyboard arrive over $(input_route)."
   else
     fail "Mac input didn't connect" "No answer from the MacBook. The receiver keeps listening -- check that the Mac is awake and mt-bridge runs there."
   fi

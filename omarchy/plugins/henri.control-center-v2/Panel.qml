@@ -77,7 +77,13 @@ Panel {
   readonly property bool padStreaming: padBridgeUp
     && Number(padStream.last_packet || 0) > 0
     && Date.now() / 1000 - Number(padStream.last_packet) < 3
+  // Three different questions, three different fields, because conflating
+  // them is what made the panel confident and wrong: transport is the best
+  // link the Mac answers on, stream is the one frames are really arriving
+  // over (empty when nothing is), reachable is every link that answered.
   readonly property string padTransport: padStream.transport || ""
+  readonly property string padStreamRoute: padStream.stream || ""
+  readonly property string padReachable: padStream.reachable || ""
   readonly property bool padButton: padStream.button === "1"
   readonly property bool padKeyboard: padStream.keyboard === "1"
   readonly property int padKeysHeld: Number(padStream.keys_held || 0)
@@ -89,11 +95,18 @@ Panel {
   readonly property bool padConnected: padBridgeUp && padLinked
   readonly property bool padConnecting: padOverride === true && !padConnected
   readonly property bool padOn: padConnected && padOverride !== false
+  // While frames are flowing the stream's own link is the honest answer;
+  // while idle there is no stream to name and the best reachable link is.
+  readonly property string padRoute: padStreamRoute !== "" ? padStreamRoute : padTransport
   readonly property string padSubtitle: padConnecting ? "Connecting …"
-    : padConnected ? (padStreaming ? (padTransport !== "" ? "Over " + padTransport : "Connected")
-      : (padTransport !== "" ? "Idle · " + padTransport : "Connected"))
+    : padConnected ? (padStreaming ? (padRoute !== "" ? "Over " + padRoute : "Connected")
+      : (padRoute !== "" ? "Idle · " + padRoute : "Connected"))
     : !padBridgeUp ? "Off"
-    : padLinkUp ? "Cable up · not connected" : "Not connected"
+    // The receiver is up and the Mac is not answering it: a cable that is
+    // merely plugged in proves nothing, so say which half is missing rather
+    // than the bare "not connected" that sent us looking at the wrong end.
+    : padLinkUp ? "Receiver on · the Mac isn't answering"
+    : "Receiver on · no cable, no answer"
 
   // ---- The Mac's screen, arriving as H.264 (mac-stream status file + heartbeat).
   property var screenState: ({})
@@ -169,28 +182,61 @@ Panel {
   // merely reachable beats nothing answering at all); Mode's picker is
   // simple enough to sit right there with nothing further to drill into,
   // Input and Screen are a level below it.
+  // "Connected" and "Idle" may only ever mean the two halves have actually
+  // spoken to each other. Anything short of that used to collapse into
+  // "Idle" as soon as sshd found an mtsend process, which reads as a working
+  // link and is not one: with the receiver stopped here, nothing is
+  // connected to anything. Each half-open state now gets its own word
+  // naming the half that is missing, which is the whole point of showing a
+  // status at all.
   readonly property string macOverall: (padStreaming || screenOn) ? "connected"
     : padConnecting ? "connecting"
-    : (padConnected || macSenderAlive) ? "idle" : "offline"
+    : padConnected ? "idle"
+    : macSenderAlive ? (padBridgeUp ? "no-answer" : "receiver-off")
+    : macModeFresh ? "sender-off"
+    : "offline"
   readonly property string macOverallLabel: macOverall === "connected" ? "Connected"
     : macOverall === "connecting" ? "Connecting …"
-    : macOverall === "idle" ? "Idle" : "Offline"
+    : macOverall === "idle" ? "Idle"
+    : macOverall === "receiver-off" ? "Receiver off"
+    : macOverall === "no-answer" ? "No answer"
+    : macOverall === "sender-off" ? "Bridge off on the Mac"
+    : "Offline"
+  // A state nobody has to act on. "receiver-off" is a switch somebody
+  // turned off on purpose, so it is not an alarm either.
+  readonly property bool macOverallWrong: macOverall === "no-answer"
+    || macOverall === "sender-off" || macOverall === "offline"
   // Which physical link is actually carrying it -- the pad's own transport
   // beats the screen's (it's pinged continuously, so it's known even while
-  // idle). Falling back to macSenderAlive rather than bare macModeFresh
-  // means this only guesses "Wi-Fi" once mtsend is confirmed running --
-  // sshd answering says nothing about the bridge, which used to make an
-  // unreachable mtsend look like an idle Wi-Fi link.
-  readonly property string macRoute: padTransport !== "" ? padTransport
+  // idle). With the receiver stopped neither exists, and this used to fill
+  // the hole with the literal string "Wi-Fi": a guess that was wrong every
+  // time the cable was in, which is most of the time. mac-mode-poll now
+  // tries the cable first and reports which address its round trip came
+  // back on, so the fallback is a measurement rather than an assumption.
+  readonly property string macModeTransport: macModeState.transport || ""
+  readonly property string macRoute: padRoute !== "" ? padRoute
     : screenRoute !== "" ? screenRoute
-    : macSenderAlive ? "Wi-Fi" : ""
+    : macSenderAlive ? macModeTransport : ""
+  // Naming a link next to "Offline" would contradict itself, and next to
+  // "Bridge off on the Mac" the link is real but carries nothing worth
+  // naming. Everywhere else it is the most useful half of the line.
+  readonly property string macRouteSuffix: macRoute !== ""
+    && macOverall !== "offline" && macOverall !== "sender-off"
+    ? " · " + macRoute : ""
   readonly property string macOverallDetail: macOverall === "connected"
       ? (padStreaming && screenOn ? "Trackpad and screen are both active."
          : padStreaming ? "Fingers are arriving from the Mac."
          : "The screen is mirroring.")
     : macOverall === "connecting" ? "Waiting for the Mac to answer -- this can take a few seconds."
-    : macOverall === "idle" ? "The Mac is reachable, but nothing is streaming right now."
-    : macModeFresh ? "The Mac answers, but mt-bridge isn't running there."
+    : macOverall === "idle" ? "Both halves are talking"
+        + (padReachable !== "" ? " over " + padReachable : "")
+        + ", but nothing is streaming right now."
+    : macOverall === "receiver-off" ? "The Mac is ready"
+        + (macRoute !== "" ? " over " + macRoute : "")
+        + ", but the receiver on this machine is stopped. Turn Input on."
+    : macOverall === "no-answer" ? "The receiver is listening and the Mac is not answering it. "
+        + "mtsend is running there, so this is the link, not the app."
+    : macOverall === "sender-off" ? "The Mac answers, but mt-bridge isn't running there."
     : "No cable and no answer over the network. Check that the Mac is awake."
   readonly property var macPages: ["trackpad", "screen", "macpower", "macbattery"]
   function backPage() { return macPages.indexOf(page) >= 0 ? "mac" : "main" }
@@ -1979,7 +2025,7 @@ Panel {
             on: root.macOverall === "connected"
             squircle: true
             title: "Mac"
-            subtitle: root.macOverallLabel + (root.macOverall !== "offline" && root.macRoute !== "" ? " · " + root.macRoute : "")
+            subtitle: root.macOverallLabel + root.macRouteSuffix
             hasCursor: root.mainFocus === "mac"
             badgeToggles: false
             onDetails: root.showPage("mac")
@@ -2933,9 +2979,9 @@ Panel {
             AUi.UsageHeader {
               width: macPage.innerWidth
               title: "Right now"
-              value: root.macOverallLabel + (root.macOverall !== "offline" && root.macRoute !== "" ? " · " + root.macRoute : "")
+              value: root.macOverallLabel + root.macRouteSuffix
               valueColor: root.macOverall === "connected" ? root.m.accent
-                : root.macOverall === "offline" ? root.m.urgent : root.m.inkMuted
+                : root.macOverallWrong ? root.m.urgent : root.m.inkMuted
             }
             AUi.Caption { width: macPage.innerWidth; text: root.macOverallDetail }
 
