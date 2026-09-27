@@ -91,7 +91,7 @@ var DEFAULTS = {
   "org.gnome.DiskUtility": ["disks", "drives", "partition", "format", "usb", "festplatte", "laufwerk", "smart"],
   "Disk Usage": ["disk usage", "storage", "speicher", "space", "platz", "baobab", "full"],
   "org.gnome.baobab": ["disk usage", "storage", "speicher", "space", "platz", "full"],
-  "omasettings": ["settings", "preferences", "einstellungen", "system settings", "systemeinstellungen", "config", "control panel", "systemsteuerung"],
+  "omarchy-settings": ["settings", "preferences", "einstellungen", "system settings", "systemeinstellungen", "config", "control panel", "systemsteuerung"],
   "omacalc": ["calculator", "calc", "rechner", "taschenrechner", "math", "rechnen"],
   "bitwarden": ["passwords", "passwörter", "password manager", "vault", "2fa", "otp", "login", "keychain", "schlüssel"],
   "org.keepassxc.KeePassXC": ["passwords", "passwörter", "password manager", "vault", "2fa", "otp", "login"],
