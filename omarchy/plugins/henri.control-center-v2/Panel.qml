@@ -2908,174 +2908,193 @@ Panel {
         // Mac — everything this machine borrows from the MacBook, one row each.
         AUi.PageHeader { visible: root.detailPage === "mac"; title: "Mac"; onBack: root.page = "main" }
         AUi.Separator { visible: root.detailPage === "mac" }
-        PageBody {
-          id: macPage
+        // The page can outgrow the card (long captions, Debug unfolded), so it
+        // scrolls inside the panel's height cap instead of being clipped.
+        Flickable {
           visible: root.detailPage === "mac"
-          spacing: root.pt(10)
-          AUi.UsageHeader {
-            width: macPage.innerWidth
-            title: "Right now"
-            value: root.macOverallLabel + (root.macOverall !== "offline" && root.macRoute !== "" ? " · " + root.macRoute : "")
-            valueColor: root.macOverall === "connected" ? root.m.accent
-              : root.macOverall === "offline" ? root.m.urgent : root.m.inkMuted
+          width: root.panelWidth
+          height: Math.min(macPage.implicitHeight, Math.max(root.pt(240), panel.availableCardHeight - root.pt(80)))
+          contentHeight: macPage.implicitHeight
+          clip: true
+          interactive: contentHeight > height
+          boundsBehavior: Flickable.StopAtBounds
+          flickDeceleration: Motion.flickDeceleration
+          maximumFlickVelocity: Motion.maximumFlickVelocity
+          // Debug unfolding grows the content past the cap: keep the bottom in
+          // view while it opens, and settle back once it folds away again.
+          onContentHeightChanged: {
+            var maxY = Math.max(0, contentHeight - height)
+            if (root.macDebugExpanded && !moving) contentY = maxY
+            else if (contentY > maxY) returnToBounds()
           }
-          AUi.Caption { width: macPage.innerWidth; text: root.macOverallDetail }
-
-          AUi.Separator { width: macPage.innerWidth }
-          AUi.SectionLabel { leftPadding: 0; text: "Mode" }
-          Row {
-            width: macPage.innerWidth
-            spacing: root.pt(5)
-            Repeater {
-              model: [ { id: "auto", label: "Auto" }, { id: "server", label: "Server" }, { id: "desktop", label: "Desktop" } ]
-              delegate: AUi.Capsule {
-                required property var modelData
-                width: Math.floor((macPage.innerWidth - root.pt(10)) / 3)
-                label: modelData.label
-                selected: root.macModePinShown === modelData.id
-                onClicked: if (!selected) root.setMacMode(modelData.id)
-              }
-            }
-          }
-          AUi.Caption {
-            width: macPage.innerWidth
-            text: "Auto follows the Mac's own monitor: attached → Desktop, unplugged → Server. "
-              + "Server/Desktop here pin it regardless. "
-              + (root.macModeFresh
-                 ? root.macModeDisplays + " display" + (root.macModeDisplays === 1 ? "" : "s") + " detected."
-                 : "No recent answer to say which.")
-          }
-
-          AUi.Separator { width: macPage.innerWidth }
-          AUi.SectionLabel { leftPadding: 0; text: "Power" }
-          AUi.SwitchRow {
-            width: macPage.innerWidth
-            title: "Power over the cable"
-            caption: root.macPowerSubtitle
-            checked: root.macPowerOn
-            onToggled: function(on) { root.setMacPower(on ? "to-mac" : "off") }
-          }
-          AUi.Caption {
-            width: macPage.innerWidth
-            text: "Off makes the Mac ignore the cable and run on its own battery, so nothing leaves this port. "
-              + "Below 15 % it tops itself up to 40 % and lets go again. On charges the Mac at 15 W. "
-              + "The other way round is not offered: this machine won't draw from the Mac's 7.5 W, but its battery icon would claim it does."
-          }
-
-          AUi.Separator { width: macPage.innerWidth }
-          AUi.SectionLabel { leftPadding: 0; text: "More" }
-          AUi.ListRow {
-            enterDelay: root.rowDelay(0)
-            icon: root.sf(0x100A33)
-            active: root.padOn
-            busy: root.padConnecting
-            badgeToggles: true
-            title: "Mac Input"
-            subtitle: root.padSubtitle
-            trailing: root.sf(0x10018A)
-            onClicked: root.showPage("trackpad")
-            onToggled: root.toggleTrackpad()
-          }
-          AUi.ListRow {
-            enterDelay: root.rowDelay(1)
-            icon: root.sf(0x1008B9)
-            active: root.screenOn
-            badgeToggles: true
-            title: "Mac Screen"
-            subtitle: root.screenSubtitle
-            trailing: root.sf(0x10018A)
-            onClicked: root.showPage("screen")
-            onToggled: root.toggleMacScreen()
-          }
-          AUi.ListRow {
-            enterDelay: root.rowDelay(2)
-            icon: root.sf(0x100657)
-            active: root.battFresh && root.battLatest.status === "Charging"
-            title: "Battery"
-            subtitle: root.battSummary
-            trailing: root.sf(0x10018A)
-            onClicked: root.showPage("macbattery")
-          }
-
-          AUi.Separator { width: macPage.innerWidth }
-          // Debug folds away by default: the SSH rows are for the rare day the
-          // bridge is silent, not for every visit to this page.
-          AUi.DisclosureLabel {
-            width: macPage.innerWidth
-            leftPadding: 0
-            text: "Debug"
-            expanded: root.macDebugExpanded
-            onClicked: root.macDebugExpanded = !root.macDebugExpanded
-          }
-          HUi.Collapse {
-            width: macPage.innerWidth
-            expanded: root.macDebugExpanded
-            Column {
+          PageBody {
+            id: macPage
+            spacing: root.pt(10)
+            AUi.UsageHeader {
               width: macPage.innerWidth
-              spacing: macPage.spacing
-              AUi.Caption {
-                width: macPage.innerWidth
-                text: "A shell on the Mac itself, for when the bridge won't say why. Tap to copy."
-              }
+              title: "Right now"
+              value: root.macOverallLabel + (root.macOverall !== "offline" && root.macRoute !== "" ? " · " + root.macRoute : "")
+              valueColor: root.macOverall === "connected" ? root.m.accent
+                : root.macOverall === "offline" ? root.m.urgent : root.m.inkMuted
+            }
+            AUi.Caption { width: macPage.innerWidth; text: root.macOverallDetail }
+
+            AUi.Separator { width: macPage.innerWidth }
+            AUi.SectionLabel { leftPadding: 0; text: "Mode" }
+            Row {
+              width: macPage.innerWidth
+              spacing: root.pt(5)
               Repeater {
-                model: [
-                  { label: "SSH · USB-C", cmd: "ssh henrischulz@10.55.0.2" },
-                  { label: "SSH · Wi-Fi", cmd: "ssh henrischulz@192.168.178.126" },
-                ]
-                delegate: Rectangle {
-                  id: sshRow
+                model: [ { id: "auto", label: "Auto" }, { id: "server", label: "Server" }, { id: "desktop", label: "Desktop" } ]
+                delegate: AUi.Capsule {
                   required property var modelData
-                  property bool copied: false
-                  width: macPage.innerWidth
-                  height: Style.space(44)
-                  radius: Style.space(Apple.radiusRow)
-                  color: sshMouse.containsMouse ? root.m.rowHover
-                    : Qt.rgba(root.m.rowHover.r, root.m.rowHover.g, root.m.rowHover.b, 0)
-                  Behavior on color {
-                    ColorAnimation {
-                      duration: sshMouse.containsMouse ? Motion.instant : Motion.fast
-                      easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
-                    }
-                  }
-                  scale: sshPress.value
-                  HUi.SpringValue { id: sshPress; preset: Motion.snappy; to: sshMouse.pressed && !Motion.reduceMotion ? Motion.pressScale : 1 }
-                  Column {
-                    anchors.left: parent.left; anchors.leftMargin: Style.space(10)
-                    anchors.right: parent.right; anchors.rightMargin: Style.space(10)
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Style.space(1)
-                    Text {
-                      text: sshRow.modelData.label
-                      color: root.m.ink
-                      font.family: Apple.uiFont
-                      font.pixelSize: Style.space(Apple.subheadline)
-                      font.weight: Font.DemiBold
-                    }
-                    HUi.CrossfadeText {
-                      width: parent.width
-                      text: sshRow.copied ? "Copied to clipboard" : sshRow.modelData.cmd
-                      color: sshRow.copied ? root.m.accent : root.m.inkMuted
-                      fontFamily: Apple.uiFont
-                      fontSize: Style.space(Apple.footnote)
-                      elide: Text.ElideRight
-                    }
-                  }
-                  MouseArea {
-                    id: sshMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: {
-                      Quickshell.clipboardText = sshRow.modelData.cmd
-                      sshRow.copied = true
-                      sshCopiedTimer.restart()
-                    }
-                  }
-                  Timer { id: sshCopiedTimer; interval: 1400; onTriggered: sshRow.copied = false }
+                  width: Math.floor((macPage.innerWidth - root.pt(10)) / 3)
+                  label: modelData.label
+                  selected: root.macModePinShown === modelData.id
+                  onClicked: if (!selected) root.setMacMode(modelData.id)
                 }
               }
             }
+            AUi.Caption {
+              width: macPage.innerWidth
+              text: "Auto follows the Mac's own monitor: attached → Desktop, unplugged → Server. "
+                + "Server/Desktop here pin it regardless. "
+                + (root.macModeFresh
+                   ? root.macModeDisplays + " display" + (root.macModeDisplays === 1 ? "" : "s") + " detected."
+                   : "No recent answer to say which.")
+            }
+
+            AUi.Separator { width: macPage.innerWidth }
+            AUi.SectionLabel { leftPadding: 0; text: "Power" }
+            AUi.SwitchRow {
+              width: macPage.innerWidth
+              title: "Power over the cable"
+              caption: root.macPowerSubtitle
+              checked: root.macPowerOn
+              onToggled: function(on) { root.setMacPower(on ? "to-mac" : "off") }
+            }
+            AUi.Caption {
+              width: macPage.innerWidth
+              text: "Off makes the Mac ignore the cable and run on its own battery, so nothing leaves this port. "
+                + "Below 15 % it tops itself up to 40 % and lets go again. On charges the Mac at 15 W. "
+                + "The other way round is not offered: this machine won't draw from the Mac's 7.5 W, but its battery icon would claim it does."
+            }
+
+            AUi.Separator { width: macPage.innerWidth }
+            AUi.SectionLabel { leftPadding: 0; text: "More" }
+            AUi.ListRow {
+              enterDelay: root.rowDelay(0)
+              icon: root.sf(0x100A33)
+              active: root.padOn
+              busy: root.padConnecting
+              badgeToggles: true
+              title: "Mac Input"
+              subtitle: root.padSubtitle
+              trailing: root.sf(0x10018A)
+              onClicked: root.showPage("trackpad")
+              onToggled: root.toggleTrackpad()
+            }
+            AUi.ListRow {
+              enterDelay: root.rowDelay(1)
+              icon: root.sf(0x1008B9)
+              active: root.screenOn
+              badgeToggles: true
+              title: "Mac Screen"
+              subtitle: root.screenSubtitle
+              trailing: root.sf(0x10018A)
+              onClicked: root.showPage("screen")
+              onToggled: root.toggleMacScreen()
+            }
+            AUi.ListRow {
+              enterDelay: root.rowDelay(2)
+              icon: root.sf(0x100657)
+              active: root.battFresh && root.battLatest.status === "Charging"
+              title: "Battery"
+              subtitle: root.battSummary
+              trailing: root.sf(0x10018A)
+              onClicked: root.showPage("macbattery")
+            }
+
+            AUi.Separator { width: macPage.innerWidth }
+            // Debug folds away by default: the SSH rows are for the rare day the
+            // bridge is silent, not for every visit to this page.
+            AUi.DisclosureLabel {
+              width: macPage.innerWidth
+              leftPadding: 0
+              text: "Debug"
+              expanded: root.macDebugExpanded
+              onClicked: root.macDebugExpanded = !root.macDebugExpanded
+            }
+            HUi.Collapse {
+              width: macPage.innerWidth
+              expanded: root.macDebugExpanded
+              Column {
+                width: macPage.innerWidth
+                spacing: macPage.spacing
+                AUi.Caption {
+                  width: macPage.innerWidth
+                  text: "A shell on the Mac itself, for when the bridge won't say why. Tap to copy."
+                }
+                Repeater {
+                  model: [
+                    { label: "SSH · USB-C", cmd: "ssh henrischulz@10.55.0.2" },
+                    { label: "SSH · Wi-Fi", cmd: "ssh henrischulz@192.168.178.126" },
+                  ]
+                  delegate: Rectangle {
+                    id: sshRow
+                    required property var modelData
+                    property bool copied: false
+                    width: macPage.innerWidth
+                    height: Style.space(44)
+                    radius: Style.space(Apple.radiusRow)
+                    color: sshMouse.containsMouse ? root.m.rowHover
+                      : Qt.rgba(root.m.rowHover.r, root.m.rowHover.g, root.m.rowHover.b, 0)
+                    Behavior on color {
+                      ColorAnimation {
+                        duration: sshMouse.containsMouse ? Motion.instant : Motion.fast
+                        easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
+                      }
+                    }
+                    scale: sshPress.value
+                    HUi.SpringValue { id: sshPress; preset: Motion.snappy; to: sshMouse.pressed && !Motion.reduceMotion ? Motion.pressScale : 1 }
+                    Column {
+                      anchors.left: parent.left; anchors.leftMargin: Style.space(10)
+                      anchors.right: parent.right; anchors.rightMargin: Style.space(10)
+                      anchors.verticalCenter: parent.verticalCenter
+                      spacing: Style.space(1)
+                      Text {
+                        text: sshRow.modelData.label
+                        color: root.m.ink
+                        font.family: Apple.uiFont
+                        font.pixelSize: Style.space(Apple.subheadline)
+                        font.weight: Font.DemiBold
+                      }
+                      HUi.CrossfadeText {
+                        width: parent.width
+                        text: sshRow.copied ? "Copied to clipboard" : sshRow.modelData.cmd
+                        color: sshRow.copied ? root.m.accent : root.m.inkMuted
+                        fontFamily: Apple.uiFont
+                        fontSize: Style.space(Apple.footnote)
+                        elide: Text.ElideRight
+                      }
+                    }
+                    MouseArea {
+                      id: sshMouse
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      onClicked: {
+                        Quickshell.clipboardText = sshRow.modelData.cmd
+                        sshRow.copied = true
+                        sshCopiedTimer.restart()
+                      }
+                    }
+                    Timer { id: sshCopiedTimer; interval: 1400; onTriggered: sshRow.copied = false }
+                  }
+                }
+              }
+            }
+            Item { width: 1; height: root.pt(4) }
           }
-          Item { width: 1; height: root.pt(4) }
         }
 
         // Mac Screen
@@ -3294,69 +3313,72 @@ Panel {
           AUi.Caption { visible: text !== ""; text: root.battChargeText }
         }
 
-        MouseArea {
-          anchors.fill: parent
-          z: 9
-          enabled: root.detailPage === "macbattery" && battRangeMenu.open
-          visible: enabled
-          acceptedButtons: Qt.AllButtons
-          onPressed: battRangeMenu.dismiss()
+      }
+
+      // Range-menu overlay for the battery page. Both live beside the detail
+      // Column, not in it: a Column stops laying out for good once a visible
+      // child carries vertical anchors, and the menu must not take up a row.
+      MouseArea {
+        anchors.fill: parent
+        z: 9
+        enabled: root.detailPage === "macbattery" && battRangeMenu.open
+        visible: enabled
+        acceptedButtons: Qt.AllButtons
+        onPressed: battRangeMenu.dismiss()
+      }
+
+      HUi.Reveal {
+        id: battRangeMenu
+        kind: "menu"
+        origin: Item.TopRight
+        closeOnOutsideClick: false
+        z: 10
+        x: detail.x + root.panelWidth - width - root.pt(4)
+        y: detail.y + battHeader.y + battHeader.height / 2 + battRangeButton.height / 2 + root.pt(4)
+        width: battRangeSurface.implicitWidth
+        height: battRangeSurface.implicitHeight
+
+        function show() {
+          var m = battRangeList.model
+          for (var i = 0; i < m.length; i++) if (m[i].checked === true) battRangeList.currentIndex = i
+          open = true
         }
+        function dismiss() { open = false }
+        onDismissRequested: dismiss()
 
-        HUi.Reveal {
-          id: battRangeMenu
+        HUi.Surface {
+          id: battRangeSurface
+          anchors.fill: parent
+          role: "menu"
           kind: "menu"
-          origin: Item.TopRight
-          closeOnOutsideClick: false
-          z: 10
-          x: root.panelWidth - width - root.pt(4)
-          y: battHeader.y + battHeader.height / 2 + battRangeButton.height / 2 + root.pt(4)
-          width: battRangeSurface.implicitWidth
-          height: battRangeSurface.implicitHeight
-
-          function show() {
-            var m = battRangeList.model
-            for (var i = 0; i < m.length; i++) if (m[i].checked === true) battRangeList.currentIndex = i
-            open = true
-          }
-          function dismiss() { open = false }
-          onDismissRequested: dismiss()
-
-          HUi.Surface {
-            id: battRangeSurface
-            anchors.fill: parent
-            role: "menu"
-            kind: "menu"
-            padding: root.pt(5)
-            implicitWidth: battRangeList.implicitWidth + padding * 2
-            implicitHeight: battRangeList.implicitHeight + padding * 2
-            HUi.MenuList {
-              id: battRangeList
-              x: battRangeSurface.contentLeftInset
-              y: battRangeSurface.contentTopInset
-              width: parent.width - battRangeSurface.contentLeftInset - battRangeSurface.contentRightInset
-              minWidth: root.pt(140)
-              focus: battRangeMenu.open
-              model: {
-                var cur = root.battRangeInfo
-                var out = []
-                var list = BatteryHistory.HISTORY_RANGES
-                for (var i = 0; i < list.length; i++) {
-                  if (i > 0 && list[i].hours >= 1 !== list[i - 1].hours >= 1
-                      || i > 0 && list[i].hours > 24 !== list[i - 1].hours > 24)
-                    out.push({ separator: true })
-                  out.push({ text: list[i].label, checked: list[i] === cur, key: list[i].key })
-                }
-                return out
+          padding: root.pt(5)
+          implicitWidth: battRangeList.implicitWidth + padding * 2
+          implicitHeight: battRangeList.implicitHeight + padding * 2
+          HUi.MenuList {
+            id: battRangeList
+            x: battRangeSurface.contentLeftInset
+            y: battRangeSurface.contentTopInset
+            width: parent.width - battRangeSurface.contentLeftInset - battRangeSurface.contentRightInset
+            minWidth: root.pt(140)
+            focus: battRangeMenu.open
+            model: {
+              var cur = root.battRangeInfo
+              var out = []
+              var list = BatteryHistory.HISTORY_RANGES
+              for (var i = 0; i < list.length; i++) {
+                if (i > 0 && list[i].hours >= 1 !== list[i - 1].hours >= 1
+                    || i > 0 && list[i].hours > 24 !== list[i - 1].hours > 24)
+                  out.push({ separator: true })
+                out.push({ text: list[i].label, checked: list[i] === cur, key: list[i].key })
               }
-              onActivated: function(index, entry) {
-                battRangeMenu.dismiss()
-                root.setBattRange(entry.key)
-              }
+              return out
+            }
+            onActivated: function(index, entry) {
+              battRangeMenu.dismiss()
+              root.setBattRange(entry.key)
             }
           }
         }
-
       }
     }
   }
