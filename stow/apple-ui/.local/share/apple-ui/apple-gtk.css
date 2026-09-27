@@ -92,6 +92,9 @@
   --apple-win-list-header: 28px;
   --apple-win-list-header-gap: 5px;
   --apple-win-list-row: 20px;
+  /* Finder's list rows come in several heights; this is the larger one the
+     app offers alongside the measured default. */
+  --apple-win-list-row-large: 30px;
   --apple-win-list-inset: 10px;
   --apple-win-list-icon-x: 27px;
   --apple-win-list-text-x: 47px;
