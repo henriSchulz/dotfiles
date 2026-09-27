@@ -63,6 +63,9 @@ done
 #                 beside henri.control-center; Experiments holds the
 #                 low-power rendering switch (system/henri-render-power,
 #                 flag read by stow/hypr looknfeel.lua)
+#   henri.dock  — own plugin, the macOS Dock (magnification, bounce, stacks,
+#                 genie minimize, auto-hide) on apple-ui + henri-ui; replaces
+#                 omadock, which stays installed but disabled in shell.json
 #   io.github.nipsen.dell-power — NIPSEN/omarchy-dell-power (MIT) with the
 #                 bar glyph swapped for the macOS battery (HUi.BatteryGlyph)
 for src in "$DOTFILES_ROOT"/omarchy/plugins/*/; do

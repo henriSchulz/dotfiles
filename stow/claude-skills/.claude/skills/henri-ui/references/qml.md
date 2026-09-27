@@ -51,7 +51,7 @@ Eingabe-Test (echte Tasten-/Maus-Events: Esc, Pfeile, Drill-in-Zurück, Klick in
 | `HUi.Surface` | Material (Theme-Hintergrund, Haarlinie, Radius) | `role: popups\|menu\|tooltip\|notifications`, `kind: panel\|popover\|menu\|chip`, `padding`, `contentLeftInset`… (BorderSurface) |
 | `HUi.Pressable` | Basis alles Klickbaren | `clicked()`, `secondaryClicked()`, `tint`, `prominent`, `selected`, `showFill`, `pressScaleEnabled`, `contentColor`, `radius` |
 | `HUi.Button` | Standard-Button | `text`, `icon` (Glyph), `prominent`, `danger` (gefüllt in `urgent` statt Akzent — der Knopf, der löscht), + alles von Pressable |
-| `HUi.MenuList` | Komplettes macOS-Menü (Highlight sofort, kein Gleiten) | `model: [{text, icon, shortcut, enabled, danger, separator, checked}]` (`checked` → ✓-Spalte wie NSMenu), `activated(index, entry)`, `currentIndex`, `move()`, `activate()`; Farben `textColor`, `selectedBackground`, `selectedText`, `hairline` (Default Theme-Menü, Apple-Flächen geben ihre Palette rein) |
+| `HUi.MenuList` | Komplettes macOS-Menü (Highlight sofort, kein Gleiten) | `model: [{text, icon, shortcut, enabled, danger, separator, checked, submenu}]` (`checked` → ✓-Spalte wie NSMenu; `submenu: [...]` → › rechts, Hover/→/⏎ melden `submenuRequested(index, entry, row)`, der Host zeigt eine zweite MenuList daneben und hält `lockedIndex` auf der Elternzeile — Referenz `henri.dock/components/DockMenu.qml`), `activated(index, entry)`, `currentIndex`, `move()`, `activate()`; Farben `textColor`, `selectedBackground`, `selectedText`, `hairline` (Default Theme-Menü, Apple-Flächen geben ihre Palette rein) |
 | `HUi.Highlight` | Auswahl-Form für eine Gruppe | `target: <Item>`, `glide` (true = gleitet: Tabs/Segmente/Sidebar; false = springt: Menüs/Hover-Listen) — selber Koordinatenraum wie die Targets |
 | `HUi.Toggle` | Schalter | `checked`, `toggled(bool)` |
 | `HUi.CrossfadeText` | Text/Zahl, die sich ändert | `text`, `color`, `fontSize`, `fontWeight`, `fontFamily` |
@@ -67,6 +67,13 @@ Eingabe-Test (echte Tasten-/Maus-Events: Esc, Pfeile, Drill-in-Zurück, Klick in
 Stolperfalle: Kinder von `Pressable`/`Reveal`/`Collapse`/`StaggerIn` landen in einem
 inneren Container — `parent.xyz` zeigt dorthin. Die Komponente per `id` ansprechen
 (`color: row.contentColor`, nicht `parent.contentColor`).
+
+Stolperfalle 2 (henri.dock, 2026-09-27): `visible` eines Kindes liest die **effektive**
+Sichtbarkeit. Ein Elternteil mit `visible: reveal.shown` bleibt für immer unsichtbar
+(`shown` = `visible` der Reveal, die im unsichtbaren Elternteil false ist). Den
+Elternteil an den eigenen Zustand binden: `visible: open || reveal.opacity > 0.001`.
+Und `Item` hat FINAL-Properties, die eigene Namen blockieren: `baseline`, `palette`,
+`right`, `left`, `top`, `bottom` — andere Namen wählen.
 
 Fehlt ein Baustein und wird er in ≥ 2 Plugins gebraucht → als neue `HUi.*`-Datei in
 `~/.local/share/henri-ui/` anlegen, in die Galerie + Selbsttest aufnehmen, hier in der

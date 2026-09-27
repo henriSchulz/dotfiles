@@ -32,7 +32,7 @@
           "format": "ddd d. MMM HH:mm",
           "formatAlt": "d. MMMM 'KW'ww yyyy",
           "id": "henri.clock",
-          "verticalFormat": "HH\n—\nmm"
+          "verticalFormat": "HH\n\u2014\nmm"
         }
       ]
     },
@@ -55,7 +55,8 @@
     "evindor.keystroke",
     "io.github.andyweiboan.missioncontrol",
     "bibek.menu",
-    "omarchy.notifications"
+    "omarchy.notifications",
+    "omadock"
   ],
   "idle": {
     "lock": 600,
@@ -94,13 +95,13 @@
       "id": "henri.osd"
     },
     {
-      "id": "omadock"
-    },
-    {
       "id": "henri.missioncontrol"
     },
     {
       "id": "henri.notifications"
+    },
+    {
+      "id": "henri.dock"
     }
   ],
   "version": 1

@@ -101,9 +101,15 @@ hl.env("XCURSOR_SIZE", "24")
 -- Eigene Menüleiste (henri.bar): Hintergrund weichzeichnen wie bei macOS.
 hl.layer_rule({ match = { namespace = "omarchy-bar" }, blur = true, ignore_alpha = 0.3 })
 
--- Dock (omadock): das macOS-Dock ist Milchglas, kein Balken. Ohne Blur wäre
--- die 0.65er Fläche aus omadock.json nur blass.
-hl.layer_rule({ match = { namespace = "omadock" }, blur = true, ignore_alpha = 0.3 })
+-- Dock (henri.dock, seit 2026-09-27 statt omadock): das macOS-Dock ist
+-- Milchglas, kein Balken. Der Hintergrund ist eine eigene, dünne Layer-Fläche
+-- (namespace henri-dock), nur die wird geblurt — helles Glas liegt bei Weiß
+-- α 0.28 (Apple.dock), deshalb ignore_alpha 0.2 statt 0.3. Kacheln, Label,
+-- Menüs und die Genie-Animation liegen im Overlay darüber und animieren
+-- selbst; Hyprlands Layer-Fade würde beim Ein-/Ausblenden doppelt blenden.
+hl.layer_rule({ match = { namespace = "henri-dock" }, blur = true, ignore_alpha = 0.2 })
+hl.layer_rule({ match = { namespace = "henri-dock" }, no_anim = true, animation = "none" })
+hl.layer_rule({ match = { namespace = "henri-dock-overlay" }, no_anim = true, animation = "none" })
 
 -- Mission Control animiert selbst (Fenster schrumpfen, eigener Crossfade).
 -- Hyprlands Layer-Fade darüber lässt es ruckeln und doppelt blenden.

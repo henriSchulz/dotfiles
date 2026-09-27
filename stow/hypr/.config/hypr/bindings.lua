@@ -218,3 +218,12 @@ hl.unbind("SUPER + P")
 hl.unbind("SUPER + SHIFT + P")
 o.bind("SUPER + P", "Mission Control", hl.dsp.event("mission-control toggle"))
 o.bind("SUPER + SHIFT + P", "App Exposé", hl.dsp.event("mission-control toggle app"))
+
+-- Dock (henri.dock): Fenster minimieren wie Cmd+M, Dock ein-/ausblenden wie
+-- Wahl+Cmd+D, Tastatursteuerung wie Ctrl+F3. Als Hyprland-Ereignis direkt ans
+-- Plugin (custom>>dock …), kein Prozess pro Taste. Super+Shift+M bleibt
+-- Omarchys Musik-Taste; die Zeitlupe (Shift) gibt es nur per IPC
+-- (`omarchy-shell dock minimizeActiveSlow`).
+o.bind("SUPER + M", "Minimize window into the Dock", hl.dsp.event("dock minimize"))
+o.bind("SUPER + ALT + D", "Toggle Dock hiding", hl.dsp.event("dock toggle-autohide"))
+o.bind("CTRL + F3", "Focus the Dock", hl.dsp.event("dock focus"))

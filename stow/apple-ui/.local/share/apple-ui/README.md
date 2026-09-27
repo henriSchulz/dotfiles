@@ -124,3 +124,18 @@ kommen als weitere Schlüssel dazu, jeweils gemessen.
 Referenz-Implementierung (Popups): `~/.config/omarchy/plugins/henri.control-center-v2/`.
 Punkt-Werte werden mit `Style.space(pt)` auf die Shell-Skala gebracht.
 Schriften SF Pro / SF Symbols sind lokal installiert — nie committen.
+
+## Dock
+
+`Apple.dock` in `Apple.js` bzw. `--apple-dock-*` / `apple_dock_*` in den CSS-Dateien:
+das macOS-Dock (Sonoma/Sequoia) nach der Spec `dock-spec.md` — Basisgröße 48,
+Vergrößerung 96 mit Kosinus-Abfall über 3 Kacheln, Glas (hell Weiß α 0.28 /
+dunkel Grau 30 α 0.35, Blur 24, Sättigung 180 %), Radius 0,37 × Basisgröße,
+4 pt über der Kante, Trenner 70 %, Hover-Label 13 pt mit 10 × 5-Spitze,
+Laufpunkt 4, rote Plakette, Kontextmenü Radius 8 / Zeilen 22 / 180 breit,
+Fächer/Raster/Liste für Ordner-Stapel. `Apple.dockPalette(dark)` liefert die
+Palette (Spec-Werte, noch nicht am Screenshot nachgemessen). Bewegung:
+henri-ui `Motion.dock` (Feder 400/30/0,4 für die Vergrößerung, Bounce 300 + 300 ms,
+Genie 500 ms …). Referenz-Plugin: `~/.config/omarchy/plugins/henri.dock`
+(Overlay-Plugin, ersetzt omadock).
+

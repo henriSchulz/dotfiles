@@ -155,6 +155,30 @@ Ausgerechnet (Masse 1, `stiffness = (2π/response)²`). Presets in `Motion.js`
 Springs behalten beim Unterbrechen die Geschwindigkeit bei → das ist das
 „macOS-Gefühl“. Wo das Framework echte Springs hat (libadwaita, JS), Springs nehmen.
 
+### Dock (`Motion.dock`, seit 2026-09-27)
+
+Das Dock (`henri.dock`) hat eine eigene Physik aus der Spec
+`henri.dock/docs/dock-spec.md` — Richtwerte, zentral in `Motion.js` (`dock`-Block)
+und `motion.css` (`--dock-*`), damit das Plugin keine eigenen Zahlen trägt:
+
+| Token | Wert | Verwendung |
+|-------|------|------------|
+| `dock.magnify` | Feder 400/30/0,4 → response 0,2 s, ζ 1,19 | Kachelgröße unter dem Cursor (überdämpft, kein Nachschwingen) |
+| `dock.gap` / `dock.land` | 300/28/1 → 0,363 s ζ 0,81 / 0,2 s ζ 1 | Lücke beim Umsortieren / Icon gleitet in die Lücke |
+| `dock.bounceUp/Down` | 300 + 300 ms, Kurven `bounceUpCurve` (ease-out) / `bounceDownCurve` (Schwerkraft) | Start-Bounce, Höhe 0,5 × Kachel |
+| `dock.attention*` | 350 + 350 ms, Pause 300, 10 Wiederholungen, Höhe 1,0 × Kachel | Aufmerksamkeits-Bounce |
+| `dock.labelIn/Out` | 80 / 100 ms | Hover-Label |
+| `dock.indicatorFade`, `dock.badgeIn` | 150 ms / Feder 0,3 s ζ 0,75 | Laufpunkt, Plakette |
+| `dock.removeFade/Scale/Distance/Hold` | 200 ms → 0,6 / 1,5 × Kachel / 400 ms | Aus dem Dock ziehen |
+| `dock.longPress`, `dock.dragThreshold` | 500 ms / 4 px | Kontextmenü per Halten, Drag-Beginn |
+| `dock.genie` / `dock.scaleMinimize` / `dock.slowMotion` | 500 / 300 ms / ×10 | Minimieren (Trichter / Skalieren, Shift = Zeitlupe) |
+| `dock.autoHideDuration/Delay/Leave` | 350 / 200 / 300 ms | Automatisch ein-/ausblenden |
+| `dock.positionSwap` | 250 ms | Kante wechseln (raus + rein) |
+| `dock.fan` / `dock.grid` / `dock.gridFromScale` | 250 / 250 ms / 0,3 | Ordner-Stapel |
+| `dock.pressedBrightness` | 0,65 | Gedrückt-Zustand des Icons |
+
+Look (Maße, Glas, Label, Menü) in `Apple.dock` (apple-ui, `references/apple.md`).
+
 ## 3. Komponenten-Rezepte (macOS-Verhalten)
 
 In QML sind diese Rezepte als **fertige `HUi.*`-Komponenten** umgesetzt — benutzen,

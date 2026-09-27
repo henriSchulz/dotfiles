@@ -200,6 +200,33 @@
   --apple-bn-capsule: rgba(0, 0, 0, 0.06);
   --apple-bn-capsule-hover: rgba(0, 0, 0, 0.10);
   --apple-bn-opaque: #ececec;
+  /* ---- Dock (macOS Sonoma/Sequoia, spec guide values — see Apple.js `dock`) */
+  --apple-dock-tile: 48px;
+  --apple-dock-magnified: 96px;
+  --apple-dock-radius: 18px;          /* ≈ 0.37 × tile, 10–26 */
+  --apple-dock-blur: 24px;
+  --apple-dock-saturate: 180%;
+  --apple-dock-edge-gap: 4px;
+  --apple-dock-pad: 6px;
+  --apple-dock-separator-pad: 8px;
+  --apple-dock-label-radius: 6px;
+  --apple-dock-label-font: 13px;
+  --apple-dock-indicator: 4px;
+  --apple-dock-badge-font: 12px;
+  --apple-dock-menu-radius: 8px;
+  --apple-dock-menu-row: 22px;
+  --apple-dock-menu-min-width: 180px;
+  --apple-dock-badge: #ff3b30;
+  --apple-dock-accent: #0a84ff;
+  --apple-dock-sheet: rgba(255, 255, 255, 0.28);
+  --apple-dock-border: rgba(255, 255, 255, 0.45);
+  --apple-dock-hairline: rgba(0, 0, 0, 0.12);
+  --apple-dock-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  --apple-dock-separator: rgba(0, 0, 0, 0.18);
+  --apple-dock-indicator-color: rgba(0, 0, 0, 0.75);
+  --apple-dock-label: rgba(240, 240, 240, 0.85);
+  --apple-dock-label-text: #1d1d1f;
+
 }
 
 /* dark glass — measured on the real Control Center over a dark wallpaper.
@@ -240,6 +267,15 @@
   --apple-bn-capsule: rgba(255, 255, 255, 0.25);
   --apple-bn-capsule-hover: rgba(255, 255, 255, 0.35);
   --apple-bn-opaque: #2a2a2a;
+  --apple-dock-sheet: rgba(30, 30, 30, 0.35);
+  --apple-dock-border: rgba(255, 255, 255, 0.18);
+  --apple-dock-hairline: rgba(0, 0, 0, 0.5);
+  --apple-dock-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --apple-dock-separator: rgba(255, 255, 255, 0.22);
+  --apple-dock-indicator-color: rgba(255, 255, 255, 0.8);
+  --apple-dock-label: rgba(40, 40, 40, 0.85);
+  --apple-dock-label-text: #f5f5f7;
+
 }
 
 /* ready-made surfaces */

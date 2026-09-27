@@ -180,3 +180,29 @@
   --apple-bn-capsule-height: 22px; --apple-bn-capsule-pad-x: 12px;
   --apple-bn-overline: 11px; --apple-bn-title: 13px; --apple-bn-body: 13px; --apple-bn-line-height: 16px;
 }
+
+/* Dock (macOS Sonoma/Sequoia, spec guide values — see Apple.js `dock`) */
+@define-color apple_dock_sheet rgba(255, 255, 255, 0.28);
+@define-color apple_dock_border rgba(255, 255, 255, 0.45);
+@define-color apple_dock_hairline rgba(0, 0, 0, 0.12);
+@define-color apple_dock_separator rgba(0, 0, 0, 0.18);
+@define-color apple_dock_indicator rgba(0, 0, 0, 0.75);
+@define-color apple_dock_label rgba(240, 240, 240, 0.85);
+@define-color apple_dock_label_text #1d1d1f;
+@define-color apple_dock_badge #ff3b30;
+@define-color apple_dock_accent #0a84ff;
+@define-color apple_dock_sheet_dark rgba(30, 30, 30, 0.35);
+@define-color apple_dock_border_dark rgba(255, 255, 255, 0.18);
+@define-color apple_dock_hairline_dark rgba(0, 0, 0, 0.5);
+@define-color apple_dock_separator_dark rgba(255, 255, 255, 0.22);
+@define-color apple_dock_indicator_dark rgba(255, 255, 255, 0.8);
+@define-color apple_dock_label_dark rgba(40, 40, 40, 0.85);
+@define-color apple_dock_label_text_dark #f5f5f7;
+:root {
+  --apple-dock-tile: 48px; --apple-dock-magnified: 96px; --apple-dock-radius: 18px;
+  --apple-dock-edge-gap: 4px; --apple-dock-pad: 6px; --apple-dock-separator-pad: 8px;
+  --apple-dock-label-radius: 6px; --apple-dock-label-font: 13px; --apple-dock-indicator: 4px;
+  --apple-dock-badge-font: 12px; --apple-dock-menu-radius: 8px; --apple-dock-menu-row: 22px;
+  --apple-dock-menu-min-width: 180px;
+}
+

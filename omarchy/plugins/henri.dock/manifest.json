@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.dock",
+  "name": "Dock",
+  "version": "1.0.0",
+  "author": "henri",
+  "license": "MIT",
+  "description": "macOS-style Dock: magnification, launch and attention bounce, hover labels, folder stacks, genie minimize, auto-hide, keyboard control. Built on apple-ui (look) and henri-ui (motion).",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Dock.qml"
+  },
+  "tags": [
+    "dock",
+    "macos",
+    "quickshell",
+    "hyprland"
+  ]
+}

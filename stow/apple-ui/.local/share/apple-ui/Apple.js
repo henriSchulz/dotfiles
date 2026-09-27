@@ -453,3 +453,84 @@ var banner = {
   }
 }
 function bannerPalette(dark) { return dark ? banner.dark : banner.light }
+
+// ---- Dock (macOS Sonoma/Sequoia). Eigener Abschnitt, nicht die Popup-Werte
+// oben. Werte aus der Spec ~/Downloads/dock-spec.md (Richtwerte, noch nicht
+// am Screenshot nachgemessen — beim Nachmessen hier ersetzen). Bewegung:
+// henri-ui Motion.dock. Referenz-Plugin: ~/.config/omarchy/plugins/henri.dock.
+// Punkt-Werte → Style.space(pt); Größen, die der Nutzer per Trenner zieht
+// (tileSize/magnifiedSize), bleiben Pixel und skalieren nicht mit der Shell.
+var dock = {
+  tileSize: 48,          // Basisgröße (16–128)
+  magnifiedSize: 96,     // Kachel unter dem Cursor (tileSize–128)
+  tileMin: 16, tileMax: 128,
+  magnificationRadius: 3, // Einflussradius in Kacheln je Seite
+  gapFraction: 0.04,     // Abstand zwischen Kacheln, × Basisgröße
+  gapMin: 2,
+  padCross: 6,           // Innenabstand oben/unten (Querachse)
+  padMain: 6,            // Innenabstand links/rechts (Hauptachse)
+  separatorPad: 8,       // 1-px-Linie + 8 pt je Seite
+  separatorFraction: 0.7, // Trennerlänge × Basisgröße
+  radiusFactor: 0.37,    // Eckenradius des Hintergrunds ≈ 0,37 × Basisgröße …
+  radiusMin: 10, radiusMax: 26,
+  edgeGap: 4,            // Dock schwebt 4 pt über der Bildschirmkante
+  iconBody: 0.82,        // sichtbarer Icon-Körper × Kachel
+  iconShadowY: 1, iconShadowBlur: 1, iconShadowAlpha: 0.15,
+  blur: 24, saturate: 1.8,
+  labelGap: 10,          // Label 10 pt über dem vergrößerten Icon
+  labelRadius: 6, labelPadY: 4, labelPadX: 10,
+  labelArrowW: 10, labelArrowH: 5,
+  labelFont: 13,
+  indicator: 4, indicatorMin: 3, indicatorMax: 5, // Laufpunkt ø
+  indicatorGap: 2,       // über der Innenkante des Hintergrunds
+  badgeFraction: 0.4,    // Plakettenhöhe × Kachel
+  badgeMin: 16, badgeFont: 12, badgePadX: 5,
+  badge: "#ffff3b30", badgeText: "#ffffffff",
+  menuRadius: 8, menuPad: 5, menuMinWidth: 180, menuRow: 22, menuFont: 13,
+  menuHighlightRadius: 4, menuSeparatorPad: 5,
+  accent: "#ff0a84ff",   // Menü-Hover, Fokusring
+  focusRing: 3,
+  fanIcon: 48, fanMax: 12, fanAngle: 15, fanPill: 32, fanGap: 6,
+  gridIcon: 64, gridCell: 96, gridColumns: 5, gridFont: 11, gridRadius: 12, gridPad: 12,
+  listIcon: 16, listRow: 22,
+  stackPeek: 3,          // „Stapel“-Kachel zeigt die obersten 3 Dateien
+  thumbBadge: 0.35,      // App-Icon auf einer Fenster-Miniatur × Kachel
+  triggerZone: 3,        // Auto-Hide: Trigger-Zone an der Bildschirmkante
+  settingsWidth: 300,
+  light: {
+    dark: false,
+    sheet: "#47ffffff",        // Weiß α 0.28 (+ Compositor-Blur 24, Sättigung 180 %)
+    border: "#73ffffff",       // Weiß α 0.45, 0.5 pt
+    hairline: "#1f000000",     // äußere Haarlinie Schwarz α 0.12
+    shadow: "#2e000000",       // 0 10 30 α 0.18
+    separator: "#2e000000",    // Schwarz α 0.18
+    indicator: "#bf000000",    // Schwarz α 0.75
+    label: "#d9f0f0f0",        // rgba(240,240,240,0.85)
+    labelText: "#ff1d1d1f",
+    menu: "#d9f0f0f0",
+    menuText: "#ff1d1d1f",
+    menuHairline: "#1f000000",
+    pill: "#b3ffffff",         // Fächer-Namen: Weiß α 0.70
+    pillText: "#ff1d1d1f",
+    opaque: "#ffececec"        // „Transparenz reduzieren“
+  },
+  dark: {
+    dark: true,
+    sheet: "#591e1e1e",        // rgba(30,30,30,0.35)
+    border: "#2effffff",       // Weiß α 0.18
+    hairline: "#80000000",     // Schwarz α 0.5
+    shadow: "#59000000",       // 0 10 30 α 0.35
+    separator: "#38ffffff",    // Weiß α 0.22
+    indicator: "#ccffffff",    // Weiß α 0.8
+    label: "#d9282828",        // rgba(40,40,40,0.85)
+    labelText: "#fff5f5f7",
+    menu: "#d9282828",
+    menuText: "#fff5f5f7",
+    menuHairline: "#2effffff",
+    pill: "#99000000",         // Schwarz α 0.60
+    pillText: "#fff5f5f7",
+    opaque: "#ff2a2a2a"
+  }
+}
+function dockPalette(dark) { return dark ? dock.dark : dock.light }
+

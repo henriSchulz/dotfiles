@@ -41,6 +41,7 @@ Werte, die Popup-Werte sind nur der erste Abschnitt.
 | `Apple.window` / `--apple-win-*` | Finder-Fenster (icon/list/column, `system/finder.*`) | `~/Projects/finder` (GTK4) |
 | `Apple.notificationCenter` / `--apple-nc-*` | Spec-Werte (`spec-mitteilungszentrale-macos.md`), nicht gemessen | `henri.clock/NotificationCenter.qml` |
 | `Apple.banner` / `--apple-bn-*` | Tahoe-Mitteilungsbanner — Apples Support-Screenshot (mac-help `mh40609`, `help.apple.com/assets/…/dde97adb….png`, Erinnerung im Hover-Zustand), Skala 2,17 px/pt über fünf SF-Pro-Textbreiten inkl. Menüleisten-Uhr, Radius per Kreisfit ans Kantenprofil, Tönung per Kanal gegen die Umgebung | `henri.notifications` (Klon von `omarchy.notifications`) |
+| `Apple.dock` / `--apple-dock-*` | Spec-Werte (`henri.dock/docs/dock-spec.md`, Sonoma/Sequoia), nicht gemessen: Kachel 48/96, Glas hell Weiß α 0.28 / dunkel Grau 30 α 0.35, Radius 0,37 × Kachel, Label, Laufpunkt, Plakette, Menü 180/22/Radius 8, Fächer/Raster/Liste; `Apple.dockPalette(dark)` | `henri.dock` (Overlay-Plugin, Motion aus `Motion.dock`) |
 | `Apple.spotlight` / `--apple-sp-*` | Spotlight Tahoe — Apples Support-Screenshots (`~/Downloads/f8089fdb…png` Kapsel + Buttons, `ba1156d1…png` aufgeklappt), Skala über SF-Pro-Textbreiten (22/15/13/12 pt), Farben per Pixelmessung; dunkle Palette abgeleitet | `henri.menu` (Quickshell) |
 
 Fenster-Werte in Kürze: Sidebar-Karte 226 pt, Radius 18, 8 pt Einzug, Ampel innen
