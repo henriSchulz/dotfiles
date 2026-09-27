@@ -1,0 +1,31 @@
+{
+  "tileSize": 48,
+  "magnification": true,
+  "magnifiedSize": 72,
+  "magnificationRadius": 3,
+  "position": "bottom",
+  "minimizeEffect": "genie",
+  "minimizeToAppIcon": false,
+  "animateOpeningApps": true,
+  "autoHide": false,
+  "autoHideDelay": 200,
+  "autoHideDuration": 350,
+  "showIndicators": true,
+  "showRecentApps": true,
+  "theme": "system",
+  "accentColor": "#ff0a84ff",
+  "reduceMotion": "system",
+  "fileManager": "org.gnome.Nautilus",
+  "screen": "",
+  "folders": [
+    {
+      "path": "~/Downloads",
+      "name": "Downloads",
+      "displayAs": "stack",
+      "viewContentAs": "auto",
+      "sortBy": "dateAdded"
+    }
+  ],
+  "files": [],
+  "loginApps": []
+}

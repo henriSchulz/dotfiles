@@ -955,6 +955,7 @@ Item {
         m.push({ text: altHeld ? "Force Quit" : "Quit", action: altHeld ? "forceQuit" : "quit" })
       } else {
         m.push({ text: "Open", action: "open" })
+        if (item.recent) m.push({ text: "Remove from Recents", action: "removeRecent" })
       }
     } else if (item.kind === "folder") {
       var sb = item.sortBy, da = item.displayAs, va = item.viewContentAs
@@ -1007,6 +1008,7 @@ Item {
     if (a === "focus") focusWindow(entry.arg)
     else if (a === "open") launchItem(item)
     else if (a === "togglePin") togglePin(item)
+    else if (a === "removeRecent") { recents = recents.filter(function (r) { return r.key !== item.key }); scheduleRebuild() }
     else if (a === "toggleLogin") { var la = (settings.loginApps || []).slice(); var ix = la.indexOf(item.entryId); if (ix >= 0) la.splice(ix, 1); else la.push(item.entryId); setSetting("loginApps", la) }
     else if (a === "showInFiles") Quickshell.execDetached(["sh", "-c", 'for c in "$@"; do [ -f "$c" ] && exec nautilus --select "$c"; done; exec nautilus /usr/share/applications', "dock"].concat(desktopFileCandidates(item.entryId)))
     else if (a === "showAll") { var w = (item.windows || []).filter(function (x) { return !x.minimized }); if (w.length) focusWindow(w[0].address); missionControl.restart() }

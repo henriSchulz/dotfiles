@@ -24,6 +24,7 @@ run mkdir -p "$dest_root/defaults" "$dest_root/hooks/theme-set.d" "$dest_root/ex
 files=(
   "keystroke.json  644"
   "omadock.json    644"
+  "henri.dock.json 644"
   "dock.json       644"
   "menu.json       644"
   "app-aliases.jsonc  644"
