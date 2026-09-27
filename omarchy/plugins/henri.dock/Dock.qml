@@ -63,7 +63,9 @@ Item {
     screen: "",
     folders: [{ path: "~/Downloads", name: "Downloads", displayAs: "stack", viewContentAs: "auto", sortBy: "dateAdded" }],
     files: [],
-    loginApps: []
+    loginApps: [],
+    // app key (lower-case desktop id) → icon name or absolute path, e.g. a MacTahoe SVG
+    iconOverrides: {}
   })
   property var settings: defaults
   property bool settingsLoaded: false
@@ -248,6 +250,12 @@ Item {
     if (id) { tries.push(id); tries.push(id.toLowerCase()); tries.push(DockModel.shortId(id).toLowerCase()) }
     return iconFor(tries)
   }
+  function iconOverride(key) {
+    var o = settings.iconOverrides
+    if (!o || typeof o !== "object") return ""
+    var v = o[key] || o[DockModel.shortId(key)]
+    return v ? iconFor([DockModel.expandHome(String(v), home)]) : ""
+  }
   function folderIcon(path) {
     var b = DockModel.baseName(path).toLowerCase()
     var special = { downloads: "folder-download", documents: "folder-documents", pictures: "folder-pictures", music: "folder-music", videos: "folder-videos", desktop: "user-desktop", projects: "folder-development" }
@@ -344,7 +352,7 @@ Item {
       var prev = old[id]
       return {
         id: id, kind: "app", key: key, entryId: entry ? DockModel.stripDesktop(entry.id) : (appId || key), appId: appId || (g ? g.appId : key),
-        entry: entry, name: name, icon: appIcon(entry, appId || (g ? g.appId : key)),
+        entry: entry, name: name, icon: iconOverride(key) || appIcon(entry, appId || (g ? g.appId : key)),
         pinned: pinned, recent: recent === true, running: !!g, windows: wins,
         launching: !!launchPending[key], attention: !!attentionMap[key],
         badge: badges[id] !== undefined ? badges[id] : badges[key],

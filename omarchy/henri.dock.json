@@ -27,5 +27,9 @@
     }
   ],
   "files": [],
-  "loginApps": []
+  "loginApps": [],
+  "iconOverrides": {
+    "org.gnome.nautilus": "~/.local/share/icons/MacTahoe/places/scalable/folder.svg",
+    "foot": "~/.local/share/icons/MacTahoe/apps/scalable/utilities-terminal.svg"
+  }
 }
