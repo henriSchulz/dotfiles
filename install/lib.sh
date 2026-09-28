@@ -37,6 +37,14 @@ clear_for_stow() {
   [[ -e $target || -L $target ]] || return 0
   [[ -L $target ]] && return 0   # already a symlink; stow will re-point it
 
+  # The target can be a real file and still BE the repo's file: stow folds a
+  # directory that only this package owns into a single symlink
+  # (~/.local/share/henri-ui -> stow/henri-ui/.local/share/henri-ui), so every
+  # path below it resolves back into the repo. Without this check `cmp` compares
+  # the file with itself, calls it identical, and the `rm` below deletes the
+  # repo's own copy — 104 tracked files went missing that way on 2026-09-28.
+  [[ "$(readlink -f "$target")" == "$(readlink -f "$source")" ]] && return 0
+
   if cmp -s "$target" "$source"; then
     run rm -f "$target"
     return 0
