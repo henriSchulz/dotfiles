@@ -96,6 +96,11 @@
      app offers alongside the measured default. */
   --apple-win-list-row-large: 30px;
   --apple-win-list-inset: 10px;
+  /* The selection band and the zebra bands are inset from the content edge
+     and rounded, not full-bleed rectangles. Measured on the dark and light
+     list captures: 11 pt in from the edge, 8 pt corner, full row height. */
+  --apple-win-list-sel-inset: 11px;
+  --apple-win-list-sel-radius: 8px;
   --apple-win-list-icon-x: 27px;
   --apple-win-list-text-x: 47px;
   --apple-win-zebra: #f4f5f5;
