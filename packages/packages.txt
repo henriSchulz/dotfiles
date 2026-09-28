@@ -45,12 +45,19 @@ easyeffects
 lsp-plugins-lv2
 calf
 
-# Desktop apps
+# Desktop apps. Mail is Betterbird (Thunderbird with the fixes), not Geary,
+# which this setup used first. Bitwarden holds the passwords, the CLI is what
+# scripts read them with; KeePass only opens an older archive.
 signal-desktop
-geary
+betterbird-bin
+bitwarden
+bitwarden-cli
+keepass
 freerdp
+remmina
 
-# Fonts
+# Fonts. The SF Symbols fallback font is NOT here and never in this repo —
+# it is not redistributable. See MANUAL-STEPS.md.
 inter-font
 
 
@@ -62,3 +69,86 @@ vdirsyncer
 python-icalendar
 python-recurring-ical-events
 python-dateutil
+
+# Fingerprint (Goodix 533c in the XPS 13 9310). Only the Dell blob driven
+# through libfprint-tod works; the in-tree driver never enrolls. Do NOT run
+# omarchy-setup-security-fingerprint — it installs plain libfprint and takes
+# the reader out. Enrolment and the PAM wiring are in MANUAL-STEPS.md.
+fprintd
+libfprint-tod
+libfprint-goodix-53xc
+
+# Building my own things: hyprswipe (CMake + Ninja against the installed
+# Hyprland headers), menubar (esbuild via npm). Finder needs nothing beyond
+# the GTK4/python stack Omarchy already brings.
+cmake
+ninja
+nodejs-lts-jod
+
+# The MacBook as a second screen and input device (mt-bridge, mac-* scripts).
+# uxplay is the AirPlay receiver behind `mac-mirror`, tigervnc the viewer
+# behind `mac-screen`; ollama is only the client — the model runs on the Mac.
+uxplay
+tigervnc
+libvncserver
+ollama
+
+# LaTeX for university work. The full texlive-* split, not texlive-most,
+# so an update does not pull half a gigabyte of unused collections.
+texlive-basic
+texlive-latex
+texlive-latexrecommended
+texlive-latexextra
+texlive-fontsrecommended
+texlive-fontsextra
+texlive-langgerman
+texlive-bibtexextra
+texlive-binextra
+texlive-pictures
+biber
+
+# Video/audio decoding beyond the base set (kdenlive, mpv, thumbnails).
+gst-plugins-good
+gst-plugins-bad
+gst-plugins-ugly
+gst-libav
+gst-plugin-va
+
+# Hardware, power and thermals — the tools the battery and power-profile
+# experiments were measured with (see ~/Projects/akku-test).
+powertop
+msr-tools
+intel-gpu-tools
+glmark2
+stress-ng
+smartmontools
+nvme-cli
+
+# Disks, images and rescue: the NVMe migration and the Windows backup on the
+# external SSD were done with these.
+ntfs-3g
+ntfsprogs
+7zip
+wimlib
+libisoburn
+gptfdisk
+arch-install-scripts
+memtest86+-efi
+
+# Network and diagnostics
+nfs-utils
+wireshark-cli
+fwupd
+usbutils
+wifite
+
+# Misc libraries and tools pulled in by the above: libshumate (maps widget),
+# qt6-connectivity (Bluetooth in Quickshell), qt6-tools, python-cryptography
+# (iCloud keychain), python-fonttools (icon-font work), rust and opencode.
+libshumate
+qt6-connectivity
+qt6-tools
+python-cryptography
+python-fonttools
+rust
+opencode
