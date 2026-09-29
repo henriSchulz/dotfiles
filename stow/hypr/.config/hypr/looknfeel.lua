@@ -167,8 +167,10 @@ hl.window_rule({ match = { class = "org.gnome.NautilusPreviewer" }, float = true
 -- Finder (henri-ui macOS Finder clone, ~/Projects/finder): it draws its own
 -- rounded card with traffic lights instead of a headerbar, so it has to
 -- float like a real window — tiled edge-to-edge it loses the whole card
--- illusion and just looks broken.
-hl.window_rule({ match = { class = "de.henri.Finder" }, float = true })
+-- illusion and just looks broken. Its card is rounded 20 (apple-ui
+-- --apple-win-radius); with the global 12 the active border cut across the
+-- card's corners, so the border follows the card's own radius.
+hl.window_rule({ match = { class = "de.henri.Finder" }, float = true, rounding = 20 })
 
 -- Low-power rendering, switched from Control Center → Experiments
 -- (henri.control-center-v2/system/henri-render-power). The flag file is the
