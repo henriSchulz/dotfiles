@@ -4,7 +4,7 @@
 *.bak.*
 *.pre-dotfiles.*
 
-# Personal wallpaper referenced by the cupertino and img-7075 themes. Kept out
+# Personal wallpaper referenced by the cupertino theme. Kept out
 # of this public repo — see install/40-omarchy-themes.sh.
 IMG_7075.png
 

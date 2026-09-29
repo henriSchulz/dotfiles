@@ -99,8 +99,8 @@ Deliberately in neither repo. From the external SSD (`OMARCHY_BACKUP` is a
 bootable btrfs clone, `Daten` holds the archives):
 
 `~/Documents` (three Obsidian vaults), `~/Uni`, `~/Work`, `~/Pictures`
-(`Pictures/Wallpaper` is 645 MB of personal wallpapers — the `cupertino` and
-`img-7075` themes want `IMG_7075.png` from there; step 40 warns and carries on
+(`Pictures/Wallpaper` is 645 MB of personal wallpapers — the `cupertino`
+theme wants `IMG_7075.png` from there; step 40 warns and carries on
 if it is missing),
 `~/.local/share/calendars` (or let `vdirsyncer` re-sync), `~/.local/share/henri-finder/tags.json`
 (Finder's tags), `~/Projects/akku-test/verlauf/` (the battery measurements).

@@ -70,7 +70,7 @@ differences were committed:
 | `omarchy/plugins/henri.background/` | clone of `omarchy.background`: while a global wallpaper is set, a theme change only recolors the shell instead of swapping the background; a double click on the desktop opens `henri.wallpaper` |
 | `omarchy/hooks/theme-set.d/global-wallpaper` | points the background link back at the global wallpaper after `omarchy theme set` (lock screen etc. read the link) |
 | `omarchy/plugins/henri.system-menu/` | own plugin: macOS-style Apple menu — the Omarchy logo in the bar's left corner (replaces OmaSettings) opens Über diesen Computer (in-popup About card: model, chip, memory, graphics, disk, Omarchy version, kernel, uptime; "Weitere Infos …" opens `omarchy-launch-about`), Systemeinstellungen (Omarchy menu), App Store (`omarchy-pkg-install`), Sofort beenden (`hyprctl kill`), Ruhezustand, Neustart / Ausschalten / Abmelden with an in-popup confirm, Bildschirm sperren; cascading rows, gliding highlight, macOS-style blink on click, sliding pages; IPC `omarchy-shell henri.system-menu about` |
-| `omarchy/themes/cupertino{,-dark}`, `img-7075` | hand-built, no upstream remote |
+| `omarchy/themes/cupertino{,-dark}` | hand-built, no upstream remote |
 | `obsidian/home/**/.obsidian/` | vault settings, 4 community plugins, the `Crafted` and `Things` themes |
 | `icloud-photos/config.toml` | Apple ID and cache limits; the password is in the keyring, not here |
 | `packages/packages.txt` | the packages added on top of Omarchy's own lists |
@@ -142,11 +142,11 @@ paths so it is machine-independent.
 
 ## Wallpaper
 
-`cupertino` and `img-7075` both reference `IMG_7075.png`, a 32 MB personal
+`cupertino` references `IMG_7075.png`, a 32 MB personal
 photo. It is kept out of this public repo. Step 40 looks for it at
 `~/Pictures/Wallpaper/`, `~/Pictures/Wallpapers/` and `~/Wallpapers/`, or
-wherever `IMG_7075_PATH=<path>` points, and copies it into both themes; without
-it, those themes fall back to their remaining backgrounds. Copy it across from
+wherever `IMG_7075_PATH=<path>` points, and copies it into the theme; without
+it, the theme falls back to its remaining backgrounds. Copy it across from
 the other machine — nothing in this repo can restore it.
 
 Keeping it out is also what holds the repo at ~4 MB instead of 237 MB.

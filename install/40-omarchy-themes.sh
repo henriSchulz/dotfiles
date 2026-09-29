@@ -1,9 +1,8 @@
 #!/bin/bash
 # Install Omarchy themes and apply the active one.
 #
-# mac-transparent and outpost come from upstream. cupertino,
-# cupertino-dark and img-7075 are local, hand-built themes with no remote, so
-# they ship in this repo.
+# mac-transparent comes from upstream. cupertino and cupertino-dark are
+# local, hand-built themes with no remote, so they ship in this repo.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -17,7 +16,6 @@ ACTIVE_THEME="${ACTIVE_THEME:-cupertino-dark}"
 # Upstream themes: "<dir-name> <git-url>"
 upstream=(
   "mac-transparent  https://github.com/phoscoder/omarchy-mac-transparent-theme"
-  "outpost          https://github.com/simoz/omarchy-outpost-theme.git"
 )
 
 for entry in "${upstream[@]}"; do
@@ -41,9 +39,9 @@ for src in "$DOTFILES_ROOT"/omarchy/themes/*/; do
   run rsync -a "$src" "$theme_dir/$name/"
 done
 
-# The cupertino and img-7075 themes both reference IMG_7075.png, a 32 MB
-# personal photo kept out of this public repo. Drop it in any of the places
-# below (or pass IMG_7075_PATH) and this links it into both themes.
+# The cupertino theme references IMG_7075.png, a 32 MB personal photo kept
+# out of this public repo. Drop it in any of the places below (or pass
+# IMG_7075_PATH) and this copies it into the theme.
 wallpaper="${IMG_7075_PATH:-}"
 if [[ -z $wallpaper ]]; then
   for candidate in \
@@ -57,7 +55,7 @@ fi
 
 if [[ -f $wallpaper ]]; then
   info "wallpaper: $(tilde "$wallpaper")"
-  for name in cupertino img-7075; do
+  for name in cupertino; do
     dest="$theme_dir/$name/backgrounds/IMG_7075.png"
     if [[ -f $dest ]]; then
       skip "wallpaper already in $name"
@@ -68,7 +66,7 @@ if [[ -f $wallpaper ]]; then
   done
 else
   warn "IMG_7075.png not found at $wallpaper"
-  info "the cupertino and img-7075 themes will fall back to their other backgrounds"
+  info "the cupertino theme will fall back to its other backgrounds"
   info "set IMG_7075_PATH=<path> to place it"
 fi
 
