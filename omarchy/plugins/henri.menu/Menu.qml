@@ -12,7 +12,6 @@ import "/usr/share/omarchy/shell/services/AppSearch.js" as AppSearch
 import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
 import "file:///home/henri/.local/share/henri-ui" as HUi
 import "file:///home/henri/.local/share/apple-ui/Apple.js" as Apple
-import QtQuick.Effects
 
 Item {
   id: root
@@ -673,7 +672,6 @@ Item {
   readonly property color capsuleSelectedFill: pal.capsuleSelected
   readonly property color shortcutFill: pal.shortcut
   readonly property color hoverFill: pal.hover
-  readonly property real shadowAlpha: pal.shadowAlpha
 
   // The ConfirmDialog (uninstall) still takes the old colour roles.
   readonly property color background: pal.opaqueFill
@@ -724,9 +722,6 @@ Item {
   readonly property int shortcutFontSize: pt(sp.shortcutFont)
   readonly property int bottomPad: pt(sp.bottomPad)
   readonly property int resultsMaxHeight: pt(sp.resultsMaxHeight)
-  readonly property int shadowOffset: pt(sp.shadowOffset)
-  readonly property int shadowBlur: pt(sp.shadowBlur)
-  readonly property int shadowSpread: pt(sp.shadowSpread)
   readonly property int emptyStateHeight: pt(72)
   // How much of the first hidden row stays visible at the fold — enough to
   // read as a cut-off row rather than a bottom edge.
@@ -2668,23 +2663,6 @@ Item {
         acceptedButtons: Qt.NoButton
       }
 
-      RectangularShadow {
-        anchors.fill: card
-        radius: card.radius
-        blur: root.shadowBlur
-        spread: root.shadowSpread
-        offset.y: root.shadowOffset
-        color: Qt.rgba(0, 0, 0, root.shadowAlpha * (spot.expanded ? 1 : 0.6))
-        Behavior on color { ColorAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
-      }
-      RectangularShadow {
-        anchors.fill: card
-        radius: card.radius
-        blur: root.pt(root.sp.contactBlur)
-        offset.y: root.pt(root.sp.contactOffset)
-        color: Qt.rgba(0, 0, 0, root.sp.contactAlpha)
-      }
-
       Rectangle {
         id: card
         anchors.fill: parent
@@ -3551,13 +3529,6 @@ Item {
             }
             HUi.SpringValue { id: slide; epsilon: 0.1; to: (catButton.shown || Motion.reduceMotion) ? 0 : -root.buttonSlide }
 
-            RectangularShadow {
-              anchors.fill: glass
-              radius: glass.radius
-              blur: root.pt(root.sp.contactBlur)
-              offset.y: root.pt(root.sp.contactOffset)
-              color: Qt.rgba(0, 0, 0, root.sp.contactAlpha)
-            }
             Rectangle {
               id: glass
               anchors.fill: parent
