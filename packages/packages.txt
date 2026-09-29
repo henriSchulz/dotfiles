@@ -53,8 +53,6 @@ betterbird-bin
 bitwarden
 bitwarden-cli
 keepass
-freerdp
-remmina
 
 # Fonts. The SF Symbols fallback font is NOT here and never in this repo —
 # it is not redistributable. See MANUAL-STEPS.md.
@@ -84,14 +82,6 @@ libfprint-goodix-53xc
 cmake
 ninja
 nodejs-lts-jod
-
-# The MacBook as a second screen and input device (mt-bridge, mac-* scripts).
-# uxplay is the AirPlay receiver behind `mac-mirror`, tigervnc the viewer
-# behind `mac-screen`; ollama is only the client — the model runs on the Mac.
-uxplay
-tigervnc
-libvncserver
-ollama
 
 # LaTeX for university work. The full texlive-* split, not texlive-most,
 # so an update does not pull half a gigabyte of unused collections.

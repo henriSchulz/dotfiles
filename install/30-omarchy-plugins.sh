@@ -59,10 +59,10 @@ done
 #   henri.assistant — own plugin, the voice assistant card: dictate a
 #                 question, Antigravity (`agy`, package antigravity-cli)
 #                 answers in it
-#   henri.control-center-v2 — apple-ui rebuild of the Control Center, runs
-#                 beside henri.control-center; Experiments holds the
-#                 low-power rendering switch (system/henri-render-power,
-#                 flag read by stow/hypr looknfeel.lua)
+#   henri.control-center-v2 — apple-ui rebuild of the Control Center;
+#                 Experiments holds the low-power rendering switch
+#                 (system/henri-render-power, flag read by stow/hypr
+#                 looknfeel.lua)
 #   henri.dock  — own plugin, the macOS Dock (magnification, bounce, stacks,
 #                 genie minimize, auto-hide) on apple-ui + henri-ui; replaces
 #                 omadock, which stays installed but disabled in shell.json

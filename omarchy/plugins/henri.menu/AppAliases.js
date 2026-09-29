@@ -104,7 +104,6 @@ var DEFAULTS = {
   "cups": ["printer", "drucker", "print", "drucken", "queue"],
   "claude-quick": ["ai", "assistant", "chat", "claude", "llm", "ki"],
   "org.quickshell": ["shell", "bar", "panel", "desktop shell"],
-  "org.remmina.Remmina": ["remote desktop", "rdp", "vnc", "fernwartung"],
   "virtualbox": ["vm", "virtual machine", "virtualisierung", "emulator"]
 }
 

@@ -108,17 +108,7 @@ with `git restore`, and check `hyprland.lua` (not tracked) for the
 Without it the 4-finger horizontal swipe is simply off — `input.lua` guards the
 call, so nothing breaks.
 
-## 7. The Mac side
-
-The MacBook Air is a second screen and input device, not part of this install:
-
-- `~/Projects/mt-bridge` has its own README; the Mac end needs `codesign`,
-  `sudo` and TCC dialogs answered on the Mac itself.
-- Ollama runs on the Mac as a LaunchAgent on `0.0.0.0:11434`.
-- `uxplay` (AirPlay receiver) and `tigervnc` are installed by step 10, but the
-  AirPlay confirmation bar on the Mac cannot be scripted.
-
-## 8. Personal data
+## 7. Personal data
 
 Deliberately in neither repo. From the external SSD (`OMARCHY_BACKUP` is a
 bootable btrfs clone, `Daten` holds the archives):
@@ -133,7 +123,7 @@ if it is missing),
 `~/.local/share/voxtype/` (1.3 GB of models) is not worth copying — step 45
 downloads it again.
 
-## 9. Check afterwards
+## 8. Check afterwards
 
 ```bash
 hyprctl reload                       # config loaded without errors

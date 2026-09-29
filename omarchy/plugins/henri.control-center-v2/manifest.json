@@ -4,7 +4,7 @@
   "name": "Control Center (v2 Test)",
   "version": "0.2.0",
   "author": "henri",
-  "description": "macOS-Tahoe-style Control Center built on apple-ui: Wi-Fi, Bluetooth, AirDrop (LocalSend), Mac Input/Screen/Mode, display and sound, Now Playing, hardware, experiments. Runs beside henri.control-center.",
+  "description": "macOS-Tahoe-style Control Center built on apple-ui: Wi-Fi, Bluetooth, AirDrop (LocalSend), display and sound, Now Playing, hardware, experiments.",
   "kinds": [
     "bar-widget"
   ],

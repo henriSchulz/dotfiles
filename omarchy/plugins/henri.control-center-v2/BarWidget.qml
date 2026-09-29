@@ -110,7 +110,7 @@ BarWidget {
       p.open()
     }
     // Opens straight onto a detail page: wifi, wifi-advanced, bluetooth,
-    // sound, airpods, hardware, mac, screen, trackpad, macmode, experiments.
+    // sound, airpods, hardware, experiments.
     function page(name: string): void {
       if (!panelLoader.item) return
       panelLoader.item.page = name === "wifi-advanced" ? "wifi" : name
