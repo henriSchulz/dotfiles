@@ -151,8 +151,8 @@ hl.config({
   },
 })
 
--- Ziehen ohne Drücken, damit die Wippen-Mechanik des XPS-Trackpads
--- (oben schwer bis gar nicht klickbar) beim Markieren keine Rolle spielt.
+-- Ziehen ohne Drücken (eingeführt für die Wippen-Mechanik des XPS-Trackpads,
+-- oben schwer bis gar nicht klickbar; bleibt auf dem M1, wie am Mac).
 --   * 3 Finger auflegen und bewegen = gedrückt halten und ziehen
 --     (greift dank gepatchtem libinput auch bei schnellem Losziehen,
 --     siehe ~/Projects/dotfiles/packages/libinput-3fg-drag)
@@ -165,7 +165,7 @@ hl.config({
 -- Punkte = Ausgabetempo bei Eingabetempo 0, 1, 2 … (Einheiten/ms).
 -- Zu schnell/langsam? Alle Punkte ab dem zweiten gleichmäßig skalieren.
 hl.device({
-  name = "dll0945:00-06cb:cde6-touchpad",
+  name = "apple-spi-trackpad",  -- M1 MacBook Air (the XPS was dll0945:00-06cb:cde6-touchpad)
   drag_3fg = 1,
   tap_and_drag = true,
   drag_lock = 1,
