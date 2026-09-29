@@ -65,9 +65,11 @@ fi
 # which is too long to spend by default inside a run that is otherwise quick.
 if [[ ${ICLOUD_PHOTOS_BUILD:-0} == 1 ]]; then
   need_cmd cargo "install rust, or re-run without ICLOUD_PHOTOS_BUILD=1"
-  info "building (this takes a few minutes)"
-  run cargo build --release --manifest-path "$src/Cargo.toml"
-  info "built: $(tilde "$src")/target/release/icloud-photos-app"
+  # The project's own installer builds the release binary and puts it, the
+  # .desktop entry and the icon under ~/.local/share, so it shows up in
+  # Spotlight; a bare cargo build left it reachable only via cargo run.
+  info "building and installing the launcher (this takes a few minutes)"
+  run "$src/scripts/install.sh"
 else
   info "not building — re-run with ICLOUD_PHOTOS_BUILD=1, or:"
   info "  cd $(tilde "$src") && cargo run -p icloud-photos-app"
