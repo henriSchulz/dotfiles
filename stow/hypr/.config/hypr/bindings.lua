@@ -108,19 +108,27 @@ o.bind("XF86MonBrightnessDown", "Brightness down", hl.dsp.event("osd brightness 
 o.bind("ALT + XF86MonBrightnessUp", "Brightness up precise", hl.dsp.event("osd brightness up-fine"), { locked = true, repeating = true })
 o.bind("ALT + XF86MonBrightnessDown", "Brightness down precise", hl.dsp.event("osd brightness down-fine"), { locked = true, repeating = true })
 
--- Super+Backspace in Files (Nautilus) = in den Papierkorb, wie Cmd+Backspace im
--- Finder; in allen anderen Fenstern bleibt es Omarchys Transparenz-Umschalter.
+-- Super+Backspace in Files (Nautilus) und im Finder = in den Papierkorb, wie
+-- Cmd+Backspace am Mac; in allen anderen Fenstern bleibt es Omarchys
+-- Transparenz-Umschalter.
 -- Nautilus bekommt Entf statt Backspace, damit der weitergereichte Tastendruck
 -- nicht wieder dieses Binding trifft; henri_files.py fängt Super+Entf ab
 -- (Entf allein ist ohnehin Nautilus' Papierkorb-Taste). Muster wie Omarchys
 -- Super+C/V (default/hypr/bindings/clipboard.lua).
 hl.unbind("SUPER + BACKSPACE")
-o.bind("SUPER + BACKSPACE", "Move to Trash (Files) / Toggle window transparency", function()
+o.bind("SUPER + BACKSPACE", "Move to Trash (Files, Finder) / Toggle window transparency", function()
   local window = hl.get_active_window()
   if window and window.class == "org.gnome.Nautilus" then
     hl.dispatch(hl.dsp.send_key_state({ mods = "", key = "Delete", state = "down" }))
     hl.timer(function()
       hl.dispatch(hl.dsp.send_key_state({ mods = "", key = "Delete", state = "up" }))
+    end, { timeout = 50, type = "oneshot" })
+  elseif window and window.class == "de.henri.Finder" then
+    -- Finder (~/Projects/finder) nimmt Strg+Entf wie Strg+Rücktaste als
+    -- „In den Papierkorb“; Entf statt Rücktaste aus demselben Grund wie oben.
+    hl.dispatch(hl.dsp.send_key_state({ mods = "CTRL", key = "Delete", state = "down" }))
+    hl.timer(function()
+      hl.dispatch(hl.dsp.send_key_state({ mods = "CTRL", key = "Delete", state = "up" }))
     end, { timeout = 50, type = "oneshot" })
   else
     hl.dispatch(hl.dsp.exec_cmd("omarchy-hyprland-window-transparency-toggle"))
