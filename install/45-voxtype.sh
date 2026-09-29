@@ -22,7 +22,8 @@ log "Dictation (voxtype)"
 
 need_cmd voxtype "run install/10-packages.sh first"
 
-onnx=/usr/lib/voxtype/voxtype-onnx-avx512
+# aarch64 ships a single ONNX build; the XPS used voxtype-onnx-avx512.
+onnx=/usr/lib/voxtype/voxtype-onnx
 model=parakeet-tdt-0.6b-v3-int8
 
 if [[ ! -x $onnx ]]; then

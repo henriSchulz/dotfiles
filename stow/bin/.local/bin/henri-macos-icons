@@ -55,9 +55,11 @@ def main():
     fetch()
     icons.mkdir(parents=True, exist_ok=True)
     # Upstream's installer also builds the icon caches; doing it by hand means
-    # getting that wrong. -t blue matches the Omarchy accent closely enough
-    # that folder colours do not fight the theme.
-    subprocess.run(["./install.sh", "-d", str(icons), "-t", "blue"],
+    # getting that wrong. -t default is the blue set, which matches the
+    # Omarchy accent closely enough that folder colours do not fight the
+    # theme. (-t blue now installs it as MacTahoe-blue*, and the dock's paths
+    # and THEMES expect the plain MacTahoe names.)
+    subprocess.run(["./install.sh", "-d", str(icons), "-t", "default"],
                    cwd=src, check=True)
 
     installed = [n for n in THEMES if (icons / n).is_dir()]
