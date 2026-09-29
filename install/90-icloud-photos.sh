@@ -65,11 +65,12 @@ fi
 # which is too long to spend by default inside a run that is otherwise quick.
 if [[ ${ICLOUD_PHOTOS_BUILD:-0} == 1 ]]; then
   need_cmd cargo "install rust, or re-run without ICLOUD_PHOTOS_BUILD=1"
-  # The project's own installer builds the release binary and puts it, the
-  # .desktop entry and the icon under ~/.local/share, so it shows up in
-  # Spotlight; a bare cargo build left it reachable only via cargo run.
-  info "building and installing the launcher (this takes a few minutes)"
-  run "$src/scripts/install.sh"
+  # A real pacman package (packaging/arch in the project): binary, sidecar
+  # and its vendored Python deps under /usr/lib/icloud-photos, the launcher
+  # in /usr/bin and the .desktop entry in /usr/share, so Spotlight lists it.
+  # makepkg -si asks for sudo itself.
+  info "building and installing the package (this takes a few minutes)"
+  (cd "$src/packaging/arch" && run makepkg -si --noconfirm --needed)
 else
   info "not building — re-run with ICLOUD_PHOTOS_BUILD=1, or:"
   info "  cd $(tilde "$src") && cargo run -p icloud-photos-app"
