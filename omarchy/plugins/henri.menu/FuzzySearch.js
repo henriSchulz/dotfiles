@@ -88,8 +88,21 @@ function scoreToken(rawQuery, rawText) {
   if (best === NEG) return -1;
   if (text === query) best += 240;
   else if (text.indexOf(query) === 0) best += 120;
+  else if (wholeWordAt(text, query, boundary)) best += 180;
   else if (text.indexOf(query) >= 0) best += 55;
   return best;
+}
+
+// The query is one complete word of the text ("settings" in System Settings).
+// Worth nearly an exact match: a word the user can see in the name must beat
+// the same word hidden in an alias of another row (Setup → "settings").
+function wholeWordAt(text, query, boundary) {
+  var end;
+  for (var at = text.indexOf(query); at >= 0; at = text.indexOf(query, at + 1)) {
+    end = at + query.length;
+    if (boundary[at] && (end === text.length || boundary[end] || isBoundaryChar(text[end], "a"))) return true;
+  }
+  return false;
 }
 
 function scoreBookmark(query, bookmark) {
