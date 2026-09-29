@@ -36,7 +36,7 @@ var DEFAULTS = {
   "us.zoom.Zoom": ["meeting", "call", "video call", "konferenz"],
 
   // ------------------------------------------------------ notes & writing
-  "obsidian": ["notes", "notizen", "markdown", "wiki", "vault", "zettelkasten", "second brain"],
+  "md.obsidian.obsidian": ["notes", "notizen", "markdown", "wiki", "vault", "zettelkasten", "second brain"],
   "omawrite": ["notes", "notizen", "write", "schreiben", "markdown", "text", "editor", "scratchpad"],
   "com.github.xournalpp.xournalpp": ["notes", "notizen", "handwriting", "handschrift", "annotate", "sketch", "pdf"],
   "mdview": ["markdown", "preview", "readme", "viewer"],
