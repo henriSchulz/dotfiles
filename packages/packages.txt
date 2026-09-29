@@ -45,12 +45,10 @@ easyeffects
 lsp-plugins-lv2
 calf
 
-# Desktop apps. Mail is Betterbird (Thunderbird with the fixes), not Geary,
-# which this setup used first. Bitwarden holds the passwords, the CLI is what
-# scripts read them with; KeePass only opens an older archive.
+# Desktop apps. Bitwarden holds the passwords; the desktop app has no
+# aarch64 build, so only the CLI is here (and the browser extension).
+# KeePass only opens an older archive.
 signal-desktop
-betterbird-bin
-bitwarden
 bitwarden-cli
 keepass
 
@@ -67,14 +65,6 @@ vdirsyncer
 python-icalendar
 python-recurring-ical-events
 python-dateutil
-
-# Fingerprint (Goodix 533c in the XPS 13 9310). Only the Dell blob driven
-# through libfprint-tod works; the in-tree driver never enrolls. Do NOT run
-# omarchy-setup-security-fingerprint — it installs plain libfprint and takes
-# the reader out. Enrolment and the PAM wiring are in MANUAL-STEPS.md.
-fprintd
-libfprint-tod
-libfprint-goodix-53xc
 
 # Building my own things: hyprswipe (CMake + Ninja against the installed
 # Hyprland headers), menubar (esbuild via npm). Finder needs nothing beyond
@@ -107,8 +97,6 @@ gst-plugin-va
 # Hardware, power and thermals — the tools the battery and power-profile
 # experiments were measured with (see ~/Projects/akku-test).
 powertop
-msr-tools
-intel-gpu-tools
 glmark2
 stress-ng
 smartmontools
@@ -123,7 +111,6 @@ wimlib
 libisoburn
 gptfdisk
 arch-install-scripts
-memtest86+-efi
 
 # Network and diagnostics
 nfs-utils
@@ -134,11 +121,10 @@ wifite
 
 # Misc libraries and tools pulled in by the above: libshumate (maps widget),
 # qt6-connectivity (Bluetooth in Quickshell), qt6-tools, python-cryptography
-# (iCloud keychain), python-fonttools (icon-font work), rust and opencode.
+# (iCloud keychain), python-fonttools (icon-font work) and rust.
 libshumate
 qt6-connectivity
 qt6-tools
 python-cryptography
 python-fonttools
 rust
-opencode

@@ -55,26 +55,11 @@ do not have to be, because they are a free download:
    bundled font shadows the installed one). `Metadata/name_availability.plist`
    in there is Apple's full symbol-name list.
 
-## 3. Fingerprint reader (XPS 13 9310, Goodix 533c)
+## 3. Fingerprint reader
 
-Hardware-specific, so no install step does this. On the same reader:
-
-1. The three packages are in `packages/packages.txt`: `fprintd`,
-   `libfprint-tod`, `libfprint-goodix-53xc`. The in-tree libfprint driver never
-   enrolls on this reader — only the Dell blob through TOD works.
-   **Do not run `omarchy-setup-security-fingerprint`**; it installs plain
-   `libfprint` and takes the reader out again.
-2. Copy the drop-in that silences the driver's log flood:
-   `sudo install -Dm644 etc/systemd/system/fprintd.service.d/goodix.conf \
-   /etc/systemd/system/fprintd.service.d/goodix.conf && sudo systemctl daemon-reload`
-3. Enroll: `fprintd-enroll` (repeat per finger).
-4. PAM: `auth sufficient pam_fprintd.so` as the first `auth` line in
-   `/etc/pam.d/sudo` and `/etc/pam.d/polkit-1`; the lock screen uses
-   `/etc/pam.d/omarchy-lock-fingerprint` (`auth required pam_fprintd.so`).
-   Keep the password line below it — a reader that fails must not lock you out.
-
-On different hardware: check `lsusb` first and expect none of the above to
-apply.
+None on this machine: Touch ID on the M1 MacBook Air has no Linux driver
+under Asahi. The Goodix setup for the XPS 13 9310 (libfprint-tod, the Dell
+blob, PAM lines) is in this file's git history before the M1 move.
 
 ## 4. Claude Code
 
@@ -129,7 +114,6 @@ downloads it again.
 hyprctl reload                       # config loaded without errors
 omarchy-restart-shell                # bar, dock, Mission Control come up
 systemctl --user status voxtype akku-aufzeichnung
-fprintd-verify                       # if the reader was set up
 ~/Projects/finder/bin/finder         # own apps start
 omarchy-settings
 ```

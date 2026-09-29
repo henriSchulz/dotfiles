@@ -12,7 +12,7 @@ DRY_RUN=1 ./install_all.sh   # preview, changes nothing
 
 Run a single step by number: `./install_all.sh 40`.
 
-What no script can do — keys, the SF fonts, the fingerprint reader, per-machine
+What no script can do — keys, the SF fonts, per-machine
 display settings, personal data — is in
 [`MANUAL-STEPS.md`](MANUAL-STEPS.md). The private half of the setup (Claude
 config and memories) lives in a separate private repo, `dotfiles-private`.

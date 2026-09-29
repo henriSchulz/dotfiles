@@ -12,7 +12,7 @@ log "Omarchy themes"
 need_cmd omarchy "run this on a provisioned Omarchy system"
 need_cmd rsync "run install/10-packages.sh first"
 theme_dir="$HOME/.config/omarchy/themes"
-ACTIVE_THEME="${ACTIVE_THEME:-outpost}"
+ACTIVE_THEME="${ACTIVE_THEME:-cupertino-dark}"
 
 # Upstream themes: "<dir-name> <git-url>"
 upstream=(
