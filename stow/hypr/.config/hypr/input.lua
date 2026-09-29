@@ -160,14 +160,12 @@ hl.config({
 --     Kurz absetzen und weiterziehen geht; losgelassen wird nach ~0,7 s.
 --   * Doppeltippen und beim zweiten Tipp liegen lassen = ziehen; mit
 --     drag_lock darf der Finger kurz hoch, um nachzusetzen.
--- Beschleunigungskurve nur fürs Trackpad: langsame Bewegungen werden
--- gebremst (präzises Markieren), schnelle deutlich beschleunigt – wie am Mac.
--- Punkte = Ausgabetempo bei Eingabetempo 0, 1, 2 … (Einheiten/ms).
--- Zu schnell/langsam? Alle Punkte ab dem zweiten gleichmäßig skalieren.
+-- Keine eigene Beschleunigungskurve: die des XPS (custom 1 0 0.7 1.8 3.3 5.2
+-- 7.5 10.2) war auf dessen Touchpad abgestimmt und macht den Zeiger auf dem
+-- M1-Trackpad viel zu schnell. libinputs Standard (adaptive) gilt.
 hl.device({
   name = "apple-spi-trackpad",  -- M1 MacBook Air (the XPS was dll0945:00-06cb:cde6-touchpad)
   drag_3fg = 1,
   tap_and_drag = true,
   drag_lock = 1,
-  accel_profile = "custom 1 0 0.7 1.8 3.3 5.2 7.5 10.2",
 })
