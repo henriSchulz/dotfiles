@@ -456,7 +456,7 @@ Item {
         order.push(mid)
       }
     }
-    map["trash"] = { id: "trash", kind: "trash", name: "Trash", full: trashCount > 0, icon: iconFor([trashCount > 0 ? "user-trash-full" : "user-trash", "user-trash"]), locked: true, gone: false, badge: null, snapshot: null }
+    map["trash"] = { id: "trash", kind: "trash", name: "Trash", full: trashCount > 0, icon: String(Qt.resolvedUrl(trashCount > 0 ? "assets/trash-full.png" : "assets/trash-empty.png")), locked: true, gone: false, badge: null, snapshot: null }
     order.push("trash")
 
     // -- keep exiting tiles until their spring has closed
