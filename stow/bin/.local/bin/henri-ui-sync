@@ -22,13 +22,21 @@ plugins="$HOME/.config/omarchy/plugins"
 
 [[ -d $src ]] || { echo "henri-ui-sync: $src missing" >&2; exit 1; }
 
-for marker in "$plugins"/*/henri-ui/.henri-ui-vendored; do
+for marker in "$plugins"/*/henri-ui/.henri-ui-vendored "$HOME"/Projects/*/henri-ui/.henri-ui-vendored; do
   [[ -e $marker ]] || continue
   dest="$(dirname "$marker")/"
   rsync -a --delete --checksum \
     --exclude gallery/ --exclude .henri-ui-vendored \
     "$src" "$dest"
   echo "henri-ui-sync: updated ${dest#"$HOME"/}"
+done
+
+# apple-ui tokens, for apps that vendor only Apple.js (marker .apple-ui-vendored)
+for marker in "$plugins"/*/apple-ui/.apple-ui-vendored "$HOME"/Projects/*/apple-ui/.apple-ui-vendored; do
+  [[ -e $marker ]] || continue
+  dest="$(dirname "$marker")/"
+  rsync -a --checksum "$HOME/.local/share/apple-ui/Apple.js" "$dest"
+  echo "henri-ui-sync: updated ${dest#"$HOME"/}apple-ui"
 done
 
 [[ ${HENRI_UI_NO_RESTART:-0} == 1 ]] && exit 0
