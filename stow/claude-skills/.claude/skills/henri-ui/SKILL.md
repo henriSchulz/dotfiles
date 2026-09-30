@@ -131,6 +131,16 @@ erklären sie und müssen bei Änderungen mitgezogen werden.
 | `overview` / `overviewExit` | 250 / 165 | **Mission Control** (am echten macOS 26 gemessen, 60-fps-Aufnahme in `~/macos-scrape`): Öffnen 250 ms easeInOut, Schließen 165 ms easeOut |
 | Exit       | ×0.7| Ausblenden = 0.7 × Einblenden-Dauer |
 
+### Wartezeiten (keine Animationen — `speed` skaliert sie nicht)
+
+| Token | ms | Verwendung |
+|-------|----|------------|
+| `loadingDelay` | 300 | Warten/Laden (§3b.8): vorher nichts zeigen, danach Spinner per Fade |
+| `repeatDelay` / `repeatInterval` | 400 / 80 | Gedrückt halten (Stepper-Pfeile): erste Wiederholung, dann Takt |
+| `echoTimeout` | 1500 | Control (Slider, Stepper) zeigt seinen geschriebenen Wert, bis das System ihn zurückmeldet — höchstens so lange |
+
+CSS: `--loading-delay`, `--repeat-delay`, `--repeat-interval`, `--echo-timeout`.
+
 ### Kurven (cubic-bezier)
 
 | Token        | Bezier                     | Verwendung |
@@ -343,7 +353,7 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
    linear; nie hartes Umspringen.
 7. **Liste ändert sich:** Neue Zeilen klappen auf + faden, entfernte klappen zu,
    Nachbarn gleiten nach (`smooth`).
-8. **Warten/Laden:** Unter 300 ms nichts anzeigen; danach dezenter Spinner/Fortschritt
+8. **Warten/Laden:** Unter 300 ms (`Motion.loadingDelay`) nichts anzeigen; danach dezenter Spinner/Fortschritt
    per Fade. Inhalt, der ankommt, crossfadet den Platzhalter. Denkt ein Agent, stehen
    drei Punkte dort, wo der Text erscheinen wird, und pulsen nacheinander
    (`Motion.thinkingCycle`, 1200 ms pro Runde — Herzschlag, keine Reaktion); das erste
