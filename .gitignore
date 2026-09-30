@@ -11,3 +11,7 @@ IMG_7075.png
 # Symlink into ~/.local/state/omarchy/, rewritten by `omarchy theme set`.
 # Runtime state, not configuration — tracking it would commit a dangling link.
 stow/nvim/.config/nvim/lua/plugins/theme.lua
+
+# henri-ui global switches, written by System Settings — machine state.
+# Prefs.default.js holds the committed defaults.
+stow/henri-ui/.local/share/henri-ui/Prefs.js

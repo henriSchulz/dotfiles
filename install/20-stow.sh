@@ -28,3 +28,8 @@ run mkdir -p "$HOME/.local/share/nautilus-python/extensions" "$HOME/.local/share
 
 info "stowing: ${packages[*]}"
 run stow --dir "$DOTFILES_ROOT/stow" --target "$HOME" --restow "${packages[@]}"
+
+# henri-ui's Motion.js imports Prefs.js — machine state written by System
+# Settings, so not in git. Start it from the committed defaults.
+prefs="$DOTFILES_ROOT/stow/henri-ui/.local/share/henri-ui"
+[[ -e $prefs/Prefs.js ]] || run cp "$prefs/Prefs.default.js" "$prefs/Prefs.js"

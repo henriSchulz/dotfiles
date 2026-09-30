@@ -30,6 +30,7 @@ danach gebaut wurden, automatisch mitziehen. Deshalb:
 |-------|-----|-----------|
 | `Motion.js` | QML-Plugins: Dauern, Kurven, Spring-Presets, Radien, Skalen | `import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion` |
 | `*.qml` (Reveal, Surface, Pressable, Button, MenuList, Highlight, Toggle, CrossfadeText, Collapse, PageStack, StaggerIn, SpringValue, MicGlyph, Waveform) | QML: fertige Komponenten — Katalog in `references/qml.md` | `import "file:///home/henri/.local/share/henri-ui" as HUi` |
+| `Prefs.js` (+ `Prefs.default.js`) | Globale Schalter reduceMotion/reduceTransparency — **von System Settings geschrieben**, nie von Hand | wird von `Motion.js` importiert, nicht direkt |
 | `gallery/shell.qml` | Alle Komponenten live + Selbsttest | `quickshell -p ~/.local/share/henri-ui/gallery/shell.qml` |
 | `gtk.css` | GTK4/libadwaita-Apps | zur Laufzeit laden + FileMonitor |
 | `motion.css` | Web/Tauri/Electron | zur Laufzeit laden bzw. im Build aus der Quelle ziehen |
@@ -66,9 +67,18 @@ Toolbar, Sheet) hat einen anderen Aufbau — dafür nicht diese Kacheln/Radien/A
 eigenen Abschnitt in apple-ui ablegen. Rohdaten, Messmethode und Scraper-Lücken →
 `references/apple.md` — lesen, bevor eine neue macOS-Fläche nachgebaut wird.**
 
-**Globale Schalter** (in `Motion.js`, CSS analog): `speed` (1.0 = normal, 1.2 = alles
-20 % langsamer — Dauern *und* Springs) und `reduceMotion` (nur noch Crossfades).
-„Alles etwas langsamer/schneller“ = nur `speed` ändern.
+**Globale Schalter**: `speed` steht in `Motion.js` (1.0 = normal, 1.2 = alles 20 %
+langsamer — Dauern *und* Springs; CSS analog). „Alles etwas langsamer/schneller“ = nur
+`speed` ändern. `Motion.reduceMotion` (nur noch Crossfades) und `Motion.glass`
+(= nicht „Transparenz reduzieren“) kommen dagegen aus **`Prefs.js`** im selben Ordner:
+das schreibt **System Settings** (Bedienungshilfen › Anzeige › Bewegung reduzieren /
+Transparenz reduzieren) und startet danach die Shell neu. `Prefs.js` ist
+Maschinenzustand — **nie von Hand ändern, nie committen** (gitignored); die Defaults
+stehen in `Prefs.default.js`, daraus wird ein fehlendes `Prefs.js` angelegt.
+Vendored Kopien (henri-ui-sync) bekommen nie den Zustand dieser Maschine, sondern
+immer die Defaults. `motion.css`/`gtk.css` folgen `Prefs.js` nicht — Web/GTK sehen nur
+`prefers-reduced-motion` bzw. `gtk-enable-animations` (GNOME `enable-animations`, das
+System Settings beim Bewegung-Reduzieren ebenfalls umschaltet).
 
 **Wenn Henri eine Richtlinie ändert** („Menüs langsamer“, „Buttons ohne Scale“ …):
 1. Wert-Änderung → nur in der zentralen Datei ändern (QML **und** CSS-Dateien, damit
@@ -394,7 +404,9 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   Fläche dahinter — dieser Abstand ist es, der die Kachelgrenze lesbar hält, nicht ein
   harter Rahmen. Dazu weiterhin eine dünne Haarlinie 1 px `foreground` @ α 0.10 und ein
   weicher Schatten (y 8, blur 24, α 0.18–0.25). `Motion.glass` schaltet das ganze
-  Verhalten ab (`false` → alte fast-deckende Fläche), falls ein Plugin es mal nicht will.
+  Verhalten ab (`false` → alte fast-deckende Fläche); es ist `false`, sobald in System
+  Settings „Transparenz reduzieren“ an ist (`Prefs.js`) — Plugins lesen es, statt die
+  Alphas fest zu verdrahten.
 - **Zustände (Fill-Alpha auf foreground):** normal 0, hover 0.08, pressed 0.14,
   selected = Accent. (In Shell-Plugins: die `Style.*Fill`-Tokens verwenden.)
 - **Typo:** Theme-Font (`Style.font.family`, die System-„monospace“-Alias, gemeinsam mit

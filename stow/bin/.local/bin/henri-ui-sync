@@ -14,20 +14,29 @@
 # files on its hot-reload, and keeps already-loaded henri-ui components cached
 # until a full restart. Debounced — waits until the folder has been quiet for
 # $quiet seconds, so an editing burst restarts once. HENRI_UI_NO_RESTART=1 skips it.
+#
+# Prefs.js is machine state (the global switches, written by System Settings,
+# which restarts the shell itself): it never reaches a vendored copy — those
+# ship Prefs.default.js as their Prefs.js — and a change to it alone restarts
+# nothing here.
 set -euo pipefail
 quiet=2
+stamp="${XDG_CACHE_HOME:-$HOME/.cache}/henri-ui-sync.stamp"
 
 src="$HOME/.local/share/henri-ui/"
 plugins="$HOME/.config/omarchy/plugins"
 
 [[ -d $src ]] || { echo "henri-ui-sync: $src missing" >&2; exit 1; }
+# Motion.js imports Prefs.js; it must always exist.
+[[ -e $src/Prefs.js || ! -e $src/Prefs.default.js ]] || cp "$src/Prefs.default.js" "$src/Prefs.js"
 
 for marker in "$plugins"/*/henri-ui/.henri-ui-vendored "$HOME"/Projects/*/henri-ui/.henri-ui-vendored; do
   [[ -e $marker ]] || continue
   dest="$(dirname "$marker")/"
   rsync -a --delete --checksum \
-    --exclude gallery/ --exclude .henri-ui-vendored \
+    --exclude gallery/ --exclude .henri-ui-vendored --exclude /Prefs.js --exclude /Prefs.js.tmp \
     "$src" "$dest"
+  [[ -e $dest/Prefs.js || ! -e $dest/Prefs.default.js ]] || cp "$dest/Prefs.default.js" "$dest/Prefs.js"
   echo "henri-ui-sync: updated ${dest#"$HOME"/}"
 done
 
@@ -41,10 +50,20 @@ done
 
 [[ ${HENRI_UI_NO_RESTART:-0} == 1 ]] && exit 0
 
+# Files that matter for a restart: everything but the Prefs.js machine state.
+changed() { find -L "$src" "$HOME/.local/share/apple-ui/" -maxdepth 1 -type f ! -name 'Prefs.js' ! -name 'Prefs.js.tmp' "$@" -print -quit 2>/dev/null; }
+
+# Only Prefs.js changed since the last run → System Settings restarts the shell.
+if [[ -e $stamp && -z $(changed -newer "$stamp") ]]; then
+  touch "$stamp"
+  exit 0
+fi
+
 # Debounce: only restart once nothing in henri-ui changed for $quiet seconds.
-while [[ -n $(find -L "$src" -maxdepth 1 -type f -newermt "-$quiet seconds" -print -quit) ]]; do
+while [[ -n $(changed -newermt "-$quiet seconds") ]]; do
   sleep 0.5
 done
+mkdir -p "$(dirname "$stamp")" && touch "$stamp"
 
 restart="${OMARCHY_PATH:-/usr/share/omarchy}/bin/omarchy-restart-shell"
 if quickshell list --all 2>/dev/null | grep -q 'omarchy/shell'; then

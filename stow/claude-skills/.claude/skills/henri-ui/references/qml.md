@@ -235,8 +235,12 @@ displaced: Transition {
 
 ## Reduce Motion / Tempo
 
-`Motion.reduceMotion = true` → alle Komponenten nur noch Crossfades.
-`Motion.speed = 1.2` → alles 20 % langsamer. Beides zentral, wirkt nach Shell-Reload überall.
+`Motion.reduceMotion` → alle Komponenten nur noch Crossfades. Der Wert kommt aus
+`Prefs.js` (System Settings › Bedienungshilfen › Anzeige › Bewegung reduzieren schreibt
+es und startet die Shell neu) — nicht von Hand setzen. Genauso `Motion.glass`
+(aus bei „Transparenz reduzieren“).
+`Motion.speed = 1.2` → alles 20 % langsamer (steht direkt in `Motion.js`). Wirkt nach
+Shell-Neustart überall.
 
 ## Verboten in Plugins
 
