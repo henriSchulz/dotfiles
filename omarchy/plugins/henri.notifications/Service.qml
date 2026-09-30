@@ -180,6 +180,8 @@ Item {
       return
     }
     var silent = !!rule && rule.style === "none"
+    // the chime comes with the rule, banner or not — but never through DND
+    if (rule && rule.sound === true && !service.doNotDisturb && !chime.running) chime.running = true
 
     // DND bypass rules: chat apps abuse urgency=critical to force
     // visibility, so critical alone isn't enough — we also require the
@@ -197,7 +199,6 @@ Item {
       return
     }
 
-    if (rule && rule.sound === true && !chime.running) chime.running = true
     persistPopupFile(snapshot)
     watchForUpdates(notification, snapshot)
     // Qt.callLater avoids "QV4::Object::insertMember" crashes when a
