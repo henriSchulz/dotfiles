@@ -234,8 +234,22 @@ Panel {
 
   // Opening a notification focuses its sender, like the daemon's own click
   // fallback (the helper matches the window class case-insensitively).
+  // Omarchy's own toasts (crash → "diagnose with AI", installers, …) carry their
+  // click as an argv vector; run it like the toast does, else focus the sender.
+  function entryArgv(it) {
+    try {
+      var argv = JSON.parse(String(it.execArgv || ""))
+      if (!Array.isArray(argv) || argv.length === 0) return null
+      for (var i = 0; i < argv.length; i++) if (typeof argv[i] !== "string") return null
+      return argv[0] && argv[0].charAt(0) !== "-" ? argv : null
+    } catch (e) {
+      return null
+    }
+  }
   function openEntry(it) {
-    if (it.app) root.run(Util.shellQuote(Quickshell.env("OMARCHY_PATH") + "/bin/omarchy-hyprland-focus-app") + " " + Util.shellQuote(String(it.app)))
+    var argv = entryArgv(it)
+    if (argv) Util.execArgv(argv)
+    else if (it.app) root.run(Util.shellQuote(Quickshell.env("OMARCHY_PATH") + "/bin/omarchy-hyprland-focus-app") + " " + Util.shellQuote(String(it.app)))
     dismissEntries([it])
     root.close()
   }
