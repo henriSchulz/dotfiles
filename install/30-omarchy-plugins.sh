@@ -23,7 +23,6 @@ upstream=(
   "expose.window-overview                https://github.com/kristofferR/omarchy-expose.git"
   "henri.keystroke                       https://github.com/henriSchulz/keystroke.git"
   "henri.missioncontrol                  https://github.com/henriSchulz/omarchy-mission-control.git"
-  "io.github.sirjul1337.lock-explorer    https://github.com/SirJul1337/omarchy-lock-explorer.git"
   "omadock                               https://github.com/thepathless/omadock.git"
   "omaplug                               https://github.com/fross100/omaplug.git"
   "stappmus.activity-monitor             https://github.com/stappmus/omarchy-activity-monitor.git"
