@@ -134,9 +134,11 @@ BarWidget {
   onBarChanged: injectPanel()
   onSettingsChanged: injectPanel()
 
+  // Per-minute ticks unless the format shows seconds ("Show seconds" in
+  // System Settings); a seconds tick all the time would wake the bar for nothing.
   SystemClock {
     id: clock
-    precision: SystemClock.Minutes
+    precision: Model.formatHasSeconds(root.activeFormat) ? SystemClock.Seconds : SystemClock.Minutes
     onDateChanged: root.displayDate = date
   }
 

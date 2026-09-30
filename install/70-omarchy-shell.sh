@@ -8,8 +8,9 @@
 #   - henri.menu enabled as a plugin, not a bar widget — a menu+widget plugin
 #     is only loaded while it is on the bar or listed under `plugins`
 #   - idle timers: screensaver after 150s, lock after 300s
-#   - omarchy.menu / omarchy.idle disabled in favour of henri.menu and
-#     henri.idle; the stock omarchy.lock is the lock screen
+#   - omarchy.menu / omarchy.idle / omarchy.lock disabled in favour of
+#     henri.menu, henri.idle and henri.lock (the stock lock screen plus
+#     System Settings' lock screen message)
 #
 # Copied, never symlinked: the shell rewrites this file whenever the bar is
 # edited, and a stow symlink here breaks that write.

@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
+import Quickshell.Services.UPower
 import Quickshell.Wayland
 import "IdleModel.js" as IdleModel
 
@@ -25,6 +26,13 @@ Item {
   readonly property int lockDelaySeconds: Math.max(0, lockTimeoutSeconds - firstIdleTimeoutSeconds)
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
+  // "Turn display off on battery / on power adapter when inactive" (System
+  // Settings > Lock Screen): idle.displayOffBattery / idle.displayOffAC in
+  // seconds, 0 = never. Its own idle clock, apart from the screensaver/lock
+  // cycle, so it also fires on the lock screen and follows the power source.
+  readonly property bool onBattery: UPower.onBattery
+  readonly property int displayOffSeconds: secondsFromConfig(onBattery ? idleConfig.displayOffBattery : idleConfig.displayOffAC, 0)
+  property bool displayOffThisCycle: false
 
   property bool stayAwake: false
   property bool stayAwakeStateLoaded: false
@@ -170,6 +178,20 @@ Item {
     cancelIdleCycle("activity")
   }
 
+  function handleDisplayOffIdle() {
+    if (displayOffMonitor.isIdle) {
+      if (!root.idleEnabled || root.displayOffSeconds <= 0) return
+      root.displayOffThisCycle = true
+      runProcess(displayOffProcess, "display-off", "omarchy-brightness-display off")
+    } else if (root.displayOffThisCycle) {
+      // Any input turns the displays back on; the wake script skips the
+      // DPMS call when every display is already lit.
+      root.displayOffThisCycle = false
+      displayOffProcess.running = false
+      runProcess(displayOnProcess, "display-on", "omarchy-brightness-display on")
+    }
+  }
+
   function handleIdleChanged() {
     logEvent("idle-monitor", idleMonitor.isIdle ? "idle" : "active")
     if (!root.idleEnabled) return
@@ -192,6 +214,9 @@ Item {
       screensaverDelay: root.screensaverDelaySeconds,
       lockDelay: root.lockDelaySeconds,
       screensaverWindows: root.screensaverWindowCount,
+      onBattery: root.onBattery,
+      displayOff: root.displayOffSeconds,
+      displayOffActive: root.displayOffThisCycle,
       timers: {
         screensaver: screensaverTimer.running,
         lock: lockTimer.running,
@@ -256,6 +281,14 @@ Item {
     onIsIdleChanged: root.handleIdleChanged()
   }
 
+  IdleMonitor {
+    id: displayOffMonitor
+    enabled: root.idleEnabled && root.displayOffSeconds > 0
+    timeout: Math.max(1, root.displayOffSeconds)
+    respectInhibitors: true
+    onIsIdleChanged: root.handleDisplayOffIdle()
+  }
+
   Timer {
     id: screensaverTimer
     interval: root.screensaverDelaySeconds * 1000
@@ -293,6 +326,14 @@ Item {
   Process {
     id: lockProcess
     onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "lock exitCode=" + exitCode + " status=" + exitStatus) }
+  }
+  Process {
+    id: displayOffProcess
+    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "display-off exitCode=" + exitCode + " status=" + exitStatus) }
+  }
+  Process {
+    id: displayOnProcess
+    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "display-on exitCode=" + exitCode + " status=" + exitStatus) }
   }
   Process {
     id: wakeProcess

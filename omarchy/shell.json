@@ -41,7 +41,8 @@
     "henri.menu",
     "henri.idle",
     "henri.background",
-    "henri.notifications"
+    "henri.notifications",
+    "henri.lock"
   ],
   "disabledPlugins": [
     "omarchy.menu",
@@ -51,7 +52,8 @@
     "io.github.andyweiboan.missioncontrol",
     "bibek.menu",
     "omarchy.notifications",
-    "omadock"
+    "omadock",
+    "omarchy.lock"
   ],
   "idle": {
     "lock": 600,
@@ -93,6 +95,9 @@
     },
     {
       "id": "henri.dock"
+    },
+    {
+      "id": "henri.lock"
     }
   ],
   "version": 1

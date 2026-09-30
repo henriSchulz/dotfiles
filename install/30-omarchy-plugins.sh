@@ -41,7 +41,11 @@ done
 # Local plugins ship as source in this repo:
 #   henri.menu  — clone of omarchy.menu, a Spotlight-style launcher
 #   henri.idle  — clone of omarchy.idle, drives omarchy-screensaver-themed
-#                 (that script comes from the `bin` stow package, step 20)
+#                 (that script comes from the `bin` stow package, step 20);
+#                 also turns the displays off after idle.displayOffBattery /
+#                 idle.displayOffAC seconds, by UPower's power source
+#   henri.lock  — clone of omarchy.lock, stock lock screen plus the
+#                 "Show message when locked" line (shell.json lock.message)
 #   henri.bar   — clone of omarchy.bar: translucent macOS-style menu bar
 #   henri.workspaces — clone of omarchy.workspaces, occupied workspaces only
 #   henri.clock — clone of omarchy.clock, German day and month names

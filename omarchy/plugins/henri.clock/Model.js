@@ -67,6 +67,12 @@ function nextClockFormat(ring, current) {
   return ring[(index + 1) % ring.length]
 }
 
+// Whether a Qt date format shows seconds ("s"/"ss" outside a quoted
+// literal) -- the bar clock only ticks every second when it has to.
+function formatHasSeconds(format) {
+  return /s/.test(String(format || "").replace(/'[^']*'/g, ""))
+}
+
 // Two-digit ISO week, substituted into a format's 'ww' token before Qt
 // formats it -- Qt has no ISO week specifier of its own.
 function isoWeekLiteral(year, month, day) {
@@ -303,6 +309,7 @@ if (typeof module !== "undefined") {
     clockFormats: clockFormats,
     clockFormatRing: clockFormatRing,
     nextClockFormat: nextClockFormat,
-    isoWeekLiteral: isoWeekLiteral
+    isoWeekLiteral: isoWeekLiteral,
+    formatHasSeconds: formatHasSeconds
   }
 }
