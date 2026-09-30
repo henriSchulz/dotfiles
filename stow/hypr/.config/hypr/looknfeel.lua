@@ -188,6 +188,19 @@ if low_power_render then
   })
 end
 
+-- No effects, switched from Control Center → Experiments (same helper, flag
+-- no-effects). For the M1 power measurements in ~/Projects/m1-power: blur,
+-- shadows and Hyprland's own animations off. Blur off also takes the glass
+-- from the bar, dock and panels; the shell plugins still animate themselves.
+local no_effects = io.open((os.getenv("HOME") or "") .. "/.local/state/henri/no-effects", "r")
+if no_effects then
+  no_effects:close()
+  hl.config({
+    decoration = { blur = { enabled = false }, shadow = { enabled = false } },
+    animations = { enabled = false },
+  })
+end
+
 -- System Settings (omarchy-settings, ~/Projects/settings): a macOS-27-shaped
 -- settings window. 868 × 768 = the 723 × 640 measured on macOS at the app's
 -- own 1.2 scale; floating and centred, and its sidebar is translucent, so it

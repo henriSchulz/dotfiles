@@ -47,6 +47,9 @@ Panel {
   property var renderPower: ({})
   readonly property bool renderPowerOn: renderPower.state === "on"
   readonly property bool renderPowerBusy: renderPowerSetProc.running
+  // No effects (Experiments): same helper, own flag; true = blur, shadows and
+  // Hyprland animations are off.
+  readonly property bool noEffectsOn: renderPower.effects === "off"
   readonly property real backdropLuma: backdrop.luma
   function setBackdropLuma(v) { backdrop.set(v) }
   function refreshBackdrop() { backdrop.remeasure() }
@@ -558,6 +561,11 @@ Panel {
   function setRenderPower(on) {
     if (renderPowerSetProc.running) return
     renderPowerSetProc.command = [root.renderPowerPath, on ? "on" : "off"]
+    renderPowerSetProc.running = true
+  }
+  function setNoEffects(on) {
+    if (renderPowerSetProc.running) return
+    renderPowerSetProc.command = [root.renderPowerPath, "effects", on ? "on" : "off"]
     renderPowerSetProc.running = true
   }
   Process {
@@ -2152,6 +2160,25 @@ Panel {
             bottomPadding: root.pt(10)
             width: root.panelWidth - root.pt(24)
             text: "Lets the GPU idle between frames: fullscreen video goes straight to the display, and the bar and dock blur a little less deep. Reloads Hyprland when switched."
+          }
+          AUi.SwitchRow {
+            title: "No effects"
+            caption: root.renderPowerBusy
+              ? "Reloading Hyprland…"
+              : root.noEffectsOn
+                ? "Blur " + (root.renderPower.blur === "false" ? "off" : "on")
+                  + " · shadows " + (root.renderPower.shadow === "false" ? "off" : "on")
+                  + " · animations " + (root.renderPower.anim === "false" ? "off" : "on")
+                : "Blur, shadows and animations off"
+            checked: root.noEffectsOn
+            onToggled: function(on) { root.setNoEffects(on) }
+          }
+          AUi.Caption {
+            x: root.pt(12)
+            topPadding: root.pt(4)
+            bottomPadding: root.pt(10)
+            width: root.panelWidth - root.pt(24)
+            text: "For power measurements: the compositor stops blurring, drawing shadows and animating windows. Bar, dock and panels lose their glass. Reloads Hyprland when switched."
           }
         }
 

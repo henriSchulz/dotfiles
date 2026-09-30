@@ -1,24 +1,40 @@
 #!/bin/bash
 # henri-render-power on|off|toggle|status
+# henri-render-power effects on|off|toggle
 #
-# Low-power rendering for Hyprland, switched from Control Center → Experiments.
-# The flag file is the whole state; ~/.config/hypr/looknfeel.lua reads it on
-# every (re)load and applies: direct scanout, 2 blur passes, color management
-# off. `status` prints key=value lines the panel parses, including the values
-# Hyprland actually runs with, so the switch never lies about what is applied.
+# Two Hyprland rendering experiments, switched from Control Center → Experiments.
+# Each flag file is the whole state; ~/.config/hypr/looknfeel.lua reads them on
+# every (re)load:
+#   low-power-render  direct scanout, 2 blur passes, color management off
+#   no-effects        blur, shadows and animations off (M1 power measurements,
+#                     ~/Projects/m1-power)
+# `status` prints key=value lines the panel parses, including the values
+# Hyprland actually runs with, so the switches never lie about what is applied.
 set -euo pipefail
-flag="${XDG_STATE_HOME:-$HOME/.local/state}/henri/low-power-render"
+dir="${XDG_STATE_HOME:-$HOME/.local/state}/henri"
+flag="$dir/low-power-render"
+
+if [[ ${1:-} == effects ]]; then
+  flag="$dir/no-effects"
+  shift
+  [[ ${1:-} == status ]] && exec "$0" status
+fi
 
 case "${1:-status}" in
-  on)     mkdir -p "$(dirname "$flag")"; : > "$flag"; hyprctl reload >/dev/null ;;
+  on)     mkdir -p "$dir"; : > "$flag"; hyprctl reload >/dev/null ;;
   off)    rm -f "$flag"; hyprctl reload >/dev/null ;;
-  toggle) if [[ -e $flag ]]; then exec "$0" off; else exec "$0" on; fi ;;
+  toggle) if [[ -e $flag ]]; then set -- off; else set -- on; fi
+          [[ $flag == */no-effects ]] && exec "$0" effects "$1"; exec "$0" "$1" ;;
   status) ;;
-  *)      echo "usage: ${0##*/} on|off|toggle|status" >&2; exit 2 ;;
+  *)      echo "usage: ${0##*/} [effects] on|off|toggle|status" >&2; exit 2 ;;
 esac
 
 opt() { hyprctl getoption "$1" 2>/dev/null | awk '/^\s*(int|bool|float):/ {print $2; exit}'; }
-if [[ -e $flag ]]; then echo "state=on"; else echo "state=off"; fi
+if [[ -e $dir/low-power-render ]]; then echo "state=on"; else echo "state=off"; fi
+if [[ -e $dir/no-effects ]]; then echo "effects=off"; else echo "effects=on"; fi
 echo "scanout=$(opt render:direct_scanout)"
 echo "passes=$(opt decoration:blur:passes)"
 echo "cm=$(opt render:cm_enabled)"
+echo "blur=$(opt decoration:blur:enabled)"
+echo "shadow=$(opt decoration:shadow:enabled)"
+echo "anim=$(opt animations:enabled)"
