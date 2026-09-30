@@ -144,11 +144,11 @@ Item {
           Row {
             spacing: Style.space(6)
             Repeater {
-              model: [["system", "System"], ["off", "Full"], ["on", "Reduced"]]
+              model: [["system", "System"], ["on", "Reduced"]]
               delegate: AUi.Capsule {
                 required property var modelData
                 label: modelData[1]
-                selected: String(panel.s.reduceMotion) === modelData[0]
+                selected: (String(panel.s.reduceMotion) === "on") === (modelData[0] === "on")
                 onClicked: dock.setSetting("reduceMotion", modelData[0])
               }
             }

@@ -253,7 +253,7 @@ Panel {
           height: menuColumn.implicitHeight
           visible: opacity > 0.01
           opacity: current ? 1 : 0
-          x: current ? 0 : -Style.space(36)
+          x: current ? 0 : -Motion.offset(Style.space(36))
           Behavior on opacity { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
           Behavior on x { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
@@ -285,7 +285,7 @@ Panel {
                 // Cascade: each row drops in a beat after the one above.
                 opacity: root.revealed ? 1 : 0
                 transform: Translate {
-                  y: root.revealed ? 0 : -Style.space(8)
+                  y: root.revealed ? 0 : -Motion.offset(Style.space(8))
                   Behavior on y {
                     SequentialAnimation {
                       PauseAnimation { duration: root.revealed ? Motion.stagger(row.index) : 0 }
@@ -359,7 +359,7 @@ Panel {
           spacing: Style.space(4)
           visible: opacity > 0.01
           opacity: current ? 1 : 0
-          x: current ? 0 : Style.space(36)
+          x: current ? 0 : Motion.offset(Style.space(36))
           Behavior on opacity { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
           Behavior on x { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
@@ -410,7 +410,7 @@ Panel {
               // Facts slide up one after another once the card is in.
               opacity: aboutColumn.current ? 1 : 0
               transform: Translate {
-                y: aboutColumn.current ? 0 : Style.space(10)
+                y: aboutColumn.current ? 0 : Motion.offset(Style.space(10))
                 Behavior on y {
                   SequentialAnimation {
                     PauseAnimation { duration: aboutColumn.current ? Motion.fast + Motion.stagger(fact.index) : 0 }
@@ -482,7 +482,7 @@ Panel {
           spacing: Style.space(14)
           visible: opacity > 0.01
           opacity: current ? 1 : 0
-          x: current ? 0 : Style.space(36)
+          x: current ? 0 : Motion.offset(Style.space(36))
           Behavior on opacity { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
           Behavior on x { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
@@ -530,7 +530,7 @@ Panel {
                 Behavior on opacity { NumberAnimation { duration: choiceArea.containsMouse ? Motion.instant : Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
                 // Buttons rise in after the question.
                 transform: Translate {
-                  y: confirmColumn.current ? 0 : Style.space(12)
+                  y: confirmColumn.current ? 0 : Motion.offset(Style.space(12))
                   Behavior on y {
                     SequentialAnimation {
                       PauseAnimation { duration: confirmColumn.current ? Motion.fast + Motion.stagger(choice.index) : 0 }

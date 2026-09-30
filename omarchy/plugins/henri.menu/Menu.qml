@@ -2907,7 +2907,7 @@ Item {
           clip: true
           opacity: spot.expanded ? 1 : 0
           visible: opacity > 0
-          Behavior on y { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
+          Behavior on y { NumberAnimation { duration: Motion.move(Motion.slow); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
           Behavior on opacity {
             NumberAnimation {
               duration: spot.expanded ? Motion.fast : Motion.exit(Motion.fast)

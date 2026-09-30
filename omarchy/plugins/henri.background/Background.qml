@@ -271,7 +271,10 @@ Item {
         id: incomingLayer
         anchors.fill: parent
         visible: root.incomingBackground !== "" && incomingFrame.status === Image.Ready && (root.revealProgress >= 1 || panel.maskReady)
-        layer.enabled: root.incomingBackground !== "" && root.revealProgress < 1
+        // Reduce Motion: no wipe from the centre -- the new wallpaper crossfades
+        // over the old one on the same progress.
+        opacity: Motion.reduceMotion ? root.revealProgress : 1
+        layer.enabled: !Motion.reduceMotion && root.incomingBackground !== "" && root.revealProgress < 1
         layer.smooth: true
         layer.effect: MultiEffect {
           maskEnabled: true

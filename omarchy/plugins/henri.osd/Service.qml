@@ -144,6 +144,38 @@ Item {
     s.audio.volume = next
     if (s.audio.muted) s.audio.muted = false
     level = next
+    feedback()
+  }
+
+  // ── Volume feedback ─────────────────────────────────────────────────────
+  // "Play feedback when volume is changed" (System Settings › Sound) lives in
+  // ~/.config/omarchy-settings/sound.json. The click is the freedesktop
+  // volume-change sound through pw-play, so it comes out at the new level.
+  // While one is still playing (key repeat) the next press skips its own.
+  property bool volumeFeedback: false
+  FileView {
+    id: soundFile
+    property bool missing: true
+    path: Quickshell.env("HOME") + "/.config/omarchy-settings/sound.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      try { root.volumeFeedback = JSON.parse(text() || "{}").volumeFeedback === true }
+      catch (e) { root.volumeFeedback = false }
+      missing = false
+    }
+    onLoadFailed: { root.volumeFeedback = false; missing = true }
+  }
+  // A file watch can't see a file that doesn't exist yet: until Settings
+  // writes it, look again now and then.
+  Timer { interval: 5000; repeat: true; running: soundFile.missing; onTriggered: soundFile.reload() }
+  Process {
+    id: feedbackPlayer
+    command: ["pw-play", "/usr/share/sounds/freedesktop/stereo/audio-volume-change.oga"]
+  }
+  function feedback() {
+    if (volumeFeedback && !feedbackPlayer.running) feedbackPlayer.running = true
   }
 
   // ── Brightness (internal panel) ─────────────────────────────────────────
@@ -228,6 +260,7 @@ Item {
   HUi.SpringValue {
     id: glow
     preset: Motion.smooth
+    movement: false   // the backlight glides like a fade — nothing on screen moves
     epsilon: 0.0005
     to: root.toGrid(root.brightLevel)
     onValueChanged: {

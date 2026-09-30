@@ -103,8 +103,11 @@ Item {
   readonly property bool magnificationOn: settings.magnification === true
   readonly property bool showIndicators: settings.showIndicators !== false
   readonly property bool animateOpeningApps: settings.animateOpeningApps !== false
+  // System Settings › Reduce motion always wins (Motion.reduceMotion); the
+  // dock's own "Reduced" can only add to it. A stored "off" (the old "Full"
+  // override) now means "system", because the shared tokens are reduced anyway.
   readonly property bool reduceMotion: settings.reduceMotion === "on" || settings.reduceMotion === true
-      || (settings.reduceMotion !== "off" && settings.reduceMotion !== false && Motion.reduceMotion)
+      || Motion.reduceMotion
   readonly property color accent: settings.accentColor || Apple.dock.accent
 
   // ======================================================== pinned apps (~/.config/omarchy/dock.json)
@@ -605,8 +608,8 @@ Item {
 
   // Two gap springs: the one closing where the tile came from, the one opening
   // where it would land. Retargeting keeps velocity (spec 300/28 feel).
-  HUi.SpringValue { id: gapA; property int at: -1; to: 0; preset: Motion.dock.gap; epsilon: 0.3; onRunningChanged: root.springRunning(running) }
-  HUi.SpringValue { id: gapB; property int at: -1; to: 0; preset: Motion.dock.gap; epsilon: 0.3; onRunningChanged: root.springRunning(running) }
+  HUi.SpringValue { id: gapA; property int at: -1; to: 0; preset: Motion.dock.gap; reduced: root.reduceMotion; epsilon: 0.3; onRunningChanged: root.springRunning(running) }
+  HUi.SpringValue { id: gapB; property int at: -1; to: 0; preset: Motion.dock.gap; reduced: root.reduceMotion; epsilon: 0.3; onRunningChanged: root.springRunning(running) }
   function gapWidthBefore(row) {
     var w = 0
     if (gapA.at === row) w += gapA.value
@@ -626,8 +629,8 @@ Item {
   function closeGaps() { gapA.to = 0; gapB.to = 0 }
   function snapGapsClosed() { gapA.to = 0; gapB.to = 0; gapA.snap(0); gapB.snap(0); gapA.at = -1; gapB.at = -1 }
 
-  HUi.SpringValue { id: landMain; to: 0; preset: Motion.dock.land; epsilon: 0.3; onRunningChanged: { root.springRunning(running); root.checkLanded() } }
-  HUi.SpringValue { id: landCross; to: 0; preset: Motion.dock.land; epsilon: 0.3; onRunningChanged: { root.springRunning(running); root.checkLanded() } }
+  HUi.SpringValue { id: landMain; to: 0; preset: Motion.dock.land; reduced: root.reduceMotion; epsilon: 0.3; onRunningChanged: { root.springRunning(running); root.checkLanded() } }
+  HUi.SpringValue { id: landCross; to: 0; preset: Motion.dock.land; reduced: root.reduceMotion; epsilon: 0.3; onRunningChanged: { root.springRunning(running); root.checkLanded() } }
   readonly property real ghostMain: landing ? landMain.value : dragMain
   readonly property real ghostCross: landing ? landCross.value : dragCross
 
@@ -763,7 +766,7 @@ Item {
     id: ghostFade
     ParallelAnimation {
       NumberAnimation { target: root; property: "ghostOpacity"; to: 0; duration: Motion.dock.removeFade; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeExit }
-      NumberAnimation { target: root; property: "ghostScale"; to: Motion.dock.removeScale; duration: Motion.dock.removeFade; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeExit }
+      NumberAnimation { target: root; property: "ghostScale"; to: root.reduceMotion ? 1 : Motion.dock.removeScale; duration: Motion.dock.removeFade; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeExit }
     }
     ScriptAction { script: { root.dragging = false; root.removeMode = false; root.dragIndex = -1; root.dragId = ""; root.snapGapsClosed(); root.ghostOpacity = 1; root.ghostScale = 1; root.layoutDirty() } }
   }
@@ -1585,7 +1588,7 @@ Item {
               opacity: dragged ? root.ghostOpacity : 1
               scale: dragged ? lift.value * root.ghostScale : 1
               transformOrigin: Item.Center
-              HUi.SpringValue { id: lift; to: dragged && !root.landing ? Motion.liftScale : 1; preset: Motion.snappy; epsilon: 0.002 }
+              HUi.SpringValue { id: lift; to: dragged && !root.landing && !root.reduceMotion ? Motion.liftScale : 1; preset: Motion.snappy; reduced: root.reduceMotion; epsilon: 0.002 }
             }
           }
 

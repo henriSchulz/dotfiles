@@ -917,7 +917,7 @@ Panel {
     clip: true
     Behavior on height {
       enabled: root.heightAnimated
-      NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+      NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
     }
 
     Item {
@@ -961,7 +961,7 @@ Panel {
         color: root.m.inkSecondary
         font.family: root.symbolFont
         font.pixelSize: root.pt(12)
-        Behavior on rotation { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        Behavior on rotation { NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
       }
       MouseArea {
         anchors.fill: parent
@@ -999,7 +999,7 @@ Panel {
       spacing: root.pt(8)
       transform: Translate {
         y: st.expanded || Motion.reduceMotion ? 0 : -root.pt(8)
-        Behavior on y { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        Behavior on y { NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
       }
       Behavior on opacity {
         NumberAnimation {
@@ -1153,7 +1153,7 @@ Panel {
         opacity: current ? 1 : 0
         x: current || Motion.reduceMotion ? 0 : -root.panelWidth * Motion.pageParallax
         Behavior on opacity { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
-        Behavior on x { enabled: root.heightAnimated; NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
+        Behavior on x { enabled: root.heightAnimated; NumberAnimation { duration: Motion.move(Motion.slow); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
         // Row 1: Wi-Fi / Bluetooth stacked | Now Playing
         Row {
@@ -1596,7 +1596,7 @@ Panel {
         opacity: current ? 1 : 0
         x: current || Motion.reduceMotion ? 0 : root.panelWidth
         Behavior on opacity { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
-        Behavior on x { enabled: root.heightAnimated; NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
+        Behavior on x { enabled: root.heightAnimated; NumberAnimation { duration: Motion.move(Motion.slow); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
         // Wi-Fi
         AUi.PageHeader {
@@ -1617,7 +1617,7 @@ Panel {
           visible: root.detailPage === "wifi" && root.wifiOn
           width: root.panelWidth
           height: Math.min(wifiList.implicitHeight, root.pt(Apple.rowH) * (root.wifiAdvanced ? 4 : 8))
-          Behavior on height { enabled: root.heightAnimated; NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+          Behavior on height { enabled: root.heightAnimated; NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
           contentHeight: wifiList.implicitHeight
           clip: true
           interactive: contentHeight > height
@@ -1658,7 +1658,7 @@ Panel {
                   height: wanted ? credColumn.implicitHeight : 0
                   opacity: wanted ? 1 : 0
                   clip: true
-                  Behavior on height { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+                  Behavior on height { NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
                   Behavior on opacity {
                     NumberAnimation {
                       duration: credBox.wanted ? Motion.base : Motion.exit(Motion.fast)
@@ -1738,7 +1738,7 @@ Panel {
           border.color: root.m.hairline
           clip: true
           Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
-          Behavior on height { enabled: root.heightAnimated; NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+          Behavior on height { enabled: root.heightAnimated; NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
           Column {
             id: advancedColumn
             width: parent.width
@@ -1769,7 +1769,7 @@ Panel {
                 color: root.m.inkMuted
                 font.family: root.symbolFont
                 font.pixelSize: root.pt(12)
-                Behavior on rotation { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+                Behavior on rotation { NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
               }
               MouseArea {
                 id: advMouse
@@ -1789,7 +1789,7 @@ Panel {
               spacing: root.pt(8)
               transform: Translate {
                 y: root.wifiAdvanced || Motion.reduceMotion ? 0 : -root.pt(10)
-                Behavior on y { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+                Behavior on y { NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
               }
               Behavior on opacity {
                 NumberAnimation {

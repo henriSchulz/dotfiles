@@ -1165,10 +1165,10 @@ Item {
       id: tooltipWindow
 
       // Fade in on a fresh show; follow-ups within the grace window (and
-      // reduce-motion) appear at full opacity straight away.
+      // appear at full opacity straight away. Reduce Motion keeps the fade (a crossfade, not movement).
       onVisibleChanged: {
         tooltipFade.stop()
-        if (visible && root.tooltipFadeIn && !Motion.reduceMotion) tooltipFade.start()
+        if (visible && root.tooltipFadeIn) tooltipFade.start()
         else tooltipBubble.opacity = 1
       }
 

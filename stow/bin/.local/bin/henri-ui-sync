@@ -16,9 +16,10 @@
 # $quiet seconds, so an editing burst restarts once. HENRI_UI_NO_RESTART=1 skips it.
 #
 # Prefs.js is machine state (the global switches, written by System Settings,
-# which restarts the shell itself): it never reaches a vendored copy — those
-# ship Prefs.default.js as their Prefs.js — and a change to it alone restarts
-# nothing here.
+# which restarts the shell itself): vendored copies ship Prefs.default.js as
+# their committed Prefs.js; only the copies of installed plugins (under
+# ~/.config/omarchy/plugins) get this machine's Prefs.js, hidden from git with
+# skip-worktree. A change to it alone restarts nothing here.
 set -euo pipefail
 quiet=2
 stamp="${XDG_CACHE_HOME:-$HOME/.cache}/henri-ui-sync.stamp"
@@ -37,6 +38,14 @@ for marker in "$plugins"/*/henri-ui/.henri-ui-vendored "$HOME"/Projects/*/henri-
     --exclude gallery/ --exclude .henri-ui-vendored --exclude /Prefs.js --exclude /Prefs.js.tmp \
     "$src" "$dest"
   [[ -e $dest/Prefs.js || ! -e $dest/Prefs.default.js ]] || cp "$dest/Prefs.default.js" "$dest/Prefs.js"
+  # An installed plugin runs on this machine, so its copy must follow this
+  # machine's switches (Reduce motion …), not the defaults it ships. Git is told
+  # to ignore that local change (skip-worktree), so the defaults stay committed.
+  if [[ $dest == "$plugins"/* && -e $src/Prefs.js ]] && ! cmp -s "$src/Prefs.js" "$dest/Prefs.js"; then
+    cp "$src/Prefs.js" "$dest/Prefs.js"
+    repo="$(dirname "$dest")"
+    git -C "$repo" update-index --skip-worktree henri-ui/Prefs.js 2>/dev/null || true
+  fi
   echo "henri-ui-sync: updated ${dest#"$HOME"/}"
 done
 

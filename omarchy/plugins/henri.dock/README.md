@@ -34,8 +34,10 @@ Replaces omadock.
 - Keyboard: `Ctrl+F3` focuses the dock, ←/→ (↑/↓ vertical) move with magnification,
   ⏎/Space activate, ↑ opens the menu, Esc leaves. Accessible names on every tile.
 - Settings popover (separator menu → Dock Settings…, `omarchy-shell dock openSettings`),
-  persisted in `~/.config/omarchy/henri.dock.json`. Reduce motion: hops become
-  opacity pulses, magnification snaps, minimize crossfades, auto-hide fades.
+  persisted in `~/.config/omarchy/henri.dock.json`. Reduce motion (System Settings ›
+  Accessibility, or the dock's own "Reduced" on top of it): hops become opacity pulses,
+  magnification snaps, minimize/restore crossfade (no genie), new tiles fade in instead of
+  growing, the drag lift, gap and landing springs snap, stacks fade in place, auto-hide fades.
 
 ## Architecture
 

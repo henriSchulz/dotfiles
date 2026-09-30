@@ -466,7 +466,7 @@ Panel {
           width: scroller.width - root.overhang
           spacing: root.gap
           move: Transition {
-            NumberAnimation { properties: "x,y"; duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
+            NumberAnimation { properties: "x,y"; duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
           }
 
           // "Do Not Disturb" hint (spec §9, focus mode)
@@ -497,11 +497,11 @@ Panel {
             spacing: root.gap
             move: Transition {
               enabled: !widgetDrag.active
-              NumberAnimation { properties: "x,y"; duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
+              NumberAnimation { properties: "x,y"; duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
             }
             add: Transition {
               NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
-              NumberAnimation { property: "scale"; from: 0.9; to: 1; duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+              NumberAnimation { property: "scale"; from: Motion.fromScale(0.9); to: 1; duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
             }
             Repeater {
               model: widgetModel
@@ -691,10 +691,10 @@ Panel {
     implicitHeight: stackColumn.implicitHeight + (group && !expanded ? root.pt(nc.stripOffset * 2) : 0)
     height: implicitHeight
     opacity: leaving ? 0 : 1
-    transform: Translate { x: stack.leaving ? stack.width + root.inset : 0
+    transform: Translate { x: stack.leaving ? Motion.offset(stack.width + root.inset) : 0
       Behavior on x { NumberAnimation { duration: Motion.exit(Motion.slow); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeExit } } }
     Behavior on opacity { NumberAnimation { duration: Motion.exit(Motion.slow); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeExit } }
-    Behavior on height { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
+    Behavior on height { NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
 
     function allItems() {
       var out = []
@@ -738,7 +738,7 @@ Panel {
       width: stack.width
       spacing: root.gap
       move: Transition {
-        NumberAnimation { properties: "x,y"; duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
+        NumberAnimation { properties: "x,y"; duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
       }
 
       // Header while expanded
@@ -807,12 +807,14 @@ Panel {
     implicitHeight: Math.max(root.pt(bn.minHeight), textColumn.implicitHeight + padding * 2)
     height: implicitHeight
     opacity: leaving ? 0 : 1
-    transform: Translate { x: card.leaving ? card.width + root.inset : 0
+    transform: Translate { x: card.leaving ? Motion.offset(card.width + root.inset) : 0
       Behavior on x { NumberAnimation { duration: Motion.exit(Motion.slow); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeExit } } }
     Behavior on opacity { NumberAnimation { duration: Motion.exit(Motion.slow); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeExit } }
     // Appears: fade + slight settle from above (expanding a stack, a new notification).
     onVisibleChanged: if (visible) { appear.snap(0); appear.to = 1 }
-    HUi.SpringValue { id: appear; to: 1; preset: Motion.snappy }
+    // movement: false — it also drives the fade, which Reduce Motion keeps; the
+    // settle from above is scaled away by Motion.offset instead.
+    HUi.SpringValue { id: appear; to: 1; preset: Motion.snappy; movement: false }
     Component.onCompleted: { appear.snap(0); appear.to = 1 }
 
     function dismiss() {
@@ -833,7 +835,7 @@ Panel {
     Item {
       anchors.fill: parent
       opacity: appear.value
-      transform: Translate { y: (1 - appear.value) * -root.pt(8) }
+      transform: Translate { y: (1 - appear.value) * -Motion.offset(root.pt(8)) }
 
       // Swipe actions behind the card
       Row {

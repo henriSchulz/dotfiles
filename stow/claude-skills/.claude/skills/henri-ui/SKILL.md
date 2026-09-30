@@ -120,8 +120,25 @@ System Settings beim Bewegung-Reduzieren ebenfalls umschaltet).
 6. **Räumlich logisch.** Dinge kommen von dort, wo sie ausgelöst wurden
    (`transformOrigin` = Anker: Menü unter dem Bar-Button wächst von oben aus diesem Button).
    Drill-in-Seiten schieben nach links, zurück nach rechts.
-7. **Reduce Motion respektieren.** Ist reduzierte Bewegung aktiv: nur Crossfades, keine
-   Skalierung/Verschiebung.
+7. **Reduce Motion respektieren** (wie macOS, seit 2026-09-30 in *jedem* Plugin).
+   Ist `Motion.reduceMotion` an: nur Crossfades (Opacity/Farbe bleiben mit ihren
+   Dauern), keine Skalierung, kein Gleiten, kein Parallax/Zoom, keine Wisch-/Sweep-
+   Effekte, kein Bounce/Genie; Springs springen auf ihr Ziel. Umsetzung:
+   - Die Bewegungs-Tokens sind dann schon neutral: `pressScale`, `liftScale`,
+     `menuFromScale`, `popoverFromScale`, `exitToScale`, `launcherFromScale`,
+     `iconFromScale`, `dock.removeScale`, `dock.gridFromScale` = 1; `menuOffsetY`,
+     `toastOffset`, `pageParallax`, `carryOffset`, `shakeDistance`,
+     `dock.bounceHeight`/`attentionHeight` = 0 → wer Tokens benutzt, folgt gratis.
+   - Eigene Bewegung über die Helfer: `Motion.move(ms)` (Dauer einer Positions-/
+     Größen-/Rotations-/Scale-Animation → 0), `Motion.offset(px)` (Weg → 0),
+     `Motion.fromScale(s)` (→ 1). Beispiel: `Behavior on height { NumberAnimation {
+     duration: Motion.move(Motion.base) … } }`, `x: current ? 0 : Motion.offset(Style.space(36))`.
+   - `HUi.SpringValue` springt bei Reduce Motion sofort; ein Spring, der **nur**
+     blendet (Opacity, Backlight), bekommt `movement: false`. `reduced:` überschreiben
+     nur, wenn ein Plugin einen eigenen, strengeren Schalter hat (henri.dock).
+   - Hover-/Farb-/Opacity-Übergänge und Fortschritts-/Pegelanzeigen (Balken, Waveform-
+     Pegel) bleiben; eine wandernde Waveform-Sweep wird zum Pulsieren an Ort und Stelle.
+   - `henri.missioncontrol` liest `Prefs.js` selbst (eigene Spec, kein henri-ui-Import).
 
 ## 2. Motion-Tokens (überall identisch — keine Freihand-Werte!)
 
@@ -456,6 +473,7 @@ behoben (Token/Komponente), nicht nur im einen Plugin.
 - [ ] Nur transform/opacity pro Frame animiert
 - [ ] Exit schneller als Enter; Ursprung am Anker
 - [ ] Farben aus dem Theme, Radien laut Tabelle
-- [ ] Reduce-Motion-Pfad vorhanden
+- [ ] Reduce-Motion-Pfad vorhanden: jede eigene Bewegung über `Motion.move/offset/fromScale`
+      oder die Tokens, Fades bleiben (Gesetz 7) — mit `reduceMotion = true` angesehen
 - [ ] Bestehenden Code, den du anfasst, auf die Tokens umstellen (z. B. `Easing.OutBack`,
       `Easing.OutElastic`, Freihand-Dauern ersetzen)

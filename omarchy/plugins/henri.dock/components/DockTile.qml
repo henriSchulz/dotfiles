@@ -51,6 +51,8 @@ Item {
     id: sizeSpring
     to: tile.targetSize
     preset: Motion.dock.magnify
+    // Reduce Motion: magnification still works, but the size jumps (no spring).
+    reduced: dock.reduceMotion
     epsilon: 0.05
     onRunningChanged: dock.springRunning(running)
   }
@@ -58,12 +60,16 @@ Item {
     id: enterSpring
     to: tile.gone ? 0 : 1
     preset: Motion.dock.gap
+    reduced: dock.reduceMotion
     epsilon: 0.003
     onRunningChanged: dock.springRunning(running)
     onValueChanged: if (tile.gone && value <= 0.003 && !running) dock.finalizeRemove(tile.itemId)
   }
+  // Reduce Motion: a new tile does not grow in (the spring snaps), it fades in.
+  property real appear: 1
+  NumberAnimation { id: appearFade; target: tile; property: "appear"; from: 0; to: 1; duration: Motion.dock.removeFade; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
   Component.onCompleted: {
-    if (!isSeparator && dock.ready) enterSpring.snap(0)
+    if (!isSeparator && dock.ready) { enterSpring.snap(0); if (dock.reduceMotion) appearFade.restart() }
     dock.layoutDirty()
   }
   onGoneChanged: if (gone) dock.layoutDirty()
@@ -89,7 +95,7 @@ Item {
     scale: tile.visSize / dock.iconBase
     transformOrigin: Item.TopLeft
     // hidden while the genie/scale effect draws this window's snapshot itself
-    opacity: dock.effectTargetId === tile.itemId && dock.effectRunning && tile.kind === "minimizedWindow" ? 0 : tile.pulse
+    opacity: dock.effectTargetId === tile.itemId && dock.effectRunning && tile.kind === "minimizedWindow" ? 0 : tile.pulse * tile.appear
     transform: Translate { x: dock.hopX(tile.hop); y: dock.hopY(tile.hop) }
 
     readonly property real body: dock.iconBase * Apple.dock.iconBody

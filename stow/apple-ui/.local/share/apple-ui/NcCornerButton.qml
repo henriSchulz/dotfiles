@@ -23,7 +23,7 @@ HUi.Pressable {
   radius: height / 2
   showFill: false
   tint: ink
-  Behavior on implicitWidth { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+  Behavior on implicitWidth { NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
   Rectangle {
     anchors.fill: parent
     radius: corner.radius

@@ -79,12 +79,14 @@ Item {
       readonly property real t: n > 1 ? index / (n - 1) : 0
       readonly property real angle: Apple.dock.fanAngle * t * t
       readonly property real finalCross: stack.anchorCross + Style.space(Apple.dock.fanGap) + index * stack.fanPitch
-      readonly property real cross: stack.anchorCross + (finalCross - stack.anchorCross) * p
-      readonly property real mainOff: dock.tileSize * 1.4 * t * t * p
+      // Reduce Motion: entries sit at their fanned-out place and only fade.
+      readonly property real geo: dock.reduceMotion ? 1 : p
+      readonly property real cross: stack.anchorCross + (finalCross - stack.anchorCross) * geo
+      readonly property real mainOff: dock.tileSize * 1.4 * t * t * geo
       readonly property var r: dock.rectFor(stack.anchorMain + mainOff, cross, stack.fanIcon, stack.fanIcon)
       x: r.x; y: r.y; width: r.w; height: r.h
       opacity: p
-      rotation: angle * p
+      rotation: angle * geo
       transformOrigin: Item.Bottom
 
       Image {
@@ -172,7 +174,7 @@ Item {
                               : (stack.pr.y + stack.pr.h / 2 - stack.py) / Math.max(1, stack.pr.h)
     padX: 0; padY: 0
     opacity: stack.progress
-    scale: Motion.reduceMotion ? 1 : panelScale.value
+    scale: dock.reduceMotion ? 1 : panelScale.value
     transformOrigin: dock.position === "bottom" ? Item.Bottom : dock.position === "left" ? Item.Left : Item.Right
 
     Item {

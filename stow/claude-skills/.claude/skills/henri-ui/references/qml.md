@@ -239,6 +239,30 @@ displaced: Transition {
 `Prefs.js` (System Settings › Bedienungshilfen › Anzeige › Bewegung reduzieren schreibt
 es und startet die Shell neu) — nicht von Hand setzen. Genauso `Motion.glass`
 (aus bei „Transparenz reduzieren“).
+
+Was die HUi-Komponenten dann tun: `Reveal`/`PopupPanel`/`PopupCard` nur Fade (Scale 1,
+kein Versatz), `PageStack` Crossfade ohne Gleiten/Parallax, Höhe springt, `Collapse`
+Höhe springt + Inhalt faded, `Highlight { glide: true }` springt, `StaggerIn` faded
+gestaffelt ohne Anstieg, `Pressable`/`Button`/`Toggle` ohne Press-Scale/Knopf-Dehnung,
+Knopf springt, Farbe blendet, `CrossfadeText` unverändert, `PageHeader` Chevron ohne
+Hover-Versatz, `BatteryGlyph` Zeichen nur Fade, `Waveform` Pegel bleiben, `working`-
+Sweep pulsiert an Ort und Stelle. `SpringValue` springt (außer `movement: false`).
+
+Eigene Animationen im Plugin — Bewegung abschalten, Fade behalten:
+
+```qml
+Behavior on height { NumberAnimation { duration: Motion.move(Motion.base); … } }   // 0 bei Reduce Motion
+transform: Translate { x: leaving ? Motion.offset(width) : 0 }                    // Weg 0
+NumberAnimation { property: "scale"; from: Motion.fromScale(0.9); to: 1; … }       // Scale 1
+HUi.SpringValue { id: appear; to: 1; movement: false }   // treibt auch Opacity → läuft weiter
+Item { opacity: appear.value; transform: Translate { y: (1 - appear.value) * -Motion.offset(8) } }
+```
+
+ListView-`add`/`remove`: Opacity-Animation lassen, die `x`/`y`-Animation mit
+`from/to: Motion.offset(…)` und `duration: Motion.move(…)` — **nicht** nur die Dauer auf 0
+setzen, sonst springt eine `remove`-Karte sofort aus dem Bild und der Fade ist unsichtbar.
+Vendored Kopien (henri.keystroke) bekommen per henri-ui-sync das `Prefs.js` dieser
+Maschine (git `skip-worktree`), committed bleiben die Defaults.
 `Motion.speed = 1.2` → alles 20 % langsamer (steht direkt in `Motion.js`). Wirkt nach
 Shell-Neustart überall.
 

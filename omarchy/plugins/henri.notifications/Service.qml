@@ -170,10 +170,21 @@ Item {
         delete service.liveRefs[snapshot.originalId]
     })
 
+    // Per-app rules from System Settings › Notifications: off = never
+    // delivered, not even to history; "none" = no banner, straight into
+    // history like a DND-silenced one; sound = a short chime on arrival.
+    var rule = service.ruleFor(snapshot.app)
+    if (rule && rule.allow === false) {
+      delete liveRefs[snapshot.originalId]
+      notification.tracked = false
+      return
+    }
+    var silent = !!rule && rule.style === "none"
+
     // DND bypass rules: chat apps abuse urgency=critical to force
     // visibility, so critical alone isn't enough — we also require the
     // sender to be CLI-style. See shouldBypassDnd().
-    if (service.doNotDisturb && !shouldBypassDnd(notification)) {
+    if ((service.doNotDisturb && !shouldBypassDnd(notification)) || silent) {
       // The toast never shows, so the only record a silenced notification
       // can leave is a history entry. Write it straight into history —
       // "what did I miss while silenced" is exactly what history is for.
@@ -186,6 +197,7 @@ Item {
       return
     }
 
+    if (rule && rule.sound === true && !chime.running) chime.running = true
     persistPopupFile(snapshot)
     watchForUpdates(notification, snapshot)
     // Qt.callLater avoids "QV4::Object::insertMember" crashes when a
@@ -767,7 +779,7 @@ Item {
     var live = []
     for (var i = 0; i < entries.length; i++) {
       var entry = entries[i]
-      var duration = durationFor(entry.urgency, entry.expireTimeout)
+      var duration = styleFor(entry.app) === "alert" ? 0 : durationFor(entry.urgency, entry.expireTimeout)
       if (NotificationLogic.popupExpired(entry, duration, now)) {
         // It would have expired on screen had the shell kept running, so it
         // gets archived exactly like an expiry that happened while it did.
@@ -817,6 +829,39 @@ Item {
         popupModel.append(restored)
       }
     })
+  }
+
+  // ---------------------------------------------------- per-app rules
+  // Written by System Settings (~/.config/omarchy-settings/notifications.json):
+  // { apps: [{ id, allow, style: "banner" | "alert" | "none", sound }] },
+  // matched on the sender's app name. Re-read whenever the file changes.
+  property var appRules: ({})
+  function ruleFor(app) { var r = appRules[String(app || "")]; return r === undefined ? null : r }
+  function styleFor(app) { var r = ruleFor(app); return r ? String(r.style || "banner") : "banner" }
+  FileView {
+    id: rulesFile
+    property bool missing: true
+    path: service.home + "/.config/omarchy-settings/notifications.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      var map = {}
+      try {
+        var apps = JSON.parse(text() || "{}").apps || []
+        for (var i = 0; i < apps.length; i++) if (apps[i] && apps[i].id) map[String(apps[i].id)] = apps[i]
+      } catch (e) { map = {} }
+      service.appRules = map
+      missing = false
+    }
+    onLoadFailed: { service.appRules = ({}); missing = true }
+  }
+  // A file watch can't see a file that doesn't exist yet: until Settings
+  // writes the first rule, look again now and then.
+  Timer { interval: 5000; repeat: true; running: rulesFile.missing; onTriggered: rulesFile.reload() }
+  Process {
+    id: chime
+    command: ["pw-play", "/usr/share/sounds/freedesktop/stereo/message-new-instant.oga"]
   }
 
   // ---------------------------------------------------- settings persistence
@@ -1064,21 +1109,22 @@ Item {
         clip: false
         model: popupModel
 
-        // Banners come from beyond the screen edge and go back there.
+        // Banners come from beyond the screen edge and go back there. Reduce
+        // Motion: they stay in place and only fade (offset/move → 0).
         readonly property real offscreen: width + popupWindow.popupPlacement.margins.right
 
         add: Transition {
           NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
-          NumberAnimation { property: "x"; from: popupList.offscreen; duration: Motion.reduceMotion ? 0 : Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+          NumberAnimation { property: "x"; from: Motion.offset(popupList.offscreen); duration: Motion.move(Motion.slow); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
         }
         remove: Transition {
           NumberAnimation { property: "opacity"; to: 0; duration: Motion.exit(Motion.slow); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeExit }
-          NumberAnimation { property: "x"; to: popupList.offscreen; duration: Motion.reduceMotion ? 0 : Motion.exit(Motion.slow); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeExit }
+          NumberAnimation { property: "x"; to: Motion.offset(popupList.offscreen); duration: Motion.move(Motion.exit(Motion.slow)); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeExit }
         }
         // The ones below glide up; an interrupted arrival finishes its way in.
         displaced: Transition {
-          NumberAnimation { property: "y"; duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
-          NumberAnimation { property: "x"; to: 0; duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+          NumberAnimation { property: "y"; duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut }
+          NumberAnimation { property: "x"; to: 0; duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
           NumberAnimation { property: "opacity"; to: 1; duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
         }
 
@@ -1105,7 +1151,8 @@ Item {
           onMenuOpenChanged: popupList.openMenus += menuOpen ? 1 : -1
           Component.onDestruction: if (menuOpen) popupList.openMenus -= 1
 
-          readonly property real lifetime: service.durationFor(cardSlot.urgency, cardSlot.expireTimeout)
+          readonly property real lifetime: service.styleFor(cardSlot.app) === "alert" ? 0
+            : service.durationFor(cardSlot.urgency, cardSlot.expireTimeout)
           property real remainingLifetime: 1.0
           readonly property bool ticking: cardSlot.lifetime > 0 && !card.hovered
 

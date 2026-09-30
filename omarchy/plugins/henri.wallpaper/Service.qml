@@ -331,7 +331,7 @@ Item {
 
               Behavior on contentY {
                 enabled: root.keyboardNav
-                NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+                NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
               }
 
               function reveal(index) {

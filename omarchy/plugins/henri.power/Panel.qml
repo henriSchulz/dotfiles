@@ -1846,7 +1846,7 @@ Panel {
     scale: dragging && !Motion.reduceMotion ? 1.15 : 1
     Behavior on x {
       enabled: !marker.dragging
-      NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+      NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
     }
     Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
     Behavior on scale { NumberAnimation { duration: Motion.instant; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
@@ -1905,7 +1905,7 @@ Panel {
         font.family: root.symbolFont
         font.pixelSize: root.fBody
         Behavior on rotation {
-          NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
+          NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
         }
       }
     }
@@ -2014,7 +2014,7 @@ Panel {
         transform: Scale {
           origin.y: graph.plotH
           yScale: bar.bucket ? Math.max(0.02, graph.valueOf(bar.bucket)) : 0
-          Behavior on yScale { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+          Behavior on yScale { NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
         }
         Behavior on opacity { NumberAnimation { duration: graph.hoverIndex >= 0 ? Motion.instant : Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
         Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
@@ -2138,7 +2138,7 @@ Panel {
         font.family: root.symbolFont
         font.pixelSize: root.fCaption
         rotation: pop.open ? -90 : 90
-        Behavior on rotation { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+        Behavior on rotation { NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
       }
     }
   }
@@ -2559,7 +2559,7 @@ Panel {
             color: root.dimText
             font.family: root.symbolFont
             font.pixelSize: root.fCaption
-            Behavior on rotation { NumberAnimation { duration: Motion.base; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+            Behavior on rotation { NumberAnimation { duration: Motion.move(Motion.base); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
           }
         }
       }
