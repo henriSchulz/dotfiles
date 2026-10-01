@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube VP9",
+  "version": "1.0",
+  "description": "Hides AV1 from YouTube so it serves VP9, which the M1's hardware decoder (AVD) can play. Measured: AV1 costs 0.7 W more than VP9 at 1080p60.",
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*", "*://*.youtube-nocookie.com/*"],
+      "js": ["no-av1.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    }
+  ]
+}
