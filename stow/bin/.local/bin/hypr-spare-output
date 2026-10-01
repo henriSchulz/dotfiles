@@ -21,47 +21,78 @@
 # returned screen (measured 2026-10-01: workspace switching looked dead, no
 # pointer, no dock). The watcher moves the focus back and restarts the shell.
 #
+# Hyprland also returns only the workspaces the real monitor had when it left.
+# Every workspace opened while it was away (working on the iPad) stays on the
+# spare output: switching to one changes nothing on screen and takes the focus
+# there, and from then on each new workspace is created there too (reproduced
+# 2026-10-01 in ~/.cache/hypr-replug-rig, after a replug that ended in a
+# reboot). So the watcher brings those workspaces over as well, and repeats
+# that whenever the focus lands on the spare output while a real one exists.
+#
 #   hypr-spare-output          create it and watch (started from hypr/autostart.lua)
 #   hypr-spare-output create   only create it
 #   hypr-spare-output remove   take it away again
+#   hypr-spare-output heal     bring workspaces, pointer and focus back once
 set -euo pipefail
-name=HEADLESS-SPARE
+name=${HYPR_SPARE_NAME:-HEADLESS-SPARE}   # the rig overrides the name
 have() { hyprctl -j monitors all | jq -e --arg n "$name" 'any(.[]; .name == $n)' >/dev/null; }
 create() { have || hyprctl output create headless "$name" >/dev/null; }
+dispatch() { hyprctl dispatch "$1" >/dev/null || true; }
 
-# If the spare monitor holds the focus while a real one exists, bring pointer
-# and focus back. The pointer goes first: when the last real monitor vanishes
-# Hyprland parks it on the spare one, it stays there after the replug
-# (cursor:no_warps), and the focus follows it right back (seen 2026-10-01: new
-# windows opened on the invisible workspace "spare").
-refocus() {
-  local monitors real ws x y
+# While a real monitor exists, nothing may stay on the spare one: not the
+# numbered workspaces, not the pointer, not the focus. The real monitor then
+# shows the workspace that was in use last, so work continues where it was.
+#
+# The pointer is judged by where it is, not by the focus: when the last real
+# monitor vanishes Hyprland parks it on the spare one, and it stays there after
+# the replug (cursor:no_warps) even if a key press has moved the focus already.
+heal() {
+  local monitors spare real target last ws x y
   monitors=$(hyprctl -j monitors) || return 0
-  jq -e --arg n "$name" 'any(.[]; .name == $n and .focused)' <<<"$monitors" >/dev/null || return 0
-  real=$(jq -c --arg n "$name" '[.[] | select(.name != $n)][0] // empty' <<<"$monitors")
-  [[ -n $real ]] || return 0
-  x=$(jq -r '.x + (.width / .scale / 2 | floor)' <<<"$real"); y=$(jq -r '.y + (.height / .scale / 2 | floor)' <<<"$real")
-  ws=$(jq -r '.activeWorkspace.id' <<<"$real")
-  hyprctl dispatch "hl.dsp.cursor.move({ x = $x, y = $y })" >/dev/null || true
-  hyprctl dispatch "hl.dsp.focus({ workspace = $ws })" >/dev/null || true
+  spare=$(jq -c --arg n "$name" '.[] | select(.name == $n)' <<<"$monitors")
+  # A monitor with an EDID wins over leftover virtual ones.
+  real=$(jq -c --arg n "$name" '[.[] | select(.name != $n)] | sort_by(.description == "") | .[0] // empty' <<<"$monitors")
+  [[ -n $spare && -n $real ]] || return 0
+  target=$(jq -r '.name' <<<"$real")
+
+  last=$(jq -r '.activeWorkspace.id' <<<"$spare")
+  for ws in $(hyprctl -j workspaces | jq -r --arg n "$name" '.[] | select(.monitor == $n and .id > 0) | .id'); do
+    dispatch "hl.dsp.workspace.move({ workspace = $ws, monitor = \"$target\" })"
+  done
+
+  if jq -e --argjson m "$spare" '.x >= $m.x and .x < $m.x + $m.width / $m.scale and .y >= $m.y and .y < $m.y + $m.height / $m.scale' \
+       <<<"$(hyprctl -j cursorpos)" >/dev/null; then
+    x=$(jq -r '.x + (.width / .scale / 2 | floor)' <<<"$real"); y=$(jq -r '.y + (.height / .scale / 2 | floor)' <<<"$real")
+    dispatch "hl.dsp.cursor.move({ x = $x, y = $y })"
+  fi
+
+  if (( last > 0 )); then
+    dispatch "hl.dsp.focus({ workspace = $last })"
+  elif jq -e '.focused' <<<"$spare" >/dev/null; then
+    dispatch "hl.dsp.focus({ workspace = $(jq -r '.activeWorkspace.id' <<<"$real") })"
+  fi
 }
 
 case "${1:-watch}" in
   create) create ;;
   remove) have && hyprctl output remove "$name" >/dev/null ;;
+  heal) heal ;;
   watch)
     create
-    refocus
+    heal
     socket="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
     while read -r event; do
       case "$event" in
         monitoraddedv2\>\>*)
           [[ $event == *",$name,"* ]] && continue
           # The workspaces move back a moment after the output appears.
-          sleep 1; refocus
-          omarchy-restart-shell >/dev/null 2>&1 || true ;;
+          sleep 1; heal
+          omarchy-restart-shell >/dev/null 2>&1 || true
+          # Whatever was opened while the shell was coming back.
+          heal ;;
+        focusedmonv2\>\>"$name",*) heal ;;
       esac
     done < <(socat -U - "UNIX-CONNECT:$socket")
     ;;
-  *) echo "usage: ${0##*/} [watch|create|remove]" >&2; exit 2 ;;
+  *) echo "usage: ${0##*/} [watch|create|remove|heal]" >&2; exit 2 ;;
 esac
