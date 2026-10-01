@@ -39,7 +39,9 @@ from gi.repository import Gdk, Gio, GLib, Gtk, WebKit2  # noqa: E402
 
 APP_ID = "dev.henri.MdView"
 HOME = Path.home()
-ASSETS = Path(os.path.realpath(__file__)).parent
+SOURCE = Path(os.path.realpath(__file__))
+ASSETS = SOURCE.parent
+SOURCE_STAMP = SOURCE.stat().st_mtime_ns
 THEME_DIR = HOME / ".local/state/omarchy/current"
 MOTION_CSS = HOME / ".local/share/henri-ui/motion.css"
 STATE_FILE = Path(GLib.get_user_state_dir()) / "mdview" / "state.json"
@@ -1063,6 +1065,19 @@ class MdViewApp(Gtk.Application):
         for w in self.windows():
             w.js("MdView.setMotion", self.motion_css)
 
+    def restart_if_stale(self, args):
+        """The process stays resident, the page (viewer.js) is read fresh for
+        every window: after an update the two would not match. With no window
+        open, start over from the new source instead."""
+        if self.windows():
+            return
+        try:
+            if SOURCE.stat().st_mtime_ns == SOURCE_STAMP:
+                return
+        except OSError:
+            return
+        os.execv(sys.executable, [sys.executable, str(SOURCE), *args])
+
     def open_folder(self, folder):
         existing = next((w for w in self.windows() if w.folder == folder), None)
         if existing:
@@ -1071,6 +1086,7 @@ class MdViewApp(Gtk.Application):
             ViewerWindow(self, None, folder=folder).show()
 
     def do_activate(self):
+        self.restart_if_stale([])
         # Started bare: back to the folder that was open last, if there was one.
         last = self.state.get("folder")
         if last and Path(last).is_dir():
@@ -1079,6 +1095,7 @@ class MdViewApp(Gtk.Application):
             ViewerWindow(self, None).show()
 
     def do_open(self, files, _n, _hint):
+        self.restart_if_stale([f.get_path() or f.get_uri() for f in files])
         for f in files:
             path = f.get_path()
             if not path:
