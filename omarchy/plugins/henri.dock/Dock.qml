@@ -1552,6 +1552,18 @@ Item {
           onPressed: root.closeStack()
         }
 
+        // The strip along the screen edge that brings a hidden dock back: the
+        // pointer has to rest on it for `autoHideDelay`.
+        MouseArea {
+          x: overlay.triggerRect.x; y: overlay.triggerRect.y
+          width: overlay.triggerRect.w; height: overlay.triggerRect.h
+          enabled: width > 0
+          hoverEnabled: true
+          acceptedButtons: Qt.NoButton
+          onEntered: revealTimer.restart()
+          onExited: revealTimer.stop()
+        }
+
         // Off-screen vault for window snapshots (ShaderEffectSource reads them
         // as textures; the clip keeps them invisible).
         Item { id: vault; x: -10; y: -10; width: 1; height: 1; clip: true; visible: true }
