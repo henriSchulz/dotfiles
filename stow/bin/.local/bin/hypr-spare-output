@@ -1,0 +1,27 @@
+#!/bin/bash
+# Keep a virtual output named SPARE around, so Hyprland never runs without a
+# monitor.
+#
+# Why: this MacBook has no working internal display; the only monitor hangs on
+# a USB-C adapter. When it is unplugged, every window loses its monitor, and
+# Hyprland 0.56.2 crashes as soon as anything captures a window in that state
+# (null monitor in Screenshare::CScreenshareSession::init — the shell's window
+# previews do that within a second or two). Crashed the session on 2026-10-01;
+# reproduced 2/2 in a nested instance, and 0/3 with a spare output present.
+#
+# SPARE is placed far from the real monitor (hypr/monitors.lua), so the pointer
+# cannot wander onto it, and owns the workspace "spare", so it never takes one
+# of the numbered ones. The name must not be FALLBACK: Hyprland uses that name
+# itself and ignores monitor rules for it.
+#
+#   hypr-spare-output          create it if missing (started from hypr/autostart.lua)
+#   hypr-spare-output remove   take it away again
+set -euo pipefail
+name=SPARE
+have() { hyprctl -j monitors all | jq -e --arg n "$name" 'any(.[]; .name == $n)' >/dev/null; }
+
+case "${1:-create}" in
+  create) have || hyprctl output create headless "$name" >/dev/null ;;
+  remove) have && hyprctl output remove "$name" >/dev/null ;;
+  *)      echo "usage: ${0##*/} [create|remove]" >&2; exit 2 ;;
+esac

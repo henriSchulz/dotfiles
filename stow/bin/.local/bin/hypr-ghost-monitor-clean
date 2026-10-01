@@ -21,7 +21,8 @@ list_only=false
 [[ ${1:-} == --list ]] && list_only=true
 
 monitors=$(hyprctl -j monitors) || { echo "Hyprland is not reachable." >&2; exit 1; }
-ghosts=$(jq -r '.[] | select(.make == "" and .model == "" and .description == "") | .name' <<<"$monitors")
+# SPARE is virtual too, but on purpose (hypr-spare-output): it stays.
+ghosts=$(jq -r '.[] | select(.make == "" and .model == "" and .description == "" and .name != "SPARE") | .name' <<<"$monitors")
 real=$(jq -r '.[] | select(.make != "" or .model != "" or .description != "") | .name' <<<"$monitors")
 
 if [[ -z $ghosts ]]; then
