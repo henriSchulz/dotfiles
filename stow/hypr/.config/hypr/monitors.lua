@@ -22,7 +22,7 @@ hl.monitor({ output = "DP-1", mode = "preferred", position = "0x0", scale = omar
 -- 1920x1080 everything was far too small there. 1770x1230 at scale 1.5 gives
 -- the iPad's own 1180x820 points in its aspect ratio, and stays under the
 -- pixel count H.264 level 4.2 allows (and near 1080p in encoding cost).
-hl.monitor({ output = "HEADLESS-SPARE", mode = "1770x1230@30", position = "20000x20000", scale = 1.5 })
+hl.monitor({ output = "HEADLESS-SPARE", mode = "1770x1230@60", position = "20000x20000", scale = 1.5 })
 hl.workspace_rule({ workspace = "name:spare", monitor = "HEADLESS-SPARE", default = true, persistent = true })
 
 -- Configure a specific monitor.
