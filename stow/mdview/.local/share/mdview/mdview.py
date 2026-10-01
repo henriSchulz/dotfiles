@@ -9,11 +9,16 @@ while after the last window closes so reopening is instant.
 Ctrl+E switches between reading and editing the source in place; edits are
 saved automatically (the page sends the text, this side writes the file).
 
+Opened on a folder (or started without arguments, which reopens the last
+folder) the window gets a sidebar listing the folder's notes, by file name or
+by title (first H1), and can create new ones.
+
 Assets live next to the real path of this script; bin/mdview is a thin
 launcher that hands files to a running instance over D-Bus.
 Colors follow the Omarchy theme, motion follows ~/.local/share/henri-ui.
 """
 
+import html
 import json
 import os
 import re
@@ -49,6 +54,12 @@ SKIP_DIRS = {"node_modules", "__pycache__", "target", "venv", ".venv", "dist", "
 WIKI_RE = re.compile(r"!?\[\[([^\[\]\n]+?)\]\]")
 EMBED_LIMIT = 256 * 1024
 EDIT_LIMIT = 2 * 1024 * 1024
+TITLE_SCAN = 16 * 1024    # a note's title (first H1) is looked for this far in
+NOTE_LIMIT = 5000         # notes listed in the sidebar at most
+WATCH_LIMIT = 400         # directories watched below an open folder
+SIDEBAR_WIDTH = 260       # extra default width of a folder window; matches --sb-w
+FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
+H1_RE = re.compile(r"^ {0,3}#[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$")
 
 SCRIPTS = [
     "vendor/markdown-it.min.js",
@@ -122,6 +133,94 @@ def readonly_reason(path, raw):
     except UnicodeDecodeError:
         return "file is not UTF-8"
     return None
+
+
+def note_title(path):
+    """First H1 of a note (frontmatter and code blocks skipped), or None."""
+    try:
+        lines = read_text(path, TITLE_SCAN).splitlines()
+    except OSError:
+        return None
+    start = 0
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() in ("---", "..."):
+                start = i + 1
+                break
+    fence = None
+    for line in lines[start:]:
+        m = FENCE_RE.match(line)
+        if fence:
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not m.group(2).strip():
+                fence = None
+            continue
+        if m:
+            fence = m.group(1)
+            continue
+        m = H1_RE.match(line)
+        if m:
+            t = re.sub(r"!?\[\[(?:[^\]|]*\|)?([^\]]*)\]\]", r"\1", m.group(1))
+            t = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", t)
+            t = re.sub(r"(\*\*|__|~~|==|[*`])", "", t).strip()
+            return t or None
+    return None
+
+
+def natural_key(name):
+    return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", name.lower())]
+
+
+def scan_folder(root, cache, titles):
+    """The notes below root as a tree, plus every directory walked (to watch).
+    Hidden entries and SKIP_DIRS are left out, as are folders without notes.
+    Titles are only read when asked for; cache maps path -> (stat key, title)."""
+    walked, count = [], 0
+    deadline = time.monotonic() + 1.5
+
+    def walk(d, depth):
+        nonlocal count
+        node = {"name": d.name, "path": str(d), "dirs": [], "notes": []}
+        walked.append(d)
+        try:
+            entries = sorted(os.scandir(d), key=lambda e: natural_key(e.name))
+        except OSError:
+            return node
+        for e in entries:
+            if e.name.startswith("."):
+                continue
+            try:
+                if e.is_dir(follow_symlinks=False):
+                    if e.name in SKIP_DIRS or depth >= 12 or count >= NOTE_LIMIT \
+                            or time.monotonic() > deadline:
+                        continue
+                    sub = walk(Path(e.path), depth + 1)
+                    if sub["dirs"] or sub["notes"]:
+                        node["dirs"].append(sub)
+                elif os.path.splitext(e.name)[1].lower() in MD_EXT and e.is_file() \
+                        and count < NOTE_LIMIT:
+                    title = None
+                    if titles:
+                        st = e.stat()
+                        key = (st.st_mtime_ns, st.st_size)
+                        hit = cache.get(e.path)
+                        if not hit or hit[0] != key:
+                            hit = cache[e.path] = (key, note_title(e.path))
+                        title = hit[1]
+                    node["notes"].append({"name": os.path.splitext(e.name)[0], "path": e.path,
+                                          "real": os.path.realpath(e.path), "title": title})
+                    count += 1
+            except OSError:
+                continue
+        return node
+
+    return walk(root, 0), walked
+
+
+def tree_notes(node):
+    for n in node["notes"]:
+        yield n
+    for d in node["dirs"]:
+        yield from tree_notes(d)
 
 
 def load_state():
@@ -219,11 +318,17 @@ class Resolver:
 # ---------------------------------------------------------------- window
 
 class ViewerWindow(Gtk.ApplicationWindow):
-    def __init__(self, app, path):
+    def __init__(self, app, path, folder=None):
         super().__init__(application=app, title="Markdown")
         self.app = app
         self.path = None
-        self.shell_dir = None
+        self.folder = None          # set: this window browses a folder (sidebar)
+        self.tree = None
+        self.tree_json = None
+        self.note_paths = set()
+        self.title_cache = {}
+        self.dir_monitors = []
+        self.rescan_id = 0
         self.shell_ready = False
         self.loading_shell = False
         self.pending_fragment = None
@@ -237,7 +342,11 @@ class ViewerWindow(Gtk.ApplicationWindow):
         self.close_id = 0
 
         st = app.state
-        self.set_default_size(st.get("width", 900), st.get("height", 1040))
+        if folder:
+            self.set_default_size(st.get("folder_width", st.get("width", 900) + SIDEBAR_WIDTH),
+                                  st.get("folder_height", st.get("height", 1040)))
+        else:
+            self.set_default_size(st.get("width", 900), st.get("height", 1040))
         self.set_icon_name("mdview")
         bg = Gdk.RGBA()
         bg.parse(app.theme["colors"]["background"])
@@ -258,7 +367,9 @@ class ViewerWindow(Gtk.ApplicationWindow):
         self.connect("delete-event", self.on_delete)
         self.view.show()
 
-        if path:
+        if folder:
+            self.set_folder(folder)
+        elif path:
             self.open_path(path, push=False)
         else:
             GLib.idle_add(self.choose_file)
@@ -266,11 +377,13 @@ class ViewerWindow(Gtk.ApplicationWindow):
     # -- loading --------------------------------------------------------
 
     def load_shell(self, force=False):
-        target_dir = self.path.parent if self.path else HOME
-        if self.shell_ready and not force and target_dir == self.shell_dir:
+        if self.shell_ready and not force:
             self.render()
             return
-        self.shell_dir = target_dir
+        # One shell per window. Relative links and images resolve against
+        # <base>, which the page points at the directory of the note shown.
+        target_dir = self.path.parent if self.path else self.folder or HOME
+        self.tree_json = None
         self.shell_ready = False
         self.loading_shell = True
         self.editing = False
@@ -282,9 +395,10 @@ class ViewerWindow(Gtk.ApplicationWindow):
                "img-src file: data: blob: https: http:; "
                "font-src file: data:; media-src file: https: http:")
         scripts = "".join(f'<script nonce="{nonce}" src="{a}/{s}"></script>' for s in SCRIPTS)
-        html = (
+        page = (
             "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta http-equiv='Content-Security-Policy' content=\"{csp}\">"
+            f"<base href='{html.escape(target_dir.as_uri(), quote=True)}/'>"
             f"<style id='henri-ui'>{self.app.motion_css}</style>"
             f"<style id='theme'>{theme_css(self.app.theme)}</style>"
             f"<link rel='stylesheet' href='{a}/vendor/katex/katex.min.css'>"
@@ -292,12 +406,13 @@ class ViewerWindow(Gtk.ApplicationWindow):
             f"</head><body data-mode='{self.app.theme['mode']}'><main id='content'></main>"
             f"{scripts}</body></html>"
         )
-        self.view.load_html(html, target_dir.as_uri() + "/")
+        self.view.load_html(page, target_dir.as_uri() + "/")
 
     def on_load_changed(self, view, event):
         if event == WebKit2.LoadEvent.FINISHED:
             self.loading_shell = False
             self.shell_ready = True
+            self.send_folder()
             self.render(fragment=self.pending_fragment)
             self.pending_fragment = None
 
@@ -317,12 +432,19 @@ class ViewerWindow(Gtk.ApplicationWindow):
         if not same:
             self.own_text = None
             self.watch()
+            if self.folder and path.is_relative_to(self.folder):
+                last = self.app.state.setdefault("last_notes", {})
+                last.pop(str(self.folder), None)
+                last[str(self.folder)] = str(path)
+                for old in list(last)[:-20]:
+                    del last[old]
+                save_state(self.app.state)
         if same and self.shell_ready:
             if fragment:
                 self.js("MdView.scrollToFragment", fragment, True)
             return
         self.pending_fragment = fragment
-        if self.shell_ready and path.parent == self.shell_dir:
+        if self.shell_ready:
             self.render(fragment=fragment)
             self.pending_fragment = None
         else:
@@ -359,6 +481,140 @@ class ViewerWindow(Gtk.ApplicationWindow):
             self.resolver = Resolver(self.path.parent)
             self.render(keep_scroll=True)
         return False
+
+    # -- folder (sidebar) ---------------------------------------------------
+
+    def set_folder(self, folder):
+        folder = Path(folder).expanduser()
+        try:
+            folder = folder.resolve()
+        except OSError:
+            pass
+        self.folder = folder
+        self.tree_json = None
+        self.title_cache = {}
+        self.app.state["folder"] = str(folder)
+        save_state(self.app.state)
+        self.rescan()
+        notes = {n["real"]: n for n in tree_notes(self.tree)}
+        last = self.app.state.get("last_notes", {}).get(str(folder))
+        first = last if last in notes else next(iter(notes), None)
+        if self.path and str(self.path) in notes:
+            return
+        if first:
+            self.open_path(first, push=bool(self.path))
+        else:
+            # nothing to show yet: an empty folder, or all notes are gone
+            if self.monitor:
+                self.monitor.cancel()
+                self.monitor = None
+            self.path = None
+            self.set_title(folder.name or str(folder))
+            if self.shell_ready:
+                self.js("MdView.clear")
+            else:
+                self.load_shell()
+
+    def rescan(self):
+        self.rescan_id = 0
+        if not self.folder:
+            return False
+        titles = bool(self.app.state.get("sidebar_titles"))
+        self.tree, walked = scan_folder(self.folder, self.title_cache, titles)
+        self.note_paths = {n["path"] for n in tree_notes(self.tree)}
+        have = {m.dir for m in self.dir_monitors}
+        want = set(walked[:WATCH_LIMIT])
+        for mon in [m for m in self.dir_monitors if m.dir not in want]:
+            mon.cancel()
+            self.dir_monitors.remove(mon)
+        for d in want - have:
+            try:
+                mon = Gio.File.new_for_path(str(d)).monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, None)
+            except GLib.Error:
+                continue
+            mon.dir = d
+            mon.connect("changed", self.on_dir_changed)
+            self.dir_monitors.append(mon)
+        self.send_folder()
+        return False
+
+    def on_dir_changed(self, _mon, _file, _other, event):
+        if event == Gio.FileMonitorEvent.ATTRIBUTE_CHANGED:
+            return
+        if self.rescan_id:
+            GLib.source_remove(self.rescan_id)
+        self.rescan_id = GLib.timeout_add(300, self.rescan)
+
+    def send_folder(self):
+        if not self.folder or not self.shell_ready:
+            return
+        st = self.app.state
+        payload = {
+            "root": str(self.folder),
+            "name": self.folder.name or str(self.folder),
+            "tree": self.tree,
+            "titles": bool(st.get("sidebar_titles")),
+            "visible": st.get("sidebar", True),
+        }
+        blob = json.dumps(payload, sort_keys=True)
+        if blob != self.tree_json:
+            self.tree_json = blob
+            self.js("MdView.setFolder", payload)
+
+    def open_note(self, path):
+        if self.folder and path in self.note_paths:
+            self.open_path(path)
+
+    def new_note(self, name, where):
+        if not self.folder:
+            return
+        target = Path(where) if where else self.folder
+        try:
+            target = target.resolve()
+        except OSError:
+            target = self.folder
+        if not target.is_dir() or not target.is_relative_to(self.folder):
+            target = self.folder
+        name = re.sub(r"[/\\\x00-\x1f]", " ", str(name or "")).strip().lstrip(". ") or "Untitled"
+        stem = name[:-3].rstrip() if name.lower().endswith(".md") else name
+        path = target / f"{stem or 'Untitled'}.md"
+        try:
+            with open(path, "x", encoding="utf-8") as f:
+                f.write(f"# {stem}\n\n")
+        except FileExistsError:
+            self.js("MdView.toast", f"“{path.name}” already exists")
+            if path.is_file():
+                self.rescan()
+                self.open_path(path)
+            return
+        except OSError as e:
+            self.js("MdView.toast", f"Couldn't create note: {e.strerror}")
+            return
+        if self.rescan_id:
+            GLib.source_remove(self.rescan_id)
+        self.rescan()
+        self.open_path(path)
+        self.js("MdView.setMode", "edit", "end")
+
+    def sidebar_pref(self, msg):
+        st = self.app.state
+        if "visible" in msg:
+            st["sidebar"] = bool(msg["visible"])
+        if "titles" in msg:
+            st["sidebar_titles"] = bool(msg["titles"])
+        save_state(st)
+        for w in self.app.windows():
+            if w.folder:
+                w.rescan()
+
+    def choose_folder(self):
+        dlg = Gtk.FileChooserNative.new("Open Folder", self, Gtk.FileChooserAction.SELECT_FOLDER,
+                                        "Open", "Cancel")
+        if self.folder or self.path:
+            dlg.set_current_folder(str(self.folder or self.path.parent))
+        if dlg.run() == Gtk.ResponseType.ACCEPT:
+            self.set_folder(dlg.get_filename())
+        dlg.destroy()
 
     def build_links(self, text):
         links = {}
@@ -403,6 +659,7 @@ class ViewerWindow(Gtk.ApplicationWindow):
             "text": text,
             "name": self.path.name,
             "path": str(self.path),
+            "base": self.path.parent.as_uri() + "/",
             "readonly": readonly,
             "vault": bool(self.resolver and self.resolver.vault),
             "links": self.build_links(text) if "[[" in text else {},
@@ -478,6 +735,14 @@ class ViewerWindow(Gtk.ApplicationWindow):
             self.save_text(msg.get("text"))
         elif t == "external":
             self.open_external()
+        elif t == "note":
+            self.open_note(msg.get("path"))
+        elif t == "newnote":
+            self.new_note(msg.get("name"), msg.get("dir"))
+        elif t == "sidebar":
+            self.sidebar_pref(msg)
+        elif t == "folder":
+            self.choose_folder()
         elif t == "open":
             self.choose_file()
         elif t == "reload":
@@ -609,7 +874,7 @@ class ViewerWindow(Gtk.ApplicationWindow):
             dlg.set_current_folder(str(self.path.parent))
         if dlg.run() == Gtk.ResponseType.ACCEPT:
             self.open_path(dlg.get_filename())
-        elif not self.path:
+        elif not self.path and not self.folder:
             self.close()
         dlg.destroy()
         return False
@@ -631,10 +896,18 @@ class ViewerWindow(Gtk.ApplicationWindow):
             self.close_id = 0
         if not self.is_maximized():
             w, h = self.get_size()
-            self.app.state.update(width=w, height=h)
+            if self.folder:
+                self.app.state.update(folder_width=w, folder_height=h)
+            else:
+                self.app.state.update(width=w, height=h)
             save_state(self.app.state)
         if self.monitor:
             self.monitor.cancel()
+        for mon in self.dir_monitors:
+            mon.cancel()
+        if self.rescan_id:
+            GLib.source_remove(self.rescan_id)
+            self.rescan_id = 0
         return False
 
 
@@ -710,8 +983,20 @@ class MdViewApp(Gtk.Application):
         for w in self.windows():
             w.js("MdView.setMotion", self.motion_css)
 
+    def open_folder(self, folder):
+        existing = next((w for w in self.windows() if w.folder == folder), None)
+        if existing:
+            existing.present()
+        else:
+            ViewerWindow(self, None, folder=folder).show()
+
     def do_activate(self):
-        ViewerWindow(self, None).show()
+        # Started bare: back to the folder that was open last, if there was one.
+        last = self.state.get("folder")
+        if last and Path(last).is_dir():
+            self.open_folder(Path(last))
+        else:
+            ViewerWindow(self, None).show()
 
     def do_open(self, files, _n, _hint):
         for f in files:
@@ -721,6 +1006,9 @@ class MdViewApp(Gtk.Application):
                 launch_uri(uri)
                 continue
             p = Path(path).resolve()
+            if p.is_dir():
+                self.open_folder(p)
+                continue
             existing = next((w for w in self.windows() if w.path == p), None)
             if existing:
                 existing.present()

@@ -1,5 +1,5 @@
 #!/bin/bash
-# mdview launcher. Fast path: hand the files to the running instance over
+# mdview launcher. Fast path: hand the files or folders to the running instance over
 # D-Bus (~10 ms) instead of starting Python; otherwise start the app.
 app="$HOME/.local/share/mdview/mdview.py"
 
@@ -24,5 +24,9 @@ if (($#)) && [[ $1 != -* ]]; then
   list=$(IFS=,; echo "${uris[*]}")
   gdbus call --session --dest dev.henri.MdView --object-path /dev/henri/MdView \
     --method org.freedesktop.Application.Open "[$list]" "{}" >/dev/null 2>&1 && exit 0
+elif ((!$#)); then
+  # bare start: the running instance reopens the last folder
+  gdbus call --session --dest dev.henri.MdView --object-path /dev/henri/MdView \
+    --method org.freedesktop.Application.Activate "{}" >/dev/null 2>&1 && exit 0
 fi
 exec python3 "$app" "$@"

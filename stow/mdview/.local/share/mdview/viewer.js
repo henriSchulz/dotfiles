@@ -1,4 +1,4 @@
-/* mdview — renderer, source editor + UI inside the web view.
+/* mdview — renderer, source editor, folder sidebar + UI inside the web view.
  * Python calls MdView.render(payload) and friends; the page talks back via
  * window.webkit.messageHandlers.mdview (JSON strings). */
 "use strict";
@@ -6,8 +6,9 @@
   const NONCE = document.currentScript.nonce;
   const ASSETS = document.currentScript.src.replace(/\/[^/]*$/, "");
   const content = document.getElementById("content");
+  const baseEl = document.querySelector("base");
   // Anything that leaves the file or the window hands over unsaved edits first.
-  const LEAVING = new Set(["back", "forward", "open", "reload", "close", "print", "external"]);
+  const LEAVING = new Set(["back", "forward", "open", "reload", "close", "print", "external", "note", "newnote", "folder"]);
   const post = (type, data = {}) => {
     if (LEAVING.has(type)) flushSave();
     window.webkit?.messageHandlers?.mdview?.postMessage(JSON.stringify({ type, ...data }));
@@ -29,6 +30,10 @@
     down: svg('<path d="m6 9 6 6 6-6"/>'),
     x: svg('<path d="M18 6 6 18M6 6l12 12"/>'),
     chevron: svg('<path d="m9 18 6-6-6-6"/>'),
+    sidebar: svg('<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/>'),
+    plus: svg('<path d="M12 5v14M5 12h14"/>'),
+    title: svg('<path d="M5 7V5h14v2M12 5v14M9 19h6"/>'),
+    folder: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>'),
     info: svg('<circle cx="12" cy="12" r="9.5"/><path d="M12 16v-4.5M12 8h.01"/>'),
     alert: svg('<circle cx="12" cy="12" r="9.5"/><path d="M12 7.5V12M12 16h.01"/>'),
     flame: svg('<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>'),
@@ -420,11 +425,25 @@
     p.text = p.text.replace(/\r\n?/g, "\n");
     current = p;
     document.title = p.name || "Markdown";
+    if (p.base && baseEl.href !== p.base) baseEl.href = p.base; // relative links and images
+    if (!prev || prev.path !== p.path) markActiveNote(true);
     if (mode === "edit") {
       if (prev && prev.path === p.path) { adoptDisk(p); return; }
       leaveEditNow();
     }
     draw(p, p.keepScroll ? captureAnchor() : null);
+  }
+
+  // A folder window with nothing to show (no notes yet).
+  function clear() {
+    if (mode === "edit") { flushSave(); leaveEditNow(); }
+    current = null;
+    outline = [];
+    document.title = folder ? folder.name : "Markdown";
+    content.innerHTML = `<div class="empty-state"><div class="empty-icon">${ICON.folder}</div><p>No notes in this folder yet.</p></div>`;
+    window.scrollTo(0, 0);
+    reveal();
+    markActiveNote(false);
   }
 
   // quiet: fill the (hidden) reading view without touching scroll or find
@@ -597,6 +616,7 @@
   const toolbar = document.createElement("nav");
   toolbar.id = "toolbar";
   toolbar.innerHTML =
+    `<button class="tb" data-act="sidebar" title="Sidebar (Ctrl+Alt+S)" aria-label="Sidebar">${ICON.sidebar}</button>` +
     `<button class="tb" data-act="outline" title="Outline (Ctrl+Shift+O)" aria-label="Outline">${ICON.list}</button>` +
     `<button class="tb" data-act="find" title="Find (Ctrl+F)" aria-label="Find">${ICON.search}</button>` +
     `<button class="tb" data-act="edit" title="Edit (Ctrl+E)" aria-label="Edit" aria-pressed="false">${ICON.pencil}</button>`;
@@ -833,6 +853,7 @@
 
   let edPath = null;     // file the editor holds; null = nothing loaded
   let edFresh = false;   // text was just loaded: put the caret where the reader was
+  let edReveal = false;  // caret was placed by the caller (new note): scroll to it
   let edKeys = [];       // per line: class + html currently in #ed-back
   let lineStarts = [0];  // offset of every line in the textarea value
   let savedText = null;  // what is on disk as far as we know
@@ -1060,7 +1081,7 @@
 
   // --- switching between reading and editing: the views crossfade one after
   // the other (they share the page scroll) and stay on the same source line.
-  function setMode(next) {
+  function setMode(next, caret) {
     if (next === mode || !current) return;
     if (next === "edit") {
       if (current.readonly) { toast(`Can't edit: ${current.readonly}`); return; }
@@ -1070,6 +1091,7 @@
         edPath = current.path;
         edFresh = true;
       }
+      if (caret === "end") { edInput.setSelectionRange(edInput.value.length, edInput.value.length); edFresh = false; edReveal = true; }
     } else {
       flushSave();
     }
@@ -1112,6 +1134,8 @@
     void body.offsetWidth;
     body.classList.remove("swapping");
     if (mode === "edit" && !findOpen()) edInput.focus({ preventScroll: true });
+    if (mode === "edit" && edReveal) revealCaret();
+    edReveal = false;
   }
   // Another file took over the window: back to reading, without the fade.
   function leaveEditNow() {
@@ -1233,16 +1257,249 @@
     if (e.clientY > edBack.getBoundingClientRect().bottom) edInput.setSelectionRange(edInput.value.length, edInput.value.length);
   });
 
+  // ------------------------------------------------------------ sidebar (folder windows)
+  // Python sends the folder's notes as a tree (setFolder) and again whenever
+  // something in the folder changes. The DOM is reconciled by path, so rows
+  // keep their state and only new or removed ones animate.
+  const sidebar = document.createElement("aside");
+  sidebar.id = "sidebar";
+  sidebar.innerHTML =
+    `<header class="sb-head">` +
+    `<button class="sb-folder" data-act="folder" title="Open another folder (Ctrl+Alt+O)">${ICON.folder}<span class="sb-folder-name"></span></button>` +
+    `<button class="tb" data-act="titles" aria-pressed="false">${ICON.title}</button>` +
+    `<button class="tb" data-act="newnote" title="New note (Ctrl+N)" aria-label="New note">${ICON.plus}</button>` +
+    `</header>` +
+    `<div class="sb-new sb-fold"><div class="sb-in"><input id="sb-new-input" type="text" placeholder="Note name" aria-label="New note name" spellcheck="false" autocomplete="off"></div></div>` +
+    `<nav class="sb-list" aria-label="Notes"></nav>`;
+  document.body.appendChild(sidebar);
+  const sbHead = sidebar.querySelector(".sb-head");
+  const sbList = sidebar.querySelector(".sb-list");
+  const sbNew = sidebar.querySelector(".sb-new");
+  const sbNewInput = sidebar.querySelector("#sb-new-input");
+  const sbTitlesBtn = sbHead.querySelector('[data-act="titles"]');
+
+  let folder = null;        // { root, name, tree } while this window browses a folder
+  let sbTitles = false;     // rows show the note title (first H1) instead of the file name
+  const sbOpen = new Set(); // expanded directories
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+  const sidebarOpen = () => document.body.dataset.sidebar === "open";
+  const byLabel = (a, b) => collator.compare(a.label, b.label);
+
+  function entriesOf(dir) {
+    const dirs = dir.dirs.map((d) => ({ key: d.path, dir: d, label: d.name }));
+    const notes = dir.notes.map((n) => ({ key: n.path, note: n, label: (sbTitles && n.title) || n.name }));
+    return [...dirs.sort(byLabel), ...notes.sort(byLabel)];
+  }
+  function makeItem(e, depth) {
+    const item = document.createElement("div");
+    item.className = e.dir ? "sb-item sb-fold is-dir" : "sb-item sb-fold";
+    item.dataset.key = e.key;
+    item.innerHTML = `<div class="sb-in"><button class="sb-row" type="button" style="--depth:${depth}">` +
+      (e.dir ? `<span class="sb-chev">${ICON.chevron}</span>` : "") + `<span class="sb-label"></span></button>` +
+      (e.dir ? `<div class="sb-kids sb-fold"><div class="sb-in"></div></div>` : "") + `</div>`;
+    if (e.note) item.firstChild.firstChild.dataset.real = e.note.real;
+    return item;
+  }
+  function syncDir(box, dir, depth, fresh) {
+    const have = new Map();
+    for (const el of box.children) if (!el.classList.contains("leaving")) have.set(el.dataset.key, el);
+    let prev = null;
+    for (const e of entriesOf(dir)) {
+      let el = have.get(e.key);
+      if (el && el.classList.contains("is-dir") !== !!e.dir) el = null;
+      if (el) have.delete(e.key);
+      else {
+        el = makeItem(e, depth);
+        if (fresh) { el.classList.add("enter"); fresh.push(el); }
+      }
+      const at = prev ? prev.nextSibling : box.firstChild;
+      if (at !== el) box.insertBefore(el, at);
+      prev = el;
+      const row = el.firstChild.firstChild, label = row.lastChild;
+      if (label.textContent !== e.label) label.textContent = e.label;
+      row.title = e.note ? e.note.path.slice(folder.root.length + 1) : "";
+      if (e.dir) {
+        el.classList.toggle("open", sbOpen.has(e.key));
+        row.setAttribute("aria-expanded", String(sbOpen.has(e.key)));
+        syncDir(row.nextSibling.firstChild, e.dir, depth + 1, fresh);
+      }
+    }
+    for (const el of have.values()) {
+      if (!fresh) { el.remove(); continue; }
+      el.classList.add("leaving");
+      setTimeout(() => el.remove(), motionMs("--spring-smooth-dur", 510));
+    }
+  }
+  function syncList(animate) {
+    const fresh = animate ? [] : null;
+    const any = folder.tree.dirs.length || folder.tree.notes.length;
+    sbList.querySelector(":scope > .menu-empty")?.remove();
+    syncDir(sbList, folder.tree, 0, fresh);
+    if (!any) sbList.insertAdjacentHTML("afterbegin", '<div class="menu-empty">No notes yet</div>');
+    if (fresh && fresh.length) {
+      void sbList.offsetWidth;
+      fresh.forEach((el) => el.classList.remove("enter"));
+    }
+  }
+  function setFolder(f) {
+    if (titlesAt) { // the list is fading out for a names/titles switch: swap once it is gone
+      const wait = titlesAt + motionMs("--dur-fast", 160) * 0.7 - performance.now();
+      titlesAt = 0;
+      clearTimeout(titlesTimer);
+      titlesTimer = setTimeout(() => { applyFolder(f, false); sbList.classList.remove("swap"); }, Math.max(0, wait));
+      return;
+    }
+    applyFolder(f, true);
+  }
+  function applyFolder(f, animate) {
+    const first = !folder || folder.root !== f.root;
+    if (first) { sbOpen.clear(); sbList.textContent = ""; }
+    folder = f;
+    sbTitles = f.titles;
+    sbTitlesBtn.classList.toggle("active", sbTitles);
+    sbTitlesBtn.setAttribute("aria-pressed", String(sbTitles));
+    sbTitlesBtn.title = sbTitlesBtn.ariaLabel = sbTitles ? "Show file names" : "Show note titles";
+    sidebar.querySelector(".sb-folder-name").textContent = f.name;
+    document.body.dataset.folder = "";
+    if (first) openAncestors();
+    syncList(animate && !first);
+    markActiveNote(first);
+    showSidebar(f.visible, !first);
+    if (!current) clear();
+  }
+
+  // --- the note on screen: highlighted, its folders open, scrolled into view
+  function openAncestors() {
+    if (!folder || !current) return;
+    const walk = (dir) => {
+      if (dir.notes.some((n) => n.real === current.path)) return true;
+      for (const d of dir.dirs) if (walk(d)) { sbOpen.add(d.path); return true; }
+      return false;
+    };
+    walk(folder.tree);
+  }
+  function markActiveNote(reveal) {
+    if (!folder) return;
+    if (reveal && current) {
+      const before = sbOpen.size;
+      openAncestors();
+      if (sbOpen.size !== before) syncList(true);
+    }
+    let active = null;
+    for (const row of sbList.querySelectorAll(".sb-row[data-real]")) {
+      const on = !!current && row.dataset.real === current.path;
+      row.classList.toggle("active", on);
+      if (on) { row.setAttribute("aria-current", "page"); active = row; } else row.removeAttribute("aria-current");
+    }
+    if (reveal && active) active.scrollIntoView({ block: "nearest" });
+  }
+  function toggleDir(item) {
+    const key = item.dataset.key, open = !sbOpen.has(key);
+    if (open) sbOpen.add(key); else sbOpen.delete(key);
+    item.classList.toggle("open", open);
+    item.firstChild.firstChild.setAttribute("aria-expanded", String(open));
+  }
+  sbList.addEventListener("click", (e) => {
+    const row = e.target.closest(".sb-row");
+    if (!row) return;
+    const item = row.closest(".sb-item");
+    if (item.classList.contains("is-dir")) toggleDir(item);
+    else if (!row.classList.contains("active")) post("note", { path: item.dataset.key });
+  });
+  sbList.addEventListener("keydown", (e) => {
+    const row = e.target.closest(".sb-row");
+    if (!row || e.ctrlKey || e.metaKey || e.altKey) return;
+    const item = row.closest(".sb-item"), isDir = item.classList.contains("is-dir");
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      // rows inside a closed (or closing) folder are skipped
+      const rows = [...sbList.querySelectorAll(".sb-row")].filter((r) => {
+        for (let p = r.closest(".sb-item").parentElement.closest(".sb-item"); p; p = p.parentElement.closest(".sb-item")) {
+          if (!p.classList.contains("open")) return false;
+        }
+        return !r.closest(".leaving");
+      });
+      const next = rows[rows.indexOf(row) + (e.key === "ArrowDown" ? 1 : -1)];
+      e.preventDefault();
+      if (next) { next.focus({ preventScroll: true }); next.scrollIntoView({ block: "nearest" }); }
+    } else if (e.key === "ArrowRight" && isDir && !item.classList.contains("open")) { e.preventDefault(); toggleDir(item); }
+    else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      if (isDir && item.classList.contains("open")) toggleDir(item);
+      else item.parentElement.closest(".sb-item")?.firstChild.firstChild.focus();
+    }
+  });
+
+  // --- file names <-> titles: the list crossfades, since every row may move
+  let titlesTimer = 0, titlesAt = 0;
+  function setTitles(on) {
+    post("sidebar", { titles: on }); // Python rescans (titles are only read when shown) and answers with setFolder
+    sbTitlesBtn.classList.toggle("active", on);
+    sbList.classList.add("swap");
+    titlesAt = performance.now();
+    clearTimeout(titlesTimer);
+    titlesTimer = setTimeout(() => { titlesAt = 0; sbList.classList.remove("swap"); }, 2000); // no answer: show the list again
+  }
+
+  // --- showing / hiding: the sidebar slides, the text column glides to its new
+  // place (transform only; the width change itself is applied at once)
+  function showSidebar(open, animate) {
+    if (sidebarOpen() === !!open && document.body.dataset.sidebar) return;
+    const col = mode === "edit" ? editor : content;
+    const anchor = mode === "edit" ? captureEditAnchor() : captureAnchor();
+    const before = col.getBoundingClientRect().left;
+    sidebar.classList.toggle("no-anim", !animate);
+    document.body.dataset.sidebar = open ? "open" : "closed";
+    if (mode === "edit") {
+      const el = anchor.line == null ? null : edBack.children[anchor.line];
+      if (el) window.scrollBy({ top: el.getBoundingClientRect().top - anchor.top, behavior: "instant" });
+    } else if (current) restoreAnchor(anchor);
+    const dx = before - col.getBoundingClientRect().left;
+    if (!animate || !dx || reducedMotion()) return;
+    col.style.transition = "none";
+    col.style.transform = `translateX(${dx}px)`;
+    void col.offsetWidth;
+    col.style.transition = "";
+    col.style.transform = "";
+  }
+
+  // --- new note: a name field unfolds under the header; Enter creates the file
+  function openNewNote() {
+    if (!sidebarOpen()) { showSidebar(true, true); post("sidebar", { visible: true }); }
+    sbNewInput.value = "";
+    sbNew.classList.add("open");
+    sbNewInput.focus({ preventScroll: true });
+  }
+  function closeNewNote() {
+    if (!sbNew.classList.contains("open")) return false;
+    sbNew.classList.remove("open");
+    sbNewInput.blur();
+    return true;
+  }
+  sbNewInput.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.isComposing) return;
+    e.preventDefault();
+    // next to the note on screen, if that one lives in this folder
+    const here = current && current.path.startsWith(folder.root + "/") ? current.path.replace(/\/[^/]*$/, "") : folder.root;
+    const name = sbNewInput.value;
+    closeNewNote();
+    post("newnote", { name, dir: here });
+  });
+  sbNewInput.addEventListener("blur", () => closeNewNote());
+
   // --- toolbar + find buttons
   const actions = {
     outline: () => (outlineOpen() ? closeOutline() : openOutline()),
     find: () => (findOpen() ? closeFind() : openFind()),
     edit: () => setMode(mode === "edit" ? "read" : "edit"),
+    sidebar: () => { if (folder) { showSidebar(!sidebarOpen(), true); post("sidebar", { visible: sidebarOpen() }); } },
+    titles: () => setTitles(!sbTitles),
+    newnote: () => openNewNote(),
+    folder: () => post("folder"),
     prev: () => focusHit(hitIdx - 1),
     next: () => focusHit(hitIdx + 1),
     closefind: () => closeFind(),
   };
-  for (const root of [toolbar, findBar]) {
+  for (const root of [toolbar, findBar, sbHead]) {
     root.addEventListener("click", (e) => {
       const b = e.target.closest("[data-act]");
       if (b) actions[b.dataset.act]();
@@ -1301,15 +1558,18 @@
     const k = e.key.toLowerCase();
     const typing = e.target.matches?.("input[type=search], input[type=text], textarea");
     if (e.key === "Escape") {
-      if (closeOutline() || closeFind()) e.preventDefault();
+      if (closeNewNote() || closeOutline() || closeFind()) e.preventDefault();
       return;
     }
     if (mod && e.shiftKey && k === "o") { e.preventDefault(); actions.outline(); return; }
     if (mod && e.shiftKey && k === "e") { e.preventDefault(); post("external"); return; }
+    if (mod && e.altKey && !e.shiftKey && k === "s") { e.preventDefault(); actions.sidebar(); return; }
+    if (mod && e.altKey && !e.shiftKey && k === "o") { e.preventDefault(); post("folder"); return; }
     if (mod && !e.shiftKey && !e.altKey) {
       const map = {
         f: openFind, e: actions.edit, o: () => post("open"), r: () => post("reload"),
         s: () => { if (mode === "edit") { flushSave(); toast("Saved"); } },
+        n: () => { if (folder) openNewNote(); },
         p: printDoc, w: () => post("close"), q: () => post("close"),
         "=": () => post("zoom", { step: 1 }), "+": () => post("zoom", { step: 1 }),
         "-": () => post("zoom", { step: -1 }), "0": () => post("zoom", { step: 0 }),
@@ -1324,5 +1584,5 @@
     if (!typing && !mod && !e.altKey && e.key === "/") { e.preventDefault(); openFind(); }
   });
 
-  window.MdView = { render, setTheme, setMotion, scrollToFragment, toast, setMode, flush, saveFailed };
+  window.MdView = { render, setTheme, setMotion, scrollToFragment, toast, setMode, flush, saveFailed, setFolder, clear };
 })();

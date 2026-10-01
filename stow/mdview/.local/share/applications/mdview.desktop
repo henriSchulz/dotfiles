@@ -2,7 +2,7 @@
 Type=Application
 Name=Markdown Viewer
 GenericName=Markdown Viewer
-Comment=Read and edit Markdown – Obsidian syntax, math, Mermaid, code
+Comment=Read and edit Markdown notes and folders – Obsidian syntax, math, Mermaid, code
 Exec=mdview %F
 Icon=mdview
 Terminal=false
