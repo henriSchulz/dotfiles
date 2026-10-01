@@ -174,10 +174,18 @@ o.bind("Control_R", "Dictation toggle", "voxtype record toggle")
 -- Sprach-Assistenten henri.assistant). Muster wie Omarchys Super+C/V/X
 -- (default/hypr/bindings/clipboard.lua): Ctrl+A geht direkt an die fokussierte
 -- Oberfläche, Down/Up getrennt, damit die synthetische Taste nicht hängen bleibt.
+-- Im Terminal wäre Ctrl+A „Zeilenanfang“: dort geht Ctrl+Shift+A raus, das der
+-- foot-Fork (~/Projects/foot, select-all) als „alles auswählen“ versteht.
+-- Terminal = Tag „terminal“ wie in Omarchys clipboard.lua.
 o.bind("SUPER + A", "Select all", function()
-  hl.dispatch(hl.dsp.send_key_state({ mods = "CTRL", key = "A", state = "down" }))
+  local mods = "CTRL"
+  local window = hl.get_active_window()
+  for _, tag in ipairs(window and window.tags or {}) do
+    if tag:gsub("%*$", "") == "terminal" then mods = "CTRL SHIFT" end
+  end
+  hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = "A", state = "down" }))
   hl.timer(function()
-    hl.dispatch(hl.dsp.send_key_state({ mods = "CTRL", key = "A", state = "up" }))
+    hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = "A", state = "up" }))
   end, { timeout = 50, type = "oneshot" })
 end)
 
