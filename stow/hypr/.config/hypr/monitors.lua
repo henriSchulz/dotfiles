@@ -12,10 +12,12 @@ hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy
 -- 0.56.2 crashes on the next window capture. It sits far away so the pointer
 -- cannot reach it, runs small and slow so it costs nothing, and owns the
 -- workspace "spare" so it never takes a numbered one. The real monitor is
--- pinned to 0x0: "auto" would place it right next to SPARE.
+-- pinned to 0x0: "auto" would place it right next to the spare one. The name
+-- starts with HEADLESS because plugins (henri.dock) skip such outputs when
+-- they pick their screen.
 hl.monitor({ output = "DP-1", mode = "preferred", position = "0x0", scale = omarchy_monitor_scale })
-hl.monitor({ output = "SPARE", mode = "1280x720@30", position = "20000x20000", scale = 1 })
-hl.workspace_rule({ workspace = "name:spare", monitor = "SPARE", default = true, persistent = true })
+hl.monitor({ output = "HEADLESS-SPARE", mode = "1280x720@30", position = "20000x20000", scale = 1 })
+hl.workspace_rule({ workspace = "name:spare", monitor = "HEADLESS-SPARE", default = true, persistent = true })
 
 -- Configure a specific monitor.
 -- hl.monitor({ output = "DP-2", mode = "2560x1440@144", position = "0x0", scale = 1 })

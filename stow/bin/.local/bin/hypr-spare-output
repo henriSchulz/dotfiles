@@ -1,6 +1,6 @@
 #!/bin/bash
-# Keep a virtual output named SPARE around, so Hyprland never runs without a
-# monitor.
+# Keep a virtual output named HEADLESS-SPARE around, so Hyprland never runs
+# without a monitor.
 #
 # Why: this MacBook has no working internal display; the only monitor hangs on
 # a USB-C adapter. When it is unplugged, every window loses its monitor, and
@@ -9,19 +9,51 @@
 # previews do that within a second or two). Crashed the session on 2026-10-01;
 # reproduced 2/2 in a nested instance, and 0/3 with a spare output present.
 #
-# SPARE is placed far from the real monitor (hypr/monitors.lua), so the pointer
-# cannot wander onto it, and owns the workspace "spare", so it never takes one
-# of the numbered ones. The name must not be FALLBACK: Hyprland uses that name
-# itself and ignores monitor rules for it.
+# The output is placed far from the real monitor (hypr/monitors.lua), so the
+# pointer cannot wander onto it, and owns the workspace "spare", so it never
+# takes one of the numbered ones. The name must not be FALLBACK: Hyprland uses
+# that name itself and ignores monitor rules for it. It starts with HEADLESS
+# because plugins skip such outputs when they pick their screen.
 #
-#   hypr-spare-output          create it if missing (started from hypr/autostart.lua)
+# When the real monitor comes back, Hyprland returns its workspaces but leaves
+# the focus on the spare output — keys and new windows would go to a screen
+# nobody sees — and the shell does not put the dock and Spotlight back on the
+# returned screen (measured 2026-10-01: workspace switching looked dead, no
+# pointer, no dock). The watcher moves the focus back and restarts the shell.
+#
+#   hypr-spare-output          create it and watch (started from hypr/autostart.lua)
+#   hypr-spare-output create   only create it
 #   hypr-spare-output remove   take it away again
 set -euo pipefail
-name=SPARE
+name=HEADLESS-SPARE
 have() { hyprctl -j monitors all | jq -e --arg n "$name" 'any(.[]; .name == $n)' >/dev/null; }
+create() { have || hyprctl output create headless "$name" >/dev/null; }
 
-case "${1:-create}" in
-  create) have || hyprctl output create headless "$name" >/dev/null ;;
+# Focus the workspace shown on a real monitor if the spare one holds the focus.
+refocus() {
+  local monitors ws
+  monitors=$(hyprctl -j monitors) || return 0
+  jq -e --arg n "$name" 'any(.[]; .name == $n and .focused)' <<<"$monitors" >/dev/null || return 0
+  ws=$(jq -r --arg n "$name" '[.[] | select(.name != $n)][0].activeWorkspace.id // empty' <<<"$monitors")
+  [[ -n $ws ]] && hyprctl dispatch "hl.dsp.focus({ workspace = $ws })" >/dev/null || true
+}
+
+case "${1:-watch}" in
+  create) create ;;
   remove) have && hyprctl output remove "$name" >/dev/null ;;
-  *)      echo "usage: ${0##*/} [create|remove]" >&2; exit 2 ;;
+  watch)
+    create
+    refocus
+    socket="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+    while read -r event; do
+      case "$event" in
+        monitoraddedv2\>\>*)
+          [[ $event == *",$name,"* ]] && continue
+          # The workspaces move back a moment after the output appears.
+          sleep 1; refocus
+          omarchy-restart-shell >/dev/null 2>&1 || true ;;
+      esac
+    done < <(socat -U - "UNIX-CONNECT:$socket")
+    ;;
+  *) echo "usage: ${0##*/} [watch|create|remove]" >&2; exit 2 ;;
 esac
