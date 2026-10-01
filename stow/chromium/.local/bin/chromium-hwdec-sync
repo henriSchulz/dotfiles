@@ -1,0 +1,59 @@
+#!/bin/bash
+# Keep Chromium's hardware video decode features in step with the decoder
+# driver on the M1.
+#
+# Chromium's V4L2 decoder only works with a patched apple-avd module
+# (~/Projects/m1-power/avd): the stock module rejects every frame and
+# Chromium then shows a solid green video. So the features are in
+# ~/.config/chromium-flags.conf exactly while the patched module is the one
+# in use, and are taken out again when a kernel update brings the stock
+# module back.
+#
+#   chromium-hwdec-sync            fix the flags, say what was done
+#   chromium-hwdec-sync --notify   same, plus a desktop notification on a change
+set -euo pipefail
+
+conf="$HOME/.config/chromium-flags.conf"
+features=(AcceleratedVideoDecodeLinuxGL AcceleratedVideoDecodeLinuxZeroCopyGL AcceleratedVideoDecoder)
+[[ -f $conf ]] || exit 0
+
+# Patched = an out-of-tree build is loaded (taint O), or none is loaded yet and
+# modprobe would pick the copy in updates/.
+patched=0
+if [[ -r /sys/module/apple_avd/taint ]]; then
+  [[ $(</sys/module/apple_avd/taint) == *O* ]] && patched=1
+elif [[ $(modinfo -n apple_avd 2>/dev/null) == */updates/* ]]; then
+  patched=1
+fi
+
+result=$(python3 - "$conf" "$patched" "${features[@]}" <<'PY'
+import sys
+path, patched, feats = sys.argv[1], sys.argv[2] == "1", sys.argv[3:]
+lines = open(path).read().split("\n")
+flag = "--enable-features="
+idx = next((i for i, l in enumerate(lines) if l.startswith(flag)), None)
+cur = [v for v in lines[idx][len(flag):].split(",") if v] if idx is not None else []
+new = [v for v in cur if v not in feats] + (feats if patched else [])
+if new == cur:
+    print("unchanged")
+    sys.exit()
+if idx is None:
+    while lines and not lines[-1]:
+        lines.pop()
+    lines += [flag + ",".join(new), ""]
+elif new:
+    lines[idx] = flag + ",".join(new)
+else:
+    del lines[idx]
+open(path, "w").write("\n".join(lines))
+print("on" if patched else "off")
+PY
+)
+
+case $result in
+  on)  msg="Hardware video decode enabled (patched apple-avd). Restart Chromium to apply." ;;
+  off) msg="Hardware video decode disabled: apple-avd is the stock module, video would be green. Rebuild and install ~/Projects/m1-power/avd." ;;
+  *)   echo "chromium-hwdec-sync: flags already match (patched apple-avd: $patched)"; exit 0 ;;
+esac
+echo "chromium-hwdec-sync: $msg"
+[[ ${1:-} == --notify ]] && notify-send -a Chromium "Chromium video" "$msg" || true

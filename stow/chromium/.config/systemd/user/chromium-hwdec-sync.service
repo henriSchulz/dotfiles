@@ -1,0 +1,11 @@
+[Unit]
+Description=Match Chromium's hardware video decode flags to the apple-avd module
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/chromium-hwdec-sync --notify
+
+[Install]
+WantedBy=graphical-session.target
