@@ -1487,9 +1487,17 @@ Item {
   onSettingsLoadedChanged: if (settingsLoaded) { position = String(settings.position || "bottom"); if (autoHide && !emptySpace) { hideOffset = 1; dockHidden = true } }
 
   // ======================================================== windows
+  // A layer surface does not survive its output: when the monitor goes away
+  // (unplug, DP resume) and the dock falls back to another screen, or returns
+  // to the monitor when it is back, both windows are unmapped for a beat so
+  // they are created again on the screen they now belong to.
+  property bool remapping: false
+  onScreenChanged: { remapping = true; remapTimer.restart() }
+  Timer { id: remapTimer; interval: 50; onTriggered: root.remapping = false }
   PanelWindow {
     id: overlay
     screen: root.screen
+    visible: !root.remapping
     color: "transparent"
     WlrLayershell.namespace: "henri-dock-overlay"
     WlrLayershell.layer: root.overFullscreen ? WlrLayer.Overlay : WlrLayer.Top
@@ -1685,6 +1693,7 @@ Item {
   PanelWindow {
     id: bgWindow
     screen: root.screen
+    visible: !root.remapping
     color: "transparent"
     WlrLayershell.namespace: "henri-dock"
     WlrLayershell.layer: root.overFullscreen ? WlrLayer.Overlay : WlrLayer.Top
