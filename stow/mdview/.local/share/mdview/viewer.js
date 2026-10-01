@@ -468,7 +468,9 @@
     if (outlineOpen()) buildOutline();
     if (anchor) restoreAnchor(anchor);
     else if (p.fragment) scrollToFragment(p.fragment, false);
+    else if (p.toEnd) scrollToEnd();
     else window.scrollTo(0, 0);
+    p.toEnd = false;
     if (findOpen()) runFind(findInput.value, true);
     renderMermaid(gen, anchor);
   }
@@ -518,6 +520,13 @@
     setTimeout(() => el.classList.remove("flash"), 1200);
   }
   const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // An image was just added at the end: go there, again once it has its height.
+  function scrollToEnd() {
+    const go = () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: reducedMotion() ? "instant" : "smooth" });
+    go();
+    const img = [...content.querySelectorAll("img")].pop();
+    if (img && !img.complete) img.addEventListener("load", go, { once: true });
+  }
 
   // --- mermaid (loaded on demand, ~2.7 MB)
   let mermaidLoad = null, mermaidKey = "", mermaidSeq = 0;
@@ -1248,6 +1257,17 @@
     else if (mod && !e.shiftKey && !e.altKey && EDIT_KEYS[e.key.toLowerCase()]) { e.preventDefault(); EDIT_KEYS[e.key.toLowerCase()](); }
     else if (/^(Arrow|Home|End)/.test(e.key)) requestAnimationFrame(revealCaret);
   });
+  // Pasting an image: the page can't get at the image data, so Python saves it
+  // as a file and answers with the Markdown to insert (insertImage).
+  edInput.addEventListener("paste", (e) => {
+    if (!e.clipboardData || e.clipboardData.getData("text/plain")) return;
+    e.preventDefault();
+    post("pasteimage", { path: edPath });
+  });
+  function insertImage(r) {
+    if (mode !== "edit" || edPath !== r.path) return;
+    edReplace(edInput.selectionStart, edInput.selectionEnd, r.markup);
+  }
   // the textarea never scrolls on its own; the page does
   edInput.addEventListener("scroll", () => { edInput.scrollTop = 0; edInput.scrollLeft = 0; });
   editor.addEventListener("mousedown", (e) => {
@@ -1684,6 +1704,11 @@
     if (mod && e.shiftKey && k === "e") { e.preventDefault(); post("external"); return; }
     if (mod && e.altKey && !e.shiftKey && k === "s") { e.preventDefault(); actions.sidebar(); return; }
     if (mod && e.altKey && !e.shiftKey && k === "o") { e.preventDefault(); post("folder"); return; }
+    if (mod && !e.shiftKey && !e.altKey && k === "v") {
+      // reading: an image on the clipboard goes to the end of the note
+      if (!typing && mode === "read" && current && !current.error) post("pasteimage", { path: current.path, append: true });
+      return;
+    }
     if (mod && !e.shiftKey && !e.altKey) {
       const map = {
         f: openFind, e: actions.edit, o: () => post("open"), r: () => post("reload"),
@@ -1703,5 +1728,5 @@
     if (!typing && !mod && !e.altKey && e.key === "/") { e.preventDefault(); openFind(); }
   });
 
-  window.MdView = { render, setTheme, setMotion, scrollToFragment, toast, setMode, flush, saveFailed, setFolder, clear, noteRenamed };
+  window.MdView = { render, setTheme, setMotion, scrollToFragment, toast, setMode, flush, saveFailed, setFolder, clear, noteRenamed, insertImage };
 })();

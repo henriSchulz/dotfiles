@@ -8,6 +8,8 @@ while after the last window closes so reopening is instant.
 
 Ctrl+E switches between reading and editing the source in place; edits are
 saved automatically (the page sends the text, this side writes the file).
+Ctrl+V with an image on the clipboard saves it as a file and embeds it: at the
+caret while editing, at the end of the note while reading.
 
 Opened on a folder (or started without arguments, which reopens the last
 folder) the window gets a sidebar listing the folder's notes, by file name or
@@ -28,7 +30,7 @@ import sys
 import time
 import tomllib
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 import gi
 
@@ -52,6 +54,9 @@ MD_EXT = {".md", ".markdown", ".mdown", ".mkd", ".mkdn", ".mdx"}
 IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".avif", ".ico"}
 AUDIO_EXT = {".mp3", ".wav", ".ogg", ".m4a", ".flac", ".opus", ".webm"}
 VIDEO_EXT = {".mp4", ".mkv", ".mov", ".ogv"}
+# clipboard formats kept as they are when pasted; anything else is saved as PNG
+PASTE_MIME = (("image/png", ".png"), ("image/jpeg", ".jpg"), ("image/webp", ".webp"),
+              ("image/gif", ".gif"), ("image/avif", ".avif"), ("image/svg+xml", ".svg"))
 SKIP_DIRS = {"node_modules", "__pycache__", "target", "venv", ".venv", "dist", "build"}
 WIKI_RE = re.compile(r"!?\[\[([^\[\]\n]+?)\]\]")
 EMBED_LIMIT = 256 * 1024
@@ -260,6 +265,25 @@ def file_kind(path):
     return "file"
 
 
+def clipboard_image():
+    """The image on the clipboard as (bytes, file extension), or None."""
+    cb = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+    ok, atoms = cb.wait_for_targets()
+    have = {a.name() for a in atoms} if ok else set()
+    for mime, ext in PASTE_MIME:
+        if mime in have:
+            sel = cb.wait_for_contents(Gdk.Atom.intern(mime, False))
+            data = sel.get_data() if sel else None
+            if data:
+                return bytes(data), ext
+    pixbuf = cb.wait_for_image() if cb.wait_is_image_available() else None
+    if pixbuf:
+        ok, data = pixbuf.save_to_bufferv("png", [], [])
+        if ok:
+            return bytes(data), ".png"
+    return None
+
+
 def launch_uri(uri):
     try:
         Gio.AppInfo.launch_default_for_uri(uri, None)
@@ -345,6 +369,7 @@ class ViewerWindow(Gtk.ApplicationWindow):
         self.resolver = None
         self.editing = False
         self.own_text = None
+        self.own_write = None       # bytes just written here: the reload for them is skipped
         self.closing = False
         self.close_id = 0
 
@@ -479,6 +504,14 @@ class ViewerWindow(Gtk.ApplicationWindow):
     def reload_after_change(self):
         self.reload_id = 0
         if self.path and self.path.exists():
+            own, self.own_write = self.own_write, None
+            if own is not None:
+                try:
+                    with open(self.path, "rb") as f:
+                        if f.read() == own:
+                            return False  # already on screen
+                except OSError:
+                    pass
             if self.editing and self.own_text is not None:
                 try:
                     if read_text(self.path).replace("\r\n", "\n") == self.own_text:
@@ -716,7 +749,7 @@ class ViewerWindow(Gtk.ApplicationWindow):
                 links[target] = info
         return links
 
-    def render(self, keep_scroll=False, fragment=None):
+    def render(self, keep_scroll=False, fragment=None, end=False):
         if not self.shell_ready or not self.path:
             return
         raw = None
@@ -741,6 +774,7 @@ class ViewerWindow(Gtk.ApplicationWindow):
             "links": self.build_links(text) if "[[" in text else {},
             "keepScroll": keep_scroll,
             "fragment": fragment,
+            "toEnd": end,
             "error": error,
             "canBack": bool(self.back),
         }
@@ -811,6 +845,8 @@ class ViewerWindow(Gtk.ApplicationWindow):
             # a late autosave must not land in whatever note is open by now
             if msg.get("path") in (None, str(self.path)):
                 self.save_text(msg.get("text"))
+        elif t == "pasteimage":
+            self.paste_image(msg.get("path"), bool(msg.get("append")))
         elif t == "external":
             self.open_external()
         elif t == "note":
@@ -916,6 +952,84 @@ class ViewerWindow(Gtk.ApplicationWindow):
             self.own_text = text
         except OSError as e:
             self.js("MdView.saveFailed", e.strerror or str(e))
+
+    # -- pasted images ----------------------------------------------------
+
+    def attachment_dir(self, vault):
+        """Where a pasted image goes: next to the note, or wherever the
+        Obsidian vault keeps its attachments (default: the vault root)."""
+        if not vault:
+            return self.path.parent
+        try:
+            conf = json.loads((vault / ".obsidian/app.json").read_text()).get("attachmentFolderPath")
+        except (OSError, ValueError, AttributeError):
+            conf = None
+        if not isinstance(conf, str) or not conf.strip("/"):
+            return vault
+        d = self.path.parent / conf[2:] if conf.startswith("./") else vault / conf
+        d = Path(os.path.normpath(d))
+        return d if d.is_relative_to(vault) else vault
+
+    def paste_image(self, path, append):
+        """Save the clipboard image as a file and embed it: the page inserts
+        the Markdown at the caret (editing), or it goes to the end of the note
+        (reading)."""
+        if not self.path or path != str(self.path):
+            return
+        img = clipboard_image()
+        if not img:
+            return
+        data, ext = img
+        old = b""
+        if append:
+            try:
+                with open(self.path, "rb") as f:
+                    old = f.read()
+            except OSError as e:
+                self.js("MdView.toast", f"Couldn't add image: {e.strerror}")
+                return
+            reason = readonly_reason(self.path, old)
+            if reason:
+                self.js("MdView.toast", f"Can't edit: {reason}")
+                return
+        vault = self.resolver.vault if self.resolver else None
+        stem = time.strftime("Pasted image %Y%m%d%H%M%S" if vault else "pasted-%Y%m%d-%H%M%S")
+        try:
+            folder = self.attachment_dir(vault)
+            folder.mkdir(parents=True, exist_ok=True)
+            for n in range(1, 100):
+                target = folder / f"{stem}{'' if n == 1 else f'-{n}'}{ext}"
+                try:
+                    with open(target, "xb") as f:
+                        f.write(data)
+                    break
+                except FileExistsError:
+                    continue
+            else:
+                raise FileExistsError(17, "File exists")
+        except OSError as e:
+            self.js("MdView.toast", f"Couldn't save image: {e.strerror}")
+            return
+        markup = f"![[{target.name}]]" if vault else f"![]({quote(target.name)})"
+        if not append:
+            self.js("MdView.insertImage", {"path": str(self.path), "markup": markup})
+            return
+        nl = b"\r\n" if b"\r\n" in old else b"\n"
+        body = old.rstrip(b"\r\n")
+        new = (body + nl * 2 if body else b"") + markup.encode("utf-8") + nl
+        try:
+            with open(self.path, "wb") as f:
+                f.write(new)
+        except OSError as e:
+            self.js("MdView.toast", f"Couldn't save: {e.strerror}")
+            try:
+                target.unlink()
+            except OSError:
+                pass
+            return
+        self.own_write = new
+        self.resolver = Resolver(self.path.parent)
+        self.render(end=True)
 
     def open_external(self):
         if not self.path:
