@@ -1,23 +1,25 @@
 #!/bin/bash
-# Chromium on the M1: hardware video decode and VP9 on YouTube.
+# Chromium on the M1: VP9 instead of AV1 on YouTube.
 #
-# Arch Linux ARM's Chromium has no VA-API but ships the V4L2 stateless decoder,
-# which drives the M1's AVD decoder once these features are on (VP9 works,
-# H.264 fails and falls back, AV1 is not supported by AVD). The youtube-vp9
-# extension (stow/chromium) hides AV1 from YouTube so it serves VP9.
-# Measured 2026-10-01 (~/Projects/m1-power/messungen.md), 1080p60:
-# VP9 hardware 3.26 W, VP9 software 3.76 W, AV1 3.95 W.
+# Hardware video decode in Chromium does NOT work here and must stay off:
+# Arch Linux ARM's Chromium has no VA-API, and its V4L2 stateless decoder
+# (features AcceleratedVideoDecodeLinuxGL, …ZeroCopyGL, AcceleratedVideoDecoder)
+# claims to decode on the M1's AVD but never drives it — the video is solid
+# green (found 2026-10-01; an earlier version of this script enabled it after
+# checking only the decoder name and the CPU load, never the picture).
+#
+# What is left is the youtube-vp9 extension (stow/chromium): it hides AV1 from
+# YouTube so it serves VP9. Both are decoded on the CPU; VP9 is a little
+# cheaper (1080p60, measured 2026-10-01: VP9 3.76 W, AV1 3.95 W).
 #
 # ~/.config/chromium-flags.conf belongs to Omarchy, so it is edited in place
-# rather than stowed: one --enable-features line (Chromium honours only the
-# last one) and one --load-extension line, both extended idempotently.
+# rather than stowed; the --load-extension line is extended idempotently.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-log "Chromium: hardware video decode + YouTube VP9"
+log "Chromium: YouTube VP9"
 
 conf="$HOME/.config/chromium-flags.conf"
-features=(AcceleratedVideoDecodeLinuxGL AcceleratedVideoDecodeLinuxZeroCopyGL AcceleratedVideoDecoder)
 extension="$HOME/.local/share/chromium-extensions/youtube-vp9"
 
 if [[ $(uname -m) != aarch64 ]]; then skip "not an ARM machine"; exit 0; fi
@@ -48,6 +50,10 @@ PY
   fi
 }
 
-extend_flag --enable-features "${features[@]}"
+# Take the broken hardware-decode features out again where an earlier run added them.
+if grep -q 'AcceleratedVideoDecode' "$conf"; then
+  info "removing hardware video decode features (green video)"
+  run sed -i 's/,AcceleratedVideoDecodeLinuxGL//; s/,AcceleratedVideoDecodeLinuxZeroCopyGL//; s/,AcceleratedVideoDecoder//' "$conf"
+fi
 extend_flag --load-extension "$extension"
 info "restart Chromium to apply"

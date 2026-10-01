@@ -1,8 +1,8 @@
 // YouTube asks the browser which codecs it can play and picks AV1 when it is
-// offered. The M1's hardware decoder (AVD, via Chromium's V4L2 decoder) does
-// VP9 but not AV1, so AV1 is decoded on the CPU. Answer "no" for AV1 on every
-// path YouTube uses; it then falls back to VP9. H.264 stays available as the
-// last resort for videos that have nothing else.
+// offered. On the M1 both AV1 and VP9 are decoded on the CPU (Chromium's
+// hardware path shows green video here), and VP9 is the cheaper of the two.
+// Answer "no" for AV1 on every path YouTube uses; it then falls back to VP9.
+// H.264 stays available as the last resort for videos that have nothing else.
 (() => {
   const isAv1 = type => /av01|av1/i.test(String(type || ""));
 
