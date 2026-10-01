@@ -15,7 +15,7 @@
   "theme": "system",
   "accentColor": "#ff0a84ff",
   "reduceMotion": "system",
-  "fileManager": "org.gnome.Nautilus",
+  "fileManager": "de.henri.Finder",
   "screen": "",
   "folders": [
     {

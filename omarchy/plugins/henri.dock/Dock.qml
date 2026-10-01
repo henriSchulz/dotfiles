@@ -59,7 +59,7 @@ Item {
     theme: "system",
     accentColor: Apple.dock.accent,
     reduceMotion: "system",
-    fileManager: "org.gnome.Nautilus",
+    fileManager: "de.henri.Finder",
     screen: "",
     folders: [{ path: "~/Downloads", name: "Downloads", displayAs: "stack", viewContentAs: "auto", sortBy: "dateAdded" }],
     files: [],
@@ -1055,7 +1055,7 @@ Item {
     else if (a === "togglePin") togglePin(item)
     else if (a === "removeRecent") { recents = recents.filter(function (r) { return r.key !== item.key }); scheduleRebuild() }
     else if (a === "toggleLogin") { var la = (settings.loginApps || []).slice(); var ix = la.indexOf(item.entryId); if (ix >= 0) la.splice(ix, 1); else la.push(item.entryId); setSetting("loginApps", la) }
-    else if (a === "showInFiles") Quickshell.execDetached(["sh", "-c", 'for c in "$@"; do [ -f "$c" ] && exec nautilus --select "$c"; done; exec nautilus /usr/share/applications', "dock"].concat(desktopFileCandidates(item.entryId)))
+    else if (a === "showInFiles") Quickshell.execDetached(["sh", "-c", 'for c in "$@"; do [ -f "$c" ] && exec finder --select "$c"; done; exec finder /usr/share/applications', "dock"].concat(desktopFileCandidates(item.entryId)))
     else if (a === "showAll") { var w = (item.windows || []).filter(function (x) { return !x.minimized }); if (w.length) focusWindow(w[0].address); missionControl.restart() }
     else if (a === "hideApp") { var ws = (item.windows || []).filter(function (x) { return !x.minimized }); for (var i = 0; i < ws.length; i++) minimizeWindow(ws[i].address, false, i === 0) }
     else if (a === "quit") { var q = item.windows || []; for (var j = 0; j < q.length; j++) if (q[j].wayland) q[j].wayland.close() }
@@ -1064,7 +1064,7 @@ Item {
     else if (a === "removeDoc") removeDocItem(item)
     else if (a === "openFolder") openInFileManager(item.path)
     else if (a === "openFile") Quickshell.execDetached(["xdg-open", item.path])
-    else if (a === "showFile") Quickshell.execDetached(["nautilus", "--select", item.path])
+    else if (a === "showFile") Quickshell.execDetached(["finder", "--select", item.path])
     else if (a === "toggleMag") setSetting("magnification", !magnificationOn)
     else if (a === "position") setSetting("position", entry.arg)
     else if (a === "effect") setSetting("minimizeEffect", entry.arg)

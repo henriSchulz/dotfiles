@@ -13,7 +13,7 @@
 #              scripts/install.sh has to run again after a Hyprland update.
 #
 # Each project owns its own installer — this step only clones and calls them:
-#   finder     bin/finder-install   desktop entry + icon; runs from the checkout
+#   finder     bin/finder-install   desktop entry + icon, default file manager; runs from the checkout
 #   settings   bin/settings-install  QML tree, launcher, entry, icon into ~/.local
 #   hyprswipe  scripts/install.sh    builds against the installed Hyprland headers
 #   menubar    none — a web component, only ever built in the checkout (npm run build)

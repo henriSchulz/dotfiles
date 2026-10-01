@@ -80,6 +80,7 @@ var DEFAULTS = {
   "steam": ["games", "spiele", "gaming", "library"],
 
   // ------------------------------------------------------ files & system
+  "de.henri.Finder": ["files", "dateien", "explorer", "folder", "ordner", "file manager", "dateimanager", "browse", "nautilus"],
   "org.gnome.Nautilus": ["files", "dateien", "explorer", "finder", "folder", "ordner", "file manager", "dateimanager", "browse"],
   "thunar": ["files", "dateien", "explorer", "finder", "file manager", "dateimanager"],
   "org.kde.dolphin": ["files", "dateien", "explorer", "finder", "file manager", "dateimanager"],

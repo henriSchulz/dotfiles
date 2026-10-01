@@ -108,6 +108,18 @@ o.bind("XF86MonBrightnessDown", "Brightness down", hl.dsp.event("osd brightness 
 o.bind("ALT + XF86MonBrightnessUp", "Brightness up precise", hl.dsp.event("osd brightness up-fine"), { locked = true, repeating = true })
 o.bind("ALT + XF86MonBrightnessDown", "Brightness down precise", hl.dsp.event("osd brightness down-fine"), { locked = true, repeating = true })
 
+-- Dateimanager ist der Finder (~/Projects/finder), nicht mehr Files (Nautilus):
+-- SUPER+SHIFT+F und SUPER+ALT+SHIFT+F riefen Omarchys omarchy-launch-nautilus
+-- bzw. -nautilus-cwd auf. Gleiche Tasten, gleiche Bedeutung (neues Fenster,
+-- bzw. neues Fenster im Arbeitsverzeichnis des aktiven Terminals), anderes
+-- Programm. Den Rest (xdg-open, „Im Ordner zeigen“, Dock) stellt
+-- finder/bin/finder-install um.
+hl.unbind("SUPER + SHIFT + F")
+hl.unbind("SUPER + ALT + SHIFT + F")
+o.bind("SUPER + SHIFT + F", "File manager", { launch = "finder --new-window" })
+o.bind("SUPER + ALT + SHIFT + F", "File manager (cwd)",
+  [[sh -c 'exec setsid uwsm-app -- finder --new-window "$(omarchy-cmd-terminal-cwd)"']])
+
 -- Super+Backspace in Files (Nautilus) und im Finder = in den Papierkorb, wie
 -- Cmd+Backspace am Mac; in allen anderen Fenstern bleibt es Omarchys
 -- Transparenz-Umschalter.
