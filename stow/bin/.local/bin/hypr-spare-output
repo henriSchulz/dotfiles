@@ -29,13 +29,21 @@ name=HEADLESS-SPARE
 have() { hyprctl -j monitors all | jq -e --arg n "$name" 'any(.[]; .name == $n)' >/dev/null; }
 create() { have || hyprctl output create headless "$name" >/dev/null; }
 
-# Focus the workspace shown on a real monitor if the spare one holds the focus.
+# If the spare monitor holds the focus while a real one exists, bring pointer
+# and focus back. The pointer goes first: when the last real monitor vanishes
+# Hyprland parks it on the spare one, it stays there after the replug
+# (cursor:no_warps), and the focus follows it right back (seen 2026-10-01: new
+# windows opened on the invisible workspace "spare").
 refocus() {
-  local monitors ws
+  local monitors real ws x y
   monitors=$(hyprctl -j monitors) || return 0
   jq -e --arg n "$name" 'any(.[]; .name == $n and .focused)' <<<"$monitors" >/dev/null || return 0
-  ws=$(jq -r --arg n "$name" '[.[] | select(.name != $n)][0].activeWorkspace.id // empty' <<<"$monitors")
-  [[ -n $ws ]] && hyprctl dispatch "hl.dsp.focus({ workspace = $ws })" >/dev/null || true
+  real=$(jq -c --arg n "$name" '[.[] | select(.name != $n)][0] // empty' <<<"$monitors")
+  [[ -n $real ]] || return 0
+  x=$(jq -r '.x + (.width / .scale / 2 | floor)' <<<"$real"); y=$(jq -r '.y + (.height / .scale / 2 | floor)' <<<"$real")
+  ws=$(jq -r '.activeWorkspace.id' <<<"$real")
+  hyprctl dispatch "hl.dsp.cursor.move({ x = $x, y = $y })" >/dev/null || true
+  hyprctl dispatch "hl.dsp.focus({ workspace = $ws })" >/dev/null || true
 }
 
 case "${1:-watch}" in
