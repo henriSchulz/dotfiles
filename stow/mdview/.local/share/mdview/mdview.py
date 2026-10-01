@@ -11,7 +11,7 @@ saved automatically (the page sends the text, this side writes the file).
 
 Opened on a folder (or started without arguments, which reopens the last
 folder) the window gets a sidebar listing the folder's notes, by file name or
-by title (first H1), and can create new ones.
+by title (first H1), and can create, rename and trash them.
 
 Assets live next to the real path of this script; bin/mdview is a thin
 launcher that hands files to a running instance over D-Bus.
@@ -164,6 +164,11 @@ def note_title(path):
             t = re.sub(r"(\*\*|__|~~|==|[*`])", "", t).strip()
             return t or None
     return None
+
+
+def clean_name(name):
+    """A typed note name as a safe file name stem part (no path, not hidden)."""
+    return re.sub(r"[/\\\x00-\x1f]", " ", str(name or "")).strip().lstrip(". ")
 
 
 def natural_key(name):
@@ -504,16 +509,21 @@ class ViewerWindow(Gtk.ApplicationWindow):
         if first:
             self.open_path(first, push=bool(self.path))
         else:
-            # nothing to show yet: an empty folder, or all notes are gone
-            if self.monitor:
-                self.monitor.cancel()
-                self.monitor = None
-            self.path = None
-            self.set_title(folder.name or str(folder))
-            if self.shell_ready:
-                self.js("MdView.clear")
-            else:
-                self.load_shell()
+            self.show_nothing()
+
+    def show_nothing(self):
+        """Nothing to show: an empty folder, or its last note is gone."""
+        if self.monitor:
+            self.monitor.cancel()
+            self.monitor = None
+        self.path = None
+        self.back.clear()
+        self.fwd.clear()
+        self.set_title(self.folder.name or str(self.folder))
+        if self.shell_ready:
+            self.js("MdView.clear")
+        else:
+            self.load_shell()
 
     def rescan(self):
         self.rescan_id = 0
@@ -575,7 +585,7 @@ class ViewerWindow(Gtk.ApplicationWindow):
             target = self.folder
         if not target.is_dir() or not target.is_relative_to(self.folder):
             target = self.folder
-        name = re.sub(r"[/\\\x00-\x1f]", " ", str(name or "")).strip().lstrip(". ") or "Untitled"
+        name = clean_name(name) or "Untitled"
         stem = name[:-3].rstrip() if name.lower().endswith(".md") else name
         path = target / f"{stem or 'Untitled'}.md"
         try:
@@ -590,11 +600,75 @@ class ViewerWindow(Gtk.ApplicationWindow):
         except OSError as e:
             self.js("MdView.toast", f"Couldn't create note: {e.strerror}")
             return
+        self.rescan_now()
+        self.open_path(path)
+        self.js("MdView.setMode", "edit", "end")
+
+    def rescan_now(self):
         if self.rescan_id:
             GLib.source_remove(self.rescan_id)
         self.rescan()
-        self.open_path(path)
-        self.js("MdView.setMode", "edit", "end")
+
+    def rename_note(self, path, name):
+        if not self.folder or path not in self.note_paths:
+            return
+        old = Path(path)
+        stem = clean_name(name)
+        if stem.lower().endswith(old.suffix.lower()):
+            stem = stem[:-len(old.suffix)].rstrip()
+        new = old.with_name(stem + old.suffix)
+        if not stem or new == old:
+            return
+        try:
+            if os.path.lexists(new) and not os.path.samefile(old, new):
+                self.js("MdView.toast", f"“{new.name}” already exists")
+                return
+            old_real = os.path.realpath(old)
+            os.rename(old, new)
+        except OSError as e:
+            self.js("MdView.toast", f"Couldn't rename: {e.strerror}")
+            return
+        new_real = os.path.realpath(new)
+        swap = lambda p: Path(new_real) if str(p) == old_real else p
+        self.back = [swap(p) for p in self.back]
+        self.fwd = [swap(p) for p in self.fwd]
+        if self.path and str(self.path) == old_real and new_real != old_real:
+            # the note on screen: it stays as it is (also mid-edit), under its new name
+            self.path = Path(new_real)
+            self.set_title(self.path.name)
+            self.watch()
+            last = self.app.state.setdefault("last_notes", {})
+            last[str(self.folder)] = new_real
+            save_state(self.app.state)
+        self.js("MdView.noteRenamed", {"old": str(old), "path": str(new), "oldReal": old_real,
+                                       "real": new_real, "name": Path(new_real).name})
+        self.rescan_now()
+
+    def trash_note(self, path):
+        if not self.folder or path not in self.note_paths:
+            return
+        real = os.path.realpath(path)
+        nxt = None
+        if self.path and str(self.path) == real:
+            notes = list(tree_notes(self.tree))
+            i = next((k for k, n in enumerate(notes) if n["path"] == path), -1)
+            rest = notes[i + 1:i + 2] or notes[max(i - 1, 0):i]
+            nxt = rest[0]["real"] if rest else None
+        try:
+            Gio.File.new_for_path(path).trash(None)
+        except GLib.Error as e:
+            self.js("MdView.toast", f"Couldn't move to Trash: {e.message}")
+            return
+        self.back = [p for p in self.back if str(p) != real]
+        self.fwd = [p for p in self.fwd if str(p) != real]
+        self.js("MdView.toast", f"Moved “{Path(path).name}” to Trash")
+        was_current = self.path and str(self.path) == real
+        self.rescan_now()
+        if was_current:
+            if nxt:
+                self.open_path(nxt, push=False)
+            else:
+                self.show_nothing()
 
     def sidebar_pref(self, msg):
         st = self.app.state
@@ -732,13 +806,19 @@ class ViewerWindow(Gtk.ApplicationWindow):
         elif t == "mode":
             self.editing = bool(msg.get("edit"))
         elif t == "save":
-            self.save_text(msg.get("text"))
+            # a late autosave must not land in whatever note is open by now
+            if msg.get("path") in (None, str(self.path)):
+                self.save_text(msg.get("text"))
         elif t == "external":
             self.open_external()
         elif t == "note":
             self.open_note(msg.get("path"))
         elif t == "newnote":
             self.new_note(msg.get("name"), msg.get("dir"))
+        elif t == "rename":
+            self.rename_note(msg.get("path"), msg.get("name"))
+        elif t == "trash":
+            self.trash_note(msg.get("path"))
         elif t == "sidebar":
             self.sidebar_pref(msg)
         elif t == "folder":

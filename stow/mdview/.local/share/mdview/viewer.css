@@ -676,7 +676,7 @@ body[data-folder] #toolbar [data-act="sidebar"] { display: grid; }
 .sb-chev svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .sb-item.open > .sb-in > .sb-row .sb-chev { transform: rotate(90deg); }
 
-#sb-new-input {
+.sb-field {
   display: block;
   box-sizing: border-box;
   width: calc(100% - 16px);
@@ -692,8 +692,22 @@ body[data-folder] #toolbar [data-act="sidebar"] { display: grid; }
   font: 400 13px "Inter", sans-serif;
   transition: box-shadow var(--dur-fast) var(--ease-out);
 }
-#sb-new-input:focus { box-shadow: inset 0 0 0 var(--focus-ring, 2px) var(--accent); }
-#sb-new-input::placeholder { color: var(--fg3); }
+.sb-field:focus { box-shadow: inset 0 0 0 var(--focus-ring, 2px) var(--accent); }
+.sb-field::placeholder { color: var(--fg3); }
+/* renaming: the field takes the row's place, its text where the label was */
+.sb-rename {
+  width: calc(100% - 18px - var(--depth, 0) * 14px);
+  margin: 0 0 0 calc(18px + var(--depth, 0) * 14px);
+  border-radius: var(--radius-row);
+}
+.sb-row[hidden] { display: none; }
+.sb-item.ctx-target > .sb-in > .sb-row:not(.active) { background: var(--fill-pressed); }
+
+#ctxmenu { position: fixed; z-index: 35; min-width: 190px; padding: 5px; outline: none; }
+#ctxmenu .menu-item { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.menu-key { color: var(--fg2); font-size: 12px; }
+.menu-item.danger { color: var(--c-red); }
+.menu-item.hl .menu-key, .menu-item.danger.hl { color: #fff; }
 
 /* ------------------------------------------------------------- scrollbars */
 ::-webkit-scrollbar { width: 11px; height: 11px; }
@@ -708,7 +722,7 @@ body[data-folder] #toolbar [data-act="sidebar"] { display: grid; }
 ::-webkit-scrollbar-corner { background: transparent; }
 
 @media print {
-  #toolbar, #outline, #findbar, #toast, #editor, #sidebar, .code-tools { display: none !important; }
+  #toolbar, #outline, #findbar, #toast, #editor, #sidebar, #ctxmenu, .code-tools { display: none !important; }
   body { padding-left: 0 !important; }
   #content { display: block !important; opacity: 1 !important; }
   #content { max-width: none; padding: 0; }

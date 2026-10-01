@@ -8,7 +8,7 @@
   const content = document.getElementById("content");
   const baseEl = document.querySelector("base");
   // Anything that leaves the file or the window hands over unsaved edits first.
-  const LEAVING = new Set(["back", "forward", "open", "reload", "close", "print", "external", "note", "newnote", "folder"]);
+  const LEAVING = new Set(["back", "forward", "open", "reload", "close", "print", "external", "note", "newnote", "folder", "rename", "trash"]);
   const post = (type, data = {}) => {
     if (LEAVING.has(type)) flushSave();
     window.webkit?.messageHandlers?.mdview?.postMessage(JSON.stringify({ type, ...data }));
@@ -1053,7 +1053,7 @@
     if (!dirty()) return;
     savedText = edInput.value;
     if (current && current.path === edPath) { current.text = savedText; current.error = null; }
-    post("save", { text: savedText });
+    post("save", { text: savedText, path: edPath });
   }
   function flush(thenClose) {
     flushSave();
@@ -1269,7 +1269,7 @@
     `<button class="tb" data-act="titles" aria-pressed="false">${ICON.title}</button>` +
     `<button class="tb" data-act="newnote" title="New note (Ctrl+N)" aria-label="New note">${ICON.plus}</button>` +
     `</header>` +
-    `<div class="sb-new sb-fold"><div class="sb-in"><input id="sb-new-input" type="text" placeholder="Note name" aria-label="New note name" spellcheck="false" autocomplete="off"></div></div>` +
+    `<div class="sb-new sb-fold"><div class="sb-in"><input id="sb-new-input" class="sb-field" type="text" placeholder="Note name" aria-label="New note name" spellcheck="false" autocomplete="off"></div></div>` +
     `<nav class="sb-list" aria-label="Notes"></nav>`;
   document.body.appendChild(sidebar);
   const sbHead = sidebar.querySelector(".sb-head");
@@ -1421,13 +1421,129 @@
       const next = rows[rows.indexOf(row) + (e.key === "ArrowDown" ? 1 : -1)];
       e.preventDefault();
       if (next) { next.focus({ preventScroll: true }); next.scrollIntoView({ block: "nearest" }); }
-    } else if (e.key === "ArrowRight" && isDir && !item.classList.contains("open")) { e.preventDefault(); toggleDir(item); }
+    } else if (e.key === "F2" && !isDir) { e.preventDefault(); startRename(item); }
+    else if (e.key === "Delete" && !isDir) { e.preventDefault(); post("trash", { path: item.dataset.key }); }
+    else if (e.key === "ArrowRight" && isDir && !item.classList.contains("open")) { e.preventDefault(); toggleDir(item); }
     else if (e.key === "ArrowLeft") {
       e.preventDefault();
       if (isDir && item.classList.contains("open")) toggleDir(item);
       else item.parentElement.closest(".sb-item")?.firstChild.firstChild.focus();
     }
   });
+
+  // --- rename (in place) and trash, from the context menu or F2 / Delete on a row
+  const ctx = document.createElement("div");
+  ctx.id = "ctxmenu";
+  ctx.className = "ui-menu surface";
+  ctx.style.setProperty("--origin", "top left");
+  ctx.tabIndex = -1;
+  ctx.setAttribute("role", "menu");
+  ctx.innerHTML =
+    `<button class="menu-item" role="menuitem" data-cmd="rename">Rename<span class="menu-key">F2</span></button>` +
+    `<button class="menu-item danger" role="menuitem" data-cmd="trash">Move to Trash<span class="menu-key">Del</span></button>`;
+  document.body.appendChild(ctx);
+  const ctxItems = [...ctx.children];
+  let ctxFor = null, ctxHl = -1;
+  const ctxOpen = () => ctx.hasAttribute("data-open");
+  const setCtxHl = (i) => { ctxHl = i; ctxItems.forEach((el, k) => el.classList.toggle("hl", k === i)); };
+  function openCtx(item, x, y) {
+    if (ctxFor) ctxFor.classList.remove("ctx-target");
+    ctxFor = item;
+    item.classList.add("ctx-target");
+    setCtxHl(-1);
+    ctx.style.left = Math.max(8, Math.min(x, innerWidth - ctx.offsetWidth - 8)) + "px";
+    ctx.style.top = Math.max(8, Math.min(y, innerHeight - ctx.offsetHeight - 8)) + "px";
+    ctx.dataset.open = "";
+    ctx.focus({ preventScroll: true });
+  }
+  function closeCtx(refocus) {
+    if (!ctxOpen()) return false;
+    delete ctx.dataset.open;
+    ctxFor.classList.remove("ctx-target");
+    if (refocus) ctxFor.firstChild.firstChild.focus({ preventScroll: true });
+    return true;
+  }
+  function runCtx(i) {
+    const el = ctxItems[i], item = ctxFor;
+    if (!el) return;
+    const flash = motionMs("--flash-duration", 70); // blink once, then act — like NSMenu
+    el.classList.remove("hl");
+    setTimeout(() => el.classList.add("hl"), flash);
+    setTimeout(() => {
+      closeCtx(false);
+      if (!item.isConnected) return;
+      if (el.dataset.cmd === "rename") startRename(item);
+      else post("trash", { path: item.dataset.key });
+    }, flash * 2);
+  }
+  sidebar.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    const item = e.target.closest(".sb-row")?.closest(".sb-item");
+    if (item && !item.classList.contains("is-dir")) openCtx(item, e.clientX, e.clientY);
+  });
+  ctx.addEventListener("contextmenu", (e) => e.preventDefault());
+  ctx.addEventListener("mousemove", (e) => {
+    const i = ctxItems.indexOf(e.target.closest(".menu-item"));
+    if (i !== ctxHl) setCtxHl(i);
+  });
+  ctx.addEventListener("mouseleave", () => setCtxHl(-1));
+  ctx.addEventListener("click", (e) => runCtx(ctxItems.indexOf(e.target.closest(".menu-item"))));
+  ctx.addEventListener("keydown", (e) => {
+    const n = ctxItems.length;
+    const moves = { ArrowDown: ctxHl + 1, ArrowUp: ctxHl < 0 ? n - 1 : ctxHl - 1, Home: 0, End: n - 1 };
+    if (e.key in moves) { e.preventDefault(); setCtxHl(Math.min(n - 1, Math.max(0, moves[e.key]))); }
+    else if (e.key === "Enter" && ctxHl >= 0) { e.preventDefault(); runCtx(ctxHl); }
+  });
+
+  function startRename(item) {
+    const row = item.firstChild.firstChild;
+    if (row.hidden) return;
+    const stem = item.dataset.key.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
+    const input = document.createElement("input");
+    input.className = "sb-field sb-rename";
+    input.type = "text";
+    input.value = stem;
+    input.spellcheck = false;
+    input.autocomplete = "off";
+    input.setAttribute("aria-label", "File name");
+    input.style.setProperty("--depth", row.style.getPropertyValue("--depth"));
+    let done = false;
+    const finish = (commit) => {
+      if (done) return;
+      done = true;
+      const name = input.value.trim();
+      const focused = document.activeElement === input;
+      input.remove();
+      row.hidden = false;
+      if (focused) row.focus({ preventScroll: true });
+      if (commit && name && name !== stem) post("rename", { path: item.dataset.key, name });
+    };
+    input.addEventListener("keydown", (e) => {
+      if (e.isComposing) return;
+      if (e.key === "Enter") { e.preventDefault(); finish(true); }
+      else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(false); }
+      else if (e.key.startsWith("Arrow") || e.key === "Delete" || e.key === "F2") e.stopPropagation(); // not the list's keys
+    });
+    input.addEventListener("blur", () => finish(true)); // clicking away keeps the name, like Finder
+    row.hidden = true;
+    row.after(input);
+    input.focus({ preventScroll: true });
+    input.select();
+  }
+  // Python renamed a file: keep its row (and the open note) instead of removing and re-adding it.
+  function noteRenamed(r) {
+    for (const item of sbList.querySelectorAll(".sb-item:not(.is-dir)")) {
+      if (item.dataset.key !== r.old) continue;
+      item.dataset.key = r.path;
+      item.firstChild.firstChild.dataset.real = r.real;
+    }
+    if (current && current.path === r.oldReal) {
+      current.path = r.real;
+      current.name = r.name;
+      document.title = r.name;
+    }
+    if (edPath === r.oldReal) edPath = r.real;
+  }
 
   // --- file names <-> titles: the list crossfades, since every row may move
   let titlesTimer = 0, titlesAt = 0;
@@ -1509,9 +1625,12 @@
   // click outside the outline closes it and is swallowed (macOS popover behaviour)
   let swallowClick = false;
   addEventListener("pointerdown", (e) => {
-    if (!outlineOpen() || outlinePop.contains(e.target) || e.target.closest('[data-act="outline"]')) return;
-    closeOutline();
-    swallowClick = true;
+    if (ctxOpen() && !ctx.contains(e.target)) {
+      closeCtx(false);
+      if (e.button !== 0) return; // a right click goes on to open the next menu
+    } else if (!outlineOpen() || outlinePop.contains(e.target) || e.target.closest('[data-act="outline"]')) return;
+    else closeOutline();
+    swallowClick = e.button === 0;
     e.preventDefault();
     e.stopPropagation();
   }, true);
@@ -1558,7 +1677,7 @@
     const k = e.key.toLowerCase();
     const typing = e.target.matches?.("input[type=search], input[type=text], textarea");
     if (e.key === "Escape") {
-      if (closeNewNote() || closeOutline() || closeFind()) e.preventDefault();
+      if (closeCtx(true) || closeNewNote() || closeOutline() || closeFind()) e.preventDefault();
       return;
     }
     if (mod && e.shiftKey && k === "o") { e.preventDefault(); actions.outline(); return; }
@@ -1584,5 +1703,5 @@
     if (!typing && !mod && !e.altKey && e.key === "/") { e.preventDefault(); openFind(); }
   });
 
-  window.MdView = { render, setTheme, setMotion, scrollToFragment, toast, setMode, flush, saveFailed, setFolder, clear };
+  window.MdView = { render, setTheme, setMotion, scrollToFragment, toast, setMode, flush, saveFailed, setFolder, clear, noteRenamed };
 })();
