@@ -38,6 +38,12 @@ Item {
   property bool strandedLock: false
   property bool strandedLockResolved: false
 
+  // henri: an external monitor needs seconds to show a picture after a wake-up
+  // or a replug, so the unlock screen stays lit this long before the idle
+  // blank takes over again. Wall-clock ms.
+  readonly property int wakeGrace: 30000
+  property double wakeGraceUntil: 0
+
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
 
@@ -100,7 +106,9 @@ Item {
 
     strandedLock = false
     logEvent("lock-stranded: recovering")
-    beginLock()
+    // A lock that outlived its shell means the shell was just restarted, which
+    // a replugged monitor does; the picture is as fresh as after a wake-up.
+    if (beginLock()) holdAfterWake()
   }
 
   function refreshBackground() {
@@ -164,8 +172,15 @@ Item {
   }
 
   function armBlankTimer() {
+    idleBlankTimer.interval = Math.max(idleBlankTimer.idleInterval, wakeGraceUntil - Date.now())
     idleBlankTimer.armedAt = Date.now()
     idleBlankTimer.restart()
+  }
+
+  function holdAfterWake() {
+    wakeGraceUntil = Date.now() + wakeGrace
+    if (lockRequested) armBlankTimer()
+    logEvent("blank-held: " + wakeGrace + "ms")
   }
 
   function runWake() {
@@ -419,7 +434,8 @@ Item {
 
   Timer {
     id: idleBlankTimer
-    interval: 5000
+    readonly property int idleInterval: 5000
+    interval: idleInterval
     repeat: false
     property double armedAt: 0
     onTriggered: {
@@ -427,7 +443,7 @@ Item {
       // blank the freshly woken unlock screen under the user. Wall-clock time
       // exposes the gap: take a fresh run-up instead of blanking.
       if (Date.now() - armedAt > interval + 2000) {
-        root.armBlankTimer()
+        root.holdAfterWake()
         return
       }
       // Only a password check in flight should hold the display up. The
@@ -474,6 +490,7 @@ Item {
     target: Quickshell
     function onScreensChanged() {
       root.requestSessionLock()
+      if (root.lockRequested) root.holdAfterWake()
 
       // A monitor still coming up has no workspace, so cannot answer yet.
       strandedLockRetryTimer.rearm()
