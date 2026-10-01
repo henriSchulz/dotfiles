@@ -40,20 +40,42 @@ Item {
   // without an exclusion zone; updated by the FileView watcher further down.
   property bool barHidden: false
   // Hyprland reports `hasFullscreen` for a maximized window (Super+Alt+F) too,
-  // but only a real fullscreen (Super+F) covers the bar. The mode is only in
-  // the window's own IPC object, so that is refreshed whenever it changes.
+  // but only a real fullscreen (Super+F, mode 2) covers the bar. The mode is
+  // only in the window list, so that is asked for after every event that can
+  // change it — an own query, started after the event. The shared toplevel
+  // list is refreshed by several plugins at their own times and is not
+  // guaranteed to be newer than the event.
+  property var fullscreenWorkspaces: ({})
   function coveredByFullscreen(workspace) {
-    if (!workspace || workspace.hasFullscreen !== true) return false
-    var all = Hyprland.toplevels.values
-    for (var i = 0; i < all.length; i++) {
-      var o = all[i].lastIpcObject
-      if (o && o.fullscreen === 2 && o.workspace && o.workspace.id === workspace.id) return true
+    return !!workspace && workspace.hasFullscreen === true && fullscreenWorkspaces[workspace.id] === true
+  }
+  function refreshFullscreen() {
+    if (fullscreenProc.running) fullscreenProc.again = true
+    else fullscreenProc.running = true
+  }
+  Process {
+    id: fullscreenProc
+    property bool again: false
+    command: ["hyprctl", "clients", "-j"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var map = {}
+        try {
+          var clients = JSON.parse(text)
+          for (var i = 0; i < clients.length; i++)
+            if (clients[i].fullscreen === 2 && clients[i].workspace) map[clients[i].workspace.id] = true
+        } catch (e) { return }
+        root.fullscreenWorkspaces = map
+      }
     }
-    return false
+    onExited: if (again) { again = false; running = true }
   }
   Connections {
     target: Hyprland
-    function onRawEvent(event) { if (event.name === "fullscreen") Hyprland.refreshToplevels() }
+    function onRawEvent(event) {
+      var n = event.name
+      if (n === "fullscreen" || n === "openwindow" || n === "closewindow" || n === "movewindowv2") root.refreshFullscreen()
+    }
   }
   property string home: Quickshell.env("HOME")
   property string stateHome: home + "/.local/state"
@@ -96,7 +118,11 @@ Item {
   property color themeContrastForeground: Color.background
   property color transparentForeground: Color.bar.text
   property color foreground: themeForeground
-  property color barForeground: useTransparentForeground ? transparentForeground : themeForeground
+  // The transparent bar's text colour is picked for the wallpaper. A bar over
+  // a fullscreen window has no wallpaper behind it: it turns solid there and
+  // takes the theme colours (see BarPanel), like the menu bar on macOS.
+  property int coveredBars: 0
+  property color barForeground: useTransparentForeground && coveredBars === 0 ? transparentForeground : themeForeground
   property bool foregroundAnimationEnabled: true
   // macOS-style menu bar: translucent so the Hyprland blur shows through.
   property real backgroundOpacity: 0.72
@@ -619,7 +645,7 @@ Item {
     return source ? Util.fileUrl(source) : ""
   }
 
-  Component.onCompleted: { applyBarConfig(); Hyprland.refreshToplevels() }
+  Component.onCompleted: { applyBarConfig(); refreshFullscreen() }
 
   // Revealing the indicators widens their section, which can slide a neighbour
   // under a stationary pointer. Collapsing on that un-hover would move it back
@@ -1062,6 +1088,8 @@ Item {
     readonly property var hyprMonitor: Hyprland.monitorFor(barWindow.screen)
     readonly property bool fullscreenHere: root.coveredByFullscreen(hyprMonitor ? hyprMonitor.activeWorkspace : null)
     readonly property bool peekMode: root.barHidden || fullscreenHere
+    onFullscreenHereChanged: root.coveredBars += fullscreenHere ? 1 : -1
+    Component.onDestruction: if (fullscreenHere) root.coveredBars -= 1
     property bool peeked: false
     readonly property bool faceShown: !peekMode || peeked
     onPeekModeChanged: {
@@ -1157,7 +1185,8 @@ Item {
 
       Rectangle {
         anchors.fill: parent
-        color: root.transparent ? "transparent" : root.background
+        color: !root.transparent ? root.background
+          : barWindow.fullscreenHere ? Qt.rgba(Color.bar.background.r, Color.bar.background.g, Color.bar.background.b, 1) : "transparent"
       }
 
       Loader {
