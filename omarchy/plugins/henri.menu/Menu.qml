@@ -671,7 +671,6 @@ Item {
   readonly property color capsuleFill: pal.capsule
   readonly property color capsuleSelectedFill: pal.capsuleSelected
   readonly property color shortcutFill: pal.shortcut
-  readonly property color hoverFill: pal.hover
 
   // The ConfirmDialog (uninstall) still takes the old colour roles.
   readonly property color background: pal.opaqueFill
@@ -3024,7 +3023,10 @@ Item {
               height: root.rowHeightFor(row)
               radius: root.rowRadius
               // A light tint, text unchanged, switching instantly (spec §10).
-              color: hasCursor ? root.selection : mouseArea.containsMouse ? root.hoverFill : Util.alpha(root.hoverFill, 0)
+              // No separate hover fill: a pointer that moves takes the cursor
+              // along, and one that merely rests on a row (where Spotlight
+              // happened to open, or after ↑↓) must not light up a second row.
+              color: hasCursor ? root.selection : Util.alpha(root.selection, 0)
               border.width: 1
               border.color: hasCursor ? root.selectionBorder : Util.alpha(root.selectionBorder, 0)
               Accessible.role: Accessible.ListItem
@@ -3183,7 +3185,7 @@ Item {
                 anchors.fill: parent
                 anchors.margins: root.pt(3)
                 radius: root.rowRadius
-                color: cell.hasCursor ? root.selection : cellMouse.containsMouse ? root.hoverFill : Util.alpha(root.hoverFill, 0)
+                color: cell.hasCursor ? root.selection : Util.alpha(root.selection, 0)
                 border.width: 1
                 border.color: cell.hasCursor ? root.selectionBorder : Util.alpha(root.selectionBorder, 0)
 
@@ -3427,7 +3429,7 @@ Item {
                 width: ListView.view.width
                 height: plain ? root.infoRowHeight : root.actionRowHeight
                 radius: root.rowRadius
-                color: hasCursor ? root.selection : pmouse.containsMouse ? root.hoverFill : Util.alpha(root.hoverFill, 0)
+                color: hasCursor ? root.selection : Util.alpha(root.selection, 0)
                 border.width: 1
                 border.color: hasCursor ? root.selectionBorder : Util.alpha(root.selectionBorder, 0)
                 Accessible.role: Accessible.ListItem
