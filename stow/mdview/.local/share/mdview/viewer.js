@@ -1,4 +1,4 @@
-/* mdview — renderer + UI inside the web view.
+/* mdview — renderer, source editor + UI inside the web view.
  * Python calls MdView.render(payload) and friends; the page talks back via
  * window.webkit.messageHandlers.mdview (JSON strings). */
 "use strict";
@@ -6,8 +6,12 @@
   const NONCE = document.currentScript.nonce;
   const ASSETS = document.currentScript.src.replace(/\/[^/]*$/, "");
   const content = document.getElementById("content");
-  const post = (type, data = {}) =>
+  // Anything that leaves the file or the window hands over unsaved edits first.
+  const LEAVING = new Set(["back", "forward", "open", "reload", "close", "print", "external"]);
+  const post = (type, data = {}) => {
+    if (LEAVING.has(type)) flushSave();
     window.webkit?.messageHandlers?.mdview?.postMessage(JSON.stringify({ type, ...data }));
+  };
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const motionMs = (name, fallback) => {
@@ -330,7 +334,7 @@
       if (n) slug += "-" + n;
       if (env.depth) continue;
       t.attrSet("id", slug);
-      env.outline?.push({ level: Number(t.tag.slice(1)), text, slug });
+      env.outline?.push({ level: Number(t.tag.slice(1)), text, slug, line: t.map ? t.map[0] + (env.lineOffset || 0) : 0 });
     }
   });
   const lineAttr = (t) => (t.map && t.attrGet && t.attrGet("data-line") != null ? ` data-line="${t.attrGet("data-line")}"` : "");
@@ -409,20 +413,30 @@
 
   // ------------------------------------------------------------ rendering
   let current = null, outline = [], generation = 0;
+  let mode = "read"; // "read" | "edit"
 
   function render(p) {
+    const prev = current;
+    p.text = p.text.replace(/\r\n?/g, "\n");
     current = p;
-    const gen = ++generation;
-    const anchor = p.keepScroll ? captureAnchor() : null;
     document.title = p.name || "Markdown";
+    if (mode === "edit") {
+      if (prev && prev.path === p.path) { adoptDisk(p); return; }
+      leaveEditNow();
+    }
+    draw(p, p.keepScroll ? captureAnchor() : null);
+  }
+
+  // quiet: fill the (hidden) reading view without touching scroll or find
+  function draw(p, anchor, quiet = false) {
+    const gen = ++generation;
     if (p.error) {
       content.innerHTML = `<div class="empty-state"><div class="empty-icon">${ICON.alert}</div><p>${esc(p.error)}</p></div>`;
       outline = [];
       reveal();
       return;
     }
-    const text = p.text.replace(/\r\n?/g, "\n");
-    const fm = stripFrontmatter(text);
+    const fm = stripFrontmatter(p.text);
     md.set({ breaks: !!p.vault });
     const env = { lineOffset: fm.offset, links: p.links || {}, outline: [], depth: 0 };
     let html = md.render(stripComments(fm.body), env);
@@ -430,11 +444,12 @@
     if (!html.trim()) html = `<div class="empty-state"><p>This file is empty.</p></div>`;
     content.innerHTML = html;
     outline = env.outline;
+    reveal();
+    if (quiet) { renderMermaid(gen, null); return; }
     if (outlineOpen()) buildOutline();
     if (anchor) restoreAnchor(anchor);
     else if (p.fragment) scrollToFragment(p.fragment, false);
     else window.scrollTo(0, 0);
-    reveal();
     if (findOpen()) runFind(findInput.value, true);
     renderMermaid(gen, anchor);
   }
@@ -572,7 +587,7 @@
   function setTheme(css, mode) {
     document.getElementById("theme").textContent = css;
     document.body.dataset.mode = mode;
-    if (current && content.querySelector(".mermaid-block")) render({ ...current, keepScroll: true, fragment: null });
+    if (current && mode === "read" && content.querySelector(".mermaid-block")) draw(current, captureAnchor());
   }
   function setMotion(css) {
     document.getElementById("henri-ui").textContent = css;
@@ -584,7 +599,7 @@
   toolbar.innerHTML =
     `<button class="tb" data-act="outline" title="Outline (Ctrl+Shift+O)" aria-label="Outline">${ICON.list}</button>` +
     `<button class="tb" data-act="find" title="Find (Ctrl+F)" aria-label="Find">${ICON.search}</button>` +
-    `<button class="tb" data-act="edit" title="Open in editor (Ctrl+E)" aria-label="Edit">${ICON.pencil}</button>`;
+    `<button class="tb" data-act="edit" title="Edit (Ctrl+E)" aria-label="Edit" aria-pressed="false">${ICON.pencil}</button>`;
   document.body.appendChild(toolbar);
 
   const outlinePop = document.createElement("div");
@@ -647,10 +662,11 @@
     outlinePop.innerHTML = outline.map((o, i) =>
       `<button class="menu-item" role="menuitem" data-i="${i}" style="--indent:${o.level - minLevel}">${esc(o.text)}</button>`).join("");
   }
+  const headingEl = (o) => (mode === "edit" ? edBack.children[o.line] : document.getElementById(o.slug));
   function currentSection() {
     let idx = -1;
     outline.forEach((o, i) => {
-      const el = document.getElementById(o.slug);
+      const el = headingEl(o);
       if (el && el.getBoundingClientRect().top < 120) idx = i;
     });
     return idx;
@@ -663,6 +679,7 @@
   }
   function openOutline() {
     closeFind(false);
+    if (mode === "edit") outline = editorOutline();
     buildOutline();
     const cur = currentSection();
     outlinePop.querySelectorAll(".menu-item").forEach((el, k) => el.classList.toggle("current", k === cur));
@@ -686,7 +703,11 @@
     const flash = motionMs("--flash-duration", 70);
     item.classList.remove("hl");
     setTimeout(() => item.classList.add("hl"), flash);
-    setTimeout(() => { closeOutline(); scrollToFragment(outline[i].slug, true); }, flash * 2);
+    setTimeout(() => {
+      closeOutline();
+      if (mode === "edit") goToLine(outline[i].line);
+      else scrollToFragment(outline[i].slug, true);
+    }, flash * 2);
   }
   outlinePop.addEventListener("mousemove", (e) => {
     const item = e.target.closest(".menu-item");
@@ -716,16 +737,25 @@
     findBar.classList.remove("no-hits");
     if (!q) { findCount.textContent = ""; return; }
     const needle = q.toLocaleLowerCase();
-    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
-      acceptNode: (n) => (n.parentElement.closest(".katex-mathml, style, script") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
-    });
-    for (let n = walker.nextNode(); n && hits.length < 5000; n = walker.nextNode()) {
-      const hay = n.data.toLocaleLowerCase();
-      for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + needle.length)) {
-        const r = new Range();
-        r.setStart(n, i);
-        r.setEnd(n, Math.min(n.data.length, i + q.length));
+    if (mode === "edit") {
+      const hay = edInput.value.toLocaleLowerCase();
+      for (let i = hay.indexOf(needle); i !== -1 && hits.length < 5000; i = hay.indexOf(needle, i + needle.length)) {
+        const r = rangeOf(i, i + q.length);
+        r.at = i;
         hits.push(r);
+      }
+    } else {
+      const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
+        acceptNode: (n) => (n.parentElement.closest(".katex-mathml, style, script") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+      });
+      for (let n = walker.nextNode(); n && hits.length < 5000; n = walker.nextNode()) {
+        const hay = n.data.toLocaleLowerCase();
+        for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + needle.length)) {
+          const r = new Range();
+          r.setStart(n, i);
+          r.setEnd(n, Math.min(n.data.length, i + q.length));
+          hits.push(r);
+        }
       }
     }
     if (!hits.length) {
@@ -754,7 +784,7 @@
     closeOutline();
     showToolbar(true);
     findBar.dataset.open = "";
-    const sel = String(getSelection());
+    const sel = mode === "edit" ? edInput.value.slice(edInput.selectionStart, edInput.selectionEnd) : String(getSelection());
     if (sel && !sel.includes("\n") && sel.length < 80) findInput.value = sel;
     findInput.focus();
     findInput.select();
@@ -768,7 +798,10 @@
     hits = [];
     if (refocus) {
       findInput.blur();
-      if (r) { const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+      if (mode === "edit") {
+        edInput.focus({ preventScroll: true });
+        if (r) edInput.setSelectionRange(r.at, r.at + String(r).length);
+      } else if (r) { const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
     }
     return true;
   }
@@ -781,11 +814,430 @@
     if (e.key === "Enter") { e.preventDefault(); focusHit(hitIdx + (e.shiftKey ? -1 : 1)); }
   });
 
+  // ------------------------------------------------------------ editor
+  // A plain <textarea> holds the text (native caret, undo, IME); its glyphs are
+  // transparent. #ed-back on top shows the same text, one <div class="ln"> per
+  // source line, with Markdown syntax coloured. Same font and width in both, so
+  // they wrap alike; the backdrop gives the height and the page scrolls.
+  const AUTOSAVE_MS = 800;
+  const editor = document.createElement("section");
+  editor.id = "editor";
+  editor.innerHTML =
+    '<div id="ed-wrap"><textarea id="ed-input" spellcheck="false" autocomplete="off" autocapitalize="off"' +
+    ' aria-label="Markdown source" placeholder="Start writing…"></textarea><div id="ed-back" aria-hidden="true"></div></div>';
+  content.after(editor);
+  const edWrap = editor.firstChild;
+  const edInput = edWrap.firstChild;
+  const edBack = edWrap.lastChild;
+  const editBtn = toolbar.querySelector('[data-act="edit"]');
+
+  let edPath = null;     // file the editor holds; null = nothing loaded
+  let edFresh = false;   // text was just loaded: put the caret where the reader was
+  let edKeys = [];       // per line: class + html currently in #ed-back
+  let lineStarts = [0];  // offset of every line in the textarea value
+  let savedText = null;  // what is on disk as far as we know
+  let saveTimer = 0, swapTimer = 0;
+
+  // --- syntax colours (line based; text content always equals the source)
+  const span = (cls, html) => `<span class="m-${cls}">${html}</span>`;
+  const EMPH = { "**": "b", "__": "b", "~~": "s", "==": "mark" };
+  const INLINE = new RegExp([
+    /\\./,                                              // escape
+    /(`+)(?:(?!\1).)+?\1/,                              // 1: code span
+    /!?\[\[[^\[\]]+?\]\]/,                              // wikilink, embed
+    /!?\[[^\]]*\]\([^)]*\)/,                            // link, image
+    /(\*\*|__|~~|==)(?=\S)(.+?)(?<=\S)\2/,              // 2, 3: bold, strike, highlight
+    /\*(?=\S)(.+?)(?<=\S)\*/,                           // 4: italic
+    /(?<![\p{L}\p{N}_])_(?=\S)(.+?)(?<=\S)_(?![\p{L}\p{N}_])/, // 5: italic
+    /\$(?=[^\s$])[^$]*?(?<=\S)\$(?!\d)/,                // math
+    /%%.*?%%/,                                          // comment
+    /<\/?[a-zA-Z][^>]*>/,                               // html tag
+    /(?<![\p{L}\p{N}/#&])#[\p{L}\p{N}_\-/]+/,           // tag
+    /https?:\/\/[^\s<>)\]]+/,                           // bare url
+  ].map((r) => r.source).join("|"), "gu");
+  function hlInline(s) {
+    let out = "", last = 0;
+    for (const m of s.matchAll(INLINE)) {
+      const t = m[0];
+      out += esc(s.slice(last, m.index));
+      last = m.index + t.length;
+      if (t[0] === "\\") out += span("dim", "\\") + esc(t.slice(1));
+      else if (m[1]) out += span("code", esc(t));
+      else if (m[2]) { const d = span("dim", esc(m[2])); out += span(EMPH[m[2]], d + hlInline(m[3]) + d); }
+      else if (m[4] != null) out += span("i", span("dim", "*") + hlInline(m[4]) + span("dim", "*"));
+      else if (m[5] != null) out += span("i", span("dim", "_") + hlInline(m[5]) + span("dim", "_"));
+      else if (t.startsWith("%%")) out += span("comment", esc(t));
+      else if (t[0] === "$") out += span("math", esc(t));
+      else if (t[0] === "<") out += span("html", esc(t));
+      else if (t[0] === "#") out += /^#[\d/_-]+$/.test(t) ? esc(t) : span("tag", esc(t));
+      else if (t[0] === "h") out += span("url", esc(t));
+      else if (t.endsWith("]]")) out += span("link", esc(t));
+      else { const i = t.indexOf("]("); out += span("link", esc(t.slice(0, i + 1))) + span("dim", esc(t.slice(i + 1))); }
+    }
+    return out + esc(s.slice(last));
+  }
+  // -> [html, line class, next state]. States: "start" (line 0), "" (text),
+  // "fm" (frontmatter), "math" ($$ block), or the fence that opened a code block.
+  function hlLineRaw(line, st) {
+    let m;
+    if (st === "start" && /^---[ \t]*$/.test(line)) return [span("dim", esc(line)), "meta", "fm"];
+    if (st === "fm") {
+      if (/^(---|\.\.\.)[ \t]*$/.test(line)) return [span("dim", esc(line)), "meta", ""];
+      m = /^(\s*(?:- )?[^\s:#][^:]*?)(:)(\s.*|)$/.exec(line);
+      return [m ? span("key", esc(m[1])) + span("dim", ":") + esc(m[3]) : esc(line), "meta", "fm"];
+    }
+    if (st[0] === "`" || st[0] === "~") {
+      m = /^\s*(`{3,}|~{3,})[ \t]*$/.exec(line);
+      return m && m[1][0] === st[0] && m[1].length >= st.length
+        ? [span("dim", esc(line)), "code code-end", ""]
+        : [esc(line), "code", st];
+    }
+    if (st === "math") return [span("math", esc(line)), "", line.trim().endsWith("$$") ? "" : "math"];
+    if ((m = /^(\s*)(`{3,}(?=[^`]*$)|~{3,})(.*)$/.exec(line))) {
+      return [span("dim", esc(m[1] + m[2])) + span("lang", esc(m[3])), "code code-start", m[2]];
+    }
+    if (/^ {0,3}\$\$/.test(line)) {
+      const rest = line.trim().slice(2);
+      return [span("math", esc(line)), "", rest.length >= 2 && rest.endsWith("$$") ? "" : "math"];
+    }
+    if ((m = /^( {0,3}#{1,6})([ \t].*|)$/.exec(line))) return [span("h", span("dim", m[1]) + hlInline(m[2])), "", ""];
+    if (/^ {0,3}([-*_])([ \t]*\1){2,}[ \t]*$/.test(line)) return [span("dim", esc(line)), "", ""];
+    let out = "", rest = line, cls = "";
+    if ((m = /^\s*(?:>[ \t]?)+/.exec(rest))) {
+      out += span("quote", esc(m[0]));
+      rest = rest.slice(m[0].length);
+      cls = "quote";
+      if ((m = /^\[![\w-]+\][+-]?/.exec(rest))) { out += span("callout", esc(m[0])); rest = rest.slice(m[0].length); }
+    }
+    if ((m = /^(\s*)([-*+]|\d{1,9}[.)])(\s+)(\[.\](?=\s|$))?/.exec(rest))) {
+      out += m[1] + span("list", esc(m[2])) + m[3] + (m[4] ? span("task", esc(m[4])) : "");
+      rest = rest.slice(m[0].length);
+    }
+    return [out + hlInline(rest), cls, ""];
+  }
+  const hlCache = new Map();
+  function hlLine(line, st) {
+    const key = st + "\n" + line;
+    let r = hlCache.get(key);
+    if (!r) {
+      if (hlCache.size > 20000) hlCache.clear();
+      hlCache.set(key, r = hlLineRaw(line, st));
+    }
+    return r;
+  }
+
+  // Repaint the backdrop; only the lines that changed are touched.
+  function paint(text) {
+    const lines = text.split("\n"), n = lines.length;
+    const keys = new Array(n), html = new Array(n), cls = new Array(n);
+    lineStarts = new Array(n);
+    let st = "start", off = 0;
+    for (let i = 0; i < n; i++) {
+      lineStarts[i] = off;
+      off += lines[i].length + 1;
+      const r = hlLine(lines[i], st);
+      html[i] = r[0];
+      cls[i] = r[1];
+      keys[i] = r[1] + "\n" + r[0];
+      st = r[2];
+    }
+    const old = edKeys, max = Math.min(old.length, n);
+    let a = 0, b = 0;
+    while (a < max && old[a] === keys[a]) a++;
+    while (b < max - a && old[old.length - 1 - b] === keys[n - 1 - b]) b++;
+    if (!a && !b) edBack.textContent = "";
+    else for (let i = old.length - b - 1; i >= a; i--) edBack.children[i].remove();
+    const frag = document.createDocumentFragment();
+    for (let i = a; i < n - b; i++) {
+      const d = document.createElement("div");
+      d.className = cls[i] ? "ln " + cls[i] : "ln";
+      d.innerHTML = html[i] || "<br>";
+      frag.appendChild(d);
+    }
+    edBack.insertBefore(frag, edBack.children[a] || null);
+    edKeys = keys;
+  }
+  function setEditorText(text) {
+    edInput.value = text;
+    paint(text);
+  }
+
+  // --- geometry: textarea offsets -> backdrop DOM
+  function lineOf(offset) {
+    let lo = 0, hi = lineStarts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (lineStarts[mid] <= offset) lo = mid; else hi = mid - 1;
+    }
+    return lo;
+  }
+  function locate(offset) {
+    const li = lineOf(offset), el = edBack.children[li];
+    let rem = offset - lineStarts[li], last = null;
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      if (rem <= n.data.length) return [n, rem];
+      rem -= n.data.length;
+      last = n;
+    }
+    return last ? [last, last.data.length] : [el, 0];
+  }
+  function rangeOf(start, end) {
+    const r = new Range();
+    r.setStart(...locate(start));
+    r.setEnd(...locate(end));
+    return r;
+  }
+  function revealCaret() {
+    if (mode !== "edit") return;
+    const pos = edInput.selectionDirection === "backward" ? edInput.selectionStart : edInput.selectionEnd;
+    const r = rangeOf(pos, pos).getClientRects()[0] || edBack.children[lineOf(pos)].getBoundingClientRect();
+    const top = 64, bottom = innerHeight - 48;
+    if (r.top < top) window.scrollBy({ top: r.top - top, behavior: "instant" });
+    else if (r.bottom > bottom) window.scrollBy({ top: r.bottom - bottom, behavior: "instant" });
+  }
+  function captureEditAnchor() {
+    const els = edBack.children;
+    if (!els.length || window.scrollY < 4) return { line: null, y: 0 };
+    let lo = 0, hi = els.length - 1; // first line that reaches below the top edge
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (els[mid].getBoundingClientRect().bottom > 0) hi = mid; else lo = mid + 1;
+    }
+    return { line: lo, top: els[lo].getBoundingClientRect().top, y: window.scrollY };
+  }
+  function goToLine(line) {
+    const el = edBack.children[line];
+    if (!el) return;
+    edInput.focus({ preventScroll: true });
+    edInput.setSelectionRange(lineStarts[line], lineStarts[line]);
+    el.scrollIntoView({ behavior: reducedMotion() ? "instant" : "smooth", block: "start" });
+    el.classList.remove("flash");
+    void el.offsetWidth;
+    el.classList.add("flash");
+    setTimeout(() => el.classList.remove("flash"), 1200);
+  }
+  function editorOutline() {
+    const fm = stripFrontmatter(edInput.value);
+    const env = { lineOffset: fm.offset, links: {}, outline: [], depth: 0 };
+    md.parse(stripComments(fm.body), env);
+    return env.outline;
+  }
+
+  // --- saving: automatic, shortly after the last keystroke
+  const dirty = () => edPath != null && edInput.value !== savedText;
+  function flushSave() {
+    clearTimeout(saveTimer);
+    saveTimer = 0;
+    if (!dirty()) return;
+    savedText = edInput.value;
+    if (current && current.path === edPath) { current.text = savedText; current.error = null; }
+    post("save", { text: savedText });
+  }
+  function flush(thenClose) {
+    flushSave();
+    if (thenClose) post("close");
+  }
+  function saveFailed(msg) {
+    savedText = null; // still dirty: the next edit or mode switch tries again
+    toast(`Couldn't save: ${msg}`);
+  }
+  // The file changed on disk while it is open in the editor.
+  function adoptDisk(p) {
+    if (p.text === edInput.value) { savedText = p.text; return; }
+    if (dirty()) {
+      p.text = edInput.value;
+      toast("File changed on disk — keeping your edits");
+      return;
+    }
+    const pos = edInput.selectionStart;
+    setEditorText(p.text);
+    savedText = p.text;
+    edInput.setSelectionRange(pos, pos);
+    if (findOpen()) runFind(findInput.value, true);
+  }
+  addEventListener("blur", flushSave);
+
+  // --- switching between reading and editing: the views crossfade one after
+  // the other (they share the page scroll) and stay on the same source line.
+  function setMode(next) {
+    if (next === mode || !current) return;
+    if (next === "edit") {
+      if (current.readonly) { toast(`Can't edit: ${current.readonly}`); return; }
+      if (edPath !== current.path || (!dirty() && edInput.value !== current.text)) {
+        setEditorText(current.text);
+        savedText = current.text;
+        edPath = current.path;
+        edFresh = true;
+      }
+    } else {
+      flushSave();
+    }
+    mode = next;
+    post("mode", { edit: mode === "edit" });
+    editBtn.classList.toggle("active", mode === "edit");
+    editBtn.setAttribute("aria-pressed", String(mode === "edit"));
+    editBtn.title = mode === "edit" ? "Done (Ctrl+E)" : "Edit (Ctrl+E)";
+    closeOutline();
+    document.body.classList.add("swapping", "swapped");
+    clearTimeout(swapTimer);
+    swapTimer = setTimeout(swapView, motionMs("--dur-fast", 160) * 0.7);
+  }
+  function swapView() {
+    swapTimer = 0;
+    const body = document.body;
+    if ((body.dataset.view || "read") !== mode) {
+      if (mode === "edit") {
+        const a = window.scrollY < 4 ? { line: null } : captureAnchor();
+        body.dataset.view = "edit";
+        const el = a.line == null ? null : edBack.children[Math.min(a.line, edBack.children.length - 1)];
+        if (el) window.scrollBy({ top: el.getBoundingClientRect().top - a.top, behavior: "instant" });
+        else window.scrollTo(0, 0);
+        if (edFresh) {
+          const pos = el ? lineStarts[Math.min(a.line, lineStarts.length - 1)] : 0;
+          edInput.setSelectionRange(pos, pos);
+          edFresh = false;
+        }
+      } else {
+        const a = captureEditAnchor();
+        edInput.blur();
+        body.dataset.view = "read";
+        current.text = edInput.value;
+        draw(current, a);
+        // links were resolved for the text as it was before editing
+        if (current.text.includes("[[")) post("reload");
+      }
+      if (findOpen()) runFind(findInput.value);
+    }
+    void body.offsetWidth;
+    body.classList.remove("swapping");
+    if (mode === "edit" && !findOpen()) edInput.focus({ preventScroll: true });
+  }
+  // Another file took over the window: back to reading, without the fade.
+  function leaveEditNow() {
+    clearTimeout(swapTimer);
+    clearTimeout(saveTimer);
+    swapTimer = saveTimer = 0;
+    mode = "read";
+    edPath = null;
+    document.body.dataset.view = "read";
+    document.body.classList.remove("swapping");
+    editBtn.classList.remove("active");
+    editBtn.setAttribute("aria-pressed", "false");
+    editBtn.title = "Edit (Ctrl+E)";
+    post("mode", { edit: false });
+  }
+  function printDoc() {
+    if (mode === "edit") { // print the rendered page, not the source
+      flushSave();
+      draw({ ...current, text: edInput.value }, null, true);
+    }
+    post("print");
+  }
+
+  // --- typing helpers. Edits go through execCommand so native undo keeps working.
+  function edReplace(start, end, text, selA, selB) {
+    edInput.focus({ preventScroll: true });
+    edInput.setSelectionRange(start, end);
+    const ok = text ? document.execCommand("insertText", false, text) : start === end || document.execCommand("delete");
+    if (!ok) {
+      edInput.setRangeText(text, start, end, "end");
+      edInput.dispatchEvent(new Event("input"));
+    }
+    if (selA != null) edInput.setSelectionRange(selA, selB ?? selA);
+    revealCaret();
+  }
+  const LIST_LINE = /^\s*(?:[-*+]|\d{1,9}[.)])\s/;
+  function edIndent(outdent) {
+    const v = edInput.value, s = edInput.selectionStart, e = edInput.selectionEnd;
+    const unit = /^\t/m.test(v) ? "\t" : "    ";
+    const ls = v.lastIndexOf("\n", s - 1) + 1;
+    let le = v.indexOf("\n", e > s && v[e - 1] === "\n" ? e - 1 : e);
+    if (le < 0) le = v.length;
+    const block = v.slice(ls, le);
+    if (s === e && !outdent && !LIST_LINE.test(block)) { edReplace(s, e, unit); return; }
+    const lines = block.split("\n");
+    const out = lines.map((l) => (outdent ? l.replace(/^(?:\t| {1,4})/, "") : l && unit + l));
+    const text = out.join("\n");
+    if (text === block) return;
+    if (s === e) edReplace(ls, le, text, Math.max(ls, s + out[0].length - lines[0].length));
+    else edReplace(ls, le, text, ls, ls + text.length);
+  }
+  // Enter continues lists, tasks and quotes; on an empty item it ends them.
+  function edNewline() {
+    const v = edInput.value, s = edInput.selectionStart;
+    if (s !== edInput.selectionEnd) return false;
+    const ls = v.lastIndexOf("\n", s - 1) + 1;
+    let le = v.indexOf("\n", s);
+    if (le < 0) le = v.length;
+    const line = v.slice(ls, le);
+    const m = /^([ \t]*(?:>[ \t]?)*[ \t]*)((?:[-*+]|\d{1,9}[.)])[ \t]+(?:\[.\][ \t]+)?)?/.exec(line);
+    if (!m[0] || s - ls < m[0].length) return false;
+    if (line.length === m[0].length) {
+      if (!m[2] && !m[1].includes(">")) return false;
+      edReplace(ls, le, "");
+      return true;
+    }
+    let next = m[1];
+    if (m[2]) {
+      const n = /^(\d+)([.)])/.exec(m[2]);
+      next += (n ? Number(n[1]) + 1 + n[2] + m[2].slice(n[0].length) : m[2]).replace(/\[.\]/, "[ ]");
+    }
+    edReplace(s, s, "\n" + next);
+    return true;
+  }
+  function edSurround(mark) {
+    const v = edInput.value, s = edInput.selectionStart, e = edInput.selectionEnd, n = mark.length;
+    if (s >= n && v.slice(s - n, s) === mark && v.slice(e, e + n) === mark) {
+      edReplace(s - n, e + n, v.slice(s, e), s - n, e - n);
+    } else {
+      edReplace(s, e, mark + v.slice(s, e) + mark, s + n, e + n);
+    }
+  }
+  function edLink() {
+    const v = edInput.value, s = edInput.selectionStart, e = edInput.selectionEnd, sel = v.slice(s, e);
+    if (/^https?:\/\/\S+$/.test(sel)) edReplace(s, e, `[](${sel})`, s + 1);
+    else edReplace(s, e, `[${sel}](url)`, e + 3, e + 6);
+  }
+  const EDIT_KEYS = { b: () => edSurround("**"), i: () => edSurround("*"), k: edLink };
+
+  edInput.addEventListener("input", () => {
+    paint(edInput.value);
+    revealCaret();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(flushSave, AUTOSAVE_MS);
+    if (findOpen()) {
+      clearTimeout(findTimer);
+      findTimer = setTimeout(() => runFind(findInput.value, true), 120);
+    }
+  });
+  edInput.addEventListener("keydown", (e) => {
+    if (e.isComposing) return;
+    const mod = e.ctrlKey || e.metaKey, plain = !mod && !e.altKey;
+    if (e.key === "Tab" && plain) { e.preventDefault(); edIndent(e.shiftKey); }
+    else if (e.key === "Enter" && plain && !e.shiftKey) { if (edNewline()) e.preventDefault(); }
+    else if ((e.key === "PageDown" || e.key === "PageUp") && plain) {
+      // like macOS: paging scrolls, the caret stays (the textarea is as tall as the text)
+      e.preventDefault();
+      window.scrollBy({ top: (e.key === "PageDown" ? 1 : -1) * (innerHeight - 80), behavior: reducedMotion() ? "instant" : "smooth" });
+    }
+    else if (mod && !e.shiftKey && !e.altKey && EDIT_KEYS[e.key.toLowerCase()]) { e.preventDefault(); EDIT_KEYS[e.key.toLowerCase()](); }
+    else if (/^(Arrow|Home|End)/.test(e.key)) requestAnimationFrame(revealCaret);
+  });
+  // the textarea never scrolls on its own; the page does
+  edInput.addEventListener("scroll", () => { edInput.scrollTop = 0; edInput.scrollLeft = 0; });
+  editor.addEventListener("mousedown", (e) => {
+    if (e.target !== editor && e.target !== edWrap) return;
+    e.preventDefault(); // margin around the text: focus, below it: caret to the end
+    edInput.focus({ preventScroll: true });
+    if (e.clientY > edBack.getBoundingClientRect().bottom) edInput.setSelectionRange(edInput.value.length, edInput.value.length);
+  });
+
   // --- toolbar + find buttons
   const actions = {
     outline: () => (outlineOpen() ? closeOutline() : openOutline()),
     find: () => (findOpen() ? closeFind() : openFind()),
-    edit: () => post("edit"),
+    edit: () => setMode(mode === "edit" ? "read" : "edit"),
     prev: () => focusHit(hitIdx - 1),
     next: () => focusHit(hitIdx + 1),
     closefind: () => closeFind(),
@@ -853,10 +1305,12 @@
       return;
     }
     if (mod && e.shiftKey && k === "o") { e.preventDefault(); actions.outline(); return; }
+    if (mod && e.shiftKey && k === "e") { e.preventDefault(); post("external"); return; }
     if (mod && !e.shiftKey && !e.altKey) {
       const map = {
-        f: openFind, e: () => post("edit"), o: () => post("open"), r: () => post("reload"),
-        p: () => post("print"), w: () => post("close"), q: () => post("close"),
+        f: openFind, e: actions.edit, o: () => post("open"), r: () => post("reload"),
+        s: () => { if (mode === "edit") { flushSave(); toast("Saved"); } },
+        p: printDoc, w: () => post("close"), q: () => post("close"),
         "=": () => post("zoom", { step: 1 }), "+": () => post("zoom", { step: 1 }),
         "-": () => post("zoom", { step: -1 }), "0": () => post("zoom", { step: 0 }),
         g: () => focusHit(hitIdx + 1),
@@ -870,5 +1324,5 @@
     if (!typing && !mod && !e.altKey && e.key === "/") { e.preventDefault(); openFind(); }
   });
 
-  window.MdView = { render, setTheme, setMotion, scrollToFragment, toast };
+  window.MdView = { render, setTheme, setMotion, scrollToFragment, toast, setMode, flush, saveFailed };
 })();

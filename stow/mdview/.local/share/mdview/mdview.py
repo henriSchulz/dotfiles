@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""mdview — fast, complete Markdown viewer (GTK 3 + WebKit).
+"""mdview — fast, complete Markdown viewer and editor (GTK 3 + WebKit).
 
 Renders CommonMark/GFM plus Obsidian syntax (wikilinks, embeds, callouts,
 properties, ==highlight==, %%comments%%, #tags), KaTeX math, Mermaid and
 highlighted code. Works on any file, no vault needed. Stays resident for a
 while after the last window closes so reopening is instant.
+
+Ctrl+E switches between reading and editing the source in place; edits are
+saved automatically (the page sends the text, this side writes the file).
 
 Assets live next to the real path of this script; bin/mdview is a thin
 launcher that hands files to a running instance over D-Bus.
@@ -45,6 +48,7 @@ VIDEO_EXT = {".mp4", ".mkv", ".mov", ".ogv"}
 SKIP_DIRS = {"node_modules", "__pycache__", "target", "venv", ".venv", "dist", "build"}
 WIKI_RE = re.compile(r"!?\[\[([^\[\]\n]+?)\]\]")
 EMBED_LIMIT = 256 * 1024
+EDIT_LIMIT = 2 * 1024 * 1024
 
 SCRIPTS = [
     "vendor/markdown-it.min.js",
@@ -103,6 +107,21 @@ def read_text(path, limit=None):
     with open(path, "rb") as f:
         raw = f.read(limit) if limit else f.read()
     return raw.decode("utf-8", errors="replace")
+
+
+def readonly_reason(path, raw):
+    """Why the file can't be edited in place, or None if it can."""
+    if raw is None:
+        return None if os.access(path.parent, os.W_OK) else "folder is read-only"
+    if not os.access(path, os.W_OK):
+        return "file is read-only"
+    if len(raw) > EDIT_LIMIT:
+        return "file is too large"
+    try:
+        raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return "file is not UTF-8"
+    return None
 
 
 def load_state():
@@ -212,6 +231,10 @@ class ViewerWindow(Gtk.ApplicationWindow):
         self.monitor = None
         self.reload_id = 0
         self.resolver = None
+        self.editing = False
+        self.own_text = None
+        self.closing = False
+        self.close_id = 0
 
         st = app.state
         self.set_default_size(st.get("width", 900), st.get("height", 1040))
@@ -250,6 +273,7 @@ class ViewerWindow(Gtk.ApplicationWindow):
         self.shell_dir = target_dir
         self.shell_ready = False
         self.loading_shell = True
+        self.editing = False
         nonce = secrets.token_urlsafe(18)
         a = ASSETS.as_uri()
         csp = ("default-src 'none'; "
@@ -291,6 +315,7 @@ class ViewerWindow(Gtk.ApplicationWindow):
         self.set_title(path.name)
         self.resolver = Resolver(path.parent)
         if not same:
+            self.own_text = None
             self.watch()
         if same and self.shell_ready:
             if fragment:
@@ -325,6 +350,12 @@ class ViewerWindow(Gtk.ApplicationWindow):
     def reload_after_change(self):
         self.reload_id = 0
         if self.path and self.path.exists():
+            if self.editing and self.own_text is not None:
+                try:
+                    if read_text(self.path).replace("\r\n", "\n") == self.own_text:
+                        return False  # our own save; the editor already has it
+                except OSError:
+                    pass
             self.resolver = Resolver(self.path.parent)
             self.render(keep_scroll=True)
         return False
@@ -356,16 +387,23 @@ class ViewerWindow(Gtk.ApplicationWindow):
     def render(self, keep_scroll=False, fragment=None):
         if not self.shell_ready or not self.path:
             return
+        raw = None
         try:
-            text = read_text(self.path)
-            error = None
+            with open(self.path, "rb") as f:
+                raw = f.read()
+            text, error = raw.decode("utf-8", errors="replace"), None
+            readonly = readonly_reason(self.path, raw)
         except FileNotFoundError:
             text, error = "", f"File not found: {self.path}"
+            readonly = readonly_reason(self.path, None)
         except OSError as e:
             text, error = "", f"Can't read file: {e.strerror}"
+            readonly = "file can't be read"
         payload = {
             "text": text,
             "name": self.path.name,
+            "path": str(self.path),
+            "readonly": readonly,
             "vault": bool(self.resolver and self.resolver.vault),
             "links": self.build_links(text) if "[[" in text else {},
             "keepScroll": keep_scroll,
@@ -405,6 +443,8 @@ class ViewerWindow(Gtk.ApplicationWindow):
             WebKit2.ContextMenuAction.COPY_IMAGE_TO_CLIPBOARD,
             WebKit2.ContextMenuAction.COPY_IMAGE_URL_TO_CLIPBOARD,
             WebKit2.ContextMenuAction.SELECT_ALL,
+            WebKit2.ContextMenuAction.CUT,
+            WebKit2.ContextMenuAction.PASTE,
         }
         if DEBUG:
             keep.add(WebKit2.ContextMenuAction.INSPECT_ELEMENT)
@@ -432,8 +472,12 @@ class ViewerWindow(Gtk.ApplicationWindow):
             cb = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
             cb.set_text(msg.get("text", ""), -1)
             cb.store()
-        elif t == "edit":
-            self.edit()
+        elif t == "mode":
+            self.editing = bool(msg.get("edit"))
+        elif t == "save":
+            self.save_text(msg.get("text"))
+        elif t == "external":
+            self.open_external()
         elif t == "open":
             self.choose_file()
         elif t == "reload":
@@ -507,7 +551,26 @@ class ViewerWindow(Gtk.ApplicationWindow):
             self.js("MdView.toast", f"Couldn't save: {e.strerror}")
             self.render(keep_scroll=True)
 
-    def edit(self):
+    def save_text(self, text):
+        if not self.path or not isinstance(text, str):
+            return
+        try:
+            try:
+                with open(self.path, "rb") as f:
+                    old = f.read()
+            except FileNotFoundError:
+                old = b""
+            # Written in place (no temp file + rename), so symlinked files and
+            # their permissions stay what they are. Line endings are kept.
+            data = (text.replace("\n", "\r\n") if b"\r\n" in old else text).encode("utf-8")
+            if data != old:
+                with open(self.path, "wb") as f:
+                    f.write(data)
+            self.own_text = text
+        except OSError as e:
+            self.js("MdView.saveFailed", e.strerror or str(e))
+
+    def open_external(self):
         if not self.path:
             return
         for cmd in (["omarchy-launch-editor", str(self.path)], ["xdg-open", str(self.path)]):
@@ -551,7 +614,21 @@ class ViewerWindow(Gtk.ApplicationWindow):
         dlg.destroy()
         return False
 
+    def close_now(self):
+        self.close_id = 0
+        self.close()
+        return False
+
     def on_delete(self, *_):
+        if self.editing and self.shell_ready and not self.closing:
+            # Let the page hand over unsaved text first; it answers with "close".
+            self.closing = True
+            self.js("MdView.flush", True)
+            self.close_id = GLib.timeout_add(400, self.close_now)
+            return True
+        if self.close_id:
+            GLib.source_remove(self.close_id)
+            self.close_id = 0
         if not self.is_maximized():
             w, h = self.get_size()
             self.app.state.update(width=w, height=h)

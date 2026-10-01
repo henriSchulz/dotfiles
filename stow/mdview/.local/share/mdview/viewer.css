@@ -1,4 +1,4 @@
-/* mdview — reading styles. Colors come from the Omarchy theme (--c-*),
+/* mdview — reading and editing styles. Colors come from the Omarchy theme (--c-*),
  * durations, curves, radii and sizes from henri-ui/motion.css (loaded before
  * this file). No hand-picked motion values here. */
 
@@ -335,6 +335,86 @@ details.props th { width: 28%; font-weight: 500; color: var(--fg2); white-space:
 .empty-state { text-align: center; color: var(--fg2); padding-top: 20vh; }
 .empty-icon svg { width: 36px; height: 36px; fill: none; stroke: currentColor; stroke-width: 1.5; }
 
+/* ------------------------------------------------------------- editor */
+/* Reading and editing swap in place: one fades out, then the other fades in. */
+#editor {
+  display: none;
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 56px 40px 40vh;
+  cursor: text;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+@media (max-width: 640px) { #editor { padding: 48px 20px 40vh; } }
+body[data-view="edit"] #editor { display: block; }
+body[data-view="edit"] #content { display: none; }
+body.swapped #content { transition-duration: var(--dur-fast); }
+body.swapping #content, body.swapping #editor {
+  opacity: 0;
+  transition: opacity calc(var(--dur-fast) * 0.7) var(--ease-exit);
+}
+
+/* The textarea (transparent glyphs) and the coloured copy on top of it must
+ * wrap identically: same font, same width, and nothing below may change a
+ * glyph's advance — colours, weight and slant of the monospace only. */
+#ed-wrap {
+  position: relative;
+  min-height: 40vh;
+  font: 400 14px/24px var(--mono);
+  font-variant-ligatures: none;
+  font-feature-settings: normal;
+  text-rendering: auto;
+  tab-size: 4;
+}
+#ed-input, #ed-back {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  font-variant-ligatures: inherit;
+  font-feature-settings: inherit;
+  text-rendering: inherit;
+  letter-spacing: inherit;
+  tab-size: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+#ed-input {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  resize: none;
+  overflow: hidden;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--accent);
+}
+#ed-input::selection { color: transparent; -webkit-text-fill-color: transparent; }
+#ed-input::placeholder { color: var(--fg3); -webkit-text-fill-color: var(--fg3); }
+#ed-back { position: relative; pointer-events: none; }
+.ln { min-height: 24px; transition: background-color var(--dur-slow) var(--ease-out); }
+.ln.flash { transition-duration: var(--dur-instant); }
+.ln.code, .ln.meta { margin: 0 -12px; padding: 0 12px; }
+.ln.code { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.ln.code-start { border-radius: var(--radius-control) var(--radius-control) 0 0; }
+.ln.code-end { border-radius: 0 0 var(--radius-control) var(--radius-control); }
+.ln.meta, .ln.quote { color: var(--fg2); }
+.m-dim, .m-quote, .m-lang, .m-html, .m-task { color: var(--fg2); }
+.m-h, .m-b, .m-callout { font-weight: 700; }
+.m-h .m-dim { font-weight: 400; }
+.m-i { font-style: italic; }
+.m-s { color: var(--fg2); text-decoration: line-through; }
+.m-mark { background: color-mix(in srgb, var(--c-bright-yellow, #ffd60a) 38%, transparent); border-radius: 3px; }
+.m-code { background: color-mix(in srgb, var(--fg) 7%, transparent); border-radius: 3px; }
+.m-link, .m-url, .m-tag, .m-list, .m-callout { color: var(--accent); }
+.m-math { color: var(--c-magenta); }
+.m-comment { color: var(--fg2); font-style: italic; }
+.m-key { color: var(--fg); }
+
 /* ------------------------------------------------------------- chrome */
 .surface {
   background: var(--surface);
@@ -488,7 +568,8 @@ details.props th { width: 28%; font-weight: 500; color: var(--fg2); white-space:
 ::-webkit-scrollbar-corner { background: transparent; }
 
 @media print {
-  #toolbar, #outline, #findbar, #toast, .code-tools { display: none !important; }
+  #toolbar, #outline, #findbar, #toast, #editor, .code-tools { display: none !important; }
+  #content { display: block !important; opacity: 1 !important; }
   #content { max-width: none; padding: 0; }
   body { font-size: 11pt; }
   .code-block, .callout, table, img, .mermaid-block { break-inside: avoid; }
