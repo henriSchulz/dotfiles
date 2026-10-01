@@ -342,6 +342,16 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   Tippen filtert, ↩ führt aus, →/Tab nur in Unterseiten — Open With…, Copy To…, Move To…,
   Get Info —, ←/Esc/⌫ zurück mit gemerkter Auswahl). Zerstörendes (Trash, Uninstall)
   fragt über den einen ConfirmDialog.
+  **Get Info ist ein Blatt zum Lesen, kein Menü** (Henri 2026-10-01: die Zeilen sahen
+  auswählbar aus): Kopf = Icon, Name und Pfad des Objekts, darunter Eigenschaftszeilen
+  (`Apple.spotlight.infoRowHeight` 24, Label sekundär in fester Spalte, Wert in Ink) —
+  ohne Icons, Auswahl, Hover, ↩-Chip und ohne Filter/Caret; nur ←/Esc/⌫ zurück. Die
+  Zeilen stehen sofort, Werte blenden ein (`fast`), langsames `du` zeigt nach
+  `loadingDelay` „Calculating…“. Was nur angezeigt wird, darf nie wie eine Aktionszeile
+  aussehen. Ordner haben dieselben Open-Aktionen wie Dateien (Open zuerst, Open With…).
+- Rangfolge: Apps aus `AppAliases.PRIORITY` (System Settings) stehen oben, sobald die
+  Suche sie **benennt** (jedes Wort ist Wortanfang von Name/Alias) — nicht bei bloßen
+  Stichwort-Treffern („blue“ → Bluetooth-Aktion bleibt vorn).
 
 **Switcher (Super+Tab, wie Cmd/Alt+Tab)**
 - Streifen erscheint erst nach `Motion.switcherDelay` (50 ms) Halten; kurzes Antippen

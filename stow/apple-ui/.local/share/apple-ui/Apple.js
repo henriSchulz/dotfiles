@@ -290,6 +290,10 @@ var spotlight = {
   sectionTop: 8,
   sectionTopFirst: 4,
   sectionBottom: 2,
+  // Info-Blatt (Get Info): Eigenschaftszeilen Label | Wert, nichts auswählbar
+  infoRowHeight: 24,
+  infoLabelWidth: 84,
+  infoPad: 6,
   shadowOffset: 22,      // Spec: 0 22px 70px 4px
   shadowBlur: 70,
   shadowSpread: 4,

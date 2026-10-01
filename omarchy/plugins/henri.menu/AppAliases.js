@@ -195,6 +195,36 @@ function aliasesFor(table, appId, name) {
   return out
 }
 
+// Applications that go to the top whenever the query names them. Without it
+// System Settings ties with every menu and app that shares a prefix
+// ("Setup", "System", "Signal", "Print Settings") and lands wherever the
+// tie-break puts it. Same keys as DEFAULTS; the value is added to the fuzzy
+// score (an exact title match is worth 1200, a title prefix around 900).
+var PRIORITY = {
+  "omarchy-settings": 600
+}
+
+function priorityFor(appId, name) {
+  return PRIORITY[normalizeKey(appId)] || PRIORITY[normalizeKey(name)] || 0
+}
+
+// True when every word of the query begins a word of one of the names
+// ("s", "sys", "system set", "einst"). Deliberately not fuzzy: the bonus is
+// for naming the app, and "st" must still find Steam first. Keywords such as
+// "bluetooth" are no names either -- there the Bluetooth action stays on top.
+function namedBy(query, names) {
+  var tokens = String(query || "").toLowerCase().split(/\s+/).filter(function(t) { return t.length > 0 })
+  if (tokens.length === 0) return false
+  var words = []
+  for (var i = 0; i < names.length; i++) words = words.concat(String(names[i] || "").toLowerCase().split(/[\s\-_.]+/))
+  for (var t = 0; t < tokens.length; t++) {
+    var found = false
+    for (var w = 0; w < words.length && !found; w++) found = words[w].indexOf(tokens[t]) === 0
+    if (!found) return false
+  }
+  return true
+}
+
 // Keywords, GenericName and the table all contribute, and they overlap often
 // (omawrite ships "notes" itself). Scoring the same word twice only costs
 // time, so the row keeps one of each, in the order they were added.
@@ -223,6 +253,8 @@ if (typeof module !== "undefined") {
     defaultTable: defaultTable,
     tableFrom: tableFrom,
     aliasesFor: aliasesFor,
+    priorityFor: priorityFor,
+    namedBy: namedBy,
     dedupe: dedupe
   }
 }

@@ -1069,12 +1069,16 @@ Item {
   readonly property int actionFontSize: pt(sp.actionFont)
   readonly property int sectionFontSize: pt(sp.sectionFont)
   readonly property int sectionLine: Math.round(pt(sp.sectionFont) * 1.3)
+  readonly property int infoRowHeight: pt(sp.infoRowHeight)
+  readonly property int infoLabelWidth: pt(sp.infoLabelWidth)
+  readonly property int infoPad: pt(sp.infoPad)
   function pageSectionHeight(first) {
     return pt(first ? sp.sectionTopFirst : sp.sectionTop) + sectionLine + pt(sp.sectionBottom)
   }
   property string firstPageSection: ""
   function pageRowListHeight(_serial, _count, _filter) {
-    var available = availableRowsHeight() - root.actionHeader
+    var pad = root.infoPage ? root.infoPad : 0
+    var available = availableRowsHeight() - root.actionHeader - pad
     if (pageModel.count === 0) return root.actionHeader + root.emptyStateHeight
     var totals = []
     var heads = []
@@ -1083,13 +1087,13 @@ Item {
     for (var i = 0; i < pageModel.count; i++) {
       var r = pageModel.get(i)
       var head = (r.section && r.section !== previous) ? root.pageSectionHeight(i === 0) : 0
-      total += head + root.actionRowHeight
+      total += head + (r.plain ? root.infoRowHeight : root.actionRowHeight)
       previous = r.section
       totals.push(total)
       heads.push(head)
       if (total > available) break
     }
-    return root.actionHeader + foldedListHeight(totals, available, heads)
+    return root.actionHeader + pad + foldedListHeight(totals, available, heads)
   }
 
   function dmenuRowListHeight(_serial, _count, _filter) {
@@ -1200,7 +1204,8 @@ Item {
       // Most .desktop files ship no Keywords at all, so words nobody would
       // guess from the name ("notes" for Omawrite, "photoshop" for Pinta)
       // come from AppAliases plus the user's own file.
-      aliases = AppAliases.dedupe(aliases.concat(AppAliases.aliasesFor(root.appAliasTable, appId, label)))
+      var tableAliases = AppAliases.aliasesFor(root.appAliasTable, appId, label)
+      aliases = AppAliases.dedupe(aliases.concat(tableAliases))
       appRows.push({
         id: "apps." + appId,
         parent: "apps",
@@ -1215,6 +1220,9 @@ Item {
         action: "",
         provider: "",
         aliases: aliases,
+        // Apps that lead whenever the query names them (AppAliases.PRIORITY).
+        priority: AppAliases.priorityFor(appId, label),
+        names: [label].concat(tableAliases),
         when: "",
         checked: "",
         order: 0
@@ -1408,7 +1416,10 @@ Item {
     }
   }
   function fuzzyScore(entry, query) {
-    try { return FuzzySearch.scoreBookmark(String(query || ""), root.fuzzyBookmark(entry)) } catch (e) { return -1 }
+    var score = -1
+    try { score = FuzzySearch.scoreBookmark(String(query || ""), root.fuzzyBookmark(entry)) } catch (e) { return -1 }
+    if (score >= 0 && entry.priority && AppAliases.namedBy(query, entry.names)) score += entry.priority
+    return score
   }
   function matchesQuery(entry, query) {
     if (!entry || entry.id === "root") return false
@@ -1993,7 +2004,7 @@ Item {
   // list slides out to the left, the actions come in from the right (henri-ui
   // drill-in). Typing filters the actions, ↩ runs one, → or Tab descends into
   // a sub-page (Open With…, Copy To…, Move To…, Get Info), ← / Esc / ⌫ on an
-  // empty filter go back. Rows carry their `run` in `pages`; the ListModel
+  // empty filter go back. Get Info is a sheet to read: only the way back works. Rows carry their `run` in `pages`; the ListModel
   // only holds what is drawn plus the index back into the page.
   // While the field is empty the arrow keys walk the four category buttons
   // (they show as if hovered); ↩ picks the focused one, Esc lets go.
@@ -2030,7 +2041,7 @@ Item {
   readonly property string pagePlaceholder: !root.page ? "" :
     root.page.kind === "apps" ? "Search applications"
     : root.page.kind === "folders" ? "Search folders"
-    : root.page.kind === "info" ? "Info"
+    : root.page.kind === "info" ? ""
     : "Search actions"
 
   function rowCopy(row) {
@@ -2092,7 +2103,7 @@ Item {
         pageModel.append({
           label: String(r.label || ""), detail: String(r.detail || ""), icon: String(r.icon || ""),
           iconFont: String(r.iconFont || ""), appIcon: String(r.appIcon || ""),
-          hasMore: !!r.more, danger: !!r.danger, section: String(r.section || ""), rowIndex: i
+          hasMore: !!r.more, danger: !!r.danger, plain: !!r.plain, section: String(r.section || ""), rowIndex: i
         })
       }
     }
@@ -2197,16 +2208,16 @@ Item {
       var pretty = root.prettyPath(path)
       var parent = root.dirNameOf(path) || "/"
       if (row.isDir) {
-        rows.push(root.sec(root.act("Browse Folder", "folder", function() { root.closePages(); root.setFilter(" " + pretty + "/") }, "in Spotlight"), "open"))
         rows.push(root.sec(root.act("Open", "open", function() { root.finishWith(function() { root.openPath(path) }) }, "in Files"), "open"))
+        rows.push(root.sec(root.act("Open With…", "apps", null, "", function() { root.pushPage(root.openWithPage(path)) }), "open"))
         rows.push(root.sec(root.act("Open in Terminal", "terminal", function() { root.finishWith(function() { root.terminalAt(path) }) }), "open"))
+        rows.push(root.sec(root.act("Browse Folder", "folder", function() { root.closePages(); root.setFilter(" " + pretty + "/") }, "in Spotlight"), "open"))
       } else {
         rows.push(root.sec(root.act("Open", "open", function() { root.finishWith(function() { root.openPath(path) }) }), "open"))
         rows.push(root.sec(root.act("Open With…", "apps", null, "", function() { root.pushPage(root.openWithPage(path)) }), "open"))
       }
       rows.push(root.sec(root.act("Show in Files", "folder", function() { root.finishWith(function() { root.openPath(parent) }) }, root.prettyPath(parent)), "open"))
-      rows.push(root.sec(root.act("Get Info", "info", null, "", function() { root.pushPage({ kind: "info", title: "Info", path: path, rows: [],
-        headerIcon: root.glyph.info, headerIconFont: Apple.symbolFont, headerAppIcon: "", headerTitle: "Info", headerSubtitle: root.baseNameOf(path) }) }), "more"))
+      rows.push(root.sec(root.act("Get Info", "info", null, "", function() { root.pushPage(root.infoPageFor(row)) }), "more"))
       rows.push(root.sec(root.act("Copy Path", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(path) }) }, pretty), "copy"))
       rows.push(root.sec(root.act(row.isDir ? "Copy Folder" : "Copy File", "copy", function() { root.finishWith(function() { root.copyFileToClipboard(path) }) }, "for pasting in Files"), "copy"))
       rows.push(root.sec(root.act("Copy To…", "copy", null, "", function() { root.pushPage(root.folderPage("Copy To", parent, function(dest) {
@@ -2306,40 +2317,83 @@ Item {
     }
   }
 
-  // Sub-page: Get Info. Rows fill in once stat/file/du answer; ↩ copies a value.
+  // Sub-page: Get Info. A property sheet, not a menu: the item heads the
+  // page, below it label/value lines with nothing to select. The lines stand
+  // from the start and their values fade in as stat and du answer, so the
+  // page never changes height while a big folder is still being measured.
+  readonly property bool infoPage: !!root.page && root.page.kind === "info"
+  function infoPageFor(row) {
+    var path = row.target
+    var labels = row.isDir ? ["Kind", "Size", "Contains", "Created", "Modified"] : ["Kind", "Size", "Created", "Modified"]
+    var rows = []
+    for (var i = 0; i < labels.length; i++) rows.push({ label: labels[i], detail: "", plain: true })
+    if (row.isDir) rows[0].detail = "Folder"
+    return { kind: "info", title: "Info", path: path, rows: rows,
+      headerIcon: row.icon, headerIconFont: row.iconFont, headerAppIcon: row.appIcon,
+      headerTitle: row.label, headerSubtitle: root.prettyPath(path) }
+  }
+  function setInfoValue(label, value) {
+    if (!root.infoPage) return
+    var rows = root.page.rows
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].label !== label) continue
+      rows[i].detail = value
+      for (var j = 0; j < pageModel.count; j++)
+        if (pageModel.get(j).rowIndex === i) pageModel.setProperty(j, "detail", value)
+    }
+  }
+  function formatBytes(bytes) {
+    var n = Number(bytes)
+    if (!(n >= 0)) return "—"
+    var units = ["bytes", "KB", "MB", "GB", "TB"]
+    var u = 0
+    while (n >= 1000 && u < units.length - 1) { n /= 1000; u++ }
+    return (u === 0 ? String(n) : n.toFixed(n < 100 ? 1 : 0)) + " " + units[u]
+  }
+  function formatStamp(seconds) {
+    var s = Number(seconds)
+    return s > 0 ? Qt.formatDateTime(new Date(s * 1000), "d MMM yyyy 'at' HH:mm") : "—"
+  }
   function gatherInfo(p) {
     infoProc.running = false
-    infoProc.collected = ""
     infoProc.path = p.path
-    infoProc.command = ["bash", "-c", 'stat -c "%s\t%y" -- "$1"; file -b --mime-type -- "$1"; du -sh -- "$1" 2>/dev/null | cut -f1', "bash", String(p.path)]
+    // One line per fact, slowest (du) last. Kind is the MIME type's own
+    // description, what a file manager shows ("PDF document").
+    infoProc.command = ["bash", "-c", 'p=$1\n'
+      + 'if [ ! -d "$p" ]; then t=$(gio info -a standard::content-type -- "$p" 2>/dev/null | sed -n "s/.*standard::content-type: //p")\n'
+      + '  c=$(sed -n "s:.*<comment>\\(.*\\)</comment>.*:\\1:p" "/usr/share/mime/$t.xml" 2>/dev/null | head -1)\n'
+      + '  printf "Kind\\t%s\\n" "${c:-${t:-Document}}"; fi\n'
+      + 'stat -c "Created\t%W" -- "$p"; stat -c "Modified\t%Y" -- "$p"\n'
+      + '[ -d "$p" ] && printf "Contains\\t%s\\n" "$(find "$p" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)"\n'
+      + 'printf "Size\\t%s\\n" "$(du -sb -- "$p" 2>/dev/null | cut -f1)"', "bash", String(p.path)]
     infoProc.running = true
+    infoSlow.restart()
+  }
+  // A folder that takes a while to measure says so (henri-ui §3b.8).
+  Timer {
+    id: infoSlow
+    interval: Motion.loadingDelay
+    onTriggered: {
+      if (!root.infoPage || !infoProc.running || root.page.path !== infoProc.path) return
+      var rows = root.page.rows
+      for (var i = 0; i < rows.length; i++) if (rows[i].label === "Size" && !rows[i].detail) root.setInfoValue("Size", "Calculating…")
+    }
   }
   Process {
     id: infoProc
     property string path: ""
-    property string collected: ""
-    stdout: SplitParser { onRead: function(line) { infoProc.collected += line + "\n" } }
-    onExited: {
-      if (!root.page || root.page.kind !== "info" || root.page.path !== infoProc.path) return
-      var lines = infoProc.collected.split("\n")
-      var statParts = (lines[0] || "").split("\t")
-      var modified = String(statParts[1] || "").replace(/\.\d+ .*$/, "")
-      var path = infoProc.path
-      var entries = [
-        ["Name", root.baseNameOf(path), "doc"],
-        ["Kind", String(lines[1] || ""), "info"],
-        ["Size", String(lines[2] || statParts[0] || ""), "info"],
-        ["Modified", modified, "info"],
-        ["Where", root.prettyPath(root.dirNameOf(path) || "/"), "folder"]
-      ]
-      var rows = []
-      for (var i = 0; i < entries.length; i++) {
-        rows.push((function(e) {
-          return root.act(e[0], e[2], function() { root.finishWith(function() { root.copyToClipboard(e[1]) }) }, e[1])
-        })(entries[i]))
+    stdout: SplitParser {
+      onRead: function(line) {
+        if (!root.infoPage || root.page.path !== infoProc.path) return
+        var tab = line.indexOf("\t")
+        if (tab < 0) return
+        var key = line.slice(0, tab), value = line.slice(tab + 1).trim()
+        if (key === "Kind") value = value.charAt(0).toUpperCase() + value.slice(1)
+        else if (key === "Size") value = root.formatBytes(value === "" ? -1 : value)
+        else if (key === "Contains") value = value === "1" ? "1 item" : value + " items"
+        else if (key === "Created" || key === "Modified") value = root.formatStamp(value)
+        root.setInfoValue(key, value)
       }
-      root.page.rows = rows
-      root.rebuildPage()
     }
   }
 
@@ -2788,7 +2842,7 @@ Item {
               height: Math.round(root.fieldFontSize * 1.15)
               radius: width / 2
               color: root.ink
-              opacity: root.caretOn && !root.querySelected ? 1 : 0
+              opacity: root.caretOn && !root.querySelected && !root.infoPage ? 1 : 0
               x: queryRow.hasQuery ? queryText.width + queryRow.caretGap : 0
               anchors.verticalCenter: parent.verticalCenter
               Behavior on opacity { NumberAnimation { duration: Motion.instant; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
@@ -3322,6 +3376,7 @@ Item {
             ListView {
               id: pageList
               anchors.top: pageHeader.bottom
+              anchors.topMargin: root.infoPage ? root.infoPad : 0
               anchors.left: parent.left
               anchors.right: parent.right
               anchors.bottom: parent.bottom
@@ -3364,22 +3419,54 @@ Item {
                 required property string appIcon
                 required property bool hasMore
                 required property bool danger
+                required property bool plain
                 required property string section
-                readonly property bool hasCursor: prow.index === root.pageSelected
+                readonly property bool hasCursor: !plain && prow.index === root.pageSelected
                 readonly property bool isApp: appIcon.length > 0
                 readonly property color labelColor: danger ? Color.urgent : root.ink
                 width: ListView.view.width
-                height: root.actionRowHeight
+                height: plain ? root.infoRowHeight : root.actionRowHeight
                 radius: root.rowRadius
                 color: hasCursor ? root.selection : pmouse.containsMouse ? root.hoverFill : Util.alpha(root.hoverFill, 0)
                 border.width: 1
                 border.color: hasCursor ? root.selectionBorder : Util.alpha(root.selectionBorder, 0)
                 Accessible.role: Accessible.ListItem
-                Accessible.name: prow.label
+                Accessible.name: plain ? prow.label + ": " + prow.detail : prow.label
+
+                // A plain row is a line of the info sheet: label in the
+                // secondary ink, value beside it, no icon, nothing to pick.
+                Text {
+                  textFormat: Text.PlainText
+                  visible: prow.plain
+                  x: root.rowTextX
+                  width: root.infoLabelWidth
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: prow.label
+                  color: root.inkSecondary
+                  font.family: root.uiFont
+                  font.pixelSize: root.actionFontSize
+                  elide: Text.ElideRight
+                }
+                Text {
+                  textFormat: Text.PlainText
+                  visible: prow.plain
+                  anchors.left: parent.left
+                  anchors.leftMargin: root.rowTextX + root.infoLabelWidth
+                  anchors.right: parent.right
+                  anchors.rightMargin: root.metaInset
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: prow.detail
+                  color: root.ink
+                  font.family: root.uiFont
+                  font.pixelSize: root.actionFontSize
+                  elide: Text.ElideMiddle
+                  opacity: prow.detail.length > 0 ? 1 : 0
+                  Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+                }
 
                 Text {
                   textFormat: Text.PlainText
-                  visible: !prow.isApp && prow.icon.length > 0
+                  visible: !prow.plain && !prow.isApp && prow.icon.length > 0
                   text: prow.icon
                   color: prow.labelColor
                   font.family: prow.iconFont.length > 0 ? prow.iconFont : root.fontFamily
@@ -3406,6 +3493,7 @@ Item {
                 }
                 Text {
                   id: plabel
+                  visible: !prow.plain
                   textFormat: Text.PlainText
                   anchors.left: parent.left
                   anchors.leftMargin: root.rowTextX
@@ -3424,7 +3512,7 @@ Item {
                   anchors.right: ptrail.left
                   anchors.rightMargin: root.pt(8)
                   anchors.verticalCenter: parent.verticalCenter
-                  visible: prow.detail.length > 0
+                  visible: !prow.plain && prow.detail.length > 0
                   text: prow.detail
                   color: root.inkSecondary
                   font.family: root.uiFont
@@ -3434,6 +3522,7 @@ Item {
                 }
                 Row {
                   id: ptrail
+                  visible: !prow.plain
                   anchors.right: parent.right
                   anchors.rightMargin: root.metaInset
                   anchors.verticalCenter: parent.verticalCenter
@@ -3462,6 +3551,7 @@ Item {
                 MouseArea {
                   id: pmouse
                   anchors.fill: parent
+                  enabled: !prow.plain
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
                   onEntered: if (pointerGate.moved(prow, { x: pmouse.mouseX, y: pmouse.mouseY })) root.pageSelected = prow.index
@@ -3476,7 +3566,7 @@ Item {
               y: pageHeader.height + Math.round((parent.height - pageHeader.height - height) / 2)
               visible: pageModel.count === 0
               textFormat: Text.PlainText
-              text: root.page && root.page.kind === "info" && !root.pageFilter ? "Reading…" : "Nothing matches “" + root.pageFilter + "”"
+              text: "Nothing matches “" + root.pageFilter + "”"
               color: root.inkSecondary
               font.family: root.uiFont
               font.pixelSize: root.subtitleFontSize
@@ -3606,6 +3696,7 @@ Item {
           // empty filter go back, typing filters.
           event.accepted = true
           if (event.key === Qt.Key_Escape || (arrowLeft && !root.pageFilter) || (event.key === Qt.Key_Backspace && !root.pageFilter)) root.popPage()
+          else if (root.infoPage) { /* a sheet to read: nothing to move, run or filter */ }
           else if (event.key === Qt.Key_Up || ((event.key === Qt.Key_K || event.key === Qt.Key_P) && ctrl)) root.selectPage(-1)
           else if (event.key === Qt.Key_Down || ((event.key === Qt.Key_J || event.key === Qt.Key_N) && ctrl)) root.selectPage(1)
           else if (event.key === Qt.Key_Home) root.selectPage(-pageModel.count)
