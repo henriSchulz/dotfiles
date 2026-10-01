@@ -153,6 +153,15 @@
   --apple-win-status: 22px;
   --apple-win-text: 13px;
   --apple-win-small: 11px;
+  /* Quick Actions bar under the preview pane (Apple's Tahoe help screenshot
+   * "Perform quick actions in the Finder", scale 1.19 px/pt from the 32 pt
+   * sidebar and 20 pt list rows): bare 15 pt glyph over a 12 pt label, both
+   * secondary ink, in equal 76 pt cells; no fill behind the glyph. */
+  --apple-win-quick-bar: 69px;
+  --apple-win-quick-cell: 76px;
+  --apple-win-quick-pad: 14px;       /* box padding: puts the glyph 15 pt below the bar's top */
+  --apple-win-quick-gap: 9px;
+  --apple-win-quick-text: 12px;
   --apple-win-disabled: rgba(0, 0, 0, 0.259);
 
   /* ---- Notification Center (spec values, see Apple.js `notificationCenter`) */

@@ -51,6 +51,15 @@ Auswahl secondarySystemFill r 8; Liste: Kopf 28 + 5, Zeilen 20, Zebra #f4f5f5, G
 #e6e6e6, Text bei 47; Icon-Zellen 112 mit 64-pt-Icon; Spalten 238, Zeilen 22, Auswahl
 r 6; Fensterradius 20. Kein Dark-Wert (Scrape-Lücke).
 
+Quick-Actions-Leiste unter dem Vorschaubereich (`--apple-win-quick-*`, seit 2026-10-01,
+an Apples Tahoe-Hilfebild „Perform quick actions in the Finder“ gemessen, Skala
+1,19 px/pt über 32-pt-Sidebar- und 20-pt-Listenzeilen): eigene Leiste 69 pt am Fuß des
+Bereichs, gleich breite 76-pt-Zellen als Gruppe zentriert; nacktes 15-pt-Symbol über
+12-pt-Label, beides Sekundär-Ink (Schwarz α 0,5), **kein** Kreis/Fill hinter dem Symbol;
+Symbol 15 pt unter der Oberkante, 12,6 pt bis zur Cap-Höhe des Labels. „More…“ ist
+`ellipsis.circle` (0x100361). Hover-/Press-Zustand nicht messbar (Standbild) — im Finder:
+Ink wird primär, Press-Scale.
+
 ## Bibliothek
 
 `~/.local/share/apple-ui/` (dotfiles `stow/apple-ui`) — Gegenstück zu henri-ui:

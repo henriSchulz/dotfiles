@@ -165,12 +165,13 @@ hl.layer_rule({ match = { namespace = "omarchy-notifications" }, blur = true, ig
 hl.window_rule({ match = { class = "org.gnome.NautilusPreviewer" }, float = true, animation = "popin 10%" })
 
 -- Finder (henri-ui macOS Finder clone, ~/Projects/finder): it draws its own
--- rounded card with traffic lights instead of a headerbar, so it has to
--- float like a real window — tiled edge-to-edge it loses the whole card
--- illusion and just looks broken. Its card is rounded 20 (apple-ui
--- --apple-win-radius); with the global 12 the active border cut across the
--- card's corners, so the border follows the card's own radius.
-hl.window_rule({ match = { class = "de.henri.Finder" }, float = true, rounding = 20 })
+-- rounded card with traffic lights instead of a headerbar. It tiles like any
+-- other window (it used to float, and so popped up over whatever was open);
+-- the window mode "macos" in window-mode.lua still floats it along with
+-- everything else. Its card is rounded 20 (apple-ui --apple-win-radius); with
+-- the global 12 the active border cut across the card's corners, so the
+-- border follows the card's own radius.
+hl.window_rule({ match = { class = "de.henri.Finder" }, rounding = 20 })
 
 -- Low-power rendering, switched from Control Center → Experiments
 -- (henri.control-center-v2/system/henri-render-power). The flag file is the
@@ -203,7 +204,6 @@ end
 
 -- System Settings (omarchy-settings, ~/Projects/settings): a macOS-27-shaped
 -- settings window. 868 × 768 = the 723 × 640 measured on macOS at the app's
--- own 1.2 scale; floating and centred, and its sidebar is translucent, so it
--- gets the compositor blur.
-hl.window_rule({ match = { title = "^System Settings$" }, float = true, size = "868 768", center = true })
+-- own 1.2 scale. It tiles like any other window (it used to float and centre itself); its
+-- sidebar is translucent, so it gets the compositor blur.
 hl.window_rule({ match = { title = "^System Settings$" }, opacity = "1.0 override" })

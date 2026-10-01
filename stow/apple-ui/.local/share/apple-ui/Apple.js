@@ -149,6 +149,10 @@ var window = {
   status: 22,
   text: 13,                   // Zeilen-/Label-Text (Cap-Höhe 9–9,5 pt)
   small: 11,                  // Kopfzeilen, Abschnitte, Statuszeile
+  // Quick-Actions-Leiste unter dem Vorschaubereich (Apples Tahoe-Hilfebild
+  // „Perform quick actions in the Finder“, Skala 1,19 px/pt): nacktes
+  // 15-pt-Symbol über 12-pt-Label, beides Sekundär-Ink, gleich breite Zellen.
+  quickBar: 69, quickCell: 76, quickPad: 14, quickGap: 9, quickIcon: 15, quickText: 12,
   disabled: "#42000000"       // tertiaryLabel (gemessen 189: Nav-Chevrons inaktiv)
 }
 
