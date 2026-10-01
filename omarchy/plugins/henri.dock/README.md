@@ -27,8 +27,9 @@ Replaces omadock.
   strips through a funnel) or the scale effect; the tile shows the snapshot with the
   app icon; click or "Restore" plays it back. `minimizeActiveSlow` = 10× slower.
   "Minimize into application icon" targets the app tile instead.
-- Auto-hide (`Super+Alt+D`) with a 3 px trigger zone at the edge; position bottom,
-  left or right (the dock slides out at the old edge and in at the new one).
+- Auto-hide (`Super+Alt+D`) with a 3 px trigger zone at the edge: the dock floats
+  over the windows and reserves no space; on a space without windows it stays
+  out. Position bottom, left or right (the dock slides out at the old edge and in at the new one).
 - Drag the separator to resize (Alt snaps to 16/32/48/64/128; Shift + drag to a
   screen edge moves the dock there).
 - Keyboard: `Ctrl+F3` focuses the dock, ←/→ (↑/↓ vertical) move with magnification,

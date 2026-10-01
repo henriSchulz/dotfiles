@@ -1281,12 +1281,26 @@ Item {
   readonly property real hideOpacity: reduceMotion ? 1 - hideOffset : 1
 
   onAutoHideChanged: { if (autoHide) armAutoHide(); else dockHidden = false }
+  // A space without windows has nothing the dock could be in the way of: it
+  // stays out there and only starts hiding once a window is on the space.
+  // Minimized windows live on their own special workspace and do not count.
+  readonly property var dockWorkspace: { var m = Hyprland.monitorFor(root.screen); return m ? m.activeWorkspace : null }
+  readonly property bool emptySpace: dockWorkspace && dockWorkspace.toplevels ? dockWorkspace.toplevels.values.length === 0 : false
+  onEmptySpaceChanged: { if (!autoHide) return; if (emptySpace) { hideTimer.stop(); dockHidden = false } else armAutoHide() }
   onHiddenNowChanged: if (!swapAnim.running) hideAnim.go(hiddenNow ? 1 : 0)
   // Fullscreen: Hyprland draws "top" layers under a fullscreen window, so the
   // dock vanishes with it. Super+D then lifts both surfaces to the overlay
   // layer (visible above the window); Super+D again drops them back. When the
   // fullscreen ends the dock returns to its normal layer by itself.
-  readonly property bool fullscreenActive: Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.hasFullscreen === true : false
+  // `hasFullscreen` is also true for a maximized window (Super+Alt+F), which
+  // stays under the top layer — only a real fullscreen (mode 2) covers the dock.
+  readonly property bool fullscreenActive: {
+    var ws = Hyprland.focusedWorkspace
+    if (!ws || ws.hasFullscreen !== true) return false
+    var all = Hyprland.toplevels.values
+    for (var i = 0; i < all.length; i++) { var o = all[i].lastIpcObject; if (o && o.fullscreen === 2 && o.workspace && o.workspace.id === ws.id) return true }
+    return false
+  }
   property bool overFullscreen: false
   onFullscreenActiveChanged: if (!fullscreenActive) overFullscreen = false
   function toggleDock() {
@@ -1305,7 +1319,7 @@ Item {
     function go(v) { stop(); to = v; start() }
   }
   Timer { id: revealTimer; interval: Number(root.settings.autoHideDelay) || Motion.dock.autoHideDelay; onTriggered: root.dockHidden = false }
-  Timer { id: hideTimer; interval: Motion.dock.autoHideLeave; onTriggered: if (root.autoHide && !root.hovering && !root.popupOpen && !root.dragging && !root.externalDrag && !fx.running && !root.kbMode) root.dockHidden = true }
+  Timer { id: hideTimer; interval: Motion.dock.autoHideLeave; onTriggered: if (root.autoHide && !root.hovering && !root.popupOpen && !root.dragging && !root.externalDrag && !fx.running && !root.kbMode && !root.emptySpace) root.dockHidden = true }
   function armAutoHide() { if (autoHide) hideTimer.restart() }
 
   property string pendingPosition: ""
@@ -1400,6 +1414,7 @@ Item {
       if (n === "openwindow" || n === "closewindow" || n === "movewindow" || n === "movewindowv2" || n === "windowtitle" || n === "windowtitlev2"
           || n === "workspace" || n === "workspacev2" || n === "activewindow" || n === "activewindowv2" || n === "configreloaded") root.scheduleRebuild()
       if (n === "fullscreen" || n === "workspace" || n === "workspacev2" || n === "closewindow") Hyprland.refreshWorkspaces()
+      if (n === "fullscreen") Hyprland.refreshToplevels()
     }
   }
   Connections {
@@ -1440,7 +1455,7 @@ Item {
     function state(): string {
       var rows = []
       for (var i = 0; i < tiles.count; i++) { var t = rep.itemAt(i); var it = root.items[tiles.get(i).itemId]; rows.push(tiles.get(i).itemId + (it && it.running ? "*" : "") + (it && it.gone ? "~" : "") + "@" + (t ? Math.round(t.main) + "/" + Math.round(t.visSize) : "?")) }
-      return JSON.stringify({ position: root.position, tileSize: root.tileSize, bg: [Math.round(root.bgStart), Math.round(root.bgLength)], hidden: root.dockHidden, manualHidden: root.manualHidden, fullscreen: root.fullscreenActive, overFullscreen: root.overFullscreen, dark: root.dark, hover: root.hoverIndex, menu: root.menuOpen, stack: root.stackOpen, drag: root.dragging, rows: rows })
+      return JSON.stringify({ position: root.position, tileSize: root.tileSize, bg: [Math.round(root.bgStart), Math.round(root.bgLength)], hidden: root.dockHidden, emptySpace: root.emptySpace, manualHidden: root.manualHidden, fullscreen: root.fullscreenActive, overFullscreen: root.overFullscreen, dark: root.dark, hover: root.hoverIndex, menu: root.menuOpen, stack: root.stackOpen, drag: root.dragging, rows: rows })
     }
     // Test hooks: drive the pointer without a real mouse.
     function probeHover(x: string, y: string): string { root.hovering = true; root.moveTo(Number(x), Number(y), false, 0); root.relayout(); return root.state ? "ok" : "ok" }
@@ -1468,8 +1483,8 @@ Item {
     onTriggered: { var la = root.settings.loginApps || []; for (var i = 0; i < la.length; i++) { var e = root.lookupEntry(la[i]); if (e) try { e.execute() } catch (err) {} } }
   }
   Timer { id: startup; interval: 400; onTriggered: { Hyprland.refreshToplevels(); root.rebuild(); trashProc.running = true; trashWatch.running = true; loginCheck.running = true } }
-  Component.onCompleted: { if (autoHide) { hideOffset = 1; dockHidden = true }; startup.start() }
-  onSettingsLoadedChanged: if (settingsLoaded) { position = String(settings.position || "bottom"); if (autoHide) { hideOffset = 1; dockHidden = true } }
+  Component.onCompleted: { if (autoHide && !emptySpace) { hideOffset = 1; dockHidden = true }; startup.start() }
+  onSettingsLoadedChanged: if (settingsLoaded) { position = String(settings.position || "bottom"); if (autoHide && !emptySpace) { hideOffset = 1; dockHidden = true } }
 
   // ======================================================== windows
   PanelWindow {
@@ -1663,7 +1678,9 @@ Item {
     WlrLayershell.layer: root.overFullscreen ? WlrLayer.Overlay : WlrLayer.Top
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Normal
-    exclusiveZone: root.autoHide || root.manualHidden ? 0 : Math.round(root.bgThickness)
+    // Nothing is reserved before the settings are read: a zone that is taken
+    // back during startup stays behind in Hyprland as dead space under the windows.
+    exclusiveZone: !root.settingsLoaded || root.autoHide || root.manualHidden ? 0 : Math.round(root.bgThickness)
     anchors {
       bottom: root.position === "bottom" || !root.horizontal
       top: !root.horizontal

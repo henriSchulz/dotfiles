@@ -39,6 +39,22 @@ Item {
   // killing the entire shell. Hidden panels stay mapped but park off-screen
   // without an exclusion zone; updated by the FileView watcher further down.
   property bool barHidden: false
+  // Hyprland reports `hasFullscreen` for a maximized window (Super+Alt+F) too,
+  // but only a real fullscreen (Super+F) covers the bar. The mode is only in
+  // the window's own IPC object, so that is refreshed whenever it changes.
+  function coveredByFullscreen(workspace) {
+    if (!workspace || workspace.hasFullscreen !== true) return false
+    var all = Hyprland.toplevels.values
+    for (var i = 0; i < all.length; i++) {
+      var o = all[i].lastIpcObject
+      if (o && o.fullscreen === 2 && o.workspace && o.workspace.id === workspace.id) return true
+    }
+    return false
+  }
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) { if (event.name === "fullscreen") Hyprland.refreshToplevels() }
+  }
   property string home: Quickshell.env("HOME")
   property string stateHome: home + "/.local/state"
   property string omarchyConfigDir: home + "/.config/omarchy"
@@ -603,7 +619,7 @@ Item {
     return source ? Util.fileUrl(source) : ""
   }
 
-  Component.onCompleted: applyBarConfig()
+  Component.onCompleted: { applyBarConfig(); Hyprland.refreshToplevels() }
 
   // Revealing the indicators widens their section, which can slide a neighbour
   // under a stationary pointer. Collapsing on that un-hover would move it back
@@ -1044,8 +1060,7 @@ Item {
     // popout is open. Over a fullscreen window this needs the overlay layer —
     // Hyprland draws "top" layers underneath fullscreen windows.
     readonly property var hyprMonitor: Hyprland.monitorFor(barWindow.screen)
-    readonly property bool fullscreenHere: hyprMonitor && hyprMonitor.activeWorkspace
-      ? hyprMonitor.activeWorkspace.hasFullscreen === true : false
+    readonly property bool fullscreenHere: root.coveredByFullscreen(hyprMonitor ? hyprMonitor.activeWorkspace : null)
     readonly property bool peekMode: root.barHidden || fullscreenHere
     property bool peeked: false
     readonly property bool faceShown: !peekMode || peeked

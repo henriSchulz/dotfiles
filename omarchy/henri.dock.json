@@ -7,7 +7,7 @@
   "minimizeEffect": "genie",
   "minimizeToAppIcon": false,
   "animateOpeningApps": true,
-  "autoHide": false,
+  "autoHide": true,
   "autoHideDelay": 200,
   "autoHideDuration": 350,
   "showIndicators": true,
