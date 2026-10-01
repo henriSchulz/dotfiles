@@ -2,7 +2,7 @@
 Type=Application
 Name=Markdown Viewer
 GenericName=Markdown Viewer
-Comment=Zeigt Markdown vollständig an – Obsidian-Syntax, Mathe, Mermaid, Code
+Comment=Shows Markdown in full – Obsidian syntax, math, Mermaid, code
 Exec=mdview %F
 Icon=mdview
 Terminal=false

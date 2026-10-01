@@ -259,7 +259,7 @@ class ViewerWindow(Gtk.ApplicationWindow):
                "font-src file: data:; media-src file: https: http:")
         scripts = "".join(f'<script nonce="{nonce}" src="{a}/{s}"></script>' for s in SCRIPTS)
         html = (
-            "<!doctype html><html lang='de'><head><meta charset='utf-8'>"
+            "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta http-equiv='Content-Security-Policy' content=\"{csp}\">"
             f"<style id='henri-ui'>{self.app.motion_css}</style>"
             f"<style id='theme'>{theme_css(self.app.theme)}</style>"
@@ -360,9 +360,9 @@ class ViewerWindow(Gtk.ApplicationWindow):
             text = read_text(self.path)
             error = None
         except FileNotFoundError:
-            text, error = "", f"Datei nicht gefunden: {self.path}"
+            text, error = "", f"File not found: {self.path}"
         except OSError as e:
-            text, error = "", f"Datei kann nicht gelesen werden: {e.strerror}"
+            text, error = "", f"Can't read file: {e.strerror}"
         payload = {
             "text": text,
             "name": self.path.name,
@@ -469,7 +469,7 @@ class ViewerWindow(Gtk.ApplicationWindow):
                 self.js("MdView.scrollToFragment", frag, True)
             return
         if not p.exists():
-            self.js("MdView.toast", f"Nicht gefunden: {p.name}")
+            self.js("MdView.toast", f"Not found: {p.name}")
         elif p.is_file() and p.suffix.lower() in MD_EXT:
             self.open_path(p, frag)
         else:
@@ -479,7 +479,7 @@ class ViewerWindow(Gtk.ApplicationWindow):
         heading = target.split("#", 1)[1] if "#" in target else None
         p = self.resolver.resolve(target) if self.resolver else None
         if not p:
-            self.js("MdView.toast", f"Notiz „{target.split('#')[0]}“ existiert nicht")
+            self.js("MdView.toast", f"Note “{target.split('#')[0]}” doesn't exist")
         elif file_kind(p) == "md":
             self.open_path(p, heading)
         else:
@@ -504,7 +504,7 @@ class ViewerWindow(Gtk.ApplicationWindow):
             with open(self.path, "w", encoding="utf-8", newline="") as f:
                 f.write("\n".join(lines))
         except OSError as e:
-            self.js("MdView.toast", f"Speichern fehlgeschlagen: {e.strerror}")
+            self.js("MdView.toast", f"Couldn't save: {e.strerror}")
             self.render(keep_scroll=True)
 
     def edit(self):
@@ -534,8 +534,8 @@ class ViewerWindow(Gtk.ApplicationWindow):
         self.open_path(src.pop(), push=False)
 
     def choose_file(self):
-        dlg = Gtk.FileChooserNative.new("Markdown öffnen", self, Gtk.FileChooserAction.OPEN,
-                                        "Öffnen", "Abbrechen")
+        dlg = Gtk.FileChooserNative.new("Open Markdown", self, Gtk.FileChooserAction.OPEN,
+                                        "Open", "Cancel")
         flt = Gtk.FileFilter()
         flt.set_name("Markdown")
         flt.add_mime_type("text/markdown")

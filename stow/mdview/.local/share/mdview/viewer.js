@@ -324,7 +324,7 @@
       if (t.map && block && !env.depth) t.attrSet("data-line", t.map[0] + (env.lineOffset || 0));
       if (t.type !== "heading_open") continue;
       const text = inlineText(state.tokens[i + 1].children);
-      let slug = slugify(text) || "abschnitt";
+      let slug = slugify(text) || "section";
       const n = slugs.get(slug) || 0;
       slugs.set(slug, n + 1);
       if (n) slug += "-" + n;
@@ -353,11 +353,11 @@
     }
     return `<div class="code-block"${lineAttr(t)}><div class="code-tools">` +
       (lang ? `<span class="code-lang">${esc(lang)}</span>` : "") +
-      `<button class="btn code-copy" type="button" title="Code kopieren">Kopieren</button></div>` +
+      `<button class="btn code-copy" type="button" title="Copy code">Copy</button></div>` +
       `<pre><code class="hljs${lang ? " language-" + esc(lang) : ""}">${code}</code></pre></div>`;
   };
   md.renderer.rules.code_block = (toks, idx) =>
-    `<div class="code-block"${lineAttr(toks[idx])}><div class="code-tools"><button class="btn code-copy" type="button" title="Code kopieren">Kopieren</button></div><pre><code class="hljs">${esc(toks[idx].content)}</code></pre></div>`;
+    `<div class="code-block"${lineAttr(toks[idx])}><div class="code-tools"><button class="btn code-copy" type="button" title="Copy code">Copy</button></div><pre><code class="hljs">${esc(toks[idx].content)}</code></pre></div>`;
   md.renderer.rules.table_open = (t, i, o, _e, self) => '<div class="table-wrap">' + self.renderToken(t, i, o);
   md.renderer.rules.table_close = (t, i, o, _e, self) => self.renderToken(t, i, o) + "</div>";
   const defaultLinkOpen = md.renderer.rules.link_open || ((t, i, o, _e, self) => self.renderToken(t, i, o));
@@ -390,21 +390,21 @@
       ? `<span class="tag">#${esc(String(v).replace(/^#/, ""))}</span>`
       : `<span class="chip">${md.renderInline(String(v), env)}</span>`;
     const value = (k, v) => {
-      if (v == null || v === "") return '<span class="prop-empty">Leer</span>';
+      if (v == null || v === "") return '<span class="prop-empty">Empty</span>';
       if (Array.isArray(v)) return v.map((x) => chip(k, Array.isArray(x) ? `[[${x.flat().join("")}]]` : x)).join("");
       if (typeof v === "boolean") return `<input type="checkbox" class="task" disabled${v ? " checked" : ""}>`;
       if (v instanceof Date) {
         const dateOnly = v.getUTCHours() === 0 && v.getUTCMinutes() === 0;
         return esc(dateOnly
-          ? v.toLocaleDateString("de-DE", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" })
-          : v.toLocaleString("de-DE", { dateStyle: "long", timeStyle: "short" }));
+          ? v.toLocaleDateString(undefined, { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" })
+          : v.toLocaleString(undefined, { dateStyle: "long", timeStyle: "short" }));
       }
       if (typeof v === "object") return `<code>${esc(JSON.stringify(v))}</code>`;
       if (/^(tags?|aliases)$/i.test(k)) return String(v).split(/[,\s]+/).filter(Boolean).map((x) => chip(k, x)).join("");
       return md.renderInline(String(v), env);
     };
     const rows = keys.map((k) => `<tr><th>${esc(k)}</th><td>${value(k, props[k])}</td></tr>`).join("");
-    return `<details class="props" open><summary><span class="callout-fold">${ICON.chevron}</span>Eigenschaften</summary><table>${rows}</table></details>`;
+    return `<details class="props" open><summary><span class="callout-fold">${ICON.chevron}</span>Properties</summary><table>${rows}</table></details>`;
   }
 
   // ------------------------------------------------------------ rendering
@@ -427,7 +427,7 @@
     const env = { lineOffset: fm.offset, links: p.links || {}, outline: [], depth: 0 };
     let html = md.render(stripComments(fm.body), env);
     if (fm.props) html = renderProps(fm.props, { links: env.links, depth: 1 }) + html;
-    if (!html.trim()) html = `<div class="empty-state"><p>Diese Datei ist leer.</p></div>`;
+    if (!html.trim()) html = `<div class="empty-state"><p>This file is empty.</p></div>`;
     content.innerHTML = html;
     outline = env.outline;
     if (outlineOpen()) buildOutline();
@@ -476,7 +476,7 @@
   }
   function scrollToFragment(frag, smooth = true) {
     const el = findTarget(frag);
-    if (!el) { if (smooth) toast("Abschnitt nicht gefunden"); return; }
+    if (!el) { if (smooth) toast("Section not found"); return; }
     el.scrollIntoView({ behavior: smooth && !reducedMotion() ? "smooth" : "instant", block: "start" });
     el.classList.remove("flash");
     void el.offsetWidth;
@@ -494,7 +494,7 @@
       s.nonce = NONCE;
       s.src = ASSETS + "/vendor/mermaid.min.js";
       s.onload = resolve;
-      s.onerror = () => { mermaidLoad = null; reject(new Error("mermaid.min.js fehlt")); };
+      s.onerror = () => { mermaidLoad = null; reject(new Error("mermaid.min.js missing")); };
       document.head.appendChild(s);
     }));
   }
@@ -559,7 +559,7 @@
         } catch (e) {
           document.getElementById("d" + id)?.remove();
           document.getElementById(id)?.remove();
-          out = `<div class="mermaid-error"><strong>Mermaid-Fehler</strong><pre>${esc(e.message || e)}</pre></div>`;
+          out = `<div class="mermaid-error"><strong>Mermaid error</strong><pre>${esc(e.message || e)}</pre></div>`;
         }
         if (gen !== generation) return;
       }
@@ -582,9 +582,9 @@
   const toolbar = document.createElement("nav");
   toolbar.id = "toolbar";
   toolbar.innerHTML =
-    `<button class="tb" data-act="outline" title="Gliederung (Strg+Umschalt+O)" aria-label="Gliederung">${ICON.list}</button>` +
-    `<button class="tb" data-act="find" title="Suchen (Strg+F)" aria-label="Suchen">${ICON.search}</button>` +
-    `<button class="tb" data-act="edit" title="Im Editor öffnen (Strg+E)" aria-label="Bearbeiten">${ICON.pencil}</button>`;
+    `<button class="tb" data-act="outline" title="Outline (Ctrl+Shift+O)" aria-label="Outline">${ICON.list}</button>` +
+    `<button class="tb" data-act="find" title="Find (Ctrl+F)" aria-label="Find">${ICON.search}</button>` +
+    `<button class="tb" data-act="edit" title="Open in editor (Ctrl+E)" aria-label="Edit">${ICON.pencil}</button>`;
   document.body.appendChild(toolbar);
 
   const outlinePop = document.createElement("div");
@@ -601,11 +601,11 @@
   findBar.style.setProperty("--origin", "top right");
   findBar.innerHTML =
     `<span class="find-icon">${ICON.search}</span>` +
-    `<input id="find-input" type="search" placeholder="Suchen" spellcheck="false" autocomplete="off">` +
+    `<input id="find-input" type="search" placeholder="Find" spellcheck="false" autocomplete="off">` +
     `<span id="find-count" aria-live="polite"></span>` +
-    `<button class="tb" data-act="prev" title="Vorheriger Treffer (Umschalt+Enter)" aria-label="Vorheriger Treffer">${ICON.up}</button>` +
-    `<button class="tb" data-act="next" title="Nächster Treffer (Enter)" aria-label="Nächster Treffer">${ICON.down}</button>` +
-    `<button class="tb" data-act="closefind" title="Schließen (Esc)" aria-label="Suche schließen">${ICON.x}</button>`;
+    `<button class="tb" data-act="prev" title="Previous match (Shift+Enter)" aria-label="Previous match">${ICON.up}</button>` +
+    `<button class="tb" data-act="next" title="Next match (Enter)" aria-label="Next match">${ICON.down}</button>` +
+    `<button class="tb" data-act="closefind" title="Close (Esc)" aria-label="Close find">${ICON.x}</button>`;
   document.body.appendChild(findBar);
   const findInput = findBar.querySelector("#find-input");
   const findCount = findBar.querySelector("#find-count");
@@ -640,7 +640,7 @@
   let hl = -1;
   function buildOutline() {
     if (!outline.length) {
-      outlinePop.innerHTML = '<div class="menu-empty">Keine Überschriften</div>';
+      outlinePop.innerHTML = '<div class="menu-empty">No headings</div>';
       return;
     }
     const minLevel = Math.min(...outline.map((o) => o.level));
@@ -729,7 +729,7 @@
       }
     }
     if (!hits.length) {
-      findCount.textContent = "Keine Treffer";
+      findCount.textContent = "No matches";
       findBar.classList.add("no-hits");
       return;
     }
@@ -743,7 +743,7 @@
     hitIdx = (i + hits.length) % hits.length;
     const r = hits[hitIdx];
     if (canHighlight) CSS.highlights.set("find-current", new Highlight(r));
-    findCount.textContent = `${hitIdx + 1} von ${hits.length}`;
+    findCount.textContent = `${hitIdx + 1} of ${hits.length}`;
     if (!scroll) return;
     const rect = r.getBoundingClientRect();
     if (rect.top < 80 || rect.bottom > innerHeight - 40) {
@@ -823,9 +823,9 @@
     const copy = e.target.closest(".code-copy");
     if (copy) {
       post("copy", { text: copy.closest(".code-block").querySelector("code").textContent });
-      copy.textContent = "Kopiert";
+      copy.textContent = "Copied";
       copy.classList.add("done");
-      setTimeout(() => { copy.textContent = "Kopieren"; copy.classList.remove("done"); }, 1400);
+      setTimeout(() => { copy.textContent = "Copy"; copy.classList.remove("done"); }, 1400);
       return;
     }
     const a = e.target.closest("a");
