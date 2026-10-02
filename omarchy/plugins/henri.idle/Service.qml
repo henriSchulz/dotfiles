@@ -33,6 +33,10 @@ Item {
   readonly property bool onBattery: UPower.onBattery
   readonly property int displayOffSeconds: secondsFromConfig(onBattery ? idleConfig.displayOffBattery : idleConfig.displayOffAC, 0)
   property bool displayOffThisCycle: false
+  // Sleep when inactive: idle.suspendBattery / idle.suspendAC in seconds,
+  // 0 = never, by power source like display off. Skipped while an SSH session
+  // is open: asleep the machine is unreachable and only the power key wakes it.
+  readonly property int suspendSeconds: secondsFromConfig(onBattery ? idleConfig.suspendBattery : idleConfig.suspendAC, 0)
 
   property bool stayAwake: false
   property bool stayAwakeStateLoaded: false
@@ -192,6 +196,12 @@ Item {
     }
   }
 
+  function handleSuspendIdle() {
+    if (!suspendMonitor.isIdle) return
+    if (!root.idleEnabled || root.suspendSeconds <= 0) return
+    runProcess(suspendProcess, "suspend", "if ss -Htn state established '( sport = :22 )' | grep -q .; then exit 3; fi; systemctl suspend")
+  }
+
   function handleIdleChanged() {
     logEvent("idle-monitor", idleMonitor.isIdle ? "idle" : "active")
     if (!root.idleEnabled) return
@@ -217,6 +227,7 @@ Item {
       onBattery: root.onBattery,
       displayOff: root.displayOffSeconds,
       displayOffActive: root.displayOffThisCycle,
+      suspend: root.suspendSeconds,
       timers: {
         screensaver: screensaverTimer.running,
         lock: lockTimer.running,
@@ -289,6 +300,14 @@ Item {
     onIsIdleChanged: root.handleDisplayOffIdle()
   }
 
+  IdleMonitor {
+    id: suspendMonitor
+    enabled: root.idleEnabled && root.suspendSeconds > 0
+    timeout: Math.max(1, root.suspendSeconds)
+    respectInhibitors: true
+    onIsIdleChanged: root.handleSuspendIdle()
+  }
+
   Timer {
     id: screensaverTimer
     interval: root.screensaverDelaySeconds * 1000
@@ -334,6 +353,11 @@ Item {
   Process {
     id: displayOnProcess
     onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "display-on exitCode=" + exitCode + " status=" + exitStatus) }
+  }
+  Process {
+    id: suspendProcess
+    // exit code 3: an SSH session was open, nothing done
+    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "suspend exitCode=" + exitCode + " status=" + exitStatus) }
   }
   Process {
     id: wakeProcess

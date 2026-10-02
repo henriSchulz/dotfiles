@@ -43,7 +43,8 @@ done
 #   henri.idle  — clone of omarchy.idle, drives omarchy-screensaver-themed
 #                 (that script comes from the `bin` stow package, step 20);
 #                 also turns the displays off after idle.displayOffBattery /
-#                 idle.displayOffAC seconds, by UPower's power source
+#                 idle.displayOffAC seconds, by UPower's power source, and
+#                 suspends after idle.suspendBattery / idle.suspendAC
 #   henri.lock  — clone of omarchy.lock, stock lock screen plus the
 #                 "Show message when locked" line (shell.json lock.message)
 #   henri.bar   — clone of omarchy.bar: translucent macOS-style menu bar

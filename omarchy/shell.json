@@ -57,7 +57,8 @@
   ],
   "idle": {
     "lock": 600,
-    "screensaver": 300
+    "screensaver": 300,
+    "suspendBattery": 1800
   },
   "plugins": [
     {
