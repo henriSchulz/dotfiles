@@ -52,6 +52,11 @@ signal-desktop
 bitwarden-cli
 keepass
 
+# mdview (own repo, install/28): GTK 3 + WebKit from Python. Both are on a
+# stock install only as dependencies of other packages.
+python-gobject
+webkit2gtk-4.1
+
 # Fonts. The SF Symbols fallback font is NOT here and never in this repo —
 # it is not redistributable. See MANUAL-STEPS.md.
 inter-font

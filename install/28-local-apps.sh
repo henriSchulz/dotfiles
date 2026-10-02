@@ -15,6 +15,7 @@
 # Each project owns its own installer — this step only clones and calls them:
 #   finder     bin/finder-install   desktop entry + icon, default file manager; runs from the checkout
 #   settings   bin/settings-install  QML tree, launcher, entry, icon into ~/.local
+#   mdview     bin/mdview-install    launcher, desktop entry + icon, default app for Markdown; runs from the checkout
 #   hyprswipe  scripts/install.sh    builds against the installed Hyprland headers
 #   menubar    none — a web component, only ever built in the checkout (npm run build)
 #   akku-test  none — install/94 enables the service that runs hintergrund.py
@@ -32,6 +33,7 @@ run mkdir -p "$projects"
 repos=(
   "finder          henriSchulz/finder          bin/finder-install"
   "settings        henriSchulz/settings        bin/settings-install"
+  "mdview          henriSchulz/mdview          bin/mdview-install"
   "hyprswipe       henriSchulz/hyprswipe       scripts/install.sh"
   "menubar         henriSchulz/menubar         -"
   "akku-test       henriSchulz/akku-test       -"

@@ -159,7 +159,7 @@ install/
   lib.sh                    logging, DRY_RUN, stow-conflict handling
   10-packages.sh            yay -S --noconfirm --needed
   20-stow.sh                symlink stow/ into $HOME
-  25-default-apps.sh        default apps per MIME type (Markdown → mdview)
+  28-local-apps.sh          clone my own apps (finder, settings, mdview, hyprswipe …) and run their installers
   30-omarchy-plugins.sh     re-add upstream plugins; sync the henri.* plugins
   40-omarchy-themes.sh      install themes, place wallpaper, apply theme
   50-omarchy-config.sh      copy keystroke/dock settings into place
