@@ -2209,6 +2209,7 @@ Item {
       if (row.isDir) {
         rows.push(root.sec(root.act("Open", "open", function() { root.finishWith(function() { root.openPath(path) }) }, "in Files"), "open"))
         rows.push(root.sec(root.act("Open With…", "apps", null, "", function() { root.pushPage(root.openWithPage(path)) }), "open"))
+        rows.push(root.sec(root.act("Open in Markdown Viewer", "doc", function() { root.finishWith(function() { root.openWith("mdview", path) }) }), "open"))
         rows.push(root.sec(root.act("Open in Terminal", "terminal", function() { root.finishWith(function() { root.terminalAt(path) }) }), "open"))
         rows.push(root.sec(root.act("Browse Folder", "folder", function() { root.closePages(); root.setFilter(" " + pretty + "/") }, "in Spotlight"), "open"))
       } else {
