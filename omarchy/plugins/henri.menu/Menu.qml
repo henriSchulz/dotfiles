@@ -2161,6 +2161,18 @@ Item {
     if (id.slice(-8) === ".desktop") id = id.slice(0, -8)
     Quickshell.execDetached(["uwsm-app", "--", "gtk-launch", id + ".desktop", String(path)])
   }
+  // LocalSend takes files and folders as arguments and hands them to the
+  // instance that is already running (tray), which then shows its device list.
+  function hasLocalSend() {
+    for (var i = 0; i < root.itemOrder.length; i++) {
+      var entry = root.item(root.itemOrder[i])
+      if (entry && entry.kind === "app" && /localsend/i.test(String(entry.appId || ""))) return true
+    }
+    return false
+  }
+  function sendWithLocalSend(path) {
+    Quickshell.execDetached(["uwsm-app", "--", "localsend", String(path)])
+  }
 
   // Glyphs for the action rows (SF Symbols, see memory sf-symbols-codepoints).
   readonly property var glyph: ({
@@ -2176,6 +2188,7 @@ Item {
     apps: Apple.sf(0x1001F7),      // square.grid.2x2
     remove: Apple.sf(0x100184),    // xmark
     terminal: Apple.sf(0x100194),  // command
+    send: Apple.sf(0x100319),      // dot.radiowaves.left.and.right
     run: Apple.sf(0x1002E5)        // bolt
   })
   function act(label, glyphKey, run, detail, more, section, danger) {
@@ -2184,7 +2197,7 @@ Item {
   }
   // Groups the rows of an actions page: what the row does decides its section.
   function grouped(rows) {
-    var order = ["open", "copy", "move", "more"]
+    var order = ["open", "share", "copy", "move", "more"]
     var out = []
     for (var g = 0; g < order.length; g++)
       for (var i = 0; i < rows.length; i++) if (rows[i].section === order[g]) out.push(rows[i])
@@ -2192,7 +2205,7 @@ Item {
     return out
   }
   function sectionTitle(section) {
-    switch (section) { case "open": return "Open"; case "copy": return "Copy"; case "move": return "Move"; case "more": return "More"; default: return "" }
+    switch (section) { case "open": return "Open"; case "share": return "Share"; case "copy": return "Copy"; case "move": return "Move"; case "more": return "More"; default: return "" }
   }
   function webAction(text) {
     var q = String(text || "").trim()
@@ -2217,6 +2230,8 @@ Item {
         rows.push(root.sec(root.act("Open With…", "apps", null, "", function() { root.pushPage(root.openWithPage(path)) }), "open"))
       }
       rows.push(root.sec(root.act("Show in Files", "folder", function() { root.finishWith(function() { root.openPath(parent) }) }, root.prettyPath(parent)), "open"))
+      if (root.hasLocalSend())
+        rows.push(root.sec(root.act("Send with LocalSend", "send", function() { root.finishWith(function() { root.sendWithLocalSend(path) }) }), "share"))
       rows.push(root.sec(root.act("Get Info", "info", null, "", function() { root.pushPage(root.infoPageFor(row)) }), "more"))
       rows.push(root.sec(root.act("Copy Path", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(path) }) }, pretty), "copy"))
       rows.push(root.sec(root.act(row.isDir ? "Copy Folder" : "Copy File", "copy", function() { root.finishWith(function() { root.copyFileToClipboard(path) }) }, "for pasting in Files"), "copy"))
