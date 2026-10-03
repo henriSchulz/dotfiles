@@ -192,7 +192,8 @@ end
 -- No effects, switched from Control Center → Experiments (same helper, flag
 -- no-effects). For the M1 power measurements in ~/Projects/m1-power: blur,
 -- shadows and Hyprland's own animations off. Blur off also takes the glass
--- from the bar, dock and panels; the shell plugins still animate themselves.
+-- from the bar, dock and panels, so the helper sets noEffects in henri-ui's
+-- Prefs.js and the menus turn solid; the shell plugins still animate themselves.
 local no_effects = io.open((os.getenv("HOME") or "") .. "/.local/state/henri/no-effects", "r")
 if no_effects then
   no_effects:close()

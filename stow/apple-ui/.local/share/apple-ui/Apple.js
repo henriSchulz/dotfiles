@@ -167,6 +167,7 @@ var light = {
   inkSecondary: secondaryLabel,
   inkMuted: secondaryLabel,
   sheet: "#73ffffff",          // Weiß α 0.45 (+ Compositor-Blur)
+  sheetOpaque: "#ffececec",    // „Transparenz reduzieren“ / kein Blur
   tile: "#66ffffff",           // Weiß α 0.40
   tileHover: "#8cffffff",      // Weiß α 0.55
   hairline: separator,
@@ -192,6 +193,7 @@ var darkGlass = {
   inkSecondary: "#ffffffff",  // gemessen: SSID-Zeile ist reines Weiß, Hierarchie nur über Gewicht
   inkMuted: "#8cffffff",
   sheet: "#59292929",          // Grau 0.16 α 0.35 (über ignore_alpha 0.3, sonst kein Blur)
+  sheetOpaque: "#ff2a2a2a",
   tile: "#26ffffff",           // Weiß α 0.15 (gemessen)
   tileHover: "#40ffffff",      // Weiß α 0.25
   hairline: "#47ffffff",       // Weiß α 0.28 (gemessen ~0.5 auf 0.5 pt)

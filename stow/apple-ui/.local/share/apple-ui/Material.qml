@@ -1,4 +1,5 @@
 import QtQuick
+import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
 import "Apple.js" as Apple
 
 // Palette-Objekt für ein Plugin: `dark` wählt zwischen dunklem (gemessenem)
@@ -7,6 +8,8 @@ import "Apple.js" as Apple
 //
 //   AUi.Material { id: mat; dark: backdrop.dark }
 //   Item { property var appleMaterial: mat; … }
+//
+// Mit Motion.glass = false (Transparenz reduzieren, No effects) ist das Blatt deckend.
 QtObject {
   property bool dark: false
   readonly property var p: dark ? Apple.darkGlass : Apple.light
@@ -14,7 +17,7 @@ QtObject {
   readonly property color ink: p.ink
   readonly property color inkSecondary: p.inkSecondary
   readonly property color inkMuted: p.inkMuted
-  readonly property color sheet: p.sheet
+  readonly property color sheet: Motion.glass ? p.sheet : p.sheetOpaque
   readonly property color tile: p.tile
   readonly property color tileHover: p.tileHover
   readonly property color hairline: p.hairline

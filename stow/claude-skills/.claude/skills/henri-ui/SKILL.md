@@ -75,6 +75,9 @@ das schreibt **System Settings** (Bedienungshilfen › Anzeige › Bewegung redu
 Transparenz reduzieren) und startet danach die Shell neu. `Prefs.js` ist
 Maschinenzustand — **nie von Hand ändern, nie committen** (gitignored); die Defaults
 stehen in `Prefs.default.js`, daraus wird ein fehlendes `Prefs.js` angelegt.
+Dritter Schalter in `Prefs.js`: `noEffects` — den schreibt `henri-render-power effects on|off`
+(Control Center › Experiments › No effects) und startet die Shell neu; solange der
+Compositor-Blur aus ist, ist `Motion.glass` ebenfalls `false` (deckende Menüs).
 Vendored Kopien (henri-ui-sync) bekommen nie den Zustand dieser Maschine, sondern
 immer die Defaults. `motion.css`/`gtk.css` folgen `Prefs.js` nicht — Web/GTK sehen nur
 `prefers-reduced-motion` bzw. `gtk-enable-animations` (GNOME `enable-animations`, das
