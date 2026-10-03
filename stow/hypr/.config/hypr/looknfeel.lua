@@ -172,6 +172,15 @@ hl.window_rule({ match = { class = "org.gnome.NautilusPreviewer" }, float = true
 -- the global 12 the active border cut across the card's corners, so the
 -- border follows the card's own radius.
 hl.window_rule({ match = { class = "de.henri.Finder" }, rounding = 20 })
+-- Finder as another app's Open/Save panel (finder_app/picker.py): the one
+-- Finder window that floats, centred, at the panel's own size. It is mapped
+-- with this title and takes the asking app's title afterwards.
+hl.window_rule({
+  match = { class = "de.henri.Finder", initial_title = "^Finder Panel$" },
+  float = true,
+  center = true,
+  size = { 1040, 640 },
+})
 
 -- Low-power rendering, switched from Control Center → Experiments
 -- (henri.control-center-v2/system/henri-render-power). The flag file is the
