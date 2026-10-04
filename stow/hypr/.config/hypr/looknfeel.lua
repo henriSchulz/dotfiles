@@ -168,9 +168,11 @@ hl.window_rule({ match = { class = "org.gnome.NautilusPreviewer" }, float = true
 -- rounded card with traffic lights instead of a headerbar. It tiles like any
 -- other window (it used to float, and so popped up over whatever was open);
 -- the window mode "macos" in window-mode.lua still floats it along with
--- everything else. Its card is rounded 20 (apple-ui --apple-win-radius); with
--- the global 12 the active border cut across the card's corners, so the
--- border follows the card's own radius.
+-- everything else. Its card is rounded 20 — Hyprland's maximum; Things'
+-- window radius, the look Finder has since its ui-things-style branch, would
+-- be 26, and Finder caps its own corners to match. With the global 12 the
+-- active border cut across the card's corners, so the border follows the
+-- card's own radius.
 hl.window_rule({ match = { class = "de.henri.Finder" }, rounding = 20 })
 -- Finder as another app's Open/Save panel (finder_app/picker.py): the one
 -- Finder window that floats, centred, at the panel's own size. It is mapped
@@ -182,21 +184,21 @@ hl.window_rule({
   size = { 1040, 640 },
 })
 
--- Finder's Quick Look (finder_app/quicklook.py). The window says by its title
--- who animates it. As "Quick Look" (opening, closing) it is Hyprland's: it
--- grows out of its centre and shrinks back into it, like the Sushi rule above.
--- Once it stands it is "Quick Look: <name>" and glides between preview sizes
--- by resizing itself on every frame; Hyprland's animations are off for that,
--- because windowsMove eases each of those resizes again and the frame lagged
--- behind the content. Regexes match the whole title.
+-- Finder's Quick Look (finder_app/quicklook.py). The window is a clear field
+-- that never changes size; the panel grows, glides between preview sizes and
+-- shrinks away inside it, drawn by Finder itself. So Hyprland adds nothing of
+-- its own: no animation (it would run on top of Finder's), and no shadow,
+-- border, rounding or blur around a field nobody is meant to see.
 hl.window_rule({
-  match = { class = "de.henri.Finder", initial_title = "^Quick Look$" },
+  match = { class = "de.henri.Finder", title = "^Quick Look$" },
   float = true,
-  animation = "popin 10%",
-})
-hl.window_rule({
-  match = { class = "de.henri.Finder", title = "^Quick Look: .*$" },
+  center = true,
   no_anim = true,
+  no_shadow = true,
+  no_blur = true,
+  no_dim = true,
+  border_size = 0,
+  rounding = 0,
 })
 
 -- Low-power rendering, switched from Control Center → Experiments
