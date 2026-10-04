@@ -184,23 +184,6 @@ hl.window_rule({
   size = { 1040, 640 },
 })
 
--- Finder's Quick Look (finder_app/quicklook.py). The window is a clear field
--- that never changes size; the panel grows, glides between preview sizes and
--- shrinks away inside it, drawn by Finder itself. So Hyprland adds nothing of
--- its own: no animation (it would run on top of Finder's), and no shadow,
--- border, rounding or blur around a field nobody is meant to see.
-hl.window_rule({
-  match = { class = "de.henri.Finder", title = "^Quick Look$" },
-  float = true,
-  center = true,
-  no_anim = true,
-  no_shadow = true,
-  no_blur = true,
-  no_dim = true,
-  border_size = 0,
-  rounding = 0,
-})
-
 -- Low-power rendering, switched from Control Center → Experiments
 -- (henri.control-center-v2/system/henri-render-power). The flag file is the
 -- whole state: present = on. Measured 2026-09-26 on the XPS 13: Hyprland alone
