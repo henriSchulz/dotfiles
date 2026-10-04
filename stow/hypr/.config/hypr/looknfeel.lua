@@ -98,6 +98,11 @@ hl.config({ cursor = { enable_hyprcursor = false } })
 hl.env("XCURSOR_THEME", "MacTahoe")
 hl.env("XCURSOR_SIZE", "24")
 
+-- GTK3/GTK4 apps outside a sandbox draw their own file and app dialogs unless
+-- told to ask xdg-desktop-portal, which is where Finder answers (FileChooser,
+-- AppChooser). Without this, "Open Folder" in e.g. mdview is GTK's dialog.
+hl.env("GTK_USE_PORTAL", "1")
+
 -- Eigene Menüleiste (henri.bar): Hintergrund weichzeichnen wie bei macOS.
 hl.layer_rule({ match = { namespace = "omarchy-bar" }, blur = true, ignore_alpha = 0.3 })
 
