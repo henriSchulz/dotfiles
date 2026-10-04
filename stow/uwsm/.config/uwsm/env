@@ -1,0 +1,5 @@
+# Read by uwsm at session start and handed to the systemd user manager, so
+# every app launched from the shell, the dock or a terminal gets it.
+# GTK apps outside a sandbox draw their own file and app dialogs unless told to
+# ask xdg-desktop-portal, where Finder answers (FileChooser, AppChooser).
+export GTK_USE_PORTAL=1
