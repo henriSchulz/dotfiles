@@ -182,6 +182,15 @@ hl.window_rule({
   size = { 1040, 640 },
 })
 
+-- Finder's Quick Look (finder_app/quicklook.py, titled "Quick Look"): like the
+-- Sushi rule above, it grows out of a point and shrinks back into it on
+-- closing, instead of the global 96 % pop-in that reads as no animation at all.
+hl.window_rule({
+  match = { class = "de.henri.Finder", initial_title = "^Quick Look$" },
+  float = true,
+  animation = "popin 10%",
+})
+
 -- Low-power rendering, switched from Control Center → Experiments
 -- (henri.control-center-v2/system/henri-render-power). The flag file is the
 -- whole state: present = on. Measured 2026-09-26 on the XPS 13: Hyprland alone
