@@ -98,6 +98,12 @@ hl.config({ cursor = { enable_hyprcursor = false } })
 hl.env("XCURSOR_THEME", "MacTahoe")
 hl.env("XCURSOR_SIZE", "24")
 
+-- GTK apps outside a sandbox draw their own file and app dialogs unless told to
+-- ask xdg-desktop-portal, where Finder answers. Hyprland starts the apps
+-- (bindings, dock, launcher), so this reaches them even in a session that began
+-- before ~/.config/uwsm/env existed.
+hl.env("GTK_USE_PORTAL", "1")
+
 -- Eigene Menüleiste (henri.bar): Hintergrund weichzeichnen wie bei macOS.
 hl.layer_rule({ match = { namespace = "omarchy-bar" }, blur = true, ignore_alpha = 0.3 })
 
