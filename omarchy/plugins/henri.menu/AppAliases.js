@@ -59,7 +59,7 @@ var DEFAULTS = {
   "libreoffice-draw": ["vector", "diagram", "drawing", "visio", "zeichnen"],
   "libreoffice-base": ["database", "datenbank", "access"],
   "libreoffice-startcenter": ["office", "documents", "dokumente"],
-  "org.gnome.Evince": ["pdf", "document", "dokument", "reader", "viewer", "ebook", "lesen"],
+  "org.gnome.Papers": ["pdf", "document", "dokument", "reader", "viewer", "ebook", "lesen"],
   "calibre-gui": ["ebook", "books", "bücher", "epub", "library"],
 
   // --------------------------------------------------------------- media
