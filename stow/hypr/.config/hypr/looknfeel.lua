@@ -182,13 +182,15 @@ hl.window_rule({
   size = { 1040, 640 },
 })
 
--- Finder's Quick Look (finder_app/quicklook.py, titled "Quick Look"): like the
--- Sushi rule above, it grows out of a point and shrinks back into it on
--- closing, instead of the global 96 % pop-in that reads as no animation at all.
+-- Finder's Quick Look (finder_app/quicklook.py, titled "Quick Look"): the panel
+-- animates itself — it grows out of its centre, glides between preview sizes
+-- and shrinks away, resizing its window on every frame. Hyprland's own
+-- animations have to stay out of it: windowsMove eases every one of those
+-- resizes again, so the frame lagged behind the content and then jumped.
 hl.window_rule({
   match = { class = "de.henri.Finder", initial_title = "^Quick Look$" },
   float = true,
-  animation = "popin 10%",
+  no_anim = true,
 })
 
 -- Low-power rendering, switched from Control Center → Experiments
