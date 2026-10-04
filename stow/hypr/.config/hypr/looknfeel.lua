@@ -184,6 +184,14 @@ hl.window_rule({
   size = { 1040, 640 },
 })
 
+-- Finder's Open With panel (the AppChooser portal): a small floating list.
+hl.window_rule({
+  match = { class = "de.henri.Finder", initial_title = "^Finder Chooser$" },
+  float = true,
+  center = true,
+  size = { 440, 540 },
+})
+
 -- Low-power rendering, switched from Control Center → Experiments
 -- (henri.control-center-v2/system/henri-render-power). The flag file is the
 -- whole state: present = on. Measured 2026-09-26 on the XPS 13: Hyprland alone
