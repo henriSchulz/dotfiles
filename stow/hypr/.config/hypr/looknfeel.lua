@@ -182,14 +182,20 @@ hl.window_rule({
   size = { 1040, 640 },
 })
 
--- Finder's Quick Look (finder_app/quicklook.py, titled "Quick Look"): the panel
--- animates itself — it grows out of its centre, glides between preview sizes
--- and shrinks away, resizing its window on every frame. Hyprland's own
--- animations have to stay out of it: windowsMove eases every one of those
--- resizes again, so the frame lagged behind the content and then jumped.
+-- Finder's Quick Look (finder_app/quicklook.py). The window says by its title
+-- who animates it. As "Quick Look" (opening, closing) it is Hyprland's: it
+-- grows out of its centre and shrinks back into it, like the Sushi rule above.
+-- Once it stands it is "Quick Look: <name>" and glides between preview sizes
+-- by resizing itself on every frame; Hyprland's animations are off for that,
+-- because windowsMove eases each of those resizes again and the frame lagged
+-- behind the content. Regexes match the whole title.
 hl.window_rule({
   match = { class = "de.henri.Finder", initial_title = "^Quick Look$" },
   float = true,
+  animation = "popin 10%",
+})
+hl.window_rule({
+  match = { class = "de.henri.Finder", title = "^Quick Look: .*$" },
   no_anim = true,
 })
 
