@@ -105,8 +105,8 @@ Panel {
     return list
   }
 
-  // ---- Detail pages ("main" | wifi | bluetooth | sound | airpods | hardware |
-  //      experiments)
+  // ---- Detail pages ("main" | wifi | bluetooth | sound | airpods | keyboard |
+  //      hardware | experiments)
   property string page: "main"
   function showPage(name) {
     if (name === "sound" && !sinkPortProc.running) sinkPortProc.running = true
@@ -632,6 +632,15 @@ Panel {
   property string internalMonitor: ""
   property int queuedBrightness: -1
 
+  // ---- Keyboard backlight (henri.kbdlight service: level + turn-off delay).
+  //      Looked up on every open: the service may load after this panel.
+  //      With a backlight its half tile takes Text Size's place next to
+  //      Layout and Text Size moves into the Display fold-out; without one
+  //      the row stays Text Size | Layout.
+  property var kbd: null
+  readonly property bool kbdAvailable: kbd !== null && kbd.available === true
+  function kbdTimeoutLabel(s) { return s === 0 ? "Never" : s < 60 ? s + " s" : (s / 60) + " min" }
+
   // ---- Display settings: text size, scale presets, monitors
   property string focusedMonitor: ""
   property string monitorScale: ""
@@ -700,6 +709,7 @@ Panel {
     brightnessProc.running = true
   }
   function refresh() {
+    kbd = service("henri.kbdlight")
     if (!stateProc.running) stateProc.running = true
     if (!sinkPortProc.running) sinkPortProc.running = true
     if (!localsendProc.running) localsendProc.running = true
@@ -735,7 +745,9 @@ Panel {
     var s = ["wifi", "bluetooth"]
     if (player) s.push("playback")
     s = s.concat(["airdrop", "hardware", "experiments", "qr", "speedtest",
-                  "textsize", "layout", "display", "sound", "plugins"])
+                  kbdAvailable ? "keyboard" : "textsize", "layout", "display"])
+    if (kbdAvailable && displayExpanded) s.push("textsize")
+    s = s.concat(["sound", "plugins"])
     return s
   }
   readonly property string mainFocus: cursorActive && page === "main"
@@ -750,6 +762,7 @@ Panel {
     if (!cursorActive) { cursorActive = true; return }
     var f = mainFocus
     if (f === "display") setBrightness(brightness + dx * 5)
+    else if (f === "keyboard") kbd.setLevel(kbd.level + dx * 0.0625)
     else if (f === "sound") setVolume(volume + dx * 0.05)
     else if (f === "textsize") setTextSizeIndex(textSizeIndex + dx)
     else if (f === "layout") setTilingLayout(dx > 0 ? "scrolling" : "dwindle")
@@ -769,6 +782,7 @@ Panel {
     else if (f === "hardware") showPage("hardware")
     else if (f === "experiments") showPage("experiments")
     else if (f === "display") displayExpanded = !displayExpanded
+    else if (f === "keyboard") showPage("keyboard")
     else if (f === "sound") toggleMute()
     else if (f === "layout") setTilingLayout(tilingLayout === "scrolling" ? "dwindle" : "scrolling")
     else if (f === "qr") openWifiQr()
@@ -803,6 +817,7 @@ Panel {
       heightAnimated = false
       revealTimer.stop()
       displayExpanded = false
+      mainScroll.contentY = 0
       page = "main"
       wifiPasswordFor = ""
       wifiAdvanced = false
@@ -1019,6 +1034,40 @@ Panel {
     }
   }
 
+  // Text size: small A, slider with one stop per size, large A.
+  component TextSizeRow: Item {
+    id: ts
+    height: tsLarge.implicitHeight
+    readonly property int inset: root.pt(32) - root.pt(Apple.labelInset)
+    Text {
+      anchors.verticalCenter: parent.verticalCenter
+      text: "A"
+      color: root.m.ink
+      font.family: root.uiFont
+      font.pixelSize: root.pt(10)
+    }
+    AUi.Slider {
+      x: ts.inset
+      anchors.verticalCenter: parent.verticalCenter
+      width: ts.width - ts.inset - (root.pt(30) - root.pt(Apple.labelInset))
+      minimum: 0
+      maximum: root.textSizeStops.length - 1
+      stops: root.textSizeStops.length
+      value: root.textSizeIndex
+      onReleased: function(v) { root.setTextSizeIndex(v) }
+    }
+    Text {
+      id: tsLarge
+      anchors.right: parent.right
+      anchors.rightMargin: -root.pt(2)
+      anchors.verticalCenter: parent.verticalCenter
+      text: "A"
+      color: root.m.ink
+      font.family: root.uiFont
+      font.pixelSize: root.pt(17)
+    }
+  }
+
   // Volume slider of the default output with a mute glyph (Sound + AirPods pages).
   component VolumeRow: Item {
     width: root.panelWidth
@@ -1151,17 +1200,28 @@ Panel {
         onToChanged: if (!root.heightAnimated) snap(to)
       }
 
-      // ---- Main page (drill-in: 30 % parallax left + fade)
-      Column {
-        id: content
+      // ---- Main page (drill-in: 30 % parallax left + fade). Scrolls once it
+      //      outgrows the screen (small display, Display folded out).
+      Flickable {
+        id: mainScroll
         width: root.panelWidth
-        spacing: root.gap
+        height: pages.height
+        contentHeight: content.implicitHeight
+        interactive: contentHeight > height + 1
+        boundsBehavior: Flickable.DragAndOvershootBounds
+        flickDeceleration: Motion.flickDeceleration
+        maximumFlickVelocity: Motion.maximumFlickVelocity
+        onContentHeightChanged: returnToBounds()
         readonly property bool current: root.page === "main"
         visible: opacity > 0.01
         opacity: current ? 1 : 0
         x: current || Motion.reduceMotion ? 0 : -root.panelWidth * Motion.pageParallax
         Behavior on opacity { NumberAnimation { duration: Motion.slow; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
         Behavior on x { enabled: root.heightAnimated; NumberAnimation { duration: Motion.move(Motion.slow); easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeInOut } }
+      Column {
+        id: content
+        width: root.panelWidth
+        spacing: root.gap
 
         // Row 1: Wi-Fi / Bluetooth stacked | Now Playing
         Row {
@@ -1344,11 +1404,12 @@ Panel {
           }
         }
 
-        // Row 3: Text Size (A … A slider) | Layout (dwindle / scrolling)
+        // Row 3: Keyboard backlight (Text Size without one) | Layout (dwindle / scrolling)
         Row {
           spacing: root.gap
           AUi.Tile {
             revealIndex: 6
+            visible: !root.kbdAvailable
             width: root.half
             height: root.tileH
             hasCursor: root.mainFocus === "textsize"
@@ -1363,30 +1424,58 @@ Panel {
               fontFamily: root.uiFont
               fontSize: root.pt(Apple.subheadline)
             }
-            Text {
+            TextSizeRow {
               x: root.pt(Apple.labelInset); y: root.pt(Apple.sliderY) - height / 2
-              text: "A"
-              color: root.m.ink
-              font.family: root.uiFont
-              font.pixelSize: root.pt(10)
+              width: parent.width - x * 2
+            }
+          }
+          // Keyboard backlight: level here, the title opens the page with the
+          // turn-off delay.
+          AUi.Tile {
+            revealIndex: 6
+            visible: root.kbdAvailable
+            width: root.half
+            height: root.tileH
+            hasCursor: root.mainFocus === "keyboard"
+            Item {
+              x: root.pt(Apple.labelInset); y: root.pt(Apple.labelTop)
+              width: parent.width - x * 2
+              height: kbdTitle.implicitHeight
+              AUi.Title { id: kbdTitle; text: "Keyboard" }
+              Text {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.sf(0x10018A)
+                color: root.m.inkSecondary
+                font.family: root.symbolFont
+                font.pixelSize: root.pt(12)
+              }
+              MouseArea {
+                anchors.fill: parent
+                anchors.margins: -root.pt(4)
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.showPage("keyboard")
+              }
+            }
+            AUi.Glyph {
+              x: root.pt(Apple.labelInset) - root.pt(1); y: root.pt(Apple.sliderY) - height / 2
+              text: root.sf(0x1001ED)
+              size: root.ptr(13)
+              MouseArea { anchors.fill: parent; anchors.margins: -root.pt(4); cursorShape: Qt.PointingHandCursor; onClicked: root.kbd.setLevel(root.kbd.level - 0.0625) }
             }
             AUi.Slider {
-              x: root.pt(32); y: root.pt(Apple.sliderY) - height / 2
-              width: root.half - root.pt(32) - root.pt(30)
-              minimum: 0
-              maximum: root.textSizeStops.length - 1
-              stops: root.textSizeStops.length
-              value: root.textSizeIndex
-              onReleased: function(v) { root.setTextSizeIndex(v) }
+              x: root.pt(35); y: root.pt(Apple.sliderY) - height / 2
+              width: root.half - root.pt(35) - root.pt(36)
+              value: root.kbdAvailable ? root.kbd.level : 0
+              onMoved: function(v) { root.kbd.setLevel(v) }
             }
-            Text {
+            AUi.Glyph {
               anchors.right: parent.right
               anchors.rightMargin: root.pt(Apple.labelInset) - root.pt(2)
               y: root.pt(Apple.sliderY) - height / 2
-              text: "A"
-              color: root.m.ink
-              font.family: root.uiFont
-              font.pixelSize: root.pt(17)
+              text: root.sf(0x1001EE)
+              size: root.ptr(15)
+              MouseArea { anchors.fill: parent; anchors.margins: -root.pt(4); cursorShape: Qt.PointingHandCursor; onClicked: root.kbd.setLevel(root.kbd.level + 0.0625) }
             }
           }
           AUi.Tile {
@@ -1439,6 +1528,25 @@ Panel {
           onLeftGlyphClicked: root.setBrightness(root.brightness - 10)
           onRightGlyphClicked: root.setBrightness(root.brightness + 10)
 
+          AUi.SectionLabel {
+            visible: root.kbdAvailable
+            leftPadding: 0
+            text: "Text size · " + root.textSizeStops[root.textSizeIndex] + " px"
+          }
+          TextSizeRow {
+            visible: root.kbdAvailable
+            width: parent.width
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: -root.pt(6)
+              radius: height / 2
+              color: "transparent"
+              border.width: Math.max(2, root.pt(2))
+              border.color: root.m.cursorRing
+              opacity: root.mainFocus === "textsize" ? 1 : 0
+              Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+            }
+          }
           AUi.SectionLabel {
             visible: root.focusedDisplay !== null
             leftPadding: 0
@@ -1592,6 +1700,7 @@ Panel {
             }
           }
         }
+      }
       }
 
       // ---- Detail pages (slide in from the right)
@@ -2120,6 +2229,69 @@ Panel {
                 onClicked: root.showPage("sound")
               }
             }
+          }
+        }
+
+        // Keyboard backlight
+        AUi.PageHeader { visible: root.detailPage === "keyboard"; title: "Keyboard"; onBack: root.page = "main" }
+        AUi.Separator { visible: root.detailPage === "keyboard" }
+        Column {
+          visible: root.detailPage === "keyboard"
+          width: root.panelWidth
+          AUi.SectionLabel { text: "Brightness" }
+          Item {
+            width: root.panelWidth
+            height: root.pt(40)
+            AUi.Glyph {
+              id: kbdMin
+              anchors.left: parent.left
+              anchors.leftMargin: root.pt(14)
+              anchors.verticalCenter: parent.verticalCenter
+              width: root.pt(20)
+              text: root.sf(0x1001ED)
+              size: root.ptr(14)
+            }
+            AUi.Slider {
+              anchors.left: kbdMin.right
+              anchors.right: kbdMax.left
+              anchors.leftMargin: root.pt(8)
+              anchors.rightMargin: root.pt(8)
+              anchors.verticalCenter: parent.verticalCenter
+              value: root.kbdAvailable ? root.kbd.level : 0
+              onMoved: function(v) { root.kbd.setLevel(v) }
+            }
+            AUi.Glyph {
+              id: kbdMax
+              anchors.right: parent.right
+              anchors.rightMargin: root.pt(14)
+              anchors.verticalCenter: parent.verticalCenter
+              width: root.pt(20)
+              text: root.sf(0x1001EE)
+              size: root.ptr(16)
+            }
+          }
+          AUi.SectionLabel { text: "Turn off after inactivity" }
+          Row {
+            x: root.pt(12)
+            width: root.panelWidth - root.pt(24)
+            spacing: root.pt(5)
+            Repeater {
+              model: root.kbdAvailable ? root.kbd.timeoutChoices : []
+              delegate: AUi.Capsule {
+                required property int modelData
+                width: Math.floor((parent.width - parent.spacing * 4) / 5)
+                label: root.kbdTimeoutLabel(modelData)
+                selected: root.kbd !== null && root.kbd.timeout === modelData
+                onClicked: root.kbd.setTimeoutSeconds(modelData)
+              }
+            }
+          }
+          AUi.Caption {
+            x: root.pt(12)
+            topPadding: root.pt(8)
+            bottomPadding: root.pt(10)
+            width: root.panelWidth - root.pt(24)
+            text: "The keys go dark when no key has been pressed for this long and light up again with the next press."
           }
         }
 

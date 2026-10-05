@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.kbdlight",
+  "name": "Keyboard Backlight",
+  "version": "1.0.0",
+  "author": "henri",
+  "description": "Keyboard backlight the macOS way: one level set in Control Center, fades out after a while without a key press and back in on the next one.",
+  "kinds": [
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

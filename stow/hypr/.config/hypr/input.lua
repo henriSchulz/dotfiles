@@ -56,11 +56,13 @@
 -- hl.gesture({ fingers = 3, direction = "left", action = function() hl.dispatch(hl.dsp.focus({ direction = "l" })) end })
 -- hl.gesture({ fingers = 3, direction = "right", action = function() hl.dispatch(hl.dsp.focus({ direction = "r" })) end })
 
--- Deutsches Tastaturlayout.
+-- Deutsches Tastaturlayout. Caps Lock ist wieder Caps Lock (mit Lämpchen):
+-- Omarchys Standard macht die Taste zur Compose-Taste und legt Caps Lock auf
+-- beide Shift-Tasten, dann leuchtet das Lämpchen nie. Compose entfällt.
 hl.config({
   input = {
     kb_layout = "de",
-    kb_options = "compose:caps,shift:both_capslock_cancel",
+    kb_options = "",
   },
 })
 
@@ -169,3 +171,18 @@ hl.device({
   tap_and_drag = true,
   drag_lock = 1,
 })
+
+-- Tastaturbeleuchtung (henri.kbdlight): jeder Tastendruck meldet sich als
+-- Custom-Event beim Shell-Dienst, der die Beleuchtung einblendet und seine
+-- Ausschalt-Uhr neu startet. Höchstens ein Event pro Sekunde -- genauer muss
+-- die Uhr nicht sein, und Tippen kostet so nichts. Über Hyprland statt
+-- /dev/input, weil das ohne Gruppe "input" und ohne root geht.
+-- (Die Zeit im Event taugt nicht zum Drosseln: bei send_shortcut steht sie.)
+local kbdlight_last = 0
+hl.on("input.keyboard.key", function(_, _, state)
+  if state ~= 1 then return end
+  local now = os.time()
+  if now == kbdlight_last then return end
+  kbdlight_last = now
+  hl.dispatch(hl.dsp.event("kbdlight key"))
+end)
