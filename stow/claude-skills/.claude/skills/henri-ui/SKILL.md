@@ -337,6 +337,14 @@ nicht nachbauen (`references/qml.md`). In GTK/Web gelten sie als Spezifikation.
   im Panel übernehmen die Filter-Kapseln, aktiv = Chip im Feld. Inline-Vervollständigung in tertiärem Grau, „— Art“ dahinter (Tab übernimmt).
   Jedes Öffnen startet leer — keine gemerkte Suche, Kategorie oder Seite (Henris
   Entscheidung gegen Spec §8).
+- Das Suchfeld ist eine Textzeile wie jede andere (seit 2026-10-06, `QueryEdit.js`, Test
+  `tests/query_edit_test.js`): ←/→ bewegen die Einfügemarke, mit Shift wird ausgewählt, mit
+  Strg wortweise; Pos1/Ende an die Zeilenenden; ⌫/⌦ (Strg: ein Wort), Strg+A alles, Strg+U
+  bis zum Anfang, Strg+C/X/V, Strg+Z und Strg+Shift+Z; Klick setzt die Marke, Ziehen wählt
+  aus, Doppelklick das Wort. Dem Rest der Tasten bleibt, was das Feld nicht braucht: alles bei
+  leerem Feld, → am Textende (Aktionsseite), ⌦ ohne Zeichen dahinter (Zeile löschen), die
+  Pfeile im App-Raster. Das Feld bleibt ein String am `keyCatcher`; ein `TextInput` zeichnet
+  ihn nur (Auswahl, Markenposition, Zeichen unter dem Zeiger) und bekommt nie den Fokus.
 - → auf einem Treffer öffnet die **Aktionsseite** (Drill-in nach §3b: Liste 30 % nach
   links + Fade, Aktionen von rechts, `slow` easeInOut). Sie sieht bewusst anders aus als
   die Suche: Kopf mit Icon, Name und Art des Treffers über einer Haarlinie, darunter

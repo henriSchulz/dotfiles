@@ -8,6 +8,7 @@ import qs.Ui
 import "MenuModel.js" as MenuModel
 import "FuzzySearch.js" as FuzzySearch
 import "AppAliases.js" as AppAliases
+import "QueryEdit.js" as QueryEdit
 import "/usr/share/omarchy/shell/services/AppSearch.js" as AppSearch
 import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion
 import "file:///home/henri/.local/share/henri-ui" as HUi
@@ -1741,26 +1742,104 @@ Item {
     root.scheduleRebuild()
   }
 
-  // The filter is a plain string driven by keyCatcher, not a TextInput, so Qt
-  // gives us no paste of its own — Ctrl+V has to fetch the clipboard itself.
-  // wl-paste asks the compositor and is always current; Qt's own copy only
-  // sees the selection while the surface holds keyboard focus and otherwise
-  // hands back an empty (or stale) string, so it is the fallback, not the
-  // source.
+  // ---------------------------------------------------- the field as text
+  // The filter is a plain string driven by keyCatcher, not a TextInput — the
+  // keys are the rows', the buttons' and the pages' as much as the text's.
+  // What makes it a line of text all the same — a caret that can stand
+  // anywhere, a selection, words, cut and paste, undo — is QueryEdit.js; here
+  // is the state it works on and the one way the text is changed through it.
+  //
+  // The text that is edited is the one the field shows: an action page's own
+  // filter while one is open, and in file search by a leading blank the part
+  // after that blank.
+  property int caretPos: 0      // where typing goes
+  property int selAnchor: 0     // where a selection began (the caret's place: none)
+  property bool editingQuery: false
+  property var undoStack: []
+  property var redoStack: []
+  property string lastEditKind: ""
+  property double lastEditAt: 0
+  readonly property bool filePrefixed: !root.pageOpen && !root.dmenuActive && root.category !== "files" && root.filterText.charAt(0) === " "
+  readonly property string editText: root.pageOpen ? root.pageFilter : root.filePrefixed ? root.filterText.slice(1) : root.filterText
+  readonly property bool hasSelection: root.caretPos !== root.selAnchor
+  // Changed by anything but an edit — cleared, a completion taken, another
+  // page — the caret is at the end again, and there is nothing to undo.
+  onEditTextChanged: {
+    if (root.editingQuery) return
+    root.caretPos = root.editText.length
+    root.selAnchor = root.caretPos
+    root.undoStack = []
+    root.redoStack = []
+  }
+  function editState() { return QueryEdit.state(root.editText, root.caretPos, root.selAnchor) }
+  function writeEditText(text) {
+    root.editingQuery = true
+    if (root.pageOpen) root.setPageFilter(text)
+    else root.setFilter(root.filePrefixed ? " " + text : text)
+    root.editingQuery = false
+  }
+  // kind: what changed the text ("type", "delete", "paste", "cut"); "" where
+  // only the caret or the selection moved. Letters typed one after the other
+  // are one step to undo.
+  function applyEdit(next, kind) {
+    var was = root.editState()
+    if (next.text !== was.text) {
+      var now = Date.now()
+      var joins = kind === "type" && root.lastEditKind === "type" && now - root.lastEditAt < 1200 && root.undoStack.length > 0
+      if (!joins) {
+        var stack = root.undoStack.slice(-99)
+        stack.push(was)
+        root.undoStack = stack
+      }
+      root.redoStack = []
+      root.lastEditKind = kind
+      root.lastEditAt = now
+      root.writeEditText(next.text)
+    } else root.lastEditKind = ""
+    // (a blank typed first turns the field into file search: the text shown is then one shorter)
+    var shift = root.editText.length - next.text.length
+    root.caretPos = Math.max(0, Math.min(root.editText.length, next.caret + shift))
+    root.selAnchor = Math.max(0, Math.min(root.editText.length, next.anchor + shift))
+    root.caretOn = true
+    caretTimer.restart()
+  }
+  function stepEdit(from, to) {
+    if (from.length === 0) return false
+    var back = from.slice(), then = to.slice(), want = back.pop()
+    then.push(root.editState())
+    root.writeEditText(want.text)
+    root.caretPos = Math.min(root.editText.length, want.caret)
+    root.selAnchor = Math.min(root.editText.length, want.anchor)
+    root.lastEditKind = ""
+    return [back, then]
+  }
+  function undoEdit() { var r = root.stepEdit(root.undoStack, root.redoStack); if (r) { root.undoStack = r[0]; root.redoStack = r[1] } return !!r }
+  function redoEdit() { var r = root.stepEdit(root.redoStack, root.undoStack); if (r) { root.redoStack = r[0]; root.undoStack = r[1] } return !!r }
+  function copySelection() {
+    var text = QueryEdit.selected(root.editState())
+    if (text) root.copyToClipboard(text)
+    return !!text
+  }
+
+  // Qt gives the string no paste of its own — Ctrl+V has to fetch the
+  // clipboard itself. wl-paste asks the compositor and is always current; Qt's
+  // own copy only sees the selection while the surface holds keyboard focus
+  // and otherwise hands back an empty (or stale) string, so it is the
+  // fallback, not the source.
   function pasteFromClipboard() {
     if (clipboardPasteProc.running) return
     clipboardPasteProc.running = true
   }
 
-  // Pasting appends at the caret, which always sits at the end of the filter.
-  // Newlines and tabs would read as blanks in a single-line field, and a
-  // leading blank switches the menu into file search, so collapse and trim.
+  // Pasted text goes where the caret is, in the selection's place. Newlines
+  // and tabs would read as blanks in a single-line field, and a leading blank
+  // switches the menu into file search, so collapse and trim.
   function appendPastedText(text) {
     if (!text) return
     var flat = text.replace(/[\r\n\t\f\v]+/g, " ").trim()
     if (!flat) return
     if (flat.length > root.maxPasteLength) flat = flat.slice(0, root.maxPasteLength)
-    root.setFilter(root.filterText + flat)
+    root.applyEdit(QueryEdit.insert(root.editState(), flat), "paste")
   }
 
   Process {
@@ -2825,55 +2904,82 @@ Item {
               : root.fileSearchActive && root.category !== "files" ? panel.shownFilter.slice(1) : panel.shownFilter
             readonly property bool hasQuery: shownQuery.length > 0
 
-            // The restored query is drawn selected (spec §8).
-            Rectangle {
-              visible: root.querySelected && queryRow.hasQuery
-              x: queryText.x - root.pt(1)
-              width: queryText.width + root.pt(2)
-              height: parent.height
-              radius: root.pt(3)
-              color: Util.alpha(Color.accent, 0.35)
-            }
+            readonly property int caretWidth: Math.max(1, root.pt(root.sp.caret))
 
-            Text {
-              id: queryText
-              textFormat: Text.PlainText
-              visible: queryRow.hasQuery
+            // The query, drawn by a text field that is only looked at: it
+            // knows where a caret stands in a line, how a selection is
+            // painted, which letter is under the pointer, and keeps the caret
+            // in sight when the line is longer than the field. What is in it,
+            // where the caret is and what is selected is root's (caretPos,
+            // selAnchor); the keys never reach it.
+            TextInput {
+              id: queryInput
+              readOnly: true
+              activeFocusOnPress: false
+              selectByMouse: false
               text: queryRow.shownQuery
-              // Elide from the left so the tail of a long query — the part
-              // still being typed — stays next to the caret.
-              width: Math.min(implicitWidth, Math.max(0, queryRow.width - caret.width - queryRow.caretGap))
-              elide: Text.ElideLeft
+              width: Math.max(0, queryRow.width - queryRow.caretGap)
               color: root.ink
+              selectionColor: Util.alpha(Color.accent, 0.35)
+              selectedTextColor: root.ink
               font.family: root.uiFont
               font.pixelSize: root.fieldFontSize
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
+              function sync() {
+                var n = text.length, anchor = Math.min(root.selAnchor, n), at = Math.min(root.caretPos, n)
+                if (anchor === at) cursorPosition = at
+                else select(anchor, at)
+              }
+              onTextChanged: sync()
+              Component.onCompleted: sync()
+              Connections {
+                target: root
+                function onCaretPosChanged() { queryInput.sync() }
+                function onSelAnchorChanged() { queryInput.sync() }
+              }
             }
 
+            // The caret, where the field says it stands (a field that is only
+            // looked at draws none of its own).
             Rectangle {
               id: caret
-              width: Math.max(1, root.pt(root.sp.caret))
+              width: queryRow.caretWidth
               height: Math.round(root.fieldFontSize * 1.15)
               radius: width / 2
               color: root.ink
-              opacity: root.caretOn && !root.querySelected && !root.infoPage ? 1 : 0
-              x: queryRow.hasQuery ? queryText.width + queryRow.caretGap : 0
+              opacity: root.caretOn && !root.hasSelection && !root.infoPage ? 1 : 0
+              x: queryInput.x + Math.max(0, Math.min(queryInput.width, queryInput.cursorRectangle.x)) + (queryRow.hasQuery && root.caretPos === queryRow.shownQuery.length ? queryRow.caretGap : 0)
               anchors.verticalCenter: parent.verticalCenter
               Behavior on opacity { NumberAnimation { duration: Motion.instant; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut } }
+            }
+
+            // The pointer in the text: a click puts the caret, a drag (or a
+            // click with Shift) selects, a double click takes the word.
+            MouseArea {
+              anchors.fill: parent
+              enabled: queryRow.hasQuery && !root.infoPage
+              acceptedButtons: Qt.LeftButton
+              cursorShape: enabled ? Qt.IBeamCursor : Qt.ArrowCursor
+              function at(mouse) { return queryInput.positionAt(mouse.x - queryInput.x, queryInput.height / 2) }
+              onPressed: function(mouse) { root.applyEdit(QueryEdit.moveTo(root.editState(), at(mouse), (mouse.modifiers & Qt.ShiftModifier) !== 0), "") }
+              onPositionChanged: function(mouse) { if (pressed) root.applyEdit(QueryEdit.moveTo(root.editState(), at(mouse), true), "") }
+              onDoubleClicked: function(mouse) { root.applyEdit(QueryEdit.selectWordAt(root.editState(), at(mouse)), "") }
             }
 
             // Inline completion: the rest of the top hit's name plus " — Kind".
             Text {
               id: completionText
               textFormat: Text.PlainText
+              // (it continues what is typed: only while the caret is at the end, and nothing is selected)
               visible: queryRow.hasQuery && root.opened && !root.pageOpen && text.length > 0
+                && root.caretPos === queryRow.shownQuery.length && !root.hasSelection && queryInput.contentWidth < queryInput.width
               text: root.completionRest ? root.completionRest + root.completionSuffix : ""
               color: root.inkTertiary
               font.family: root.uiFont
               font.pixelSize: root.fieldFontSize
               elide: Text.ElideRight
-              x: caret.x + caret.width + queryRow.caretGap
+              x: queryInput.contentWidth + queryRow.caretWidth + queryRow.caretGap * 2
               width: Math.max(0, queryRow.width - x)
               anchors.verticalCenter: parent.verticalCenter
             }
@@ -2883,8 +2989,8 @@ Item {
               textFormat: Text.PlainText
               visible: !queryRow.hasQuery
               text: root.pageOpen ? root.pagePlaceholder : root.searchPlaceholder
-              width: parent.width - caret.width - queryRow.caretGap
-              x: caret.width + queryRow.caretGap
+              width: parent.width - queryRow.caretWidth - queryRow.caretGap
+              x: queryRow.caretWidth + queryRow.caretGap
               color: root.inkTertiary
               font.family: root.uiFont
               font.pixelSize: root.fieldFontSize
@@ -3691,6 +3797,66 @@ Item {
       anchors.fill: parent
       focus: true
 
+      // A key as an edit of the field's text (QueryEdit.js). → whether it was one.
+      //   ← →            the caret; with Shift a selection, with Ctrl by words
+      //   Home End       to the line's ends (Shift: selecting)
+      //   ⌫ ⌦            the selection, else a character (Ctrl: a word)
+      //   Ctrl+A         all of it          Ctrl+U    everything before the caret
+      //   Ctrl+C / X     the selection copied / cut (nothing selected: Ctrl+C is the row's)
+      //   Ctrl+V         pasted at the caret
+      //   Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y    undone / done again
+      // Left to the rest: everything while the field is empty, → at the text's
+      // end (the result's actions), ⌦ with nothing after the caret (the row's),
+      // and the arrows in the grid of apps.
+      function editKey(event, printable) {
+        if (root.infoPage) return false
+        var mods = event.modifiers, k = event.key
+        if (mods & Qt.AltModifier) return false
+        var shift = (mods & Qt.ShiftModifier) !== 0, ctrl = (mods & Qt.ControlModifier) !== 0, meta = (mods & Qt.MetaModifier) !== 0
+        var st = root.editState(), has = st.text.length > 0, sel = QueryEdit.hasSelection(st)
+        if (meta) {
+          if (k === Qt.Key_A && !ctrl && has) { root.applyEdit(QueryEdit.selectAll(st), ""); return true }
+          return false
+        }
+        if (printable) { root.applyEdit(QueryEdit.insert(st, event.text), "type"); return true }
+        if (ctrl && k === Qt.Key_Z) return shift ? root.redoEdit() : root.undoEdit()
+        if (ctrl && !shift && k === Qt.Key_Y) return root.redoEdit()
+        if ((ctrl && !shift && k === Qt.Key_V) || (k === Qt.Key_Insert && shift && !ctrl)) { root.pasteFromClipboard(); return true }
+        if (!has) return false
+        if (k === Qt.Key_Left || k === Qt.Key_Right) {
+          if (root.isAppsGrid && !root.pageOpen && !shift) return false
+          var edge = !sel && (k === Qt.Key_Left ? st.caret === 0 : st.caret === st.text.length)
+          if (edge && !shift && !ctrl) return k === Qt.Key_Left // (nothing further left; → at the end opens the actions)
+          root.applyEdit(k === Qt.Key_Left ? QueryEdit.left(st, shift, ctrl) : QueryEdit.right(st, shift, ctrl), "")
+          return true
+        }
+        if ((k === Qt.Key_Home || k === Qt.Key_End) && !ctrl) {
+          root.applyEdit(k === Qt.Key_Home ? QueryEdit.home(st, shift) : QueryEdit.end(st, shift), "")
+          return true
+        }
+        if (k === Qt.Key_Backspace) {
+          if (!sel && st.caret === 0) {
+            // nothing before the caret — but the blank that made it a file search, which goes
+            if (root.filePrefixed) { root.editingQuery = true; root.setFilter(root.filterText.slice(1)); root.editingQuery = false; root.caretPos = 0; root.selAnchor = 0 }
+            return true
+          }
+          root.applyEdit(QueryEdit.backspace(st, ctrl), "delete")
+          return true
+        }
+        if (k === Qt.Key_Delete) {
+          if (!sel && st.caret === st.text.length) return false
+          root.applyEdit(QueryEdit.del(st, ctrl), "delete")
+          return true
+        }
+        if (ctrl && !shift) {
+          if (k === Qt.Key_A) { root.applyEdit(QueryEdit.selectAll(st), ""); return true }
+          if (k === Qt.Key_U) { root.applyEdit(QueryEdit.clearToStart(st), "delete"); return true }
+          if (k === Qt.Key_C && sel) return root.copySelection()
+          if (k === Qt.Key_X && sel) { root.copySelection(); root.applyEdit(QueryEdit.backspace(st, false), "cut"); return true }
+        }
+        return false
+      }
+
       Keys.priority: Keys.BeforeItem
       Keys.onPressed: function(event) {
         // Only typing may leave a rebuild pending; every other key acts on
@@ -3702,6 +3868,14 @@ Item {
 
         if (root.deleteConfirmOpen) {
           if (deleteConfirm.handleKey(event)) event.accepted = true
+          return
+        }
+
+        // The field's text first: the caret, the selection, what is typed,
+        // deleted, cut, pasted and undone. What it leaves is the rows', the
+        // buttons' and the pages', below.
+        if (keyCatcher.editKey(event, printable)) {
+          event.accepted = true
           return
         }
 
