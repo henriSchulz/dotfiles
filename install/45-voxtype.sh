@@ -49,6 +49,14 @@ run "$onnx" config set hotkey.enabled false
 # The packaged GTK4 OSD is replaced by the henri.dictation shell plugin, which
 # draws on the Omarchy theme and the henri-ui components instead of its own.
 run "$onnx" config set osd.enabled false
+# The text is put on the clipboard and pasted in one go, not typed key by key:
+# typed, it lands wherever the focus wanders to while it is still coming, and
+# sets off whatever shortcuts its letters make there. Shift+Insert pastes the
+# clipboard in foot and in other apps alike (the keys Omarchy's own universal
+# paste uses); `config set` does not know paste_keys, so the line is written.
+run "$onnx" config set output.mode paste
+cfg="$HOME/.config/voxtype/config.toml"
+grep -q '^paste_keys' "$cfg" || run sed -i '/^mode = "paste"$/a paste_keys = "shift+insert"' "$cfg"
 
 # Live partials while speaking (parakeet.streaming) stay off on purpose: the
 # only model that does cache-aware streaming is parakeet-unified-en-0.6b, which
