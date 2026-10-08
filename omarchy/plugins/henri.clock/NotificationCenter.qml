@@ -329,7 +329,11 @@ Panel {
   // full-res copy when cached, else its thumbnail. Loaded once the Center
   // has settled after opening, never during the slide.
   readonly property string photosDb: Quickshell.env("HOME") + "/.local/share/icloud-photos/catalog.sqlite"
-  readonly property string photosApp: Quickshell.env("HOME") + "/.local/share/icloud-photos/bin/icloud-photos"
+  // The app: its own install under ~/.local/share where there is one (the XPS), else the
+  // packaged one on PATH (the M1: /usr/bin/icloud-photos). The old fixed path did not exist
+  // here, so a click on the photo did nothing.
+  readonly property string photosApp: 'app="$HOME/.local/share/icloud-photos/bin/icloud-photos"; [ -x "$app" ] || app=icloud-photos; '
+
   property var photo: null
   Process {
     id: photosReader
@@ -358,8 +362,8 @@ Panel {
   // app just opens.
   function openPhotos() {
     var id = root.photo && root.photo.id ? String(root.photo.id) : ""
-    if (id !== "") root.run("setsid -f " + Util.shellQuote(root.photosApp) + " --open " + Util.shellQuote(id))
-    else root.run("omarchy-launch-or-focus de.henri.IcloudPhotos " + Util.shellQuote(root.photosApp))
+    if (id !== "") root.run(root.photosApp + 'setsid -f "$app" --open ' + Util.shellQuote(id))
+    else root.run(root.photosApp + 'omarchy-launch-or-focus de.henri.IcloudPhotos "$app"')
     root.close()
   }
 
