@@ -4,8 +4,9 @@ import "../DockModel.js" as DockModel
 
 // Minimize / restore animation (spec §12) drawn from a window snapshot the
 // dock holds in its vault: genie (N strips flowing through a funnel into the
-// tile) or linear scale. progress 0 = window, 1 = tile. Reduce motion: a
-// plain crossfade at the window's place.
+// tile) or scale — the default since 2026-10-08, Henri found the genie buggy:
+// the window shrinks into its tile and fades on the way. progress 0 = window,
+// 1 = tile. Reduce motion: a plain crossfade at the window's place.
 Item {
   id: fx
   property var dock
@@ -101,7 +102,8 @@ Item {
     readonly property real vFar: fx.win.vFar + (fx.tile.vFar - fx.win.vFar) * e
     readonly property var r: fx.toRect(u0, vNear, Math.max(1, u1 - u0), Math.max(1, vFar - vNear))
     x: r.x; y: r.y; width: r.w; height: r.h
-    opacity: fx.reduce ? 1 - fx.progress : 1
+    // (it thins out on the last stretch into the tile, and comes out of it the same way)
+    opacity: fx.reduce ? 1 - fx.progress : 1 - Math.max(0, (fx.progress - 0.55) / 0.45)
     ShaderEffectSource {
       anchors.fill: parent
       sourceItem: fx.snap

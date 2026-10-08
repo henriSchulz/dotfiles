@@ -48,7 +48,7 @@ Item {
     magnifiedSize: Apple.dock.magnifiedSize,
     magnificationRadius: Apple.dock.magnificationRadius,
     position: "bottom",
-    minimizeEffect: "genie",
+    minimizeEffect: "scale",
     minimizeToAppIcon: false,
     animateOpeningApps: true,
     autoHide: false,

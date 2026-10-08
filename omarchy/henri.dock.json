@@ -1,10 +1,10 @@
 {
-  "tileSize": 56,
+  "tileSize": 76,
   "magnification": true,
-  "magnifiedSize": 84,
+  "magnifiedSize": 64,
   "magnificationRadius": 3,
   "position": "bottom",
-  "minimizeEffect": "genie",
+  "minimizeEffect": "scale",
   "minimizeToAppIcon": false,
   "animateOpeningApps": true,
   "autoHide": true,
@@ -31,5 +31,13 @@
   "iconOverrides": {
     "org.gnome.nautilus": "~/.local/share/icons/MacTahoe/places/scalable/folder.svg",
     "foot": "~/.local/share/icons/MacTahoe/apps/scalable/utilities-terminal.svg"
-  }
+  },
+  "showUnknownApps": false,
+  "ignoredApps": [
+    "xdg-desktop-portal-gtk",
+    "xdg-desktop-portal-gnome",
+    "xdg-desktop-portal-kde",
+    "xdg-desktop-portal-hyprland",
+    "polkit-gnome-authentication-agent-1"
+  ]
 }
