@@ -1259,6 +1259,7 @@ Item {
     for (var pa in parkedAt) if (alive[pa]) keep[pa] = true
     if (pendingMinimize) keep[pendingMinimize.address] = true
     if (fx.running && fx.restoreAddress) keep[fx.restoreAddress] = true
+    if (fx.holding && fx.heldAddress) keep[fx.heldAddress] = true
     var changed = false
     var sn = DockModel.copyMap(snapshots)
     for (var a in sn) if (!keep[a] && !(fx.running && effectTargetId === "win:" + a)) { sn[a].destroy(); delete sn[a]; changed = true }
@@ -1471,7 +1472,7 @@ Item {
     function openSettings(): string { root.settingsOpen = true; return "ok" }
     function rebuild(): string { root.rebuild(); return String(tiles.count) }
     function probeNoGrab(): string { root.testNoGrab = true; return "ok" }
-    function probeFx(): string { var s = fx.snap; return JSON.stringify({ running: fx.running, progress: fx.progress, mode: fx.mode, strips: fx.stripCount, snap: s ? [s.width, s.height, s.hasContent] : null, win: fx.win, tile: fx.tile, target: fx.targetId, pending: root.pendingMinimize }) }
+    function probeFx(): string { var s = fx.snap; return JSON.stringify({ running: fx.running, holding: fx.holding, held: fx.heldAddress, snaps: Object.keys(root.snapshots).length, progress: fx.progress, mode: fx.mode, strips: fx.stripCount, snap: s ? [s.width, s.height, s.hasContent] : null, win: fx.win, tile: fx.tile, target: fx.targetId, pending: root.pendingMinimize }) }
     function probeMenuState(): string { return JSON.stringify({ open: root.menuOpen, model: root.menuModel.length, x: menu.x, y: menu.y, w: menu.width, h: menu.height, visible: menu.visible, shown: menu.shown, opacity: menu.opacity, cardW: menu.cardW, cardH: menu.cardH, anchor: [menu.anchorMain, menu.anchorCross], settings: [settingsPanel.visible, settingsPanel.width, settingsPanel.height, settingsPanel.x, settingsPanel.y] }) }
     function state(): string {
       var rows = []
@@ -1669,10 +1670,12 @@ Item {
           property string targetId: ""
           property string restoreAddress: ""
           property string restoreTarget: ""
+          property string heldAddress: ""   // the window whose picture still covers it (holding): its snapshot is kept
+          onHoldingChanged: if (!holding && heldAddress) { heldAddress = ""; root.scheduleRebuild() } // (… and let go with it: the next minimize takes a new one)
           z: 40
           onProgressChanged: if (running && targetId) tile = root.tileUV(targetId)
           onFinished: {
-            if (reverse && restoreAddress) { root.unparkWindow(restoreAddress, restoreTarget); restoreAddress = "" }
+            if (reverse && restoreAddress) { heldAddress = restoreAddress; root.unparkWindow(restoreAddress, restoreTarget); restoreAddress = "" }
             root.effectTargetId = ""
             targetId = ""
             root.armAutoHide()

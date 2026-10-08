@@ -19,10 +19,16 @@ Item {
   property real progress: 0
   readonly property bool running: anim.running
   readonly property int stripCount: 48
+  // A window coming back: when the picture has grown to the window's place, the window itself is
+  // only then put there — a frame or two with neither flashed. The picture stays until the
+  // window stands (holding), then fades off it.
+  property bool holding: false
+  property real holdOpacity: 1
   signal finished()
 
   anchors.fill: parent
-  visible: running
+  visible: running || holding
+  opacity: holding ? holdOpacity : 1
 
   function play(snapshot, winRect, tileRect, effect, backwards, slow) {
     snap = snapshot
@@ -31,6 +37,7 @@ Item {
     mode = effect
     reverse = backwards
     reduce = dock.reduceMotion
+    holdTimer.stop(); holdFade.stop(); holding = false; holdOpacity = 1
     anim.stop()
     var base = reduce ? Motion.dock.scaleMinimize : (mode === "genie" ? Motion.dock.genie : Motion.dock.scaleMinimize)
     anim.duration = base * (slow ? Motion.dock.slowMotion : 1)
@@ -46,7 +53,21 @@ Item {
     property: "progress"
     easing.type: fx.mode === "scale" ? Easing.BezierSpline : Easing.Linear
     easing.bezierCurve: Motion.easeInOut
-    onFinished: fx.finished()
+    onFinished: {
+      if (fx.reverse && !fx.reduce) { fx.holdOpacity = 1; fx.holding = true; holdTimer.restart() }
+      fx.finished()
+    }
+  }
+  Timer { id: holdTimer; interval: Motion.settleDelay; onTriggered: holdFade.start() }
+  NumberAnimation {
+    id: holdFade
+    target: fx
+    property: "holdOpacity"
+    to: 0
+    duration: Motion.fast
+    easing.type: Easing.BezierSpline
+    easing.bezierCurve: Motion.easeExit
+    onFinished: { fx.holding = false; fx.holdOpacity = 1 }
   }
 
   onProgressChanged: updateStrips()
