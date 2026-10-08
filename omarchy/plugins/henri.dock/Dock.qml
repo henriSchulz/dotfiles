@@ -937,6 +937,10 @@ Item {
     var wins = item.windows || []
     var visible = wins.filter(function (w) { return !w.minimized })
     if (visible.length === 0 && wins.length > 0) { restoreWindow(wins[0].address, false); return }
+    // the app in front, its icon clicked: its window goes into the Dock (the next click, with no
+    // window left to see, brings it back — above)
+    var front = activeAddress()
+    for (var i = 0; i < visible.length; i++) if (visible[i].address === front) { minimizeWindow(front, false, true); return }
     if (visible.length > 0) focusWindow(visible[0].address)
   }
   function launchItem(item) {
@@ -1135,10 +1139,27 @@ Item {
     var mx = mon ? mon.x : 0, my = mon ? mon.y : 0
     return { x: at[0] - mx, y: at[1] - my, w: size[0], h: size[1] }
   }
-  function minimizeActiveWindow(slow) {
+  // The window that has the focus. Hyprland.activeToplevel is only set once the focus has
+  // changed while this shell runs: after a shell restart it is empty although a window is
+  // focused (Super+M did nothing then). Until the first change the list read at startup
+  // says which one it is (focusHistoryID 0), or the window that calls itself activated.
+  function activeAddress() {
     var t = Hyprland.activeToplevel
-    if (!t) return "no active window"
-    return minimizeWindow(DockModel.normalizeAddress(t.address), slow, true) ? "ok" : "failed"
+    if (t) return DockModel.normalizeAddress(t.address)
+    var tls = Hyprland.toplevels ? Hyprland.toplevels.values : [], found = ""
+    for (var i = 0; i < tls.length; i++) {
+      var w = tls[i]
+      if (!w || (w.workspace && String(w.workspace.name) === minimizedWorkspace)) continue
+      var o = w.lastIpcObject || {}
+      if (o.focusHistoryID === 0) return DockModel.normalizeAddress(w.address)
+      if (w.activated === true || (w.wayland && w.wayland.activated === true)) found = DockModel.normalizeAddress(w.address)
+    }
+    return found
+  }
+  function minimizeActiveWindow(slow) {
+    var a = activeAddress()
+    if (!a) return "no active window"
+    return minimizeWindow(a, slow, true) ? "ok" : "failed"
   }
   function minimizeWindow(address, slow, animate) {
     var t = hyprToplevelFor(address)

@@ -26,6 +26,7 @@ Replaces omadock.
   `special:minimized` and its snapshot flows into the dock with the genie effect (48
   strips through a funnel) or the scale effect; the tile shows the snapshot with the
   app icon; click or "Restore" plays it back. `minimizeActiveSlow` = 10× slower.
+  A click on the icon of the app in front minimizes its window; the next click brings it back.
   "Minimize into application icon" targets the app tile instead.
 - Auto-hide (`Super+Alt+D`) with a 3 px trigger zone at the edge: the dock floats
   over the windows and reserves no space; on a space without windows it stays
