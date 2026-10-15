@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.btpad",
+  "name": "Bluetooth Keyboard",
+  "version": "1.0.0",
+  "author": "henri",
+  "description": "Shows in the bar while this Mac's keyboard and trackpad work another computer over Bluetooth (btpad), dimmed while they are back here and the other computer stays connected. A click switches over.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Widget.qml"
+  },
+  "barWidget": {
+    "displayName": "Bluetooth Keyboard",
+    "description": "btpad state: which computer keyboard and trackpad are working",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

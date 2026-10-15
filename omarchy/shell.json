@@ -15,6 +15,9 @@
       ],
       "right": [
         {
+          "id": "henri.btpad"
+        },
+        {
           "id": "henri.power",
           "chargeLimitStep": 5,
           "historyHours": "24",
