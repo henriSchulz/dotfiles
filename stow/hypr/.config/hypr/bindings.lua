@@ -254,3 +254,10 @@ o.bind("SUPER + M", "Minimize window into the Dock", hl.dsp.event("dock minimize
 o.bind("SUPER + ALT + D", "Toggle Dock hiding", hl.dsp.event("dock toggle-autohide"))
 o.bind("SUPER + D", "Show or hide the Dock", hl.dsp.event("dock toggle"))
 o.bind("CTRL + F3", "Focus the Dock", hl.dsp.event("dock focus"))
+
+-- Bluetooth-Tastaturmodus (~/Projects/btpad): Tastatur und Trackpad gehen an ein
+-- anderes Gerät (iPad, Mac, …), hier kommt nichts mehr an. Ausschalten mit
+-- derselben Kombi — die fängt btpadd selbst ab, Hyprland sieht im Modus nichts.
+-- Ohne Fn sendet die F12-Taste VolumeUp, darum beide Varianten.
+o.bind("SUPER + SHIFT + F12", "Bluetooth keyboard mode", "btpad toggle")
+o.bind("SUPER + SHIFT + XF86AudioRaiseVolume", "Bluetooth keyboard mode (Apple top row)", "btpad toggle")
