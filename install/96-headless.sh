@@ -18,8 +18,16 @@ run sudo install -Dm755 "$src/headless-statusd" /usr/local/bin/headless-statusd
 run sudo install -Dm644 "$src/headless-status.service" /etc/systemd/system/headless-status.service
 run sudo install -Dm755 "$src/headless-test" /usr/local/bin/headless-test
 
+sddm_uid=$(id -u sddm 2>/dev/null || true)
+if [[ -n $sddm_uid ]]; then
+  run sudo install -Dm644 "$src/sddm-slice-cpu.conf" "/etc/systemd/system/user-$sddm_uid.slice.d/10-cpu.conf"
+fi
+
 info "enabling headless-status.service"
 run sudo systemctl daemon-reload
 run sudo systemctl disable headless-status.service 2>/dev/null || true   # old multi-user.target link
-run sudo systemctl enable --now headless-status.service
+run sudo systemctl enable headless-status.service
+run sudo systemctl restart headless-status.service
+# Whatever the greeter's user manager is still doing in a session is not needed.
+[[ -n $sddm_uid ]] && run sudo systemctl stop "user@$sddm_uid.service" 2>/dev/null || true
 info "logind picks the lid setting up after: sudo systemctl restart systemd-logind (ends no sessions, but the greeter may flicker)"

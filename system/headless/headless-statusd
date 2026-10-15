@@ -117,6 +117,12 @@ while :; do
   net=$(nmcli -t -g STATE general 2>/dev/null)
   if [[ $net == connected* || $state == boot ]]; then netfail=0; else ((netfail++)); fi
 
+  # The greeter's user manager (WirePlumber, PipeWire) has no job once someone
+  # is logged in. Once it kept running and spun a core at 100 %: end it.
+  if [[ $state == session && -n $SDDM_UID ]] && systemctl is-active --quiet "user@$SDDM_UID.service"; then
+    systemctl stop "user@$SDDM_UID.service"
+  fi
+
   if [[ $state != "$prev" ]]; then
     case "$prev>$state" in
       *">session") pat flash 0.08 0.08 3 ;;
