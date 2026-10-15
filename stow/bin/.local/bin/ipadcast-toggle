@@ -1,0 +1,31 @@
+#!/bin/bash
+# ipadcast-toggle — start or stop the screen mirror for a phone or tablet.
+# Bound to Super+Shift+F9. Answers with a quiet sound (no screen needed) and a
+# notification that names the address to open in Safari.
+#
+# Sounds: the sets of headless-sounds, events cast-on / cast-off, falling back to
+# freedesktop sounds. Quiet like the other headless signals (VOL of the master).
+set -u
+
+unit=ipadcast.service
+S=/usr/share/sounds/freedesktop/stereo
+VOL=${HEADLESS_VOL:-0.5}
+
+snd() { # event freedesktop-fallback
+  local set f
+  set=$(cat "$HOME/.config/headless/soundset" 2>/dev/null)
+  f=$(ls "$HOME/.local/share/headless/sounds/$set/$1".{wav,ogg} 2>/dev/null | head -1)
+  [[ -n $set && -n $f ]] || f="$S/$2.oga"
+  pw-play --volume="$VOL" "$f" >/dev/null 2>&1 &
+}
+
+if systemctl --user is-active --quiet "$unit"; then
+  systemctl --user stop "$unit"
+  snd cast-off device-removed
+  notify-send -t 2500 "Bildschirm-Spiegel aus"
+else
+  systemctl --user start "$unit"
+  ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{sub("/.*","",$4); print $4; exit}')
+  snd cast-on device-added
+  notify-send -t 6000 "Bildschirm-Spiegel an" "In Safari öffnen:\nhttp://${ip:-omarchy.local}:8770/"
+fi

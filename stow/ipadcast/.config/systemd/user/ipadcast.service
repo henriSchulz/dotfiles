@@ -1,0 +1,9 @@
+[Unit]
+Description=ipadcast: mirror the screen to a phone or tablet (Safari, H.264)
+# Not enabled at boot: Super+Shift+F9 (ipadcast-toggle) starts and stops it.
+# The hardware encoder is only loaded while somebody watches (see the server).
+
+[Service]
+ExecStart=/usr/bin/python3 %h/Projects/m1-power/ipadcast/server.py
+Restart=on-failure
+RestartSec=2

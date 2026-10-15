@@ -12,7 +12,8 @@
 
 Events: complete, network-connectivity-lost, network-connectivity-established,
 device-added, device-removed, login-screen (greeter shown), login-failed,
-login-ok (played by the root daemon headless-statusd). `assign` fills the set "custom" and
+login-ok (played by the root daemon headless-statusd), cast-on, cast-off
+(ipadcast-toggle, Super+Shift+F9). `assign` fills the set "custom" and
 switches to it. Library: ~/.local/share/headless/library/.
 
 Sets are synthesised into ~/.local/share/headless/sounds/<set>/<event>.wav;
@@ -43,6 +44,8 @@ EVENTS = {
     "login-screen":                     ["D5", "A5"],
     "login-failed":                     ["A4", "F4"],
     "login-ok":                         ["E5", "A5", "C6"],
+    "cast-on":                          ["E5", "B5"],
+    "cast-off":                         ["B5", "E5"],
 }
 
 # set -> timbre. partials: (ratio, gain); decay: 1/s; gap: s between notes;

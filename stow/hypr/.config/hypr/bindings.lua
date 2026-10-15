@@ -271,3 +271,9 @@ o.bind("SUPER + SHIFT + XF86AudioLowerVolume", "Bluetooth keyboard: switch compu
 -- bleibt es still. Ohne Fn sendet F10 Mute, darum beide Varianten.
 o.bind("SUPER + SHIFT + F10", "Headless status", "headless-status")
 o.bind("SUPER + SHIFT + XF86AudioMute", "Headless status (Apple top row)", "headless-status")
+
+-- Bildschirm-Spiegel fürs Handy/iPad (~/Projects/m1-power/ipadcast): startet bzw.
+-- beendet ipadcast.service, antwortet mit einem leisen Ton und einer Meldung mit
+-- der Adresse für Safari. Ohne Fn sendet F9 XF86AudioNext, darum beide Varianten.
+o.bind("SUPER + SHIFT + F9", "Screen mirror (phone/tablet)", "ipadcast-toggle")
+o.bind("SUPER + SHIFT + XF86AudioNext", "Screen mirror (Apple top row)", "ipadcast-toggle")
