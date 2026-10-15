@@ -7,7 +7,6 @@
 #   session ready       complete
 #   network lost/back   network-connectivity-lost / -established
 #   charger out/in      device-removed / device-added
-#   lid closed          message (still awake)
 set -u
 
 S=/usr/share/sounds/freedesktop/stereo
@@ -30,9 +29,8 @@ snd complete
 AC=/sys/class/power_supply/macsmc-ac/online
 
 net_ok() { [[ $(nmcli -t -g STATE general 2>/dev/null) == connected* ]]; }
-lid() { busctl --system get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager LidClosed 2>/dev/null; }
 
-netfail=0 net_down=0 prev_ac=$(<"$AC") prev_lid=$(lid)
+netfail=0 net_down=0 prev_ac=$(<"$AC")
 while sleep 2; do
   # Network: down only after 6 s, so a roam does not chirp.
   if net_ok; then
@@ -49,9 +47,4 @@ while sleep 2; do
     prev_ac=$ac
   fi
 
-  l=$(lid)
-  if [[ $l != "$prev_lid" ]]; then
-    [[ $l == "b true" ]] && snd message
-    prev_lid=$l
-  fi
 done

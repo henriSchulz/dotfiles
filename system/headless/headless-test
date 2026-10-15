@@ -68,7 +68,6 @@ if [[ $what == all || $what == sound ]]; then
   say "Network back";             snd network-connectivity-established; sleep 1.5
   say "Charger in";               snd device-added; sleep 1.5
   say "Charger out";              snd device-removed; sleep 1.5
-  say "Lid closed";               snd message; sleep 1.5
   say "Login screen shown";       snd login-screen message-new-instant; sleep 1.5
   say "Login failed";             snd login-failed dialog-error; sleep 1.5
   say "Login ok";                 snd login-ok complete; sleep 1.5
