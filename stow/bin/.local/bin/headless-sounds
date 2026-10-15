@@ -4,7 +4,15 @@
   headless-sounds list              sets and the active one
   headless-sounds preview [set]     play every event of a set (all sets if omitted)
   headless-sounds use <set>         switch headless-events to a set ("default" = freedesktop)
-  headless-sounds gen               (re)write the sets
+  headless-sounds gen               (re)write the synthesised sets
+  headless-sounds fetch             download the macOS sound library (kept out of git)
+  headless-sounds library [filter]  play every library sound, printing its name
+  headless-sounds assign <event> <sound>   pick a library sound for one event
+  headless-sounds show              what each event plays right now
+
+Events: complete, network-connectivity-lost, network-connectivity-established,
+device-added, device-removed, message. `assign` fills the set "custom" and
+switches to it. Library: ~/.local/share/headless/library/.
 
 Sets are synthesised into ~/.local/share/headless/sounds/<set>/<event>.wav;
 the active one is named in ~/.config/headless/soundset. headless-events reads it
@@ -68,6 +76,34 @@ def gen():
                 w.setnchannels(1); w.setsampwidth(2); w.setframerate(RATE)
                 w.writeframes(b"".join(struct.pack("<h", int(x * 32767)) for x in data))
 
+LIB = f"{HOME}/.local/share/headless/library"
+SOURCES = [  # (repo, tree path prefix, file prefix)
+    ("zquestz/macos-sound-theme", "macos/error/", "mac-"),
+    ("zquestz/macos-sound-theme", "macos/stereo/", "theme-"),
+    ("lucagoc/MacOSSounds4Gnome", "stereo/", "gnome-"),
+]
+
+def fetch():
+    import hashlib, json, urllib.request
+    os.makedirs(LIB, exist_ok=True)
+    seen = {hashlib.md5(open(f"{LIB}/{f}", "rb").read()).hexdigest() for f in os.listdir(LIB)}
+    for repo, prefix, pre in SOURCES:
+        tree = json.load(urllib.request.urlopen(f"https://api.github.com/repos/{repo}/git/trees/HEAD?recursive=1"))
+        for t in tree["tree"]:
+            if t["type"] == "blob" and t["path"].startswith(prefix) and t["path"].endswith(".ogg"):
+                dst = f"{LIB}/{pre}{os.path.basename(t['path'])}"
+                if os.path.exists(dst): continue
+                data = urllib.request.urlopen(f"https://raw.githubusercontent.com/{repo}/HEAD/{t['path']}").read()
+                h = hashlib.md5(data).hexdigest()
+                if h in seen: continue   # same sound under another name
+                seen.add(h); open(dst, "wb").write(data)
+    print(len(os.listdir(LIB)), "sounds in", LIB)
+
+def lib_path(name):
+    for cand in (name, f"{name}.ogg", f"mac-{name}.ogg"):
+        if os.path.exists(f"{LIB}/{cand}"): return f"{LIB}/{cand}"
+    sys.exit(f"not in library: {name}  (headless-sounds library)")
+
 def play(path, vol):
     subprocess.run(["pw-play", f"--volume={vol}", path])
 
@@ -92,13 +128,45 @@ def main():
             for ev in EVENTS:
                 print(f"   {ev}")
                 play(f"{ROOT}/{s}/{ev}.wav", vol); time.sleep(.8)
+    elif cmd == "fetch":
+        fetch()
+    elif cmd == "library":
+        if not os.path.isdir(LIB): fetch()
+        for f in sorted(os.listdir(LIB)):
+            if len(a) > 1 and a[1].lower() not in f.lower(): continue
+            print(f"   {f[:-4]}")
+            play(f"{LIB}/{f}", vol); time.sleep(.6)
+    elif cmd == "assign" and len(a) > 2:
+        if a[1] not in EVENTS: sys.exit(f"unknown event: {a[1]}")
+        src = lib_path(a[2])
+        d = f"{ROOT}/custom"; os.makedirs(d, exist_ok=True)
+        # events not assigned yet keep playing the current set's sound
+        for ev in EVENTS:
+            dst = f"{d}/{ev}.wav"
+            if not os.path.lexists(f"{d}/{ev}.wav") and not any(os.path.lexists(f"{d}/{ev}{e}") for e in (".ogg",)):
+                cur = active()
+                base = f"{ROOT}/{cur}/{ev}.wav"
+                if cur in SETS and os.path.exists(base): os.symlink(base, dst)
+        for e in (".wav", ".ogg"):
+            if os.path.lexists(f"{d}/{a[1]}{e}"): os.remove(f"{d}/{a[1]}{e}")
+        os.symlink(src, f"{d}/{a[1]}.ogg")
+        os.makedirs(os.path.dirname(CONF), exist_ok=True); open(CONF, "w").write("custom")
+        print(f"{a[1]} -> {os.path.basename(src)[:-4]}  (set: custom)")
+        play(src, vol)
+    elif cmd == "show":
+        cur = active(); print(f"set: {cur}")
+        for ev in EVENTS:
+            for e in (".wav", ".ogg"):
+                f = f"{ROOT}/{cur}/{ev}{e}"
+                if os.path.lexists(f): print(f"  {ev:36} {os.path.basename(os.path.realpath(f))}"); break
+            else: print(f"  {ev:36} freedesktop")
     elif cmd == "use" and len(a) > 1:
-        if a[1] != "default" and a[1] not in SETS:
+        if a[1] != "default" and a[1] not in SETS and not os.path.isdir(f"{ROOT}/{a[1]}"):
             sys.exit(f"unknown set: {a[1]}")
         os.makedirs(os.path.dirname(CONF), exist_ok=True)
         open(CONF, "w").write("" if a[1] == "default" else a[1])
         print(f"now: {a[1]}")
-    elif cmd != "gen":
+    elif cmd not in ("gen", "fetch"):
         sys.exit(__doc__)
 
 main()

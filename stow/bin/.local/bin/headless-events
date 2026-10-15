@@ -18,8 +18,8 @@ VOL=${HEADLESS_VOL:-0.5}
 snd() {
   local set f
   set=$(cat "$HOME/.config/headless/soundset" 2>/dev/null)
-  f="$HOME/.local/share/headless/sounds/$set/$1.wav"
-  [[ -n $set && -f $f ]] || f="$S/$1.oga"
+  f=$(ls "$HOME/.local/share/headless/sounds/$set/$1".{wav,ogg} 2>/dev/null | head -1)
+  [[ -n $set && -n $f ]] || f="$S/$1.oga"
   pw-play --volume=$VOL "$f" >/dev/null 2>&1 &
 }
 
