@@ -36,8 +36,13 @@ breathe() {
 }
 
 snd() {
+  local home set f
+  home=$(getent passwd "$USER_NAME" | cut -d: -f6)
+  set=$(cat "$home/.config/headless/soundset" 2>/dev/null)
+  f="$home/.local/share/headless/sounds/$set/$1.wav"
+  [[ -n $set && -f $f ]] || f="$S/$1.oga"
   sudo -u "$USER_NAME" env XDG_RUNTIME_DIR="/run/user/$(id -u "$USER_NAME")" \
-    pw-play --volume=$VOL "$S/$1.oga"
+    pw-play --volume=$VOL "$f"
 }
 
 say() { printf '\n== %s\n' "$*"; }

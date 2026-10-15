@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""headless-sounds — sound sets for headless-events.
+
+  headless-sounds list              sets and the active one
+  headless-sounds preview [set]     play every event of a set (all sets if omitted)
+  headless-sounds use <set>         switch headless-events to a set ("default" = freedesktop)
+  headless-sounds gen               (re)write the sets
+
+Sets are synthesised into ~/.local/share/headless/sounds/<set>/<event>.wav;
+the active one is named in ~/.config/headless/soundset. headless-events reads it
+on every sound, so `use` takes effect at once. Volume is headless-events' VOL
+(a fraction of the master volume), not baked into the files.
+"""
+import math, os, struct, subprocess, sys, time, wave
+
+HOME = os.path.expanduser("~")
+ROOT = f"{HOME}/.local/share/headless/sounds"
+CONF = f"{HOME}/.config/headless/soundset"
+RATE = 44100
+
+# Note names -> Hz (equal temperament, A4 = 440).
+def hz(name):
+    names = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+    n = names[name[0]] + 12 * (int(name[-1]) - 4) - 9
+    return 440.0 * 2 ** (n / 12)
+
+# event -> notes. Net events sit in the middle, charger events higher.
+EVENTS = {
+    "complete":                         ["C5", "E5", "G5"],
+    "network-connectivity-lost":        ["E5", "A4"],
+    "network-connectivity-established": ["A4", "E5"],
+    "device-added":                     ["G5", "C6"],
+    "device-removed":                   ["C6", "G5"],
+    "message":                          ["A4"],
+}
+
+# set -> timbre. partials: (ratio, gain); decay: 1/s; gap: s between notes;
+# length: s per note; attack: s; octave: shift.
+SETS = {
+    "bell":    dict(partials=[(1, 1), (2.76, .35), (5.4, .15)], decay=5.0, gap=.17, length=.7, attack=.003, octave=0),
+    "marimba": dict(partials=[(1, 1), (4, .3)],                 decay=9.0, gap=.14, length=.45, attack=.002, octave=-1),
+    "soft":    dict(partials=[(1, 1), (2, .2)],                 decay=3.0, gap=.22, length=.8, attack=.05,  octave=0),
+    "glass":   dict(partials=[(1, 1), (3, .4), (5, .2)],        decay=4.0, gap=.12, length=.9, attack=.004, octave=1),
+}
+
+def render(notes, p):
+    total = p["gap"] * (len(notes) - 1) + p["length"] + .05
+    buf = [0.0] * int(total * RATE)
+    for i, name in enumerate(notes):
+        f0 = hz(name) * 2 ** p["octave"]
+        start = int(i * p["gap"] * RATE)
+        for k in range(int(p["length"] * RATE)):
+            t = k / RATE
+            env = min(1.0, t / p["attack"]) * math.exp(-t * p["decay"])
+            tail = min(1.0, (p["length"] - t) / .05)      # no click at the end
+            s = sum(g * math.sin(2 * math.pi * f0 * r * t) for r, g in p["partials"])
+            if start + k < len(buf):
+                buf[start + k] += s * env * tail
+    peak = max(abs(x) for x in buf) or 1
+    return [x / peak * .9 for x in buf]
+
+def gen():
+    for name, p in SETS.items():
+        os.makedirs(f"{ROOT}/{name}", exist_ok=True)
+        for ev, notes in EVENTS.items():
+            data = render(notes, p)
+            with wave.open(f"{ROOT}/{name}/{ev}.wav", "wb") as w:
+                w.setnchannels(1); w.setsampwidth(2); w.setframerate(RATE)
+                w.writeframes(b"".join(struct.pack("<h", int(x * 32767)) for x in data))
+
+def play(path, vol):
+    subprocess.run(["pw-play", f"--volume={vol}", path])
+
+def active():
+    try:
+        return open(CONF).read().strip() or "default"
+    except OSError:
+        return "default"
+
+def main():
+    a = sys.argv[1:]
+    cmd = a[0] if a else "list"
+    if cmd == "gen" or not os.path.isdir(ROOT):
+        gen()
+    vol = os.environ.get("HEADLESS_VOL", "0.5")
+    if cmd == "list":
+        print(f"active: {active()}")
+        for s in ["default"] + list(SETS): print(" ", s)
+    elif cmd == "preview":
+        for s in (a[1:2] or list(SETS)):
+            print(f"== {s}")
+            for ev in EVENTS:
+                print(f"   {ev}")
+                play(f"{ROOT}/{s}/{ev}.wav", vol); time.sleep(.8)
+    elif cmd == "use" and len(a) > 1:
+        if a[1] != "default" and a[1] not in SETS:
+            sys.exit(f"unknown set: {a[1]}")
+        os.makedirs(os.path.dirname(CONF), exist_ok=True)
+        open(CONF, "w").write("" if a[1] == "default" else a[1])
+        print(f"now: {a[1]}")
+    elif cmd != "gen":
+        sys.exit(__doc__)
+
+main()

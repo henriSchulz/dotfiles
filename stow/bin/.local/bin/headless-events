@@ -14,7 +14,14 @@ S=/usr/share/sounds/freedesktop/stereo
 # Quiet on purpose: nothing that turns heads in public. VOL scales the master
 # volume, so with the master at ~20 % 0.5 is still discreet.
 VOL=${HEADLESS_VOL:-0.5}
-snd() { pw-play --volume=$VOL "$S/$1.oga" >/dev/null 2>&1 & }
+# Sound set chosen with `headless-sounds use <set>`; read on every sound.
+snd() {
+  local set f
+  set=$(cat "$HOME/.config/headless/soundset" 2>/dev/null)
+  f="$HOME/.local/share/headless/sounds/$set/$1.wav"
+  [[ -n $set && -f $f ]] || f="$S/$1.oga"
+  pw-play --volume=$VOL "$f" >/dev/null 2>&1 &
+}
 
 until wpctl status >/dev/null 2>&1; do sleep 1; done
 sleep 2
