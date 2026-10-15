@@ -2,7 +2,7 @@
 # headless-statusd — status codes on the keyboard backlight for a Mac without
 # a screen. Runs as root (the LED is root-only before and outside a session).
 #
-#   boot (no login screen yet)  slow breathing
+#   boot (no login screen yet)  slow breathing, Caps Lock light flickers fast
 #   login screen ready          one long flash every ~3 s
 #   session started             3 quick flashes, then silence
 #   session ended / crashed     5 very quick flashes, then login screen code
@@ -18,6 +18,9 @@ MAX=$(<"$LED/max_brightness")
 
 set_led() { echo "$1" >"$LED/brightness"; }
 
+# The Caps Lock light (the input device's number changes, so glob).
+caps() { local f; for f in /sys/class/leds/*::capslock/brightness; do [[ -w $f ]] && echo "$1" >"$f"; done; }
+
 flash() { # on off count
   local i
   for ((i = 0; i < $3; i++)); do
@@ -27,7 +30,11 @@ flash() { # on off count
 
 breathe() {
   local v
-  for v in 0 20 50 90 140 200 140 90 50 20 0; do set_led "$v"; sleep 0.12; done
+  local c=0
+  for v in 0 20 50 90 140 200 140 90 50 20 0; do
+    set_led "$v"; caps $((c ^= 1)); sleep 0.12
+  done
+  caps 0
 }
 
 state() {
