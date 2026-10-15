@@ -3,6 +3,7 @@ Description=Keyboard backlight status codes (headless use)
 After=local-fs.target
 
 [Service]
+Environment=HEADLESS_USER=henri
 ExecStart=/usr/local/bin/headless-statusd
 Restart=always
 TimeoutStopSec=5

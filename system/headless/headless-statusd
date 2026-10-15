@@ -9,6 +9,11 @@
 #   no network (>6 s)           2 short flashes every ~2 s
 #   shutdown / stop             one long fade-out
 #
+# Login screen sounds (played as the sddm user through its own PipeWire, since
+# no desktop session exists yet): login-screen, login-failed, login-ok. The
+# files come from the sound set in ~/.config/headless/soundset, freedesktop
+# sounds otherwise (headless-sounds assign <event> <sound>).
+#
 # In a session with the network up the daemon writes nothing, so
 # henri.kbdlight keeps the keys.
 set -u
@@ -17,6 +22,31 @@ LED=/sys/class/leds/kbd_backlight
 MAX=$(<"$LED/max_brightness")
 
 set_led() { echo "$1" >"$LED/brightness"; }
+
+HEADLESS_USER=${HEADLESS_USER:-henri}
+UHOME=$(getent passwd "$HEADLESS_USER" | cut -d: -f6)
+SDDM_UID=$(id -u sddm 2>/dev/null)
+VOL=${HEADLESS_VOL:-0.5}
+# The greeter's PipeWire starts at 100 %: pin it to a discreet master level.
+LOGIN_MASTER=${HEADLESS_LOGIN_MASTER:-0.2}
+FD=/usr/share/sounds/freedesktop/stereo
+
+login_sound() { # event freedesktop-fallback
+  [[ -n $SDDM_UID ]] || return 0
+  local set f rt=/run/user/$SDDM_UID
+  set=$(cat "$UHOME/.config/headless/soundset" 2>/dev/null)
+  f=$(ls "$UHOME/.local/share/headless/sounds/$set/$1".{wav,ogg} 2>/dev/null | head -1)
+  [[ -n $set && -n $f ]] || f="$FD/$2.oga"
+  run() { runuser -u sddm -- env XDG_RUNTIME_DIR="$rt" "$@"; }
+  (
+    local i
+    for i in {1..40}; do run wpctl status >/dev/null 2>&1 && break; sleep 0.25; done
+    # No quiet master, no sound: never play at 100 %.
+    run wpctl set-volume @DEFAULT_AUDIO_SINK@ "$LOGIN_MASTER" || exit 0
+    run wpctl set-mute @DEFAULT_AUDIO_SINK@ 0
+    run pw-play --volume="$VOL" "$f"
+  ) >/dev/null 2>&1 &
+}
 
 # The Caps Lock light (the input device's number changes, so glob).
 caps() { local f; for f in /sys/class/leds/*::capslock/brightness; do [[ -w $f ]] && echo "$1" >"$f"; done; }
@@ -53,7 +83,26 @@ pat() {
   set_led "$keep"
 }
 
-trap 'breathe; set_led 0; exit 0' TERM INT
+# SDDM reports the outcome of every login attempt in the journal.
+watch_login() {
+  local line last_fail=-100
+  journalctl -f -n0 -o cat --no-pager _COMM=sddm _COMM=sddm-helper 2>/dev/null |
+    while IFS= read -r line; do
+      case $line in
+        *"Authentication error"*|*"authentication failure"*)
+          ((SECONDS - last_fail >= 2)) || continue   # one event per attempt
+          last_fail=$SECONDS
+          login_sound login-failed dialog-error
+          pat flash 0.6 0.25 2 ;;
+        *"Authentication for user"*successful*)
+          login_sound login-ok complete ;;
+      esac
+    done
+}
+
+trap 'kill $(jobs -p) 2>/dev/null; breathe; set_led 0; exit 0' TERM INT
+state=boot
+watch_login &
 
 prev=boot netfail=0 last_net=-100
 while :; do
@@ -66,6 +115,7 @@ while :; do
       *">session") pat flash 0.08 0.08 3 ;;
       "session>"*) pat flash 0.05 0.05 5 ;;
     esac
+    [[ $state == greeter ]] && login_sound login-screen message-new-instant
     prev=$state
   fi
 

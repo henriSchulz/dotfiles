@@ -35,12 +35,12 @@ breathe() {
   caps 0
 }
 
-snd() {
+snd() { # event [freedesktop fallback]
   local home set f
   home=$(getent passwd "$USER_NAME" | cut -d: -f6)
   set=$(cat "$home/.config/headless/soundset" 2>/dev/null)
   f=$(ls "$home/.local/share/headless/sounds/$set/$1".{wav,ogg} 2>/dev/null | head -1)
-  [[ -n $set && -n $f ]] || f="$S/$1.oga"
+  [[ -n $set && -n $f ]] || f="$S/${2:-$1}.oga"
   sudo -u "$USER_NAME" env XDG_RUNTIME_DIR="/run/user/$(id -u "$USER_NAME")" \
     pw-play --volume=$VOL "$f"
 }
@@ -69,6 +69,9 @@ if [[ $what == all || $what == sound ]]; then
   say "Charger in";               snd device-added; sleep 1.5
   say "Charger out";              snd device-removed; sleep 1.5
   say "Lid closed";               snd message; sleep 1.5
+  say "Login screen shown";       snd login-screen message-new-instant; sleep 1.5
+  say "Login failed";             snd login-failed dialog-error; sleep 1.5
+  say "Login ok";                 snd login-ok complete; sleep 1.5
 fi
 
 say "done"

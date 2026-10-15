@@ -11,7 +11,8 @@
   headless-sounds show              what each event plays right now
 
 Events: complete, network-connectivity-lost, network-connectivity-established,
-device-added, device-removed, message. `assign` fills the set "custom" and
+device-added, device-removed, message, login-screen (greeter shown), login-failed,
+login-ok (played by the root daemon headless-statusd). `assign` fills the set "custom" and
 switches to it. Library: ~/.local/share/headless/library/.
 
 Sets are synthesised into ~/.local/share/headless/sounds/<set>/<event>.wav;
@@ -40,6 +41,9 @@ EVENTS = {
     "device-added":                     ["G5", "C6"],
     "device-removed":                   ["C6", "G5"],
     "message":                          ["A4"],
+    "login-screen":                     ["D5", "A5"],
+    "login-failed":                     ["A4", "F4"],
+    "login-ok":                         ["E5", "A5", "C6"],
 }
 
 # set -> timbre. partials: (ratio, gain); decay: 1/s; gap: s between notes;
