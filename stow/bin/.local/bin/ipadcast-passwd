@@ -1,0 +1,5 @@
+#!/bin/bash
+# ipadcast-passwd — set the password of the screen-mirror page (ipadcast).
+# Stored as a scrypt hash in ~/.config/ipadcast/password; without it the page cannot
+# click or type on this Mac. `ipadcast-passwd --clear-password` removes it again.
+exec python3 "$HOME/Projects/m1-power/ipadcast/server.py" "${@:---set-password}"
