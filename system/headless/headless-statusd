@@ -7,16 +7,14 @@
 #   session started             3 quick flashes, then silence
 #   session ended / crashed     5 very quick flashes, then login screen code
 #   no network (>6 s)           2 short flashes every ~2 s
-#   battery <= 10 %, unplugged  3 long flashes every ~10 s
 #   shutdown / stop             one long fade-out
 #
-# In a session with network and power fine the daemon writes nothing, so
+# In a session with the network up the daemon writes nothing, so
 # henri.kbdlight keeps the keys.
 set -u
 
 LED=/sys/class/leds/kbd_backlight
 MAX=$(<"$LED/max_brightness")
-BAT=/sys/class/power_supply/macsmc-battery
 
 set_led() { echo "$1" >"$LED/brightness"; }
 
@@ -50,7 +48,7 @@ pat() {
 
 trap 'breathe; set_led 0; exit 0' TERM INT
 
-prev=boot netfail=0 last_bat=-100 last_net=-100
+prev=boot netfail=0 last_net=-100
 while :; do
   state=$(state)
   net=$(nmcli -t -g STATE general 2>/dev/null)
@@ -65,11 +63,8 @@ while :; do
   fi
 
   now=$SECONDS
-  cap=$(<"$BAT/capacity"); st=$(<"$BAT/status")
 
-  if ((cap <= 10)) && [[ $st == Discharging ]] && ((now - last_bat >= 10)); then
-    last_bat=$now; pat flash 0.5 0.3 3
-  elif ((netfail >= 3)) && ((now - last_net >= 2)); then
+  if ((netfail >= 3)) && ((now - last_net >= 2)); then
     last_net=$now; pat flash 0.08 0.1 2
   else
     case $state in
