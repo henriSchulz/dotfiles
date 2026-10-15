@@ -3,7 +3,7 @@
 # hypr/autostart.lua. The keyboard-backlight codes are headless-statusd's job
 # (root, works before login); this covers what happens inside the session.
 #
-#   all sounds at volume 0.12 (VOL), subtle by design
+#   all sounds at VOL (a fraction of the master volume), subtle by design
 #   session ready       complete
 #   network lost/back   network-connectivity-lost / -established
 #   charger out/in      device-removed / device-added
@@ -11,8 +11,9 @@
 set -u
 
 S=/usr/share/sounds/freedesktop/stereo
-# Quiet on purpose: nothing that turns heads in public.
-VOL=0.12
+# Quiet on purpose: nothing that turns heads in public. VOL scales the master
+# volume, so with the master at ~20 % 0.5 is still discreet.
+VOL=${HEADLESS_VOL:-0.5}
 snd() { pw-play --volume=$VOL "$S/$1.oga" >/dev/null 2>&1 & }
 
 until wpctl status >/dev/null 2>&1; do sleep 1; done

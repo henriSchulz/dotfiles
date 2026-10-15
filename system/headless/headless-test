@@ -14,7 +14,7 @@ set -u
 LED=/sys/class/leds/kbd_backlight
 MAX=$(<"$LED/max_brightness")
 S=/usr/share/sounds/freedesktop/stereo
-VOL=0.12
+VOL=${HEADLESS_VOL:-0.5}
 USER_NAME=${SUDO_USER:-henri}
 
 set_led() { echo "$1" >"$LED/brightness"; }
