@@ -16,6 +16,7 @@ src="$DOTFILES_ROOT/system/headless"
 run sudo install -Dm644 "$src/30-headless-lid.conf" /etc/systemd/logind.conf.d/30-headless-lid.conf
 run sudo install -Dm755 "$src/headless-statusd" /usr/local/bin/headless-statusd
 run sudo install -Dm644 "$src/headless-status.service" /etc/systemd/system/headless-status.service
+run sudo install -Dm755 "$src/headless-test" /usr/local/bin/headless-test
 
 info "enabling headless-status.service"
 run sudo systemctl daemon-reload

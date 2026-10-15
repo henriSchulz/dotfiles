@@ -1,0 +1,69 @@
+#!/bin/bash
+# headless-test — play every headless signal on demand, without a reboot.
+# Run with sudo (the LEDs are root-only):
+#
+#   sudo headless-test            everything
+#   sudo headless-test led        keyboard backlight + Caps Lock light
+#   sudo headless-test sound      sounds only
+#
+# The Caps Lock light follows every flash here, and each pattern repeats a few
+# times so it is easy to see. The status daemon is paused while this runs.
+set -u
+[[ $EUID == 0 ]] || { echo "run with sudo" >&2; exit 1; }
+
+LED=/sys/class/leds/kbd_backlight
+MAX=$(<"$LED/max_brightness")
+S=/usr/share/sounds/freedesktop/stereo
+VOL=0.12
+USER_NAME=${SUDO_USER:-henri}
+
+set_led() { echo "$1" >"$LED/brightness"; }
+caps() { local f; for f in /sys/class/leds/*::capslock/brightness; do echo "$1" >"$f"; done; }
+
+flash() { # on off count
+  local i
+  for ((i = 0; i < $3; i++)); do
+    set_led "$MAX"; caps 1; sleep "$1"; set_led 0; caps 0; sleep "$2"
+  done
+}
+
+breathe() {
+  local v c=0
+  for v in 0 20 50 90 140 200 140 90 50 20 0; do
+    set_led "$v"; caps $((c ^= 1)); sleep 0.12
+  done
+  caps 0
+}
+
+snd() {
+  sudo -u "$USER_NAME" env XDG_RUNTIME_DIR="/run/user/$(id -u "$USER_NAME")" \
+    pw-play --volume=$VOL "$S/$1.oga"
+}
+
+say() { printf '\n== %s\n' "$*"; }
+repeat() { local n=$1 i; shift; for ((i = 0; i < n; i++)); do "$@"; sleep 0.6; done; }
+
+what=${1:-all}
+
+keep=$(<"$LED/brightness")
+systemctl stop headless-status.service 2>/dev/null
+trap 'set_led "$keep"; caps 0; systemctl start headless-status.service 2>/dev/null' EXIT
+
+if [[ $what == all || $what == led ]]; then
+  say "Boot: slow breathing, Caps Lock flickers (6x)";     repeat 6 breathe
+  say "Login screen ready: one long flash (6x)";           repeat 6 flash 0.8 0 1
+  say "Session started: 3 quick flashes (4x)";             repeat 4 flash 0.08 0.08 3
+  say "Session ended / crashed: 5 very quick flashes (4x)"; repeat 4 flash 0.05 0.05 5
+  say "No network: 2 short flashes (6x)";                  repeat 6 flash 0.08 0.1 2
+fi
+
+if [[ $what == all || $what == sound ]]; then
+  say "Session ready";            snd complete; sleep 1.5
+  say "Network lost";             snd network-connectivity-lost; sleep 1.5
+  say "Network back";             snd network-connectivity-established; sleep 1.5
+  say "Charger in";               snd device-added; sleep 1.5
+  say "Charger out";              snd device-removed; sleep 1.5
+  say "Lid closed";               snd message; sleep 1.5
+fi
+
+say "done"
