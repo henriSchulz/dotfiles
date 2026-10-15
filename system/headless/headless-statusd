@@ -3,7 +3,7 @@
 # a screen. Runs as root (the LED is root-only before and outside a session).
 #
 #   boot (no login screen yet)  slow breathing, Caps Lock light flickers fast
-#   login screen ready          one long flash every ~3 s (Caps Lock light with it)
+#   login screen ready          one long flash every ~3 s
 #   session started             3 quick flashes, then silence
 #   session ended / crashed     5 very quick flashes, then login screen code
 #   no network (>6 s)           2 short flashes every ~2 s
@@ -18,13 +18,13 @@ MAX=$(<"$LED/max_brightness")
 
 set_led() { echo "$1" >"$LED/brightness"; }
 
-# The Caps Lock light mirrors every flash (the input device's number changes, so glob).
+# The Caps Lock light (the input device's number changes, so glob).
 caps() { local f; for f in /sys/class/leds/*::capslock/brightness; do [[ -w $f ]] && echo "$1" >"$f"; done; }
 
 flash() { # on off count
   local i
   for ((i = 0; i < $3; i++)); do
-    set_led "$MAX"; caps 1; sleep "$1"; set_led 0; caps 0; sleep "$2"
+    set_led "$MAX"; sleep "$1"; set_led 0; sleep "$2"
   done
 }
 
@@ -47,13 +47,10 @@ state() {
 
 # Run a pattern, then put the LED back where it was (session) or off.
 pat() {
-  local keep=0 ckeep=0 f
-  if [[ $state == session ]]; then
-    keep=$(<"$LED/brightness")
-    for f in /sys/class/leds/*::capslock/brightness; do ckeep=$(<"$f"); done
-  fi
+  local keep=0
+  [[ $state == session ]] && keep=$(<"$LED/brightness")
   "$@"
-  set_led "$keep"; caps "$ckeep"
+  set_led "$keep"
 }
 
 trap 'breathe; set_led 0; exit 0' TERM INT
@@ -79,7 +76,7 @@ while :; do
   else
     case $state in
       boot)    pat breathe ;;
-      greeter) pat flash 0.8 0 1; sleep 1.5 ;;
+      greeter) pat flash 0.3 0 1; sleep 2 ;;
     esac
   fi
   sleep 1
