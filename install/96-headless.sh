@@ -20,5 +20,6 @@ run sudo install -Dm755 "$src/headless-test" /usr/local/bin/headless-test
 
 info "enabling headless-status.service"
 run sudo systemctl daemon-reload
+run sudo systemctl disable headless-status.service 2>/dev/null || true   # old multi-user.target link
 run sudo systemctl enable --now headless-status.service
 info "logind picks the lid setting up after: sudo systemctl restart systemd-logind (ends no sessions, but the greeter may flicker)"

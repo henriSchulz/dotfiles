@@ -19,6 +19,8 @@
 set -u
 
 LED=/sys/class/leds/kbd_backlight
+# Started as early as systemd allows (before the LED driver may be there).
+for _ in {1..200}; do [[ -w $LED/brightness ]] && break; sleep 0.1; done
 MAX=$(<"$LED/max_brightness")
 
 set_led() { echo "$1" >"$LED/brightness"; }
@@ -40,12 +42,17 @@ login_sound() { # event freedesktop-fallback
   run() { runuser -u sddm -- env XDG_RUNTIME_DIR="$rt" "$@"; }
   (
     local i
-    for i in {1..40}; do run wpctl status >/dev/null 2>&1 && break; sleep 0.25; done
+    # Wait for a default sink, not just for WirePlumber: the sink shows up later.
+    for i in {1..60}; do run wpctl inspect @DEFAULT_AUDIO_SINK@ >/dev/null 2>&1 && break; sleep 0.25; done
     # No quiet master, no sound: never play at 100 %.
-    run wpctl set-volume @DEFAULT_AUDIO_SINK@ "$LOGIN_MASTER" || exit 0
+    if ! run wpctl set-volume @DEFAULT_AUDIO_SINK@ "$LOGIN_MASTER"; then
+      echo "$1: no default sink for sddm, staying silent"; run wpctl status
+      exit 0
+    fi
     run wpctl set-mute @DEFAULT_AUDIO_SINK@ 0
-    run pw-play --volume="$VOL" "$f"
-  ) >/dev/null 2>&1 &
+    echo "$1: playing $f"
+    run pw-play --volume="$VOL" "$f" || echo "$1: pw-play failed ($?)"
+  ) 2>&1 | logger -t headless-login-sound &
 }
 
 # The Caps Lock light (the input device's number changes, so glob).
@@ -108,7 +115,7 @@ prev=boot netfail=0 last_net=-100
 while :; do
   state=$(state)
   net=$(nmcli -t -g STATE general 2>/dev/null)
-  if [[ $net == connected* ]]; then netfail=0; else ((netfail++)); fi
+  if [[ $net == connected* || $state == boot ]]; then netfail=0; else ((netfail++)); fi
 
   if [[ $state != "$prev" ]]; then
     case "$prev>$state" in

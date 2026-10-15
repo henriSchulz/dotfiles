@@ -1,6 +1,10 @@
 [Unit]
 Description=Keyboard backlight status codes (headless use)
-After=local-fs.target
+# As early as possible: the first sign of life should come with the kernel,
+# not with the login screen.
+DefaultDependencies=no
+Before=sysinit.target shutdown.target
+Conflicts=shutdown.target
 
 [Service]
 Environment=HEADLESS_USER=henri
@@ -9,4 +13,4 @@ Restart=always
 TimeoutStopSec=5
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=sysinit.target
