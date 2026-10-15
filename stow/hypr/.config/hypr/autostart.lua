@@ -18,3 +18,7 @@ o.launch_on_start("captive-portal-watch")
 -- Spare virtual output, so unplugging the only monitor cannot crash Hyprland
 -- (rules and reasoning in monitors.lua and the script).
 o.launch_on_start("hypr-spare-output")
+
+-- Headless use (no screen): sounds for session ready, network, charger, lid, battery.
+-- The keyboard-backlight codes come from the root daemon headless-statusd.
+o.launch_on_start("headless-events")

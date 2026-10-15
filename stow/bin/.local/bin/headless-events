@@ -1,0 +1,59 @@
+#!/bin/bash
+# headless-events — sounds for a Mac without a screen. Started from
+# hypr/autostart.lua. The keyboard-backlight codes are headless-statusd's job
+# (root, works before login); this covers what happens inside the session.
+#
+#   session ready       complete
+#   network lost/back   network-connectivity-lost / -established
+#   charger out/in      device-removed / device-added
+#   lid closed          message (still awake)
+#   battery <= 15 %     dialog-warning, <= 7 % dialog-error every minute
+set -u
+
+S=/usr/share/sounds/freedesktop/stereo
+snd() { pw-play --volume=1.0 "$S/$1.oga" >/dev/null 2>&1 & }
+
+until wpctl status >/dev/null 2>&1; do sleep 1; done
+sleep 2
+snd complete
+
+BAT=/sys/class/power_supply/macsmc-battery
+AC=/sys/class/power_supply/macsmc-ac/online
+
+net_ok() { [[ $(nmcli -t -g STATE general 2>/dev/null) == connected* ]]; }
+lid() { busctl --system get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager LidClosed 2>/dev/null; }
+
+netfail=0 net_down=0 prev_ac=$(<"$AC") prev_lid=$(lid) warned=0 last_crit=-100
+while sleep 2; do
+  # Network: down only after 6 s, so a roam does not chirp.
+  if net_ok; then
+    netfail=0
+    ((net_down)) && { net_down=0; snd network-connectivity-established; }
+  else
+    ((netfail++))
+    ((netfail == 3)) && { net_down=1; snd network-connectivity-lost; }
+  fi
+
+  ac=$(<"$AC")
+  if [[ $ac != "$prev_ac" ]]; then
+    [[ $ac == 1 ]] && snd device-added || snd device-removed
+    prev_ac=$ac
+  fi
+
+  l=$(lid)
+  if [[ $l != "$prev_lid" ]]; then
+    [[ $l == "b true" ]] && snd message
+    prev_lid=$l
+  fi
+
+  cap=$(<"$BAT/capacity")
+  if [[ $(<"$BAT/status") == Discharging ]]; then
+    if ((cap <= 7)); then
+      ((SECONDS - last_crit >= 60)) && { last_crit=$SECONDS; snd dialog-error; }
+    elif ((cap <= 15 && !warned)); then
+      warned=1; snd dialog-warning
+    fi
+  else
+    warned=0
+  fi
+done
