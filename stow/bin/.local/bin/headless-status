@@ -1,0 +1,14 @@
+#!/bin/bash
+# headless-status — on demand: "online and logged in?" for a Mac without a
+# screen. Bound to Super+Shift+F10 (hypr/bindings.lua). Runs inside the
+# session, so being logged in is a given; if the network is not up it stays
+# silent on purpose.
+set -u
+
+[[ $(nmcli -t -g STATE general 2>/dev/null) == connected* ]] || exit 0
+
+set=$(cat "$HOME/.config/headless/soundset" 2>/dev/null)
+f=$(ls "$HOME/.local/share/headless/sounds/$set"/network-connectivity-established.{wav,ogg} 2>/dev/null | head -1)
+[[ -n $set && -n $f ]] || f=/usr/share/sounds/freedesktop/stereo/network-connectivity-established.oga
+pw-play --volume="${HEADLESS_VOL:-0.5}" "$f" >/dev/null 2>&1 &
+notify-send -t 2500 "Online" "Logged in, network up" 2>/dev/null

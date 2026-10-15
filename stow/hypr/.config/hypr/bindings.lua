@@ -266,3 +266,8 @@ o.bind("SUPER + SHIFT + XF86AudioRaiseVolume", "Bluetooth keyboard mode (Apple t
 -- Auf dem anderen Gerät fängt btpadd die Kombi selbst ab. F11 ohne Fn = VolumeDown.
 o.bind("SUPER + SHIFT + F11", "Bluetooth keyboard: switch computer", "btpad switch")
 o.bind("SUPER + SHIFT + XF86AudioLowerVolume", "Bluetooth keyboard: switch computer (Apple top row)", "btpad switch")
+
+-- Status des Mac ohne Bildschirm: online und eingeloggt → Ton + Hinweis, sonst
+-- bleibt es still. Ohne Fn sendet F10 Mute, darum beide Varianten.
+o.bind("SUPER + SHIFT + F10", "Headless status", "headless-status")
+o.bind("SUPER + SHIFT + XF86AudioMute", "Headless status (Apple top row)", "headless-status")
