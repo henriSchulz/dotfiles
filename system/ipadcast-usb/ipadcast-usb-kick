@@ -1,0 +1,66 @@
+#!/bin/bash
+# ipadcast-usb-kick — a device on the cable at boot does not show up: wake the USB controller of that port.
+#
+# What happens: the Mac has one USB controller per Type-C port (dwc3-apple, 382280000.usb behind port0 and
+# 502280000.usb behind port1). When the cable is already plugged in at boot, the Type-C chip announces the
+# partner and the host role before the controller is ready; the controller then never builds its xhci and the
+# device is invisible (lsusb) until the cable is pulled and plugged again. The second plug-in sends a new role
+# event, which is the thing that works. This does the same without a hand: partner there + our supply on (we are
+# the source, a device hangs on the cable) + no xhci => re-probe the controller, and if that is not enough,
+# swap the data role of the port back and forth.
+#
+#   ipadcast-usb-kick          wait up to 90 s after boot for the condition, fix it, three tries
+#   ipadcast-usb-kick --now    look once, fix if needed
+set -u
+PAIRS="0:382280000 1:502280000"      # typec port : its USB controller (pd@38 / pd@3f in the device tree)
+TYPEC=/sys/class/typec
+DRV=/sys/bus/platform/drivers/dwc3-apple
+
+stuck() {   # prints the stuck "port:controller" pairs
+  local pair port ctl
+  for pair in $PAIRS; do
+    port=${pair%%:*}; ctl=${pair##*:}
+    [[ -e $TYPEC/port$port-partner ]] || continue
+    grep -q '\[source\]' "$TYPEC/port$port/power_role" 2>/dev/null || continue     # a charger (sink) has no USB behind it
+    ls "/sys/bus/platform/devices/$ctl.usb" 2>/dev/null | grep -q '^xhci-hcd' && continue
+    echo "$pair"
+  done
+}
+
+fix() {
+  local port=${1%%:*} ctl=${1##*:}
+  echo "port$port has a device on the cable but $ctl.usb has no xhci: re-probing the controller"
+  echo "$ctl.usb" > $DRV/unbind 2>/dev/null; sleep 1
+  echo "$ctl.usb" > $DRV/bind 2>/dev/null; sleep 3
+  ls "/sys/bus/platform/devices/$ctl.usb" | grep -q '^xhci-hcd' && { echo "  xhci is up"; return 0; }
+  echo "  still no xhci: swapping the data role of port$port"
+  echo device > "$TYPEC/port$port/data_role" 2>/dev/null; sleep 2
+  echo host > "$TYPEC/port$port/data_role" 2>/dev/null; sleep 3
+  ls "/sys/bus/platform/devices/$ctl.usb" | grep -q '^xhci-hcd' && { echo "  xhci is up"; return 0; }
+  echo "  no luck"; return 1
+}
+
+[[ $EUID == 0 ]] || { echo "run as root" >&2; exit 1; }
+
+if [[ ${1:-} == --now ]]; then
+  s=$(stuck); [[ -n $s ]] || { echo "nothing stuck"; exit 0; }
+  for p in $s; do fix "$p"; done
+  exit 0
+fi
+
+# at boot: the condition must stay for 10 s (a normal enumeration takes a moment), then up to three tries
+seen=0
+for ((t = 0; t < 45; t++)); do          # 45 x 2 s
+  if [[ -n $(stuck) ]]; then
+    seen=$((seen + 1))
+    if ((seen >= 5)); then
+      for p in $(stuck); do fix "$p"; done
+      seen=0; tries=$((${tries:-0} + 1))
+      ((tries >= 3)) && exit 0
+    fi
+  else
+    seen=0
+    ((${tries:-0} > 0)) && exit 0       # it came up after a try
+  fi
+  sleep 2
+done

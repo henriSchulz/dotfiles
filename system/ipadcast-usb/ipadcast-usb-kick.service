@@ -1,0 +1,11 @@
+[Unit]
+Description=Wake the USB controller of a port whose device was on the cable at boot (ipadcast over USB-C)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ipadcast-usb-kick
+TimeoutStartSec=150
+
+[Install]
+WantedBy=multi-user.target
