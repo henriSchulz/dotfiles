@@ -2682,8 +2682,16 @@ Item {
       if (root.guardsPending) Qt.callLater(function() { root.evaluateGuards() })
     }
   }
+  // The output you work on: Spotlight opens there (a device that has its own screen via ipadcast, or the monitor).
+  readonly property var workScreen: {
+    var list = Quickshell.screens
+    var fm = Hyprland.focusedMonitor ? String(Hyprland.focusedMonitor.name) : ""
+    for (var i = 0; i < list.length; i++) if (fm && list[i].name === fm) return list[i]
+    return list.length > 0 ? list[0] : null
+  }
   PanelWindow {
     id: panel
+    screen: root.workScreen
     // The layer surface is never torn down, only resized: one pixel in the
     // top-left corner while closed, full screen while Spotlight is on screen.
     // Creating it from scratch cost ~60 ms of every open -- ten times the QML

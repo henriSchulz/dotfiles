@@ -136,6 +136,11 @@ Item {
     var list = Quickshell.screens
     var want = String(settings.screen || "")
     for (var i = 0; i < list.length; i++) if (want && list[i].name === want) return list[i]
+    // Where you work: the focused output. With a real monitor that is always the monitor (the pointer cannot
+    // reach the virtual output); it is the virtual one when a device has its own screen on it (ipadcast), or
+    // when no monitor is plugged in.
+    var fm = Hyprland.focusedMonitor ? String(Hyprland.focusedMonitor.name) : ""
+    for (var k = 0; k < list.length; k++) if (fm && list[k].name === fm) return list[k]
     for (var j = 0; j < list.length; j++) if (String(list[j].name).indexOf("HEADLESS") !== 0) return list[j]
     return list.length > 0 ? list[0] : null
   }
