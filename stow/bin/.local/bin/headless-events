@@ -41,10 +41,17 @@ while sleep 2; do
     ((netfail == 3)) && { net_down=1; snd network-connectivity-lost; }
   fi
 
+  # Charger in/out: only a state that holds for 6 s counts, and at most one sound every 30 s. A cable or
+  # adapter that renegotiates power (monitor adapter, USB-C hub) flips the supply a few times a second and
+  # used to play the plug sounds over and over.
   ac=$(<"$AC")
-  if [[ $ac != "$prev_ac" ]]; then
-    [[ $ac == 1 ]] && snd device-added || snd device-removed
+  if [[ $ac != "${cand_ac:-$prev_ac}" ]]; then
+    cand_ac=$ac cand_at=$SECONDS
+    logger -t headless-events "charger state -> $ac (waiting 6 s to see whether it holds)"
+  elif [[ $ac != "$prev_ac" ]] && ((SECONDS - cand_at >= 6)); then
+    ((SECONDS - ${last_ac_sound:--100} >= 30)) && { [[ $ac == 1 ]] && snd device-added || snd device-removed; last_ac_sound=$SECONDS; }
     prev_ac=$ac
+    logger -t headless-events "charger state $ac holds"
   fi
 
 done
