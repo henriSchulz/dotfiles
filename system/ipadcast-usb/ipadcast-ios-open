@@ -1,0 +1,83 @@
+#!/home/henri/.cache/m1power-pmd3/bin/python3
+"""ipadcast-ios-open URL — send an open Safari tab on the iPad/iPhone to URL, through the Web Inspector.
+
+Not `webinspector launch`: that opens an automation window of Safari, and in it every touch raises "Safari is
+running an automation" (and ending the session leaves a white page). Here an ordinary tab is navigated, the user
+types into it like in any page. Needs Web Inspector (Settings > Apps > Safari > Advanced) and Safari running with a
+tab open; a tab that already shows an ipadcast page is taken first, else a blank one, else any.
+
+How: iOS announces several inspection targets per tab; only the one of type "page" has the Runtime domain (the
+"frame" targets answer "'Runtime' domain was not found"), so the session is set up by hand and waits for that one,
+as the CDP bridge of pymobiledevice3 does. The navigation is fire-and-forget: a committed navigation destroys the
+target, WebKit never answers the evaluation.
+"""
+import asyncio, json, sys, uuid
+
+from pymobiledevice3.cli.webinspector import webinspector_service
+from pymobiledevice3.lockdown import create_using_usbmux
+from pymobiledevice3.services.web_protocol.inspector_session import InspectorSession
+from pymobiledevice3.services.web_protocol.session_protocol import SessionProtocol
+
+SAFARI = "com.apple.mobilesafari"
+
+
+def rank(url):
+    url = url or ""
+    if ":8770/" in url:
+        return 0                      # an earlier ipadcast page: the tab the user keeps for this
+    if url in ("about:blank", "", "favorites://", "topsites://") or url.startswith("data:"):
+        return 1
+    return 2
+
+
+async def page_session(inspector, page, timeout=6):
+    sid = str(uuid.uuid4()).upper()
+    protocol = SessionProtocol(inspector, sid, page.application, page.page, method_prefix="")
+    await inspector.setup_inspector_socket(sid, page.application.id_, page.page.id_)
+    events = inspector.session_events(sid)
+    loop = asyncio.get_event_loop()
+    end = loop.time() + timeout
+    while loop.time() < end:
+        if not events:
+            await asyncio.sleep(0.05)
+            continue
+        info = events.popleft().get("params", {}).get("targetInfo")
+        if info and info.get("type", "page") == "page":
+            return InspectorSession(protocol, info["targetId"])
+    return None
+
+
+async def main(url):
+    lockdown = await create_using_usbmux()
+    async with webinspector_service(lockdown) as inspector:
+        pages = [p for p in await inspector.get_open_application_pages(timeout=3) if p.application.bundle == SAFARI]
+        if not pages:
+            print("no Safari tab to use (is Safari open?)", file=sys.stderr)
+            return 2
+        pages.sort(key=lambda p: rank(getattr(p.page, "web_url", "")))
+        host = url.split("/")[2]
+        for page in pages:
+            where = getattr(page.page, "web_url", "")
+            session = await page_session(inspector, page)
+            if session is None:
+                print("no page target in the tab", where, file=sys.stderr)
+                continue
+            await session.send_message_to_target(
+                {"id": 1, "method": "Runtime.evaluate", "params": {"expression": f"location.href = {json.dumps(url)}"}})
+            await asyncio.sleep(2)
+            now = [getattr(p.page, "web_url", "") for p in await inspector.get_open_application_pages(timeout=3)]
+            if any(host in u for u in now):
+                print("navigated:", where, "->", url)
+                return 0
+            print("the tab did not follow:", where, file=sys.stderr)
+        return 3
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        sys.exit(__doc__)
+    try:
+        sys.exit(asyncio.run(main(sys.argv[1])))
+    except Exception as e:                 # Web Inspector off, device locked ...
+        print("ERROR", type(e).__name__, e, file=sys.stderr)
+        sys.exit(1)

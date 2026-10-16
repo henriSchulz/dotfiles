@@ -6,10 +6,10 @@ udev starts this (ipadcast-usb.service) when an Apple mobile device shows up on 
   1. usbmuxd answers the pairing ("Trust this computer", done once; the records are in /var/lib/lockdown)
   2. pymobiledevice3 builds the lockdown tunnel: a tunN interface with an IPv6 address for this Mac
   3. MTU 4000 (the tunnel announces 16000, but packets over ~6 kB are lost) and a firewall rule for that interface
-  4. ipadcast.service starts (as the desktop user), a sound + notification name the address for Safari, and the
-     page is opened in Safari ON THE DEVICE through the Web Inspector interface of pymobiledevice3 (the tunnel
-     address changes with every plug-in, so nobody has to type or bookmark it). Needs, once, on the iPad:
-     Settings > Apps > Safari > Advanced > Web Inspector and Remote Automation, both on.
+  4. ipadcast.service starts (as the desktop user), a sound + notification name the address for Safari, and an open
+     Safari tab on the device is sent to the page (ipadcast-ios-open, through the Web Inspector; the tunnel address
+     changes with every plug-in, so nobody has to type or bookmark it). Needs, once, on the iPad: Settings > Apps >
+     Safari > Advanced > Web Inspector on, and Safari open with a tab.
   5. while the cable stays, the tunnel stays; when it is gone, the tunnel ends and so does the mirror if this
      started it
 
@@ -30,6 +30,7 @@ PW = pwd.getpwnam(USER)
 PMD = os.path.join(PW.pw_dir, ".cache/m1power-pmd3/bin/pymobiledevice3")
 TOKEN = os.path.join(PW.pw_dir, ".config/ipadcast/token")
 ANNOUNCE = os.path.join(PW.pw_dir, ".local/bin/ipadcast-announce")
+OPEN = "/usr/local/bin/ipadcast-ios-open"
 STATE = "/run/ipadcast-usb.json"
 LAST = "/var/lib/ipadcast-usb/last-address"
 PORT = 8770
@@ -92,27 +93,27 @@ def user_session_ready():
     return r.stdout.strip() in ("running", "degraded")
 
 
-def open_on_device(url, dev, holder):
-    """Open the page in Safari on the iPad/iPhone. `webinspector launch` keeps running as long as the window is
-    open (an automation window of Safari, marked as remote controlled), so it is started, not waited for: still
-    alive after a few seconds = open. The device may be locked or the setting off: then it ends at once, try again."""
-    deadline = time.time() + 120
-    shown_hint = False
+def open_on_device(url, dev):
+    """Send an open Safari tab of the device to the page (ipadcast-ios-open, through the Web Inspector). The device may
+    be locked, Safari not open, the setting off: keep trying for a while, and say what is missing."""
+    deadline = time.time() + 180
+    hinted = set()
     while time.time() < deadline and apple_device():
-        env = [f"XDG_RUNTIME_DIR=/run/user/{PW.pw_uid}", f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{PW.pw_uid}/bus"]
-        p = subprocess.Popen(["runuser", "-u", USER, "--", "env", *env, PMD, "webinspector", "launch", url],
-                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        try:
-            out = p.communicate(timeout=8)[0]          # it ended: an error
-        except subprocess.TimeoutExpired:
-            holder.append(p)
-            log(f"page open in Safari on the {dev} (automation window: no saved passwords there)")
+        r = as_user(OPEN, url)
+        out = (r.stdout + r.stderr).strip()
+        if r.returncode == 0:
+            log(f"page open in Safari on the {dev}")
             return
-        if "not enabled" in (out or "") and not shown_hint:
-            log(f"Safari on the {dev}: Settings > Apps > Safari > Advanced > Web Inspector and Remote Automation must be on")
-            as_user(ANNOUNCE, "cast-off", "dialog-information", "Spiegel: Safari am iPad",
-                    "Einmal einschalten: Einstellungen > Apps > Safari > Erweitert > Web-Inspektor und Fernautomatisierung")
-            shown_hint = True
+        why = ("setup" if "not enabled" in out else "tab" if r.returncode in (2, 3) else "other")
+        if why not in hinted:
+            hinted.add(why)
+            log(f"could not open the page on the {dev} ({why}): {out[-160:]}")
+            if why == "setup":
+                as_user(ANNOUNCE, "cast-off", "dialog-information", "Spiegel: Safari am iPad",
+                        "Einmal einschalten: Einstellungen > Apps > Safari > Erweitert > Web-Inspektor")
+            elif why == "tab":
+                as_user(ANNOUNCE, "cast-off", "dialog-information", "Spiegel: Safari am iPad",
+                        "Safari am iPad öffnen (ein Tab genügt), der Mac schickt ihn dann auf die Seite")
         time.sleep(5)
     log("could not open the page on the device")
 
@@ -216,17 +217,13 @@ def run():
         log("ipadcast.service did not start:", r.stderr.strip())
     as_user(ANNOUNCE, "cast-on", "device-added", f"{dev} am Kabel",
             f"Die Seite öffnet sich am {dev} von selbst. Sonst in Safari ({note}):\n{url}")
-    launched = []
-    threading.Thread(target=open_on_device, args=(url, dev, launched), daemon=True).start()
+    threading.Thread(target=open_on_device, args=(url, dev), daemon=True).start()
 
     gone = 0
     while tunnel.poll() is None and gone < 3:    # the cable stays: three misses in a row = gone
         gone = gone + 1 if not apple_device() else 0
         time.sleep(2)
     log("cable gone" if gone else "tunnel ended")
-    for p in launched:
-        if p.poll() is None:
-            p.terminate()
     if tunnel.poll() is None:
         tunnel.terminate()
         try:
