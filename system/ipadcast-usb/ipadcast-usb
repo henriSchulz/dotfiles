@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""ipadcast-usb — a cable between this Mac and an iPad/iPhone is a network, and the screen mirror starts.
+
+udev starts this (ipadcast-usb.service) when an Apple mobile device shows up on USB. Then:
+
+  1. usbmuxd answers the pairing ("Trust this computer", done once; the records are in /var/lib/lockdown)
+  2. pymobiledevice3 builds the lockdown tunnel: a tunN interface with an IPv6 address for this Mac
+  3. MTU 4000 (the tunnel announces 16000, but packets over ~6 kB are lost) and a firewall rule for that interface
+  4. ipadcast.service starts (as the desktop user) and a sound + notification name the address for Safari
+  5. while the cable stays, the tunnel stays; when it is gone, the tunnel ends and so does the mirror if this
+     started it
+
+Measured over this link (docs/ipad-usb-link.md in m1-power): 67-162 Mbit/s, 95 % of the packets within 3 ms of
+their time. Needs root (the tunnel makes a network interface).
+
+    ipadcast-usb run       the service
+    ipadcast-usb status    what is up now
+"""
+import json, os, pwd, subprocess, sys, time
+
+USER = os.environ.get("IPADCAST_USER", "henri")
+PW = pwd.getpwnam(USER)
+PMD = os.path.join(PW.pw_dir, ".cache/m1power-pmd3/bin/pymobiledevice3")
+TOKEN = os.path.join(PW.pw_dir, ".config/ipadcast/token")
+ANNOUNCE = os.path.join(PW.pw_dir, ".local/bin/ipadcast-announce")
+STATE = "/run/ipadcast-usb.json"
+LAST = "/var/lib/ipadcast-usb/last-address"
+PORT = 8770
+
+
+def log(*a):
+    print(*a, flush=True)
+
+
+def sh(*cmd, **kw):
+    return subprocess.run(cmd, capture_output=True, text=True, **kw)
+
+
+def as_user(*cmd):
+    env = [f"XDG_RUNTIME_DIR=/run/user/{PW.pw_uid}", f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{PW.pw_uid}/bus"]
+    return sh("runuser", "-u", USER, "--", "env", *env, *cmd)
+
+
+def apple_device():
+    """Name of an iPad/iPhone on USB, or None."""
+    base = "/sys/bus/usb/devices"
+    for d in os.listdir(base):
+        try:
+            if open(f"{base}/{d}/idVendor").read().strip() == "05ac":
+                prod = open(f"{base}/{d}/product").read().strip()
+                if prod.startswith(("iPad", "iPhone")):
+                    return prod
+        except OSError:
+            continue
+    return None
+
+
+def tun_interfaces():
+    """{interface: [global IPv6 addresses]} for every tunN."""
+    try:
+        data = json.loads(sh("ip", "-j", "-6", "addr").stdout or "[]")
+    except ValueError:
+        return {}
+    return {i["ifname"]: [a["local"] for a in i.get("addr_info", []) if a.get("scope") == "global"]
+            for i in data if i["ifname"].startswith("tun")}
+
+
+def token():
+    try:
+        return open(TOKEN).read().strip()
+    except OSError:
+        return ""
+
+
+def open_firewall(iface):
+    """ufw drops what comes in on a new interface; the rule names the interface, which exists only with the cable."""
+    if "ipadcast usb" in sh("ufw", "status").stdout and iface in sh("ufw", "status").stdout:
+        return
+    r = sh("ufw", "allow", "in", "on", iface, "to", "any", "port", str(PORT), "proto", "tcp", "comment", "ipadcast usb")
+    log("ufw:", (r.stdout or r.stderr).strip().splitlines()[-1:] or "ok")
+
+
+def bring_up(dev):
+    """The tunnel, the MTU, the firewall. Returns (process, interface, address) or None."""
+    sh("systemctl", "start", "usbmuxd")
+    before = set(tun_interfaces())
+    tunnel = subprocess.Popen([PMD, "lockdown", "start-tunnel", "--script-mode"], stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, text=True)
+    deadline = time.time() + 45
+    while time.time() < deadline and tunnel.poll() is None:
+        now = tun_interfaces()
+        for name, addrs in now.items():
+            if name not in before and addrs:
+                sh("ip", "link", "set", "dev", name, "mtu", "4000")
+                open_firewall(name)
+                return tunnel, name, addrs[0]
+        time.sleep(0.5)
+    out = ""
+    if tunnel.poll() is None:
+        tunnel.terminate()
+    try:
+        out = tunnel.communicate(timeout=5)[0]
+    except Exception:
+        pass
+    log(f"no tunnel for {dev}:", (out or "").strip()[-400:] or "timeout (device locked, or not trusted yet?)")
+    return None
+
+
+def remember(addr):
+    """Is this the address of the last time? (Decides whether a bookmark on the iPad can work.)"""
+    os.makedirs(os.path.dirname(LAST), exist_ok=True)
+    try:
+        prev = open(LAST).read().strip()
+    except OSError:
+        prev = ""
+    open(LAST, "w").write(addr + "\n")
+    return "same address as last time" if prev == addr else ("new address" if prev else "first time")
+
+
+def run():
+    dev = None
+    for _ in range(30):                          # udev starts us a moment after the device appears
+        dev = apple_device()
+        if dev:
+            break
+        time.sleep(1)
+    if not dev:
+        log("no iPad/iPhone on USB")
+        return
+    log("device:", dev)
+    started_mirror = sh("systemctl", "--user", "-M", f"{USER}@", "is-active", "ipadcast.service").stdout.strip() != "active"
+
+    for attempt in range(1, 6):
+        up = bring_up(dev)
+        if up or not apple_device():
+            break
+        log(f"attempt {attempt} failed, again in 5 s")
+        time.sleep(5)
+    if not up:
+        return
+    tunnel, iface, addr = up
+    url = f"http://[{addr}]:{PORT}/{token()}/"
+    note = remember(addr)
+    json.dump({"device": dev, "interface": iface, "address": addr, "url": url, "note": note}, open(STATE, "w"))
+    os.chmod(STATE, 0o644)
+    log(f"{iface} up, Mac at {addr} ({note}), mirror at {url}")
+
+    r = as_user("systemctl", "--user", "start", "ipadcast.service")
+    if r.returncode:
+        log("ipadcast.service did not start:", r.stderr.strip())
+    as_user(ANNOUNCE, "cast-on", "device-added", f"{dev} am Kabel", f"In Safari öffnen ({note}):\n{url}")
+
+    gone = 0
+    while tunnel.poll() is None and gone < 3:    # the cable stays: three misses in a row = gone
+        gone = gone + 1 if not apple_device() else 0
+        time.sleep(2)
+    log("cable gone" if gone else "tunnel ended")
+    if tunnel.poll() is None:
+        tunnel.terminate()
+        try:
+            tunnel.wait(5)
+        except subprocess.TimeoutExpired:
+            tunnel.kill()
+    try:
+        os.remove(STATE)
+    except OSError:
+        pass
+    if started_mirror:
+        as_user("systemctl", "--user", "stop", "ipadcast.service")
+        as_user(ANNOUNCE, "cast-off", "device-removed", "Bildschirm-Spiegel aus", f"{dev} abgesteckt")
+
+
+if __name__ == "__main__":
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
+    if cmd == "run":
+        if os.geteuid() != 0:
+            sys.exit("run as root (the tunnel makes a network interface)")
+        run()
+    elif cmd == "status":
+        print("device on USB:", apple_device() or "none")
+        try:
+            print(json.dumps(json.load(open(STATE)), indent=2))
+        except (OSError, ValueError):
+            print("no tunnel up")
+    else:
+        sys.exit(__doc__)

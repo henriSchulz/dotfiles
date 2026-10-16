@@ -1,0 +1,2 @@
+# An iPad or iPhone on USB: build the tunnel and start the screen mirror (ipadcast-usb.service).
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="05ac", ATTR{product}=="iP[ah]*", TAG+="systemd", ENV{SYSTEMD_WANTS}+="ipadcast-usb.service"

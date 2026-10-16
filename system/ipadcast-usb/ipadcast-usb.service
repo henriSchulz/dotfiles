@@ -1,0 +1,9 @@
+[Unit]
+Description=ipadcast over USB-C: tunnel to the iPad/iPhone, then the screen mirror
+After=usbmuxd.service
+
+[Service]
+Type=simple
+Environment=IPADCAST_USER=henri
+ExecStart=/usr/local/bin/ipadcast-usb run
+# Started by udev when the device appears, ends when the cable is gone.

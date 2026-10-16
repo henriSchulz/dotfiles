@@ -1,0 +1,14 @@
+#!/bin/bash
+# ipadcast-announce EVENT FALLBACK TITLE BODY — a quiet sound and a notification (also callable from root
+# services through runuser). The sound is EVENT of the sound set in ~/.config/headless/soundset, else the
+# freedesktop sound FALLBACK; quiet like the other headless signals.
+set -u
+S=/usr/share/sounds/freedesktop/stereo
+VOL=${HEADLESS_VOL:-0.5}
+event=$1 fallback=$2 title=$3 body=${4:-}
+set=$(cat "$HOME/.config/headless/soundset" 2>/dev/null)
+f=$(ls "$HOME/.local/share/headless/sounds/$set/$event".{wav,ogg} 2>/dev/null | head -1)
+[[ -n $set && -n $f ]] || f="$S/$fallback.oga"
+pw-play --volume="$VOL" "$f" >/dev/null 2>&1 &
+notify-send -t 10000 "$title" "$body"
+wait
