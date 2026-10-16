@@ -64,11 +64,13 @@ async def main(url):
                 continue
             await session.send_message_to_target(
                 {"id": 1, "method": "Runtime.evaluate", "params": {"expression": f"location.href = {json.dumps(url)}"}})
-            await asyncio.sleep(2)
-            now = [getattr(p.page, "web_url", "") for p in await inspector.get_open_application_pages(timeout=3)]
-            if any(host in u for u in now):
-                print("navigated:", where, "->", url)
-                return 0
+            # the page loads over a tunnel that is a second old: give the tab a few seconds to commit
+            for _ in range(4):
+                await asyncio.sleep(2)
+                now = [getattr(p.page, "web_url", "") for p in await inspector.get_open_application_pages(timeout=3)]
+                if any(host in u for u in now):
+                    print("navigated:", where, "->", url)
+                    return 0
             print("the tab did not follow:", where, file=sys.stderr)
         return 3
 
