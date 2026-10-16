@@ -255,21 +255,7 @@ o.bind("SUPER + ALT + D", "Toggle Dock hiding", hl.dsp.event("dock toggle-autohi
 o.bind("SUPER + D", "Show or hide the Dock", hl.dsp.event("dock toggle"))
 o.bind("CTRL + F3", "Focus the Dock", hl.dsp.event("dock focus"))
 
--- Bluetooth-Tastaturmodus (~/Projects/btpad): Tastatur und Trackpad gehen an ein
--- anderes Gerät (iPad, Mac, …), hier kommt nichts mehr an. Ausschalten mit
--- derselben Kombi — die fängt btpadd selbst ab, Hyprland sieht im Modus nichts.
--- Ohne Fn sendet die F12-Taste VolumeUp, darum beide Varianten.
-o.bind("SUPER + SHIFT + F12", "Bluetooth keyboard mode", "btpad toggle")
-o.bind("SUPER + SHIFT + XF86AudioRaiseVolume", "Bluetooth keyboard mode (Apple top row)", "btpad toggle")
--- Mit Alt dazu: Kopplungsfenster für ein neues Gerät (iPad, ...) öffnen. Ohne das ist der Mac nur für den
--- schon gekoppelten Host sichtbar. Im Modus fängt btpadd die Kombi selbst ab (Hyprland sieht dort nichts).
-o.bind("SUPER + SHIFT + ALT + F12", "Bluetooth keyboard: pairing window", "btpad pair")
-o.bind("SUPER + SHIFT + ALT + XF86AudioRaiseVolume", "Bluetooth keyboard: pairing window (Apple top row)", "btpad pair")
--- Rechner wechseln, die Verbindung bleibt: Tastatur und Trackpad zurück an diesen
--- Mac bzw. wieder ans andere Gerät (schaltet den Modus ein, wenn er aus ist).
--- Auf dem anderen Gerät fängt btpadd die Kombi selbst ab. F11 ohne Fn = VolumeDown.
-o.bind("SUPER + SHIFT + F11", "Bluetooth keyboard: switch computer", "btpad switch")
-o.bind("SUPER + SHIFT + XF86AudioLowerVolume", "Bluetooth keyboard: switch computer (Apple top row)", "btpad switch")
+-- Bluetooth-Tastaturmodus (btpad) ist abgeschaltet; Projekt: ~/Projects/btpad
 
 -- Status des Mac ohne Bildschirm: online und eingeloggt → Ton + Hinweis, sonst
 -- bleibt es still. Ohne Fn sendet F10 Mute, darum beide Varianten.
