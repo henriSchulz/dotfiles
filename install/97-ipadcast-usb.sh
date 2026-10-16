@@ -20,9 +20,7 @@ run sudo install -Dm644 "$src/90-ipadcast-usb.rules" /etc/udev/rules.d/90-ipadca
 run sudo systemctl daemon-reload
 run sudo udevadm control --reload
 
-# A device that is plugged in already: let the rule fire for it now.
-if [[ $DRY_RUN != 1 ]] && lsusb | grep -q '05ac:12a[0-9a-f]\|05ac:12ab'; then
-  info "an Apple device is on USB: starting the tunnel now"
-  run sudo udevadm trigger --action=add --subsystem-match=usb --attr-match=idVendor=05ac
-fi
+# A device that is plugged in already: unplug and replug the cable. (A faked `udevadm trigger --action=add`
+# knocks the device out of its USB configuration; usbmuxd then loses it until it is re-plugged.)
+info "plug the cable in again now (or for the first time): the tunnel and the mirror start by themselves"
 info "watch it: journalctl -fu ipadcast-usb   |   ipadcast-usb status"
