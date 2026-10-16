@@ -261,6 +261,10 @@ o.bind("CTRL + F3", "Focus the Dock", hl.dsp.event("dock focus"))
 -- Ohne Fn sendet die F12-Taste VolumeUp, darum beide Varianten.
 o.bind("SUPER + SHIFT + F12", "Bluetooth keyboard mode", "btpad toggle")
 o.bind("SUPER + SHIFT + XF86AudioRaiseVolume", "Bluetooth keyboard mode (Apple top row)", "btpad toggle")
+-- Mit Alt dazu: Kopplungsfenster für ein neues Gerät (iPad, ...) öffnen. Ohne das ist der Mac nur für den
+-- schon gekoppelten Host sichtbar. Im Modus fängt btpadd die Kombi selbst ab (Hyprland sieht dort nichts).
+o.bind("SUPER + SHIFT + ALT + F12", "Bluetooth keyboard: pairing window", "btpad pair")
+o.bind("SUPER + SHIFT + ALT + XF86AudioRaiseVolume", "Bluetooth keyboard: pairing window (Apple top row)", "btpad pair")
 -- Rechner wechseln, die Verbindung bleibt: Tastatur und Trackpad zurück an diesen
 -- Mac bzw. wieder ans andere Gerät (schaltet den Modus ein, wenn er aus ist).
 -- Auf dem anderen Gerät fängt btpadd die Kombi selbst ab. F11 ohne Fn = VolumeDown.
