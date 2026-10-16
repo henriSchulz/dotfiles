@@ -12,14 +12,15 @@
 #   ipadcast-usb-kick          wait up to 90 s after boot for the condition, fix it, three tries
 #   ipadcast-usb-kick --now    look once, fix if needed
 set -u
-PAIRS="0:382280000 1:502280000"      # typec port : its USB controller (pd@38 / pd@3f in the device tree)
+PAIRS="0:382280000:0-0038 1:502280000:0-003f"   # typec port : USB controller : its Type-C chip on i2c (pd@38 / pd@3f)
 TYPEC=/sys/class/typec
 DRV=/sys/bus/platform/drivers/dwc3-apple
 
 stuck() {   # prints the stuck "port:controller" pairs
   local pair port ctl
+  local rest
   for pair in $PAIRS; do
-    port=${pair%%:*}; ctl=${pair##*:}
+    port=${pair%%:*}; rest=${pair#*:}; ctl=${rest%%:*}
     [[ -e $TYPEC/port$port-partner ]] || continue
     grep -q '\[source\]' "$TYPEC/port$port/power_role" 2>/dev/null || continue     # a charger (sink) has no USB behind it
     ls "/sys/bus/platform/devices/$ctl.usb" 2>/dev/null | grep -q '^xhci-hcd' && continue
@@ -27,16 +28,29 @@ stuck() {   # prints the stuck "port:controller" pairs
   done
 }
 
+has_xhci() { ls "/sys/bus/platform/devices/$1.usb" 2>/dev/null | grep -q '^xhci-hcd'; }
+
 fix() {
-  local port=${1%%:*} ctl=${1##*:}
-  echo "port$port has a device on the cable but $ctl.usb has no xhci: re-probing the controller"
+  local port=${1%%:*} rest=${1#*:} ctl chip
+  ctl=${rest%%:*}; chip=${rest##*:}
+  echo "port$port has a device on the cable but $ctl.usb has no xhci"
+
+  echo "  1. re-probing the USB controller"
   echo "$ctl.usb" > $DRV/unbind 2>/dev/null; sleep 1
   echo "$ctl.usb" > $DRV/bind 2>/dev/null; sleep 3
-  ls "/sys/bus/platform/devices/$ctl.usb" | grep -q '^xhci-hcd' && { echo "  xhci is up"; return 0; }
-  echo "  still no xhci: swapping the data role of port$port"
+  has_xhci "$ctl" && { echo "  xhci is up"; return 0; }
+
+  # The controller alone is not enough: the host role comes from the Type-C chip (tps6598x), and it
+  # announces it only once, when the port is set up. Re-probing the chip is the software version of a re-plug.
+  echo "  2. re-probing the Type-C chip $chip (the port restarts, like pulling the cable)"
+  echo "$chip" > /sys/bus/i2c/drivers/tps6598x/unbind 2>/dev/null; sleep 1
+  echo "$chip" > /sys/bus/i2c/drivers/tps6598x/bind 2>/dev/null
+  for _ in 1 2 3 4 5 6 7 8; do sleep 1; has_xhci "$ctl" && { echo "  xhci is up"; return 0; }; done
+
+  echo "  3. swapping the data role of port$port"
   echo device > "$TYPEC/port$port/data_role" 2>/dev/null; sleep 2
   echo host > "$TYPEC/port$port/data_role" 2>/dev/null; sleep 3
-  ls "/sys/bus/platform/devices/$ctl.usb" | grep -q '^xhci-hcd' && { echo "  xhci is up"; return 0; }
+  has_xhci "$ctl" && { echo "  xhci is up"; return 0; }
   echo "  no luck"; return 1
 }
 
