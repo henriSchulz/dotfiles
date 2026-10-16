@@ -10,6 +10,10 @@ udev starts this (ipadcast-usb.service) when an Apple mobile device shows up on 
   5. while the cable stays, the tunnel stays; when it is gone, the tunnel ends and so does the mirror if this
      started it
 
+Without a screen, after a restart: the device on the cable is there before anybody is logged in, so the tunnel comes
+first (two long flashes of the keyboard light say so), then this waits for the login (typed blind, the usual
+backlight and sound codes), and when the session is up ipadcast starts and a sound says "open the page".
+
 Measured over this link (docs/ipad-usb-link.md in m1-power): 67-162 Mbit/s, 95 % of the packets within 3 ms of
 their time. Needs root (the tunnel makes a network interface).
 
@@ -63,6 +67,26 @@ def tun_interfaces():
         return {}
     return {i["ifname"]: [a["local"] for a in i.get("addr_info", []) if a.get("scope") == "global"]
             for i in data if i["ifname"].startswith("tun")}
+
+
+def flash_led(n=2, on=0.5, off=0.25):
+    """The keyboard light, once the tunnel is up (the backlight daemon writes the same file, a short overlap is fine)."""
+    led = "/sys/class/leds/kbd_backlight"
+    try:
+        top = int(open(f"{led}/max_brightness").read())
+        was = open(f"{led}/brightness").read().strip()
+        for _ in range(n):
+            open(f"{led}/brightness", "w").write(str(top)); time.sleep(on)
+            open(f"{led}/brightness", "w").write("0"); time.sleep(off)
+        open(f"{led}/brightness", "w").write(was)
+    except OSError:
+        pass
+
+
+def user_session_ready():
+    """The desktop user's systemd manager runs (somebody has logged in)."""
+    r = as_user("systemctl", "--user", "is-system-running")
+    return r.stdout.strip() in ("running", "degraded")
 
 
 def token():
@@ -128,27 +152,42 @@ def run():
         log("no iPad/iPhone on USB")
         return
     log("device:", dev)
-    started_mirror = sh("systemctl", "--user", "-M", f"{USER}@", "is-active", "ipadcast.service").stdout.strip() != "active"
-
-    for attempt in range(1, 6):
+    up = None
+    for attempt in range(1, 181):                # up to 15 minutes: the iPad may be locked, usbmuxd still starting
         up = bring_up(dev)
         if up or not apple_device():
             break
-        log(f"attempt {attempt} failed, again in 5 s")
+        if attempt % 6 == 1:
+            log(f"attempt {attempt} failed, trying again every 5 s while the cable stays")
         time.sleep(5)
     if not up:
         return
     tunnel, iface, addr = up
     url = f"http://[{addr}]:{PORT}/{token()}/"
+    name_url = f"http://omarchy.local:{PORT}/{token()}/"
     note = remember(addr)
-    json.dump({"device": dev, "interface": iface, "address": addr, "url": url, "note": note}, open(STATE, "w"))
+    json.dump({"device": dev, "interface": iface, "address": addr, "url": url, "name_url": name_url, "note": note},
+              open(STATE, "w"))
     os.chmod(STATE, 0o644)
     log(f"{iface} up, Mac at {addr} ({note}), mirror at {url}")
+    flash_led(2)                                 # blind: the cable link is up (login may still be ahead)
 
+    # Nobody logged in yet (just restarted, typing the password blind): the tunnel is there, the mirror waits.
+    waited = False
+    while tunnel.poll() is None and apple_device() and not user_session_ready():
+        if not waited:
+            log("waiting for the login of", USER)
+            waited = True
+        time.sleep(3)
+    if tunnel.poll() is not None or not apple_device():
+        log("cable gone before the login")
+        return
+    started_mirror = sh("systemctl", "--user", "-M", f"{USER}@", "is-active", "ipadcast.service").stdout.strip() != "active"
     r = as_user("systemctl", "--user", "start", "ipadcast.service")
     if r.returncode:
         log("ipadcast.service did not start:", r.stderr.strip())
-    as_user(ANNOUNCE, "cast-on", "device-added", f"{dev} am Kabel", f"In Safari öffnen ({note}):\n{url}")
+    as_user(ANNOUNCE, "cast-on", "device-added", f"{dev} am Kabel",
+            f"In Safari öffnen ({note}):\n{name_url}\noder {url}")
 
     gone = 0
     while tunnel.poll() is None and gone < 3:    # the cable stays: three misses in a row = gone
