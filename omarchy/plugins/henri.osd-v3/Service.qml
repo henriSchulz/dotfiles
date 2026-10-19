@@ -412,10 +412,15 @@ Item {
     id: win
     visible: card.opacity > 0.001 || root.open
     anchors { top: true; right: true }
-    margins { top: Theme.layout.module.tileInset; right: Theme.layout.module.pad }
-    // room for the shadow around the card
-    implicitWidth: card.width + 2 * Theme.layout.module.pad
-    implicitHeight: card.height + 2 * Theme.layout.module.pad
+    // room for the whole shadow (its blur plus offset), or the window edge cuts it into a visible band;
+    // the card itself stays tileInset from the top and pad from the right edge
+    readonly property real shadowRoom: {
+      var l = Theme.r.popover.shadow || [], m = 0
+      for (var i = 0; i < l.length; i++) if (!l[i].inset) m = Math.max(m, l[i].blur + Math.abs(l[i].offsetY) + l[i].spread)
+      return Math.ceil(m)
+    }
+    implicitWidth: card.width + Theme.layout.module.pad + shadowRoom
+    implicitHeight: Theme.layout.module.tileInset + card.height + shadowRoom
     color: "transparent"
     WlrLayershell.namespace: "henri-osd"
     WlrLayershell.layer: WlrLayer.Overlay
@@ -425,6 +430,7 @@ Item {
 
     Item {
       id: card
+      x: win.shadowRoom; y: Theme.layout.module.tileInset
       width: Theme.layout.module.width * 0.7
       height: column.implicitHeight + 2 * Theme.layout.module.pad
       transformOrigin: Item.TopRight

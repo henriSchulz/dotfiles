@@ -69,7 +69,19 @@ Panel {
   // The corner buttons (close / "Clear All", edit-mode minus) overhang a
   // card's top-left corner; the scroller clips, so the column keeps this
   // much room on its left and top for them.
-  readonly property int overhang: Math.max(0, Math.ceil(nc.closeButton / 2 - Math.min(nc.closeCenterX, nc.closeCenterY))) + 1
+  // ... and room for the cards' whole shadow (blur + offset), or the scroller's edge cuts it into a
+  // visible line beside and under the cards (Henri saw it)
+  readonly property int shadowRoom: {
+    var l = Theme.r.popover.shadow || [], m = 0
+    for (var i = 0; i < l.length; i++) if (!l[i].inset) m = Math.max(m, l[i].blur + Math.abs(l[i].offsetY) + l[i].spread)
+    return Math.ceil(m)
+  }
+  readonly property int overhang: Math.max(shadowRoom, Math.ceil(nc.closeButton / 2 - Math.min(nc.closeCenterX, nc.closeCenterY)) + 1)
+
+  function scrollBy(dy) {
+    if (!scroller.interactive) return
+    scroller.contentY = Math.max(0, Math.min(scroller.contentHeight - scroller.height, scroller.contentY - dy))
+  }
 
   // ---- open / close (same contract as the calendar Panel)
   function open() {
@@ -429,7 +441,7 @@ Panel {
         id: scroller
         anchors.fill: parent
         contentWidth: width
-        contentHeight: column.implicitHeight + root.overhang + root.inset
+        contentHeight: column.implicitHeight + 2 * root.overhang
         clip: true
         boundsBehavior: Flickable.DragAndOvershootBounds
         interactive: contentHeight > height
@@ -441,7 +453,8 @@ Panel {
           onWheel: function(ev) {
             var dx = ev.pixelDelta.x !== 0 ? ev.pixelDelta.x : ev.angleDelta.x / 4
             var dy = ev.pixelDelta.y !== 0 ? ev.pixelDelta.y : ev.angleDelta.y / 4
-            if (Math.abs(dx) <= Math.abs(dy)) return
+            // the handler takes every touchpad event, so vertical ones scroll the Center here
+            if (Math.abs(dx) <= Math.abs(dy)) { root.scrollBy(dy); return }
             scroller.swipeX = Math.max(0, scroller.swipeX + dx)
             swipeSettle.restart()
           }
@@ -462,7 +475,7 @@ Panel {
           id: column
           x: root.overhang
           y: root.overhang
-          width: scroller.width - root.overhang
+          width: root.columnWidth
           spacing: root.gap
           move: Transition {
             NumberAnimation { properties: "x,y"; duration: Theme.move(Theme.dur("base")); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut") }
@@ -851,7 +864,8 @@ Panel {
           onWheel: function(ev) {
             var dx = ev.pixelDelta.x !== 0 ? ev.pixelDelta.x : ev.angleDelta.x / 4
             var dy = ev.pixelDelta.y !== 0 ? ev.pixelDelta.y : ev.angleDelta.y / 4
-            if (Math.abs(dx) <= Math.abs(dy)) return
+            // the handler takes every touchpad event, so vertical ones scroll the Center here
+            if (Math.abs(dx) <= Math.abs(dy)) { root.scrollBy(dy); return }
             if (dx > 0 && card.swipeX >= 0) return   // swiping right on a closed card: the column takes it
             ev.accepted = true
             card.swipeX = Math.max(-card.width, Math.min(0, card.swipeX + dx))
