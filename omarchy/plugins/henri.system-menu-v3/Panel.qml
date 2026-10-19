@@ -5,12 +5,12 @@ import qs.Commons
 import qs.Ui
 import "file:///home/henri/.local/share/velum/qml/Velum"
 
-// System menu v3 (Velum) — the macOS Apple menu. The Omarchy logo sits in the
-// bar's left corner and opens a plain menu (VMenu: no transition, the
-// highlight jumps, a chosen item blinks once, then it acts). "About This
-// Computer" swaps the menu for an About card; restart, shut down and log out
-// ask first on a confirm card, like the "…" items on macOS. Cards are
-// VPopovers in the same window (VBarWindow), under the logo.
+// System menu v3 (Velum) — the macOS Apple menu. The Omarchy logo sits on the
+// bar's left island; a click grows that island into the menu (VIslandWindow,
+// Henri's wish: the one exception to "menus open with no transition"); in it
+// the highlight jumps, a chosen item blinks once, then it acts. "About This
+// Computer" morphs the island into an About card; restart, shut down and log
+// out ask first on a confirm card, like the "…" items on macOS.
 Panel {
   id: root
   moduleName: "henri.system-menu-v3"
@@ -129,116 +129,110 @@ Panel {
   Spring { id: logoScale; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: root.logoSqueezed ? Theme.scale("press") : 1 }
   Timer { id: logoPulse; interval: Theme.dur("instant") || 1; onTriggered: root.logoSqueezed = false }
 
-  VBarWindow {
+  // A Dynamic Island: the left island of the bar (the logo) grows into the menu, and on into the
+  // About or confirm card (it keeps its left and top edge, and morphs between the pages).
+  VIslandWindow {
     id: win
     anchorItem: button
     bar: root.bar
     open: root.opened
     namespace: "velum-surface"   // Hyprland: blur with ignore_alpha 0.6 (only the material, never the shadow), no layer animation
+    align: "left"
+    focusTarget: keys
+    readonly property bool onMenu: root.page === "menu"
+    pad: onMenu ? 0 : Theme.layout.module.pad
+    cornerRadius: onMenu ? Theme.m.radius.menu : Theme.m.radius.panel + Theme.layout.module.tileInset
+    toWidth: (onMenu ? menu.implicitWidth : root.page === "about" ? aboutCol.width : confirmCol.width) + 2 * pad
+    contentHeight: onMenu ? menu.implicitHeight : root.page === "about" ? aboutCol.implicitHeight : confirmCol.implicitHeight
     onDismissed: root.close()
-    onEscapePressed: root.page !== "menu" ? root.page = "menu" : root.close()
-    onKeyPressed: function (e) {
-      if (root.page === "menu") {
-        if (e.key === Qt.Key_Down) { menu.step(1); e.accepted = true }
-        else if (e.key === Qt.Key_Up) { menu.step(-1); e.accepted = true }
-        else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) { menu.choose(menu.highlighted); e.accepted = true }
-      } else if (root.page === "confirm" && (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && root.pending) {
-        root.run(root.pending.cmd); e.accepted = true
-      }
-      if (e.key === Qt.Key_Tab || e.key === Qt.Key_Backtab) { root.switchPanel(e.key === Qt.Key_Backtab ? -1 : 1); e.accepted = true }
-    }
+    onReopenRequested: root.open()
 
-    // like the Apple menu: the menu's left edge under the logo
-    readonly property real cardX: win.anchorX - Theme.layout.menu.itemPadX
-    readonly property real cardY: win.barStrip + win.gap
+    Item {
+      id: keys
+      focus: true
+      Keys.onPressed: function (e) {
+        if (e.key === Qt.Key_Escape) { if (root.page !== "menu") root.page = "menu"; else root.close(); e.accepted = true; return }
+        if (root.page === "menu") {
+          if (e.key === Qt.Key_Down) { menu.step(1); e.accepted = true }
+          else if (e.key === Qt.Key_Up) { menu.step(-1); e.accepted = true }
+          else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) { menu.choose(menu.highlighted); e.accepted = true }
+        } else if (root.page === "confirm" && (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && root.pending) {
+          root.run(root.pending.cmd); e.accepted = true
+        }
+        if (e.key === Qt.Key_Tab || e.key === Qt.Key_Backtab) { root.switchPanel(e.key === Qt.Key_Backtab ? -1 : 1); e.accepted = true }
+      }
+    }
 
     VMenu {
       id: menu
-      x: win.clampX(width, win.cardX)
-      y: win.cardY
+      bare: true
       model: root.items
       onTriggered: function (i) { root.perform(root.items[i]) }
     }
 
     // ------------------------------------------------------------ about
-    VPopover {
-      id: about
-      x: win.clampX(width, win.cardX)
-      y: win.cardY
-      open: root.opened && root.page === "about"
-      kind: "panel"   // motion.barPopup, as every popup at the menu bar
-      MouseArea { width: aboutCol.width; height: aboutCol.height }   // clicks on the card never close it
-      Column {
-        id: aboutCol
-        width: Theme.layout.module.width * 2 / 3
-        spacing: Theme.layout.list.gap / 2
-        topPadding: Theme.layout.module.pad
-        bottomPadding: Theme.layout.module.tileInset
-        Text {
-          anchors.horizontalCenter: parent.horizontalCenter
-          text: root.logo
-          font.family: "omarchy"
-          font.pixelSize: Theme.layout.module.toggle + Theme.layout.module.pad
-          color: Theme.r.popover.ink
-          scale: aboutLogo.value
-          Spring { id: aboutLogo; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: about.open ? 1 : Theme.scale("exitTo") }
-        }
-        Item { width: 1; height: Theme.layout.list.gap }
-        VText { anchors.horizontalCenter: parent.horizontalCenter; text: root.info.model || "Omarchy"; color: Theme.r.popover.ink
-          font.pixelSize: Theme.m.type.title; font.weight: Font.Bold }
-        VText { anchors.horizontalCenter: parent.horizontalCenter; text: root.info.host || ""; tone: "secondary"; font.pixelSize: Theme.m.type.small }
-        Item { width: 1; height: Theme.layout.list.gap }
-        Repeater {
-          model: [["Chip", root.info.cpu], ["Memory", root.info.memory], ["Graphics", root.info.gpu], ["Disk", root.info.disk],
-                  ["Omarchy", root.info.omarchy], ["Kernel", root.info.kernel], ["Uptime", root.info.uptime]]
-          delegate: Row {
-            required property var modelData
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: Theme.layout.list.gap
-            VText { width: aboutCol.width * 0.32; horizontalAlignment: Text.AlignRight; text: modelData[0]; color: Theme.r.popover.ink
-              font.pixelSize: Theme.m.type.small; font.weight: Font.DemiBold }
-            VText { width: aboutCol.width * 0.6; text: modelData[1] || "—"; tone: "secondary"; font.pixelSize: Theme.m.type.small; elide: Text.ElideRight }
-          }
-        }
-        Item { width: 1; height: Theme.layout.list.gap }
-        VButton { anchors.horizontalCenter: parent.horizontalCenter; text: "More Info…"; onClicked: root.run("omarchy-launch-about") }
+    Column {
+      id: aboutCol
+      readonly property bool shown: root.opened && root.page === "about"
+      visible: shown
+      width: Theme.layout.module.width * 2 / 3
+      spacing: Theme.layout.list.gap / 2
+      Text {
+        anchors.horizontalCenter: parent.horizontalCenter
+        text: root.logo
+        font.family: "omarchy"
+        font.pixelSize: Theme.layout.module.toggle + Theme.layout.module.pad
+        color: Theme.r.popover.ink
+        scale: aboutLogo.value
+        Spring { id: aboutLogo; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: aboutCol.shown ? 1 : Theme.scale("exitTo") }
       }
+      Item { width: 1; height: Theme.layout.list.gap }
+      VText { anchors.horizontalCenter: parent.horizontalCenter; text: root.info.model || "Omarchy"; color: Theme.r.popover.ink
+        font.pixelSize: Theme.m.type.title; font.weight: Font.Bold }
+      VText { anchors.horizontalCenter: parent.horizontalCenter; text: root.info.host || ""; tone: "secondary"; font.pixelSize: Theme.m.type.small }
+      Item { width: 1; height: Theme.layout.list.gap }
+      Repeater {
+        model: [["Chip", root.info.cpu], ["Memory", root.info.memory], ["Graphics", root.info.gpu], ["Disk", root.info.disk],
+                ["Omarchy", root.info.omarchy], ["Kernel", root.info.kernel], ["Uptime", root.info.uptime]]
+        delegate: Row {
+          required property var modelData
+          anchors.horizontalCenter: parent.horizontalCenter
+          spacing: Theme.layout.list.gap
+          VText { width: aboutCol.width * 0.32; horizontalAlignment: Text.AlignRight; text: modelData[0]; color: Theme.r.popover.ink
+            font.pixelSize: Theme.m.type.small; font.weight: Font.DemiBold }
+          VText { width: aboutCol.width * 0.6; text: modelData[1] || "—"; tone: "secondary"; font.pixelSize: Theme.m.type.small; elide: Text.ElideRight }
+        }
+      }
+      Item { width: 1; height: Theme.layout.list.gap }
+      VButton { anchors.horizontalCenter: parent.horizontalCenter; text: "More Info…"; onClicked: root.run("omarchy-launch-about") }
     }
 
     // ---------------------------------------------------------- confirm
-    VPopover {
-      id: confirm
-      x: win.clampX(width, win.cardX)
-      y: win.cardY
-      open: root.opened && root.page === "confirm"
-      kind: "panel"   // motion.barPopup, as every popup at the menu bar
-      MouseArea { width: confirmCol.width; height: confirmCol.height }
-      Column {
-        id: confirmCol
-        width: Theme.layout.module.width * 2 / 3
-        spacing: Theme.layout.module.pad
-        topPadding: Theme.layout.module.pad
-        bottomPadding: Theme.layout.module.tileInset
-        Text {
-          anchors.horizontalCenter: parent.horizontalCenter
-          text: root.logo
-          font.family: "omarchy"
-          font.pixelSize: Theme.layout.module.toggle
-          color: Theme.r.popover.ink
-          scale: confirmLogo.value
-          Spring { id: confirmLogo; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: confirm.open ? 1 : Theme.scale("exitTo") }
-        }
-        VText {
-          width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
-          text: root.pending ? root.pending.title : ""; color: Theme.r.popover.ink; font.weight: Font.DemiBold
-        }
-        Row {
-          anchors.horizontalCenter: parent.horizontalCenter
-          spacing: Theme.layout.list.gap
-          VButton { width: (confirmCol.width - Theme.layout.list.gap) / 2 - Theme.layout.module.pad; text: "Cancel"; onClicked: root.page = "menu" }
-          VButton { width: (confirmCol.width - Theme.layout.list.gap) / 2 - Theme.layout.module.pad; kind: "primary"; text: root.pending ? root.pending.confirm : ""
-            onClicked: if (root.pending) root.run(root.pending.cmd) }
-        }
+    Column {
+      id: confirmCol
+      readonly property bool shown: root.opened && root.page === "confirm"
+      visible: shown
+      width: Theme.layout.module.width * 2 / 3
+      spacing: Theme.layout.module.pad
+      Text {
+        anchors.horizontalCenter: parent.horizontalCenter
+        text: root.logo
+        font.family: "omarchy"
+        font.pixelSize: Theme.layout.module.toggle
+        color: Theme.r.popover.ink
+        scale: confirmLogo.value
+        Spring { id: confirmLogo; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: confirmCol.shown ? 1 : Theme.scale("exitTo") }
+      }
+      VText {
+        width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
+        text: root.pending ? root.pending.title : ""; color: Theme.r.popover.ink; font.weight: Font.DemiBold
+      }
+      Row {
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: Theme.layout.list.gap
+        VButton { width: (confirmCol.width - Theme.layout.list.gap) / 2 - Theme.layout.module.pad; text: "Cancel"; onClicked: root.page = "menu" }
+        VButton { width: (confirmCol.width - Theme.layout.list.gap) / 2 - Theme.layout.module.pad; kind: "primary"; text: root.pending ? root.pending.confirm : ""
+          onClicked: if (root.pending) root.run(root.pending.cmd) }
       }
     }
   }
