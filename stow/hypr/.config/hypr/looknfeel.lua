@@ -163,6 +163,15 @@ hl.layer_rule({ match = { namespace = "omarchy-keyboard-panel" }, blur = true, i
 hl.layer_rule({ match = { namespace = "omarchy-notifications" }, no_anim = true, animation = "none" })
 hl.layer_rule({ match = { namespace = "omarchy-notifications" }, blur = true, ignore_alpha = 0.3 })
 
+-- Velum (Control Center v3, power, clock, Notification Center, banners, system menu, OSD):
+-- the shells draw and animate their surfaces themselves. The material is at α 0.72–0.82,
+-- the soft shadows below it stay under 0.6 — so only the cards are blurred, never a band
+-- of shadow under or around them (Henri saw a frame beside the Notification Center).
+hl.layer_rule({ match = { namespace = "velum-surface" }, no_anim = true, animation = "none" })
+hl.layer_rule({ match = { namespace = "velum-surface" }, blur = true, ignore_alpha = 0.6 })
+hl.layer_rule({ match = { namespace = "velum-surface-dismiss" }, no_anim = true, animation = "none" })
+hl.layer_rule({ match = { namespace = "henri-osd" }, blur = true, ignore_alpha = 0.6 })
+
 -- Quick Look (GNOME Sushi): Hyprland maps the window at a size of its own and
 -- only a frame later gets the preview's real size, so the default pop-in
 -- (87 %) reads as the card shrinking into place. Starting the pop-in from
