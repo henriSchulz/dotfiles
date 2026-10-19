@@ -64,8 +64,8 @@ blob, PAM lines) is in this file's git history before the M1 move.
 ## 4. Claude Code
 
 `~/.claude/CLAUDE.md`, `settings.json` and the memory directory come from
-`dotfiles-private` (its `install.sh` symlinks them). The `henri-ui` skill is
-stowed from this repo (`stow/claude-skills`) and needs no extra step.
+`dotfiles-private` (its `install.sh` symlinks them). The `velum` skill (UI
+rules) comes with Velum: `install/28` clones it and `bin/velum-install` links it.
 Logging in (`claude` → browser) is per machine.
 
 ## 5. Display and per-machine settings
