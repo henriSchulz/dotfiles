@@ -1119,9 +1119,9 @@ Item {
         // Motion: they stay in place and only fade (offset/move → 0).
         readonly property real offscreen: width + popupWindow.popupPlacement.margins.right
 
+        // arrival: a quick fade here; the slide in is the delegate's own gentle spring (Velum lab)
         add: Transition {
-          NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.dur("slow"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") }
-          NumberAnimation { property: "x"; from: Theme.move(popupList.offscreen); duration: Theme.move(Theme.dur("slow")); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") }
+          NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") }
         }
         remove: Transition {
           NumberAnimation { property: "opacity"; to: 0; duration: Theme.exit(Theme.dur("slow")); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("exit") }
@@ -1151,6 +1151,10 @@ Item {
 
           width: popupList.width
           height: card.implicitHeight
+          // slides in from beyond the screen edge on the gentle spring (Reduce Motion: in place)
+          Spring { id: arrive; preset: Theme.spring("gentle"); reduced: Theme.reduceMotion; target: 0 }
+          Component.onCompleted: arrive.from(Theme.move(popupList.offscreen))
+          transform: Translate { x: arrive.value }
           // A banner with its actions menu open draws over the ones below it.
           z: card.menuOpen ? 10 : 0
           readonly property bool menuOpen: card.menuOpen

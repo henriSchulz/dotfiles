@@ -511,10 +511,7 @@ Panel {
               enabled: !widgetDrag.active
               NumberAnimation { properties: "x,y"; duration: Theme.move(Theme.dur("base")); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut") }
             }
-            add: Transition {
-              NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.dur("base"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") }
-              NumberAnimation { property: "scale"; from: Theme.scale("popoverFrom"); to: 1; duration: Theme.move(Theme.dur("base")); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") }
-            }
+            // no add transition (an interrupted one leaves items half transparent): widgets fade in themselves
             Repeater {
               model: widgetModel
               delegate: NcWidget {}
@@ -795,7 +792,7 @@ Panel {
     Behavior on opacity { NumberAnimation { duration: Theme.exit(Theme.dur("slow")); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("exit") } }
     // Appears: fade + slight settle from above (expanding a stack, a new notification).
     onVisibleChanged: if (visible) appear.from(0)
-    Spring { id: appear; preset: Theme.spring("snappy"); target: 1 }
+    Spring { id: appear; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: 1 }
     Component.onCompleted: appear.from(0)
 
     function dismiss() {
@@ -1044,8 +1041,12 @@ Panel {
     readonly property string size: model.size
     width: size === "small" ? root.smallW : root.columnWidth
     height: size === "large" ? root.smallH * 2 + root.gap : root.smallH
-    opacity: widgetDrag.active && widgetDrag.index === index ? Theme.core.alpha.disabled : 1
+    opacity: (widgetDrag.active && widgetDrag.index === index ? Theme.core.alpha.disabled : 1) * tileIn.value
     Behavior on opacity { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
+    // a widget added in edit mode grows in on the snappy spring (only after the Center is up)
+    Spring { id: tileIn; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: 1 }
+    Component.onCompleted: if (root.opened) tileIn.from(0)
+    scale: Theme.scale("popoverFrom") + (1 - Theme.scale("popoverFrom")) * tileIn.value
 
     NcWidgetFace {
       id: face

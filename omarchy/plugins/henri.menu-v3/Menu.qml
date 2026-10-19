@@ -2747,7 +2747,7 @@ Item {
     // capsule while nothing is typed, widening into a 560-pt panel with the
     // search row on top, a hairline, the filter capsules and 49-pt two-line
     // rows. Width, height and radius follow the `smooth` spring inside a
-    // clipping rectangle; open is fade + 0.98→1 scale on `fast`, close a
+    // clipping rectangle; open is fade + launcherFrom→1 scale on the gentle spring, close a
     // plain fade (spec §10). Reduce Motion keeps the fades alone.
     Item {
       id: spot
@@ -2771,23 +2771,19 @@ Item {
         ? root.rowsTop + root.visibleRowsHeight + root.bottomPad
         : (root.dmenuActive ? root.fieldRow : root.compactHeight)
       readonly property real targetRadius: expanded ? root.panelRadius : targetHeight / 2
-      Spring { id: widthS; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion; target: spot.targetWidth }
-      Spring { id: heightS; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion; target: spot.targetHeight }
-      Spring { id: radiusS; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion; target: spot.targetRadius }
+      Spring { id: widthS; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion || settleGeometry.running; target: spot.targetWidth }
+      Spring { id: heightS; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion || settleGeometry.running; target: spot.targetHeight }
+      Spring { id: radiusS; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion || settleGeometry.running; target: spot.targetRadius }
       function snapGeometry() {
         widthS.snap(targetWidth); heightS.snap(targetHeight); radiusS.snap(targetRadius)
       }
 
-      NumberAnimation {
-        id: enterScale
-        target: spot
-        property: "scale"
-        from: Theme.scale("launcherFrom")
-        to: 1
-        duration: Theme.dur("fast")
-        easing.type: Easing.BezierSpline
-        easing.bezierCurve: Theme.curve("out")
-      }
+      // while it opens, the window still takes its size from the compositor: the geometry jumps to it,
+      // only the scale springs; afterwards results widen and grow on the springs again
+      Timer { id: settleGeometry; interval: Theme.dur("slow"); onTriggered: spot.snapGeometry() }
+      // opens out of launcherFrom on the gentle spring (Velum lab Spotlight)
+      Spring { id: enterScale; preset: Theme.spring("gentle"); reduced: Theme.reduceMotion; target: 1; value: 1 }
+      scale: enterScale.value
       Connections {
         target: root
         function onOpenedChanged() {
@@ -2795,7 +2791,10 @@ Item {
           if (spot.opacity < 0.01) {
             // A fresh open starts in its final pose; only the fade/scale runs.
             spot.snapGeometry()
-            if (!Theme.reduceMotion) enterScale.restart()
+            enterScale.from(Theme.scale("launcherFrom"))
+            // the final width is known only after the first layout pass: take it then, too,
+            // or the field grows out of a sliver while it scales in
+            settleGeometry.restart()
           }
           Qt.callLater(function() { keyCatcher.forceActiveFocus() })
         }
