@@ -166,6 +166,7 @@ Panel {
       x: win.clampX(width, win.cardX)
       y: win.cardY
       open: root.opened && root.page === "about"
+      kind: "panel"   // motion.barPopup, as every popup at the menu bar
       MouseArea { width: aboutCol.width; height: aboutCol.height }   // clicks on the card never close it
       Column {
         id: aboutCol
@@ -210,6 +211,7 @@ Panel {
       x: win.clampX(width, win.cardX)
       y: win.cardY
       open: root.opened && root.page === "confirm"
+      kind: "panel"   // motion.barPopup, as every popup at the menu bar
       MouseArea { width: confirmCol.width; height: confirmCol.height }
       Column {
         id: confirmCol

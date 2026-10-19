@@ -82,7 +82,8 @@ Panel {
     if (m.key !== historyMetricKey) historyMetricKey = m.key
   }
   onSettingsChanged: syncHistorySettings()
-  Component.onCompleted: syncHistorySettings()
+  // data are there before the first open, so the popup never changes height while it comes up
+  Component.onCompleted: { syncHistorySettings(); Qt.callLater(refresh) }
   readonly property bool showHistory: setting("showHistory", true) === true
   readonly property string historyDir: {
     var d = String(setting("historyDir", "") || "")
