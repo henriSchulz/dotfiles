@@ -13,6 +13,9 @@
 #              scripts/install.sh has to run again after a Hyprland update.
 #
 # Each project owns its own installer — this step only clones and calls them:
+#   velum      bin/velum-install    links the checkout to ~/.local/share/velum and builds it; the
+#              desktop's shell plugins (henri.*-v3: bar, Control Center, dock …) import Velum from
+#              there — without it they do not load, so it comes first
 #   finder     bin/finder-install   desktop entry + icon, default file manager; runs from the checkout
 #   settings   bin/settings-install  QML tree, launcher, entry, icon into ~/.local
 #   mdview     bin/mdview-install    launcher, desktop entry + icon, default app for Markdown; runs from the checkout
@@ -31,6 +34,7 @@ run mkdir -p "$projects"
 
 # "<directory> <repo> <installer, or - for none>"
 repos=(
+  "velum           henriSchulz/velum           bin/velum-install"
   "finder          henriSchulz/finder          bin/finder-install"
   "settings        henriSchulz/settings        bin/settings-install"
   "mdview          henriSchulz/mdview          bin/mdview-install"

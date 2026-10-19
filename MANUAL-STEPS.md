@@ -114,6 +114,7 @@ downloads it again.
 hyprctl reload                       # config loaded without errors
 omarchy-restart-shell                # bar, dock, Mission Control come up
 systemctl --user status voxtype akku-aufzeichnung
+readlink ~/.local/share/velum        # → ~/Projects/velum (the v3 desktop plugins need it)
 ~/Projects/finder/bin/finder         # own apps start
 omarchy-settings
 ```
