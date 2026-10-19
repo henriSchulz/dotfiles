@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.osd-v3",
+  "name": "Volume & Brightness HUD (v3, Velum)",
+  "version": "0.3.0",
+  "author": "henri",
+  "description": "macOS-style volume and brightness HUD on Velum: 16 steps, instant keys, the level glides.",
+  "kinds": [
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

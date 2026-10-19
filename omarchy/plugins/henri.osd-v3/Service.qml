@@ -1,0 +1,608 @@
+// Volume & brightness HUD -- the macOS way.
+//
+// Keys. Hyprland sends the media keys as `custom>>osd <volume|brightness>
+// <up|down|up-fine|down-fine|mute>` on its event socket (bindings.lua). The
+// stock path ran bash -> pactl (x4) -> jq -> omarchy-shell IPC for every
+// press, ~150 ms before anything moved, and repeated keys queued up behind
+// each other. Here a press changes the level in the same frame: volume goes
+// straight to PipeWire, brightness to one long-lived brightnessctl loop.
+//
+// Steps. 16 per range like macOS; Alt (Option) moves a quarter step.
+// Brightness runs on a perceptual curve (squared), so every step looks like
+// the same change instead of the bottom steps being huge and the top ones
+// invisible. The backlight itself glides between steps with the same spring
+// as the bar, so the screen fades instead of jumping.
+//
+// Extra dim. Below the old floor (1 % backlight) sit 4 more steps, split off
+// in the bar by a small gap: the backlight keeps going down toward a quarter
+// of the floor and a black click-through layer over the internal screen
+// darkens on top, following the same glide. Keys walk one grid over both
+// parts. The backlight value alone encodes how deep in the zone we are, so a
+// shell restart comes back at the same darkness.
+//
+// HUD. A card under the bar in the top-right corner, like Control Center's
+// Sound/Display module: fades in (scale from the corner), the bar glides with
+// the smooth spring and stays interruptible under key repeat, the card fades
+// out after the hold (Theme.delay("hudHold")) after the last press.
+// Click-through, never takes focus.
+//
+// v3: the same logic as henri.osd, drawn with Velum (Pearl roles, SF icons,
+// the accent-filled bar of VSlider, Velum springs and curves).
+
+import QtQuick
+import Quickshell
+import Quickshell.Io
+import Quickshell.Wayland
+import Quickshell.Hyprland
+import Quickshell.Services.Pipewire
+import qs.Commons
+import "file:///home/henri/.local/share/velum/qml/Velum"
+
+Item {
+  id: root
+
+  property var shell: null
+  property var manifest: null
+
+  readonly property int steps: 16
+  readonly property int fineSteps: 64
+
+  // ── HUD state ───────────────────────────────────────────────────────────
+  property bool open: false
+  property string kind: "volume"          // volume | brightness
+  property real level: 0                  // target 0…1 shown by the bar
+
+  readonly property color fg: Theme.r.popover.ink
+  readonly property color dimText: Theme.r.popover.inkSecondary
+  readonly property color trackColor: Theme.r.popover.switchOff
+  readonly property color fillColor: Theme.r.accent.base
+
+  readonly property string heading: kind === "volume" ? "Sound" : "Display"
+  readonly property string detail: kind === "volume" ? outputName(controlSink)
+    : (level < 0 ? "Extra Dim" : "")
+  // Short output name like macOS ("Speakers", "HDMI 1", "AirPods Pro"): the
+  // ALSA description is the whole chipset ("500 Series Chipset Family …"),
+  // its nick is the port; Bluetooth devices carry their own name.
+  function outputName(n) {
+    if (!n) return ""
+    if (String(n.name).indexOf("alsa_output.") === 0 && n.nickname)
+      return n.nickname === "Speaker" ? "Speakers" : n.nickname
+    return n.description || n.nickname || ""
+  }
+  // Volume only: brightness draws its own sun below.
+  readonly property string icon: {
+    if (muted || level <= 0) return "sound.mute"
+    if (level < 0.34) return "sound.low"
+    if (level < 0.67) return "sound.mid"
+    return "sound"
+  }
+
+  function clamp(v) { return Math.max(0, Math.min(1, v)) }
+
+  // Next grid point in the direction of travel. A level between two points
+  // (set elsewhere) first lands on the grid instead of skipping a step.
+  function stepped(cur, n, dir) {
+    var k = cur * n
+    var next = dir > 0 ? Math.floor(k + 0.001) + 1 : Math.ceil(k - 0.001) - 1
+    return clamp(next / n)
+  }
+
+  function show(what, from) {
+    if (!open || kind !== what) fill.snap(what === "brightness" ? toGrid(from) : from)
+    kind = what
+    open = true
+    hold.restart()
+  }
+
+  Timer { id: hold; interval: Theme.delay("hudHold"); onTriggered: root.open = false }
+
+  // ── Volume (PipeWire) ───────────────────────────────────────────────────
+  // A DSP sink (speaker tuning, EasyEffects) can be the default without being
+  // where loudness lives; like omarchy-audio-output-volume, follow it down to
+  // the physical sink. Resolved once per default-sink change, never per key.
+  readonly property var defaultSink: Pipewire.defaultAudioSink
+  property string resolvedName: ""
+  readonly property var controlSink: {
+    if (!defaultSink) return null
+    if (!resolvedName || resolvedName === defaultSink.name) return defaultSink
+    var nodes = Pipewire.nodes ? Pipewire.nodes.values : []
+    for (var i = 0; i < nodes.length; i++)
+      if (nodes[i].name === resolvedName) return nodes[i]
+    return defaultSink
+  }
+  readonly property bool muted: kind === "volume" && controlSink && controlSink.audio
+    ? controlSink.audio.muted : false
+
+  PwObjectTracker { objects: root.controlSink ? [root.controlSink] : [] }
+
+  onDefaultSinkChanged: {
+    resolvedName = ""
+    if (defaultSink && defaultSink.name && defaultSink.name.indexOf("alsa_output.") !== 0)
+      sinkResolver.running = true
+  }
+  Process {
+    id: sinkResolver
+    command: ["omarchy-audio-output-sink"]
+    stdout: StdioCollector { onStreamFinished: root.resolvedName = text.trim() }
+  }
+
+  function volumeKey(action) {
+    var s = controlSink
+    if (!s || !s.audio) return
+    var cur = s.audio.muted ? 0 : clamp(s.audio.volume)
+    if (action === "mute") {
+      show("volume", cur)
+      s.audio.muted = !s.audio.muted
+      level = s.audio.muted ? 0 : clamp(s.audio.volume)
+      return
+    }
+    var dir = action.indexOf("up") === 0 ? 1 : -1
+    var n = action.indexOf("fine") > 0 ? fineSteps : steps
+    // Muted: any volume key unmutes and moves on from the real level.
+    var base = clamp(s.audio.volume)
+    show("volume", cur)
+    var next = stepped(base, n, dir)
+    s.audio.volume = next
+    if (s.audio.muted) s.audio.muted = false
+    level = next
+    feedback()
+  }
+
+  // ── Volume feedback ─────────────────────────────────────────────────────
+  // "Play feedback when volume is changed" (System Settings › Sound) lives in
+  // ~/.config/omarchy-settings/sound.json. The click is the freedesktop
+  // volume-change sound through pw-play, so it comes out at the new level.
+  // While one is still playing (key repeat) the next press skips its own.
+  property bool volumeFeedback: false
+  FileView {
+    id: soundFile
+    property bool missing: true
+    path: Quickshell.env("HOME") + "/.config/omarchy-settings/sound.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      try { root.volumeFeedback = JSON.parse(text() || "{}").volumeFeedback === true }
+      catch (e) { root.volumeFeedback = false }
+      missing = false
+    }
+    onLoadFailed: { root.volumeFeedback = false; missing = true }
+  }
+  // A file watch can't see a file that doesn't exist yet: until Settings
+  // writes it, look again now and then.
+  Timer { interval: 5000; repeat: true; running: soundFile.missing; onTriggered: soundFile.reload() }
+  Process {
+    id: feedbackPlayer
+    command: ["pw-play", "/usr/share/sounds/freedesktop/stereo/audio-volume-change.oga"]
+  }
+  function feedback() {
+    if (volumeFeedback && !feedbackPlayer.running) feedbackPlayer.running = true
+  }
+
+  // ── Brightness (internal panel) ─────────────────────────────────────────
+  property string backlight: ""
+  property real maxRaw: 0
+  readonly property real floorFrac: 0.01    // level 0 still lights the panel (1 %)
+  // Extra dim: level runs on down to -1. One grid over both parts, dimSteps
+  // below 0 and steps above, each step the same width in the bar.
+  readonly property int dimSteps: 4
+  readonly property real minFrac: 0.0025    // backlight at level -1
+  readonly property real maxDim: 0.7        // black layer at level -1
+  readonly property int gridSteps: dimSteps + steps
+  function toGrid(l) { return (l < 0 ? l * dimSteps + dimSteps : dimSteps + l * steps) / gridSteps }
+  function fromGrid(x) {
+    var s = clamp(x) * gridSteps - dimSteps
+    return s < 0 ? s / dimSteps : s / steps
+  }
+  function rawFor(l) {
+    if (l < 0) return Math.max(1, Math.round(maxRaw * floorFrac * Math.pow(minFrac / floorFrac, -l)))
+    return Math.round(maxRaw * (floorFrac + (1 - floorFrac) * l * l))
+  }
+  function levelFor(raw) {
+    if (maxRaw <= 0) return 0
+    var f = raw / maxRaw
+    if (f < floorFrac - 0.5 / maxRaw)
+      return -Math.min(1, Math.log(Math.max(f, 1 / maxRaw) / floorFrac) / Math.log(minFrac / floorFrac))
+    return Math.sqrt(clamp((f - floorFrac) / (1 - floorFrac)))
+  }
+
+  Process {
+    running: true
+    command: ["brightnessctl", "-m", "-c", "backlight"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var f = text.trim().split("\n")[0].split(",")
+        if (f.length < 5) return
+        root.backlight = f[0]
+        root.maxRaw = parseInt(f[4], 10) || 0
+        root.sentRaw = parseInt(f[2], 10)
+        root.brightLevel = root.levelFor(root.sentRaw)
+        glow.snap(root.toGrid(root.brightLevel))
+      }
+    }
+  }
+
+  // Someone else may have moved the backlight while the HUD was closed
+  // (Control Center slider, idle dimming). The first press after that reads
+  // the real value (one tiny `cat`, never during a key-repeat run); presses
+  // that arrive meanwhile queue up and run in order once it is back.
+  // (FileView can't do this: it hands back a cached sysfs value.)
+  property var pending: []
+  Process {
+    id: reader
+    command: ["cat", "/sys/class/backlight/" + root.backlight + "/actual_brightness"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        root.resync(parseInt(text, 10))
+        var queued = root.pending
+        root.pending = []
+        for (var i = 0; i < queued.length; i++) root.stepBrightness(queued[i])
+      }
+    }
+  }
+  function resync(raw) {
+    if (isNaN(raw) || Math.abs(raw - rawFor(brightLevel)) <= maxRaw * 0.002) return
+    brightLevel = levelFor(raw)
+    glow.snap(toGrid(brightLevel))
+    sentRaw = raw
+  }
+
+  // One brightnessctl loop for the whole session: the glide sends a value per
+  // frame, which must not mean a fork per frame inside the shell.
+  Process {
+    id: writer
+    running: root.backlight !== ""
+    stdinEnabled: true
+    command: ["bash", "-c", "while read -r d v; do brightnessctl -q -d \"$d\" set \"$v\"; done"]
+  }
+
+  property real brightLevel: 0        // where the backlight is heading
+  property int sentRaw: -1
+  // the backlight glides like a fade — nothing on screen moves, so reduced motion keeps it
+  Spring {
+    id: glow
+    preset: Theme.spring("smooth")
+    target: root.toGrid(root.brightLevel)
+    onValueChanged: {
+      var raw = root.rawFor(root.fromGrid(value))
+      if (raw !== root.sentRaw && writer.running) { root.sentRaw = raw; writer.write(root.backlight + " " + raw + "\n") }
+    }
+  }
+
+  readonly property real dimAlpha: maxDim * Math.max(0, -fromGrid(glow.value))
+
+  function internalFocused() {
+    var m = Hyprland.focusedMonitor
+    return !m || /^(eDP|LVDS|DSI)-/.test(m.name)
+  }
+
+  function brightnessKey(action) {
+    // External screens (DDC / Apple displays) keep Omarchy's own path.
+    if (!internalFocused() || !backlight || maxRaw <= 0) {
+      var fine = action.indexOf("fine") > 0
+      var arg = action.indexOf("up") === 0 ? (fine ? "+1%" : "+5%") : (fine ? "1%-" : "5%-")
+      Quickshell.execDetached(["omarchy-brightness-display", arg])
+      return
+    }
+    // Held keys: the firmware repeats only every ~245 ms (first repeat after
+    // ~490 ms), where volume gets the keyboard's 40 Hz. So once a repeat
+    // shows the key is held, the level runs on continuously like volume;
+    // every repeat keeps it running for another holdLinger, and when the
+    // repeats stop it settles on the nearest step.
+    var now = Date.now()
+    var gap = action === lastBrightAction ? now - lastBrightAt : 1e9
+    if (gap < dupWindow) return
+    lastBrightAction = action
+    lastBrightAt = now
+    var dir = action.indexOf("up") === 0 ? 1 : -1
+    var n = action.indexOf("fine") > 0 ? gridSteps * 4 : gridSteps
+    if (gap < holdWindow && open && kind === "brightness") {
+      holdN = n
+      holdUntil = now + holdLinger
+      holdDir = dir
+      hold.restart()
+      return
+    }
+    if (holdDir !== 0) endHold()
+    if (reader.running) { pending = pending.concat([action]); return }
+    if (!glow.moving && !(open && kind === "brightness")) {
+      pending = [action]
+      reader.running = true
+      return
+    }
+    stepBrightness(action)
+  }
+
+  readonly property real holdRate: 12     // steps per second while held
+  readonly property int holdWindow: 600   // ms: a repeat this close = key is held
+  readonly property int holdLinger: 265   // ms: runs on after each repeat (they come every ~245)
+  readonly property int dupWindow: 40     // ms: firmware sometimes sends twice
+  property string lastBrightAction: ""
+  property real lastBrightAt: 0
+  property int holdDir: 0
+  property int holdN: 16
+  property real holdUntil: 0
+
+  function endHold() {
+    holdDir = 0
+    brightLevel = fromGrid(Math.round(toGrid(brightLevel) * holdN) / holdN)
+    level = brightLevel
+  }
+
+  FrameAnimation {
+    running: root.holdDir !== 0
+    onTriggered: {
+      if (Date.now() > root.holdUntil) { root.endHold(); return }
+      var dt = Math.min(frameTime, 0.05)
+      var g = root.clamp(root.toGrid(root.brightLevel) + root.holdDir * root.holdRate / root.gridSteps * dt)
+      root.brightLevel = root.fromGrid(g)
+      root.level = root.brightLevel
+      if (g <= 0 || g >= 1) root.endHold()
+    }
+  }
+
+  function stepBrightness(action) {
+    var cur = brightLevel
+    var dir = action.indexOf("up") === 0 ? 1 : -1
+    var n = action.indexOf("fine") > 0 ? gridSteps * 4 : gridSteps
+    show("brightness", cur)
+    brightLevel = fromGrid(stepped(toGrid(cur), n, dir))
+    level = brightLevel
+  }
+
+
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event.name !== "custom") return
+      var data = String(event.data)
+      if (data.indexOf("osd ") !== 0) return
+      var parts = data.slice(4).trim().split(/\s+/)
+      if (parts[0] === "volume") root.volumeKey(parts[1] || "up")
+      else if (parts[0] === "brightness") root.brightnessKey(parts[1] || "up")
+    }
+  }
+
+  IpcHandler {
+    target: "henri-osd"
+    function volume(action: string): string { root.volumeKey(action); return "ok" }
+    function brightness(action: string): string { root.brightnessKey(action); return "ok" }
+    function ping(): string { return "ok" }
+    // Show the HUD at a level without touching PipeWire or the backlight (tests, screenshots):
+    // preview volume 0.5 | preview brightness 0.6 | preview brightness -0.5 (extra dim, bar only)
+    function preview(what: string, value: real): string {
+      root.show(what === "brightness" ? "brightness" : "volume", value)
+      root.level = value
+      return "ok"
+    }
+  }
+
+  // ── HUD surface ─────────────────────────────────────────────────────────
+  // Volume: the level. Brightness: the grid position (dim zone + main range).
+  Spring { id: fill; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion; target: root.split ? root.toGrid(root.level) : root.level }
+  readonly property bool split: kind === "brightness"
+  // The dim segment is full at 0 and empties toward -1; the main one fills 0…1.
+  readonly property real dimFill: split ? clamp(fill.value * gridSteps / dimSteps) : 0
+  readonly property real mainFill: split ? clamp((fill.value * gridSteps - dimSteps) / steps) : clamp(fill.value)
+
+  readonly property var internalScreen: {
+    var ss = Quickshell.screens
+    for (var i = 0; i < ss.length; i++) if (/^(eDP|LVDS|DSI)-/.test(ss[i].name)) return ss[i]
+    return null
+  }
+
+  // Extra-dim layer over the internal screen: click-through, only mapped
+  // while it darkens something.
+  PanelWindow {
+    screen: root.internalScreen
+    visible: root.internalScreen !== null && root.dimAlpha > 0.002
+    anchors { top: true; bottom: true; left: true; right: true }
+    color: "transparent"
+    WlrLayershell.namespace: "henri-osd-dim"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+    exclusionMode: ExclusionMode.Ignore
+    mask: Region {}
+
+    Rectangle { anchors.fill: parent; color: "black"; opacity: root.dimAlpha }
+  }
+  Spring { id: pop; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion; target: root.open ? 1 : Theme.scale("exitTo") }
+
+  PanelWindow {
+    id: win
+    visible: card.opacity > 0.001 || root.open
+    anchors { top: true; right: true }
+    margins { top: Theme.layout.module.tileInset; right: Theme.layout.module.pad }
+    // room for the shadow around the card
+    implicitWidth: card.width + 2 * Theme.layout.module.pad
+    implicitHeight: card.height + 2 * Theme.layout.module.pad
+    color: "transparent"
+    WlrLayershell.namespace: "henri-osd"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+    exclusionMode: ExclusionMode.Normal
+    mask: Region {}
+
+    Item {
+      id: card
+      width: Theme.layout.module.width * 0.7
+      height: column.implicitHeight + 2 * Theme.layout.module.pad
+      transformOrigin: Item.TopRight
+      scale: pop.value
+      opacity: root.open ? 1 : 0
+      readonly property string velumSurface: "popover"
+      Behavior on opacity {
+        NumberAnimation {
+          duration: root.open ? Theme.dur("base") : Theme.exit(Theme.dur("slow"))
+          easing.type: Easing.BezierSpline
+          easing.bezierCurve: root.open ? Theme.curve("out") : Theme.curve("exit")
+        }
+      }
+      VShadow { layers: Theme.r.popover.shadow; radius: Theme.m.radius.panel }
+      Rectangle {
+        anchors.fill: parent
+        radius: Theme.m.radius.panel
+        color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+        border.width: Theme.layout.separator
+        border.color: Theme.r.line.rim
+      }
+
+      Column {
+        id: column
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.topMargin: Theme.layout.module.pad
+        anchors.leftMargin: Theme.layout.module.pad + Theme.layout.module.tileInset
+        anchors.rightMargin: Theme.layout.module.pad + Theme.layout.module.tileInset
+        spacing: Theme.layout.list.gap
+
+        Item {
+          width: parent.width
+          height: title.implicitHeight
+          VText {
+            id: title
+            text: root.heading
+            color: root.fg
+            font.weight: Font.DemiBold
+          }
+          VText {
+            anchors.left: title.right
+            anchors.leftMargin: Theme.layout.module.pad
+            anchors.right: parent.right
+            anchors.verticalCenter: title.verticalCenter
+            horizontalAlignment: Text.AlignRight
+            elide: Text.ElideRight
+            text: root.detail
+            tone: "secondary"
+            font.pixelSize: Theme.m.type.small
+          }
+        }
+
+        Item {
+          width: parent.width
+          height: Theme.layout.module.row - Theme.layout.list.gap
+
+          VIcon {
+            id: glyph
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            name: root.icon
+            weight: "fill"
+            size: Theme.layout.icon.large
+            color: root.fg
+            opacity: root.kind === "brightness" ? 0 : 1
+            Behavior on opacity {
+              NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") }
+            }
+          }
+
+          // Brightness gets a drawn sun instead of the two SF glyphs: its rays
+          // grow from dots (sun.min) to long rays (sun.max) on the bar's own
+          // spring, so the icon changes with every step like the speaker waves.
+          Item {
+            id: sun
+            readonly property real size: Theme.layout.icon.large
+            readonly property real v: root.mainFill
+            readonly property real stroke: Math.max(1.5, size * 0.1)
+            readonly property real disc: size * 0.4
+            readonly property real rayStart: disc / 2 + size * 0.09
+            anchors.left: glyph.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: size
+            height: size
+            opacity: root.kind === "brightness" ? 1 : 0
+            Behavior on opacity {
+              NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") }
+            }
+
+            Rectangle {
+              anchors.centerIn: parent
+              width: sun.disc
+              height: sun.disc
+              radius: width / 2
+              color: root.fg
+            }
+            Repeater {
+              model: 8
+              Item {
+                required property int index
+                anchors.fill: parent
+                rotation: index * 45
+                Rectangle {
+                  readonly property real len: sun.stroke + sun.size * 0.2 * sun.v
+                  x: (sun.size - width) / 2
+                  y: sun.size / 2 - sun.rayStart - len
+                  width: sun.stroke
+                  height: len
+                  radius: width / 2
+                  antialiasing: true
+                  color: root.fg
+                }
+              }
+            }
+          }
+
+          // Brightness splits the bar: a short extra-dim segment, a gap, then
+          // the normal range. Switching volume <-> brightness crossfades the
+          // two layouts instead of resizing anything.
+          Item {
+            id: bar
+            anchors.left: glyph.right
+            anchors.leftMargin: Theme.layout.list.gap
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            height: Theme.layout.slider.track * 1.5   // the HUD bar is a little stronger than a slider track
+
+            readonly property real gap: Theme.layout.module.tileInset
+            readonly property real dimWidth: (width - gap) * root.dimSteps / root.gridSteps
+
+            component Capsule: Rectangle {
+              property real v: 0
+              property int stepCount: 1
+              property color fillColor: root.fillColor
+              height: bar.height
+              radius: height / 2
+              color: root.trackColor
+              Rectangle {
+                height: parent.height
+                radius: parent.radius
+                width: parent.height + (parent.width - parent.height) * parent.v
+                color: parent.fillColor
+                // Below one step the capsule would only shrink to a dot: fade it
+                // instead, so 0 (and mute) reads as an empty track.
+                opacity: Math.min(1, parent.v * parent.stepCount)
+              }
+            }
+
+            Capsule {
+              width: parent.width
+              v: root.mainFill
+              stepCount: root.steps
+              opacity: root.split ? 0 : 1
+              Behavior on opacity { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
+            }
+
+            Item {
+              anchors.fill: parent
+              opacity: root.split ? 1 : 0
+              Behavior on opacity { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
+              Capsule {
+                width: bar.dimWidth
+                v: root.dimFill
+                stepCount: root.dimSteps
+                fillColor: root.dimText
+              }
+              Capsule {
+                x: bar.dimWidth + bar.gap
+                width: bar.width - x
+                v: root.mainFill
+                stepCount: root.steps
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

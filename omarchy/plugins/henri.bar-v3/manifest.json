@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.bar-v3",
+  "name": "Menu Bar (v3, Velum)",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Velum menu bar: three glass islands (left, centre, right) over the wallpaper, Pearl by default, solid over fullscreen windows",
+  "kinds": [
+    "bar"
+  ],
+  "entryPoints": {
+    "bar": "Bar.qml"
+  },
+  "omarchy": {
+    "clonedFrom": "henri.bar"
+  }
+}

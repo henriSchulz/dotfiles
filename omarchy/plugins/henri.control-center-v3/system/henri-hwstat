@@ -1,0 +1,78 @@
+#!/bin/bash
+# Read-only snapshot for the henri.control-center "Hardware" page. Needs no
+# privileges; the panel polls it every 2 s while it is open and derives the
+# CPU load from the difference between two consecutive /proc/stat samples.
+#
+# Prints one JSON line:
+#   cpuTotal/cpuIdle   jiffies from /proc/stat (for the usage delta)
+#   freqAvg/freqPeak   current clock across all threads, MHz
+#   freqMax            highest clock the CPU may reach right now, MHz
+#   memTotal/memAvail/swapTotal/swapFree   KiB
+#   diskTotal/diskUsed bytes of /
+set -u
+export PATH=/usr/bin
+
+read_int() { local v; v=$(cat "$1" 2>/dev/null) && [[ $v =~ ^-?[0-9]+$ ]] && printf '%s' "$v" || printf -- '-1'; }
+
+hwmon_by_name() {
+  local d
+  for d in /sys/class/hwmon/hwmon*; do
+    [[ $(cat "$d/name" 2>/dev/null) == "$1" ]] && { printf '%s' "$d"; return 0; }
+  done
+  return 1
+}
+
+# CPU time: user nice system idle iowait irq softirq steal
+read -r _ user nice system idle iowait irq softirq steal _ < /proc/stat
+total=$(( user + nice + system + idle + iowait + irq + softirq + steal ))
+idle_all=$(( idle + iowait ))
+
+# Clock speed per thread
+sum=0 n=0 peak=0 max=0
+for f in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq; do
+  v=$(read_int "$f")
+  (( v > 0 )) || continue
+  (( sum += v, n++ ))
+  (( v > peak )) && peak=$v
+done
+for f in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_max_freq; do
+  v=$(read_int "$f")
+  (( v > max )) && max=$v
+done
+avg=$(( n > 0 ? sum / n : 0 ))
+threads=$(nproc)
+cores=$(sort -u /sys/devices/system/cpu/cpu[0-9]*/topology/core_id 2>/dev/null | wc -l)
+model=$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -n1 | sed 's/([^)]*)//g; s/ CPU//; s/ @.*//; s/  */ /g; s/"//g')
+
+temp=-1
+core=$(hwmon_by_name coretemp || hwmon_by_name k10temp || true)
+if [[ -n $core ]]; then
+  t=$(read_int "$core/temp1_input")
+  (( t >= 0 )) && temp=$(( t / 1000 ))
+fi
+
+fans=""
+dell=$(hwmon_by_name dell_smm || true)
+ddv=$(hwmon_by_name dell_ddv || true)
+if [[ -n $dell ]]; then
+  for i in 1 2 3; do
+    [[ -r $dell/fan${i}_input ]] || continue
+    # dell_smm refuses fan*_label on some models; dell_ddv names the same fans.
+    label=$(cat "$dell/fan${i}_label" "$ddv/fan${i}_label" 2>/dev/null | head -n1)
+    [[ -n $label ]] || label="Fan $i"
+    fans+="${fans:+,}{\"label\":\"${label//\"/}\",\"rpm\":$(read_int "$dell/fan${i}_input")}"
+  done
+fi
+
+mem() { awk -v k="$1:" '$1 == k { print $2; found = 1 } END { if (!found) print 0 }' /proc/meminfo; }
+read -r disk_total disk_used < <(df -B1 --output=size,used / 2>/dev/null | tail -n1)
+read -r load1 _ < /proc/loadavg
+read -r up _ < /proc/uptime
+
+printf '{"cpuTotal":%d,"cpuIdle":%d,"freqAvg":%d,"freqPeak":%d,"freqMax":%d,' \
+  "$total" "$idle_all" $(( avg / 1000 )) $(( peak / 1000 )) $(( max / 1000 ))
+printf '"threads":%d,"cores":%d,"model":"%s","temp":%d,"load1":%s,"fans":[%s],' \
+  "$threads" "$cores" "$model" "$temp" "$load1" "$fans"
+printf '"memTotal":%d,"memAvail":%d,"swapTotal":%d,"swapFree":%d,' \
+  "$(mem MemTotal)" "$(mem MemAvailable)" "$(mem SwapTotal)" "$(mem SwapFree)"
+printf '"diskTotal":%d,"diskUsed":%d,"uptime":%d}\n' "${disk_total:-0}" "${disk_used:-0}" "${up%.*}"

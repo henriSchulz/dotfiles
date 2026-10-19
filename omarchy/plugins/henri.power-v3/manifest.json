@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.power-v3",
+  "name": "Power (v3, Velum)",
+  "version": "1.2.0",
+  "author": "henri",
+  "description": "Battery menu on Velum (Pearl): charge, battery size, time left, cycles and power draw up front; a charge, power, voltage or current graph from 15 min to 7 days and discharge statistics under History; the power profile up front; fans, power flow, charge mode and USB under Advanced",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Power v3",
+    "description": "Battery overview with an Advanced section for Dell power controls",
+    "category": "System",
+    "allowMultiple": false,
+    "defaults": {
+      "showPercentage": false,
+      "chargeLimitStep": 5,
+      "showHistory": true,
+      "historyDir": "",
+      "historyRange": "6h",
+      "historyMetric": "percent"
+    },
+    "schema": [
+      {
+        "key": "showPercentage",
+        "type": "boolean",
+        "label": "Show battery percentage in the bar"
+      },
+      {
+        "key": "chargeLimitStep",
+        "type": "integer",
+        "label": "Charge limit step"
+      },
+      {
+        "key": "showHistory",
+        "type": "boolean",
+        "label": "Show the battery history section"
+      },
+      {
+        "key": "historyDir",
+        "type": "path",
+        "label": "Battery log folder",
+        "defaultValue": "",
+        "description": "Folder with the akku-YYYY-MM-DD.csv files. Empty: ~/Projects/akku-test/verlauf"
+      },
+      {
+        "key": "historyRange",
+        "type": "enum",
+        "label": "Battery history range",
+        "options": [
+          "15m",
+          "30m",
+          "1h",
+          "3h",
+          "6h",
+          "12h",
+          "24h",
+          "3d",
+          "7d"
+        ],
+        "defaultValue": "6h"
+      },
+      {
+        "key": "historyMetric",
+        "type": "enum",
+        "label": "Battery history graph",
+        "options": [
+          "percent",
+          "watts",
+          "volts",
+          "amps"
+        ],
+        "defaultValue": "percent"
+      }
+    ]
+  },
+  "omarchy": {
+    "derivedFrom": "io.github.nipsen.dell-power"
+  }
+}

@@ -1,0 +1,82 @@
+# henri.dock-v3
+
+Velum fork of henri.dock (same behaviour, same IPC target `dock`, same settings file
+`~/.config/omarchy/henri.dock.json` and pinned list). What changed:
+
+- Shape from `Look.js` (apple-ui's dock geometry copied in), colours from Velum's roles
+  (`roles` = the variant's roles in the dock's own light/dark, taken from the wallpaper
+  under the dock or the setting), motion from Velum's `surface.dock` tokens (`mo`).
+- `components/Reveal.qml`, `MenuList.qml`, `SpringValue.qml` replace the henri-ui pieces:
+  menus open with no transition and fade out on `menu.close`; stacks and settings use
+  Velum's popover motion. Settings are Velum controls (VSlider, VSwitch, VSegment, VModuleRow).
+- A stored `accentColor` of the old default blue is ignored (Velum's accent wins).
+- Test hook `probeSetting key value` changes a setting in memory only (never saved).
+
+Test: `VELUM_RIG_ID=dock VELUM_RIG_PLUGINS=henri.dock-v3 ~/Projects/velum/shell/rig/rig.sh start|sync|shell|call dock …|shot NAME|stop`.
+
+---
+
+# henri.dock (original notes)
+
+The macOS Dock for the Omarchy shell (Quickshell on Hyprland), built after
+`docs/dock-spec.md`. Look from **apple-ui** (`Apple.dock`, `Apple.dockPalette`),
+motion from **henri-ui** (`Motion.dock` springs and durations, `HUi.*` components).
+Replaces omadock.
+
+## What it does
+
+- App area: file manager first (locked), pinned apps (`~/.config/omarchy/dock.json`,
+  `pinned`), running apps, then a separator, up to three recent apps, then the
+  document area: folder stacks, files, minimized windows, Trash (locked).
+- Magnification with the spec's cosine falloff against the unmagnified layout,
+  overdamped spring (400/30/0.4), icons grow away from the screen edge, the glass
+  background widens with them and stays centred.
+- Hover label with arrow, launch bounce, attention bounce (`urgent` windows or
+  `omarchy-shell dock requestAttention <app>`), running indicator, badges
+  (`omarchy-shell dock setBadge <id> <text>`).
+- Drag to reorder (gap opens with a spring, tile glides into the slot), drag out to
+  remove ("Remove" label after 400 ms), external files dropped on apps / folders /
+  Trash / the document area.
+- Context menus for apps, folders, files, separator, Trash and minimized windows,
+  with submenus; Alt turns "Quit" into "Force Quit" live.
+- Folder stacks as fan, grid or list; "Automatic" picks fan up to 12 entries.
+- Minimize (`Super+M`, `omarchy-shell dock minimizeActive`): the window is parked on
+  `special:minimized` and its snapshot flows into the dock with the genie effect (48
+  strips through a funnel) or the scale effect; the tile shows the snapshot with the
+  app icon; click or "Restore" plays it back. `minimizeActiveSlow` = 10× slower.
+  A click on the icon of the app in front minimizes its window; the next click brings it back.
+  "Minimize into application icon" targets the app tile instead.
+- Auto-hide (`Super+Alt+D`) with a 3 px trigger zone at the edge: the dock floats
+  over the windows and reserves no space; on a space without windows it stays
+  out. Position bottom, left or right (the dock slides out at the old edge and in at the new one).
+- Drag the separator to resize (Alt snaps to 16/32/48/64/128; Shift + drag to a
+  screen edge moves the dock there).
+- Keyboard: `Ctrl+F3` focuses the dock, ←/→ (↑/↓ vertical) move with magnification,
+  ⏎/Space activate, ↑ opens the menu, Esc leaves. Accessible names on every tile.
+- Settings popover (separator menu → Dock Settings…, `omarchy-shell dock openSettings`),
+  persisted in `~/.config/omarchy/henri.dock.json`. Reduce motion (System Settings ›
+  Accessibility, or the dock's own "Reduced" on top of it): hops become opacity pulses,
+  magnification snaps, minimize/restore crossfade (no genie), new tiles fade in instead of
+  growing, the drag lift, gap and landing springs snap, stacks fade in place, auto-hide fades.
+
+## Architecture
+
+Two layer surfaces on the dock's screen: `henri-dock` is only the glass background
+(thin, click-through, blurred by the `layer_rule` in `looknfeel.lua`);
+`henri-dock-overlay` is full-screen, unblurred and input-masked to the dock zone
+and open popups — it carries tiles, label, menus, stacks, settings, the drag ghost
+and the minimize effect. Everything is computed along a main axis and a cross
+axis and mapped in `rectFor()`, so all three positions share one code path.
+
+Layout runs once per frame only while something moves (pointer, springs, drag,
+hide); tiles keep their identity in a `ListModel` of ids, the data lives in
+`items`, so springs survive every rebuild.
+
+## Testing without touching the live shell
+
+`~/.cache/henri-dock-rig/rig.sh start|sync|shell|call dock <fn>|shot <name>|stop`
+runs a nested Hyprland + shell on a headless output with a fake HOME. IPC probes:
+`probeNoGrab` (the focus grab clears at once on headless outputs), `probeHover x y`,
+`probePress/Move/Release`, `probeMenu i`, `probeStack i`, `probeLaunching i`,
+`probeKey next|prev|activate|menu`, `probeReveal`, `probeFx`, `probeMenuState`,
+`state`.

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.dock-v3",
+  "name": "Dock (v3, Velum)",
+  "version": "3.0.0",
+  "author": "henri",
+  "license": "MIT",
+  "description": "macOS-style Dock on Velum (Pearl, SF icons in menus, Velum motion): magnification, launch and attention bounce, hover labels, folder stacks, genie minimize, auto-hide, keyboard control. Fork of henri.dock.",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Dock.qml"
+  },
+  "tags": [
+    "dock",
+    "macos",
+    "quickshell",
+    "hyprland"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.clock-v3",
+  "name": "Clock (v3, Velum)",
+  "version": "3.0.0",
+  "author": "henri",
+  "description": "Date/time label; click opens the Notification Center (stacks, widgets), middle click the calendar \u2014 on Velum",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Clock v3 (Velum)",
+    "description": "Date/time label with Notification Center and calendar",
+    "category": "Time",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.clock"
+  }
+}

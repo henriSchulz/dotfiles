@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.control-center-v3",
+  "name": "Control Center (v3, Velum)",
+  "version": "0.3.0",
+  "author": "henri",
+  "description": "The Control Center as a Dynamic Island in the middle of the bar, built on Velum: it grows out of the workspace dots. Wi-Fi, Bluetooth, AirDrop, Focus, display and sound, AirPods, Now Playing, keyboard light, battery, hardware, experiments.",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "BarWidget.qml" },
+  "barWidget": {
+    "displayName": "Control Center v3 (Island)",
+    "description": "Velum Control Center as an island in the bar centre (replaces the workspace dots there)",
+    "category": "System",
+    "allowMultiple": false
+  }
+}
