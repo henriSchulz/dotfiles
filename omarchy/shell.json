@@ -27,9 +27,6 @@
           "formatAlt": "d. MMMM 'KW'ww yyyy",
           "id": "henri.clock-v3",
           "verticalFormat": "HH\n—\nmm"
-        },
-        {
-          "id": "netmojo.omdrop"
         }
       ]
     },
