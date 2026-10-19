@@ -1,0 +1,10 @@
+#!/bin/sh
+# Mark the current directory as trusted in ~/.claude.json (skips the trust dialog).
+f="${CLAUDE_JSON:-$HOME/.claude.json}"
+[ -f "$f" ] || exit 0
+tmp=$(mktemp "$f.XXXXXX") || exit 0
+if jq --arg d "$PWD" '.projects[$d].hasTrustDialogAccepted = true' "$f" > "$tmp"; then
+  mv "$tmp" "$f"
+else
+  rm -f "$tmp"
+fi
