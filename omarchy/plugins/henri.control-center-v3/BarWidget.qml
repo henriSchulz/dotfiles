@@ -155,36 +155,11 @@ BarWidget {
     onReopenRequested: root.open()
     onEscapePressed: if (!pages.back()) root.close()
     onShownChanged: if (!shown) pages.reset()
-    Pages { id: pages; be: be; velum: velum; width: parent.width; onCloseRequested: root.close(); onPluginsRequested: root.openPluginManager() }
-  }
-
-  // ---- Plugin manager (omaplug), hosted here as v2 did, anchored to the island
-  function openPluginManager() { close(); pluginDelay.restart() }
-  Timer { id: pluginDelay; interval: Theme.dur("slow"); onTriggered: if (pluginLoader.item) pluginLoader.item.open() }
-  function injectPluginManager() {
-    var t = pluginLoader.item
-    if (!t) return
-    t.bar = root.bar; t.anchorItem = pill; t.hostWidget = pluginHost
-  }
-  onBarChanged: injectPluginManager()
-  QtObject {
-    id: pluginHost
-    readonly property bool opened: pluginLoader.item ? pluginLoader.item.opened === true : false
-    readonly property bool popoutSwitchClosing: pluginLoader.item ? pluginLoader.item.popoutSwitchClosing === true : false
-    function open() { if (pluginLoader.item) pluginLoader.item.open() }
-    function close() { if (pluginLoader.item) pluginLoader.item.close() }
-    function closeForPopoutSwitch() { if (pluginLoader.item) pluginLoader.item.closeForPopoutSwitch() }
-  }
-  Loader {
-    id: pluginLoader
-    source: Qt.resolvedUrl("../omaplug/Panel.qml")
-    visible: false
-    onLoaded: { root.injectPluginManager(); Qt.callLater(root.injectPluginManager) }
+    Pages { id: pages; be: be; velum: velum; width: parent.width; onCloseRequested: root.close() }
   }
 
   IpcHandler {
     target: "henri.control-center-v3"
-    function plugins(): void { root.openPluginManager() }
     function open(): void { root.open() }
     function close(): void { root.close() }
     function toggle(): void { root.toggle() }

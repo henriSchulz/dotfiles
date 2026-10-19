@@ -71,7 +71,9 @@ Item {
 
   // The UI says which page is shown; scanning and polling only run there.
   property string page: "main"
-  onPageChanged: if (page === "sound" && !sinkPortProc.running) sinkPortProc.running = true
+  onPageChanged: {
+    if (page === "sound" && !sinkPortProc.running) sinkPortProc.running = true
+  }
 
   readonly property bool wifiScanning: opened && page === "wifi" && wifiOn
   property var scannerDevice: null
@@ -491,14 +493,19 @@ Item {
     }
     hwPrev = { cpuTotal: s.cpuTotal, cpuIdle: s.cpuIdle }
     hw = s
+    if (cpuLoad >= 0) cpuHistory = cpuHistory.concat([cpuLoad / 100]).slice(-cpuHistoryLength)
   }
+  // the last minute of CPU load (0 … 1, one sample per poll) for the live chart on the Hardware page
+  readonly property int hwInterval: 2000
+  readonly property int cpuHistoryLength: 31
+  property var cpuHistory: []
   Process {
     id: hwStatProc
     command: [root.hwStatPath]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.applyHwStat(text) }
   }
   Timer { interval: Theme.delay("settle"); running: root.opened; onTriggered: root.refreshHardware() }
-  Timer { interval: 2000; repeat: true; running: root.opened; onTriggered: root.refreshHardware() }
+  Timer { interval: root.hwInterval; repeat: true; running: root.opened; onTriggered: root.refreshHardware() }
 
   // ---- Low-power rendering (Experiments)
   readonly property string renderPowerPath: String(Qt.resolvedUrl("system/henri-render-power")).replace(/^file:\/\//, "")

@@ -41,8 +41,18 @@ for f in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_max_freq; do
 done
 avg=$(( n > 0 ? sum / n : 0 ))
 threads=$(nproc)
-cores=$(sort -u /sys/devices/system/cpu/cpu[0-9]*/topology/core_id 2>/dev/null | wc -l)
+# a core is (package, cluster, core id): Apple Silicon numbers cores per cluster
+cores=$(for t in /sys/devices/system/cpu/cpu[0-9]*/topology; do
+  echo "$(cat "$t/physical_package_id" "$t/cluster_id" "$t/core_id" 2>/dev/null | tr '\n' ' ')"
+done | sort -u | wc -l)
 model=$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -n1 | sed 's/([^)]*)//g; s/ CPU//; s/ @.*//; s/  */ /g; s/"//g')
+
+# Arm boards (Apple Silicon) have no "model name" line: take the SoC from the device tree.
+if [[ -z $model && -r /proc/device-tree/model ]]; then
+  dt=$(tr -d '\0' < /proc/device-tree/model)
+  soc_re='\((M[0-9][^,)]*)'
+  [[ $dt =~ $soc_re ]] && model="Apple ${BASH_REMATCH[1]}"
+fi
 
 temp=-1
 core=$(hwmon_by_name coretemp || hwmon_by_name k10temp || true)
@@ -64,6 +74,17 @@ if [[ -n $dell ]]; then
   done
 fi
 
+# Named temperature sensors of the board (Apple SMC): [{"label":…,"c":…}]
+temps=""
+smc=$(hwmon_by_name macsmc_hwmon || true)
+if [[ -n $smc ]]; then
+  for f in "$smc"/temp*_input; do
+    t=$(read_int "$f"); (( t > 0 )) || continue
+    label=$(cat "${f%_input}_label" 2>/dev/null); label=${label% Temp}; label=${label% Temperature}
+    temps+="${temps:+,}{\"label\":\"${label//\"/}\",\"c\":$(( t / 1000 ))}"
+  done
+fi
+
 mem() { awk -v k="$1:" '$1 == k { print $2; found = 1 } END { if (!found) print 0 }' /proc/meminfo; }
 read -r disk_total disk_used < <(df -B1 --output=size,used / 2>/dev/null | tail -n1)
 read -r load1 _ < /proc/loadavg
@@ -71,8 +92,8 @@ read -r up _ < /proc/uptime
 
 printf '{"cpuTotal":%d,"cpuIdle":%d,"freqAvg":%d,"freqPeak":%d,"freqMax":%d,' \
   "$total" "$idle_all" $(( avg / 1000 )) $(( peak / 1000 )) $(( max / 1000 ))
-printf '"threads":%d,"cores":%d,"model":"%s","temp":%d,"load1":%s,"fans":[%s],' \
-  "$threads" "$cores" "$model" "$temp" "$load1" "$fans"
+printf '"threads":%d,"cores":%d,"model":"%s","temp":%d,"load1":%s,"fans":[%s],"temps":[%s],' \
+  "$threads" "$cores" "$model" "$temp" "$load1" "$fans" "$temps"
 printf '"memTotal":%d,"memAvail":%d,"swapTotal":%d,"swapFree":%d,' \
   "$(mem MemTotal)" "$(mem MemAvailable)" "$(mem SwapTotal)" "$(mem SwapFree)"
 printf '"diskTotal":%d,"diskUsed":%d,"uptime":%d}\n' "${disk_total:-0}" "${disk_used:-0}" "${up%.*}"
