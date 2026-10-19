@@ -1,0 +1,526 @@
+// App Switcher -- macOS-style Cmd+Tab, on Alt+Tab.
+//
+// Hold Alt and press Tab: after a short moment a row of app icons appears,
+// most recently used first, the current app on the left. Every further Tab
+// (Shift+Tab goes back) moves the selection, letting go of Alt switches to it.
+// A quick tap switches straight to the previous app without flashing the row --
+// exactly what Cmd+Tab does on a Mac.
+//
+// Apps, not windows. Windows are grouped by their appId, and switching goes to
+// the app's most recently used window, wherever it lives -- on another
+// workspace the switch carries the workspace with it, out of the dock's
+// minimized parking spot it unminimizes.
+//
+// Keys. Hyprland owns them (bindings.lua): ALT+TAB, ALT+SHIFT+TAB and the
+// Alt_L release send `custom>>app-switcher <next|prev|commit>` on Hyprland's
+// event socket -- no process per key, so there is no latency and the events
+// arrive in the order they happened. The row never takes the keyboard: with Alt
+// held, Hyprland's binds win anyway, and holding focus would make Hyprland
+// refocus the window the row let go of. A click outside cancels, a click on an
+// icon switches, hovering preselects.
+//
+// Order. The switcher keeps its own most-recently-used list, fed by every focus
+// change while the shell runs, because Hyprland's focusHistoryID only arrives
+// with an IPC refresh and would be one gesture behind. Windows the list has not
+// seen yet (right after a shell restart) fall back to that focusHistoryID, so
+// the very first Alt+Tab of a session is already in the right order.
+//
+// Look and motion (Velum v3): the row is a floating card of the popover
+// material (Pearl by default), blurred by the compositor (namespace
+// velum-surface). It appears out of the centre on the smooth spring from
+// launcherFrom with a fast fade and leaves faster than it came; the selection
+// jumps instantly (frequent interaction), only the app name under it crossfades.
+
+import QtQuick
+import Quickshell
+import Quickshell.Io
+import Quickshell.Wayland
+import Quickshell.Hyprland
+import qs.Commons
+import "file:///home/henri/.local/share/velum/qml/Velum"
+
+Item {
+  id: root
+
+  property var shell: null
+  property var manifest: null
+
+  // An Alt+Tab gesture is running (Alt is held).
+  property bool armed: false
+  // The row is on screen (armed and held longer than the switcher delay).
+  property bool shown: false
+  // App records in row order, frozen when the gesture starts so the selection
+  // cannot shift under the user while they tab through it.
+  property var apps: []
+  property int selected: 0
+
+  // Most recently used windows, newest first. Only ever compared by identity
+  // (indexOf), never dereferenced, so entries of closed windows are harmless.
+  property var mruWindows: []
+
+  // ---------------------------------------------------------------- ordering
+
+  function touch(tl) {
+    if (!tl)
+      return;
+    const next = [tl];
+    const prev = root.mruWindows;
+    for (let i = 0; i < prev.length && next.length < 64; i++)
+      if (prev[i] !== tl)
+        next.push(prev[i]);
+    root.mruWindows = next;
+  }
+
+  // Hyprland's own focus history, for windows this service has not seen focused
+  // yet. Its toplevels carry the matching Wayland handle in `wayland`.
+  function hyprHistory(tl) {
+    const all = Hyprland.toplevels.values || [];
+    for (let i = 0; i < all.length; i++) {
+      if (all[i].wayland === tl) {
+        const o = all[i].lastIpcObject;
+        const n = o ? Number(o.focusHistoryID) : NaN;
+        return isFinite(n) ? n : 9999;
+      }
+    }
+    return 9999;
+  }
+
+  function windowRank(tl) {
+    const i = root.mruWindows.indexOf(tl);
+    return i >= 0 ? i : 1000 + root.hyprHistory(tl);
+  }
+
+  // ------------------------------------------------------------------- model
+
+  // Last segment of a reverse-DNS app id: org.omarchy.agent -> agent.
+  function shortId(appId) {
+    const id = String(appId || "");
+    const dot = id.lastIndexOf(".");
+    return dot >= 0 && dot < id.length - 1 ? id.slice(dot + 1) : id;
+  }
+
+  function lookup(name) {
+    if (!name || typeof DesktopEntries === "undefined" || !DesktopEntries)
+      return null;
+    try {
+      return DesktopEntries.heuristicLookup(name) || DesktopEntries.byId(name) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Reverse-DNS ids often have no desktop entry under the full id, but do under
+  // their last segment (org.omarchy.agent -> agent.desktop).
+  function entryFor(appId) {
+    return root.lookup(appId) || root.lookup(root.shortId(appId));
+  }
+
+  function titleCase(value) {
+    const words = String(value || "").replace(/[-_.]+/g, " ").trim().split(/ +/);
+    const out = [];
+    for (let i = 0; i < words.length; i++)
+      if (words[i].length > 0)
+        out.push(words[i].charAt(0).toUpperCase() + words[i].slice(1));
+    return out.join(" ");
+  }
+
+  // The desktop entry's name if there is one; otherwise the app id made
+  // readable -- the raw "org.omarchy.agent" is not a name anyone recognises.
+  function appName(appId, entry) {
+    const n = entry && entry.name ? String(entry.name) : "";
+    if (n.length > 0)
+      return n;
+    return root.titleCase(root.shortId(appId));
+  }
+
+  function iconSource(appId, entry) {
+    const name = entry && entry.icon ? String(entry.icon) : "";
+    if (name.indexOf("file://") === 0 || name.indexOf("image://") === 0)
+      return name;
+    if (name.charAt(0) === "/")
+      return "file://" + name;
+    const id = String(appId || "");
+    const tries = [name, id, id.toLowerCase(), root.shortId(id).toLowerCase(),
+                   "application-x-executable"];
+    for (let i = 0; i < tries.length; i++) {
+      if (tries[i].length === 0)
+        continue;
+      let p = "";
+      try { p = Quickshell.iconPath(tries[i], true); } catch (e) {}
+      if (p && p.length > 0)
+        return p;
+    }
+    return "";
+  }
+
+  function snapshot() {
+    const list = [];
+    const byId = ({});
+    const tls = ToplevelManager.toplevels.values || [];
+    for (let i = 0; i < tls.length; i++) {
+      const tl = tls[i];
+      const appId = String(tl && tl.appId ? tl.appId : "").trim();
+      if (appId.length === 0)
+        continue;
+      const rank = root.windowRank(tl);
+      const seen = byId[appId];
+      if (!seen) {
+        const entry = root.entryFor(appId);
+        const item = { appId: appId, rank: rank, window: tl, windows: 1,
+                       name: root.appName(appId, entry),
+                       icon: root.iconSource(appId, entry) };
+        byId[appId] = item;
+        list.push(item);
+      } else {
+        seen.windows += 1;
+        if (rank < seen.rank) {
+          seen.rank = rank;
+          seen.window = tl;
+        }
+      }
+    }
+    list.sort((a, b) => a.rank - b.rank);
+    return list;
+  }
+
+  // ------------------------------------------------------------------ gesture
+
+  function begin(reveal) {
+    Hyprland.refreshToplevels();
+    root.apps = root.snapshot();
+    // Index 0 is the app in front, so the first Tab lands on the previous one.
+    root.selected = 0;
+    root.armed = true;
+    if (reveal)
+      revealTimer.restart();
+  }
+
+  function move(dir) {
+    const n = root.apps.length;
+    if (n > 0)
+      root.selected = (root.selected + dir + n) % n;
+  }
+
+  // The Hyprland handle behind a Wayland toplevel: it knows the workspace and
+  // the address, which the Wayland side does not expose.
+  function hyprFor(tl) {
+    const all = Hyprland.toplevels.values || [];
+    for (let i = 0; i < all.length; i++)
+      if (all[i].wayland === tl)
+        return all[i];
+    return null;
+  }
+
+  // Everything interpolated into a dispatch is checked for shape first: under
+  // the Lua parser a dispatch string is code, not a command with arguments.
+  function address(handle) {
+    let v = String((handle && handle.address) || "").trim().toLowerCase();
+    if (v.slice(0, 2) === "0x")
+      v = v.slice(2);
+    return /^[0-9a-f]{4,16}$/.test(v) ? "0x" + v : "";
+  }
+
+  function workspaceTarget(ws) {
+    if (!ws)
+      return "";
+    const name = String(ws.name || "");
+    return name !== "" ? name : String(ws.id);
+  }
+
+  function luaString(value) {
+    return String(value === null || value === undefined ? "" : value)
+      .replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+  }
+
+  function dispatch(lua, legacy) {
+    Hyprland.dispatch(Hyprland.usingLua ? lua : legacy);
+  }
+
+  // Switching has to carry the window's workspace with it. Wayland activation
+  // alone only hands over focus -- it does not follow the window to another
+  // workspace, which made every app outside the current one look dead. The
+  // focus dispatcher does both in one step, so it is the main path and
+  // activation only steps in when there is no address to dispatch on.
+  function activate(item) {
+    if (!item)
+      return;
+    const handle = root.hyprFor(item.window);
+    const addr = root.address(handle);
+    const ws = handle ? handle.workspace : null;
+    const wsName = ws ? String(ws.name || "") : "";
+
+    // Minimized windows are parked on a special workspace (that is how the
+    // dock minimizes). Switching to one unminimizes it onto the workspace the
+    // user is on, like clicking a minimized app in the macOS Dock -- opening
+    // the special workspace instead would be a different thing entirely.
+    if (addr && wsName.indexOf("special") === 0) {
+      const here = root.workspaceTarget(Hyprland.focusedWorkspace);
+      if (here) {
+        root.dispatch("hl.dsp.window.move({ window = \"address:" + addr + "\", workspace = \""
+                        + root.luaString(here) + "\", follow = false })",
+                      "movetoworkspacesilent " + here + ",address:" + addr);
+      }
+    }
+
+    if (addr) {
+      root.dispatch("hl.dsp.focus({ window = \"address:" + addr + "\" })",
+                    "focuswindow address:" + addr);
+      return;
+    }
+
+    try {
+      if (item.window && typeof item.window.activate === "function")
+        item.window.activate();
+    } catch (e) {}
+  }
+
+  function finish(doSwitch) {
+    revealTimer.stop();
+    if (!root.armed)
+      return "idle";
+    const item = root.apps[root.selected];
+    root.armed = false;
+    root.shown = false;
+    if (doSwitch && item && root.selected !== 0)
+      root.activate(item);
+    return "ok";
+  }
+
+  function step(dir) {
+    if (!root.armed)
+      root.begin(true);
+    root.move(dir);
+    return "ok";
+  }
+
+  function commit() { return root.finish(true) }
+  function cancel() { return root.finish(false) }
+
+  // Row appears only when Alt+Tab is held; a quick tap never flashes it.
+  Timer {
+    id: revealTimer
+    interval: Theme.delay("switcher")
+    onTriggered: if (root.armed) root.shown = true
+  }
+
+  Connections {
+    target: ToplevelManager
+    function onActiveToplevelChanged() {
+      // Not while switching: the row is showing the order the gesture started
+      // with, and the focus it hands out is the result, not new input.
+      if (!root.armed)
+        root.touch(ToplevelManager.activeToplevel);
+    }
+  }
+
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event.name !== "custom")
+        return;
+      const d = String(event.data);
+      if (d === "app-switcher next") root.step(1);
+      else if (d === "app-switcher prev") root.step(-1);
+      else if (d === "app-switcher commit") root.commit();
+      else if (d === "app-switcher cancel") root.cancel();
+    }
+  }
+
+  IpcHandler {
+    target: "app-switcher"
+
+    function next(): string { return root.step(1) }
+    function prev(): string { return root.step(-1) }
+    function commit(): string { return root.commit() }
+    function cancel(): string { return root.cancel() }
+    function status(): string {
+      const names = [];
+      for (let i = 0; i < root.apps.length; i++)
+        names.push(root.apps[i].name + (root.apps[i].windows > 1 ? " (" + root.apps[i].windows + ")" : ""));
+      return JSON.stringify({ armed: root.armed, shown: root.shown,
+                              selected: root.selected, apps: names });
+    }
+  }
+
+  Component.onCompleted: root.touch(ToplevelManager.activeToplevel)
+
+  // --------------------------------------------------------------------- row
+
+  Variants {
+    model: Quickshell.screens
+
+    PanelWindow {
+      id: panel
+      required property var modelData
+      screen: modelData
+
+      readonly property var hyprMonitor: Hyprland.monitorFor(modelData)
+      readonly property bool onFocusedMonitor:
+          !Hyprland.focusedMonitor || !hyprMonitor || Hyprland.focusedMonitor.id === hyprMonitor.id
+
+      // Mapped only while needed: a permanently mapped, click-through overlay
+      // breaks the click-outside close of other popups (Hyprland focus grab).
+      // Mapping starts with the gesture (armed), so it runs in parallel with
+      // the switcher delay instead of after it.
+      visible: (root.armed || card.opacity > 0.001) && onFocusedMonitor && root.apps.length > 0
+      color: "transparent"
+      anchors { top: true; bottom: true; left: true; right: true }
+      exclusionMode: ExclusionMode.Ignore
+      WlrLayershell.namespace: "velum-surface"   // Hyprland: blur with ignore_alpha 0.6 (only the material, never the shadow), no layer animation
+      WlrLayershell.layer: WlrLayer.Overlay
+      WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+      readonly property bool open: root.shown && panel.onFocusedMonitor && root.apps.length > 0
+      readonly property real padding: Theme.layout.module.pad * 1.5
+      readonly property real gap: Theme.layout.module.gap
+      readonly property real cellGap: Theme.layout.module.gap
+
+      // Icons shrink once the row would leave the screen, like macOS does.
+      readonly property int cell: {
+        const n = Math.max(1, root.apps.length);
+        const room = (panel.width * 0.9 - padding * 2 - (n - 1) * cellGap) / n;
+        return Math.round(Math.max(Theme.layout.module.toggle, Math.min(Theme.layout.module.toggle * 2, room)));
+      }
+      readonly property int iconSize: Math.round(cell * 0.78)
+
+      TapHandler { enabled: root.shown; onTapped: root.cancel() }
+
+      // Enter: out of the centre, smooth spring from launcherFrom, fast fade.
+      // Exit: a little smaller (exitTo), faster fade.
+      Spring { id: grow; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion; target: panel.open ? 1 : Theme.scale("exitTo"); value: 1 }
+      onOpenChanged: if (open) grow.from(Theme.scale("launcherFrom"))
+
+      VFloatingCard {
+        id: card
+        anchors.centerIn: parent
+        width: content.width + panel.padding * 2
+        height: content.height + panel.padding * 2
+        scale: grow.value
+        opacity: panel.open ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: panel.open ? Theme.dur("fast") : Theme.exit(Theme.dur("base"))
+          easing.type: Easing.BezierSpline; easing.bezierCurve: panel.open ? Theme.curve("out") : Theme.curve("exit") } }
+
+        // Swallow clicks on the card's padding so they do not cancel.
+        TapHandler {}
+
+        Column {
+          id: content
+          anchors.centerIn: parent
+          spacing: panel.gap
+
+          Row {
+            id: row
+            spacing: panel.cellGap
+
+            Repeater {
+              model: root.apps
+
+              delegate: Item {
+                id: cell
+                required property var modelData
+                required property int index
+                readonly property bool isSelected: root.selected === index
+
+                width: panel.cell
+                height: panel.cell
+
+                // Selection jumps instantly -- this is a frequent, fast
+                // interaction; a gliding highlight would lag the keystroke.
+                Rectangle {
+                  anchors.fill: parent
+                  radius: Theme.m.radius.panel - Theme.layout.module.tileInset
+                  visible: cell.isSelected
+                  color: Theme.r.fill.selected
+                  border.width: Theme.layout.separator
+                  border.color: Theme.r.line.base
+                }
+
+                Image {
+                  id: icon
+                  anchors.centerIn: parent
+                  width: panel.iconSize
+                  height: panel.iconSize
+                  source: cell.modelData.icon
+                  visible: source !== "" && status === Image.Ready
+                  sourceSize.width: 128
+                  sourceSize.height: 128
+                  asynchronous: true
+                  cache: true
+                  smooth: true
+                }
+
+                // Nothing on disk for this app: its initial, same footprint.
+                Rectangle {
+                  anchors.centerIn: parent
+                  width: panel.iconSize
+                  height: panel.iconSize
+                  radius: width * 0.22
+                  visible: !icon.visible
+                  color: Theme.r.popover.tile
+                  border.width: Theme.layout.separator
+                  border.color: Theme.r.line.rim
+
+                  VText {
+                    anchors.centerIn: parent
+                    text: String(cell.modelData.name || "?").charAt(0).toUpperCase()
+                    font.pixelSize: Math.round(panel.iconSize * 0.5)
+                    font.weight: Font.DemiBold
+                    color: Theme.r.popover.inkSecondary
+                  }
+                }
+
+                // Hover preselects, like macOS.
+                HoverHandler {
+                  enabled: root.shown
+                  onHoveredChanged: if (hovered) root.selected = cell.index
+                }
+
+                TapHandler {
+                  onTapped: {
+                    root.selected = cell.index;
+                    root.finish(true);
+                  }
+                }
+              }
+            }
+          }
+
+          // Name of the selected app. Fixed height so the card never resizes
+          // while the selection moves; the name crossfades (fast).
+          Item {
+            id: nameBox
+            width: row.width
+            height: Math.round(Theme.m.type.title * 1.6)
+            readonly property string name: {
+              const item = root.apps[root.selected];
+              return item ? item.name : "";
+            }
+            property bool showA: true
+            onNameChanged: { if (showA) nameB.text = name; else nameA.text = name; showA = !showA }
+            Component.onCompleted: nameA.text = name
+            VText {
+              id: nameA
+              anchors.fill: parent
+              horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+              elide: Text.ElideRight
+              font.pixelSize: Theme.m.type.title; font.weight: Font.DemiBold
+              color: Theme.r.popover.ink
+              opacity: nameBox.showA ? 1 : 0
+              Behavior on opacity { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
+            }
+            VText {
+              id: nameB
+              anchors.fill: parent
+              horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+              elide: Text.ElideRight
+              font.pixelSize: Theme.m.type.title; font.weight: Font.DemiBold
+              color: Theme.r.popover.ink
+              opacity: nameBox.showA ? 0 : 1
+              Behavior on opacity { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

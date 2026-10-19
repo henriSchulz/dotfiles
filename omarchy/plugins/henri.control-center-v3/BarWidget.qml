@@ -5,7 +5,6 @@ import Quickshell.Hyprland
 import qs.Commons
 import qs.Ui
 import "file:///home/henri/.local/share/velum/qml/Velum"
-import "file:///home/henri/.local/share/apple-ui" as AUi
 
 // Control Center v3 — the island in the middle of the bar (Velum). Compact it
 // shows the workspace dots (scroll switches workspace) or a running activity
@@ -18,7 +17,7 @@ BarWidget {
   readonly property var shell: bar ? bar.shell : null
 
   // ---- Velum: settings file + appearance from the wallpaper under the island
-  AUi.Backdrop { id: backdrop; region: "40%x30%+0+0"; gravity: "North" }
+  VBackdrop { id: backdrop; region: "40%x30%+0+0"; gravity: "North" }
   VelumSettings { id: velum; priority: 1; prefersDark: backdrop.dark }
 
   Backend {

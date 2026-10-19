@@ -29,7 +29,6 @@ import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import qs.Commons
-import "file:///home/henri/.local/share/apple-ui" as AUi
 import "DockModel.js" as DockModel
 import "components"
 
@@ -148,7 +147,7 @@ Item {
     for (var j = 0; j < list.length; j++) if (String(list[j].name).indexOf("HEADLESS") !== 0) return list[j]
     return list.length > 0 ? list[0] : null
   }
-  AUi.Backdrop {
+  VBackdrop {
     id: backdrop
     gravity: root.position === "bottom" ? "South" : root.position === "left" ? "West" : "East"
     region: root.position === "bottom" ? "70%x15%+0+0" : "15%x70%+0+0"

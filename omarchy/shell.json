@@ -63,10 +63,10 @@
   },
   "plugins": [
     {
-      "id": "henri.assistant"
+      "id": "henri.assistant-v3"
     },
     {
-      "id": "henri.dictation"
+      "id": "henri.dictation-v3"
     },
     {
       "id": "henri.idle"
@@ -75,10 +75,10 @@
       "id": "henri.menu-v3"
     },
     {
-      "id": "henri.workspace-switcher"
+      "id": "henri.workspace-switcher-v3"
     },
     {
-      "id": "henri.app-switcher"
+      "id": "henri.app-switcher-v3"
     },
     {
       "id": "henri.background"
@@ -93,7 +93,7 @@
       "id": "henri.kbdlight"
     },
     {
-      "id": "henri.missioncontrol"
+      "id": "henri.missioncontrol-v3"
     },
     {
       "id": "henri.notifications-v3"
@@ -102,7 +102,7 @@
       "id": "henri.dock-v3"
     },
     {
-      "id": "henri.lock"
+      "id": "henri.lock-v3"
     }
   ],
   "version": 1

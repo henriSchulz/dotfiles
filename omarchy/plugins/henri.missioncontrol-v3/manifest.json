@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.missioncontrol-v3",
+  "name": "Mission Control (v3, Velum)",
+  "version": "1.6.0",
+  "author": "Henri Schulz (based on Andy Wei's Mission Control)",
+  "description": "Mission Control on Velum: its own motion spec, the look (font, accent, badges, captions) from Velum. macOS-style Mission Control with App Expos\u00e9 and Show Desktop: a folding Spaces strip with live thumbnails, add/remove desktops, drag windows between them, Quick Look, and a finger-following touchpad swipe",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "MissionControl.qml"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/henriSchulz/omarchy-mission-control"
+}

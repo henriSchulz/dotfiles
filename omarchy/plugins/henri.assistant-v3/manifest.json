@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.assistant-v3",
+  "name": "Voice to Claude Code (v3, Velum)",
+  "version": "0.3.0",
+  "author": "henri",
+  "description": "Speak a prompt; a Claude Code session opens with it.",
+  "kinds": [
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

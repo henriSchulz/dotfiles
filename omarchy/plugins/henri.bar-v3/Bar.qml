@@ -7,9 +7,7 @@ import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
 import "BarModel.js" as BarModel
-import "file:///home/henri/.local/share/henri-ui/Motion.js" as Motion   // edge-peek thresholds only
 import "file:///home/henri/.local/share/velum/qml/Velum"
-import "file:///home/henri/.local/share/apple-ui" as AUi
 
 Item {
   id: root
@@ -133,7 +131,7 @@ Item {
   property real backgroundOpacity: 1
   property color background: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
   property color urgent: Theme.r.accent.base
-  AUi.Backdrop { id: velumBackdrop; region: "40%x30%+0+0"; gravity: "North" }
+  VBackdrop { id: velumBackdrop; region: "40%x30%+0+0"; gravity: "North" }
   VelumSettings { id: velumSettings; priority: 2; prefersDark: velumBackdrop.dark }
 
   // Theme / wallpaper-driven recolouring of the whole bar: a calm, slow crossfade.
@@ -1087,7 +1085,7 @@ Item {
     // fullscreen window on this screen covers the top layer, the bar keeps its
     // surface (unmapping and rebuilding it measures ~150ms against ~20ms) and
     // slides its face past the screen edge instead. The window stays where it
-    // is, transparent, and only a `Motion.edgeTrigger` strip along the edge
+    // is, transparent, and only a `Theme.core.size.edgeTrigger` strip along the edge
     // takes input; pushing the pointer against that strip slides the bar in
     // over everything, and it slides back once the pointer has left it and no
     // popout is open. Over a fullscreen window this needs the overlay layer —
@@ -1112,10 +1110,10 @@ Item {
     mask: barWindow.peekMode && !barWindow.peeked ? edgeMask : null
     Region {
       id: edgeMask
-      x: root.position === "right" ? barWindow.width - Motion.edgeTrigger : 0
-      y: root.position === "bottom" ? barWindow.height - Motion.edgeTrigger : 0
-      width: root.vertical ? Motion.edgeTrigger : barWindow.width
-      height: root.vertical ? barWindow.height : Motion.edgeTrigger
+      x: root.position === "right" ? barWindow.width - Theme.core.size.edgeTrigger : 0
+      y: root.position === "bottom" ? barWindow.height - Theme.core.size.edgeTrigger : 0
+      width: root.vertical ? Theme.core.size.edgeTrigger : barWindow.width
+      height: root.vertical ? barWindow.height : Theme.core.size.edgeTrigger
     }
 
     ScreenMoveRemap {
@@ -1156,12 +1154,12 @@ Item {
     }
     Timer {
       id: edgeRevealTimer
-      interval: Motion.edgeRevealDelay
+      interval: Theme.delay("edgeReveal")
       onTriggered: if (edgeHover.hovered && barWindow.peekMode) barWindow.peeked = true
     }
     Timer {
       id: edgeHideTimer
-      interval: Motion.edgeHideDelay
+      interval: Theme.delay("edgeHide")
       onTriggered: if (!edgeHover.hovered && root.activePopout === null) barWindow.peeked = false
     }
     // A popout that closes after the pointer already left the bar lets it go.
