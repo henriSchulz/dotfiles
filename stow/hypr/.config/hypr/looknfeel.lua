@@ -242,3 +242,12 @@ end
 -- own 1.2 scale. It tiles like any other window (it used to float and centre itself); its
 -- sidebar is translucent, so it gets the compositor blur.
 hl.window_rule({ match = { title = "^System Settings$" }, opacity = "1.0 override" })
+
+-- Velum window frame (~/Projects/velum, surface.window tokens): hairline instead of the theme's
+-- blue border, squircle corners at the variant's radius, the sheet shadow. The desktop's Velum
+-- settings owner writes the state file for the chosen variant; missing, the theme's frame stays.
+do
+  local f = os.getenv("HOME") .. "/.local/state/velum/hypr.lua"
+  local h = io.open(f, "r")
+  if h then h:close(); dofile(f) end
+end
