@@ -383,6 +383,20 @@ Item {
     }, Qt.size(grabWidth, grabHeight))
   }
 
+  // Velum: the island a module sits on (null in the centre and on a vertical bar), and
+  // holding it hidden while a Dynamic Island grown out of it is up (VIslandWindow)
+  function islandOf(item) {
+    for (var p = item; p; p = p.parent)
+      if (p.island !== undefined && p.region !== undefined) return p.island
+    return null
+  }
+  function holdIsland(item, owner, on) {
+    var island = islandOf(item)
+    if (!island) return
+    if (on) island.holder = owner
+    else if (island.holder === owner) island.holder = null
+  }
+
   function requestPopout(owner) {
     if (activePopout === owner) return
     if (activePopout) {
@@ -1301,13 +1315,14 @@ Item {
         // Velum: the left and right sections sit on glass islands like the centre's
         // Control Center island (same height, same material, compositor blur via
         // the omarchy-bar layer rule); over a fullscreen window the strip is solid.
-        Island { target: leftMods }
-        Island { target: rightMods }
+        Island { id: leftIsland; target: leftMods }
+        Island { id: rightIsland; target: rightMods }
 
         CenterModules { anchors.fill: parent }
 
         LeftModules {
           id: leftMods
+          island: leftIsland
           anchors.left: parent.left
           anchors.leftMargin: Theme.layout.module.pad + Theme.layout.capsule.padX / 2
           anchors.verticalCenter: parent.verticalCenter
@@ -1315,6 +1330,7 @@ Item {
 
         RightModules {
           id: rightMods
+          island: rightIsland
           anchors.right: parent.right
           anchors.rightMargin: Theme.layout.module.pad + Theme.layout.capsule.padX / 2
           anchors.verticalCenter: parent.verticalCenter
@@ -1347,12 +1363,17 @@ Item {
 
   // A glass island behind a section of the bar: as high as the Control Center
   // island (bar height minus the tile inset), the section's width plus padding.
+  // A Dynamic Island growing out of it (VIslandWindow) holds it while its surface is up:
+  // the island and its modules hide, and come back at once when it has landed.
   component Island: Rectangle {
     property Item target
+    property var holder: null
     readonly property real islandH: Math.max(Theme.layout.capsule.height, root.barSize - 2 * Theme.layout.module.tileInset - 2 * Theme.layout.separator)
     visible: target !== null && target.width > 0
-    x: target ? target.x - Theme.layout.capsule.padX / 2 : 0
-    width: target ? target.width + Theme.layout.capsule.padX : 0
+    opacity: holder ? 0 : 1
+    // whole pixels, the same as VIslandWindow's island rect: the surface takes over exactly here
+    x: target ? Math.round(target.x - Theme.layout.capsule.padX / 2) : 0
+    width: target ? Math.round(target.width + Theme.layout.capsule.padX) : 0
     height: islandH
     anchors.verticalCenter: parent.verticalCenter
     radius: height / 2
@@ -1694,6 +1715,9 @@ Item {
 
     property var entries: []
     property string region: ""
+    // Velum: the glass island behind this section (horizontal bar), see islandOf
+    property Item island: null
+    opacity: island && island.holder ? 0 : 1
 
     visible: entries.length > 0
     // A hidden list must not build its modules. The center section declares

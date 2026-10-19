@@ -918,21 +918,24 @@ Panel {
   property bool popupSettled: false
   Timer { id: settleTimer; interval: Theme.dur("slow"); onTriggered: root.popupSettled = true }
 
-  VBarPopup {
+  // A Dynamic Island: the right island of the bar grows into the battery menu (keeps its right
+  // and top edge), as the Control Center grows out of the centre one.
+  VIslandWindow {
     id: panel
     anchorItem: button
     bar: root.bar
     namespace: "velum-surface"   // Hyprland: blur with ignore_alpha 0.6 (only the material, never the shadow), no layer animation
+    align: "right"
     open: root.opened && root.batteryPresent
-    pad: Theme.layout.module.pad
-    radius: Theme.m.radius.panel
-    kind: "panel"
+    toWidth: content.width + 2 * pad
+    contentHeight: content.height
     onDismissed: root.close()
+    onReopenRequested: root.open()
     onEscapePressed: root.goBack()
 
-    // Every open starts on the overview: back to it once the popup is gone.
-    onVisibleChanged: {
-      if (visible) return
+    // Every open starts on the overview: back to it once the island has shrunk back.
+    onShownChanged: {
+      if (shown) return
       root.cursorActive = false
       root.rangeOpen = false
       pages.reset()
@@ -1150,7 +1153,7 @@ Panel {
     Item {
       // Taller than the screen allows → the body scrolls under the header.
       readonly property real maxBody: Math.max(Theme.layout.module.width / 2,
-        panel.screenH - panel.barStrip - panel.gap - 2 * panel.margin - 2 * panel.pad - advancedHeader.implicitHeight)
+        panel.maxContentHeight - panel.margin - advancedHeader.implicitHeight)
       implicitHeight: advancedHeader.implicitHeight + Math.min(advancedBody.implicitHeight, maxBody)
 
       VPageHead { id: advancedHeader; width: parent.width; title: "Advanced"; onBack: root.closeSubPage() }

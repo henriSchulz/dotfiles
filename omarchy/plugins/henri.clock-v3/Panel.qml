@@ -15,8 +15,8 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 // one grows that day's list out of the bottom of the grid.
 //
 // BarWidget.qml owns the bar label and hands this panel the button to
-// anchor against. Velum (v3): a VBarPopup with the variant's popover
-// material; ink, accent and motion from Theme.
+// anchor against. Velum (v3): a Dynamic Island out of the bar's right island,
+// popover material; ink, accent and motion from Theme.
 Panel {
   id: root
   moduleName: "omarchy.clock"
@@ -277,21 +277,26 @@ Panel {
     rangeTo: root.gridRange.to
   }
 
-  VBarPopup {
+  // A Dynamic Island: the right island of the bar grows into the calendar (keeps its right
+  // and top edge), as the Control Center grows out of the centre one.
+  VIslandWindow {
     id: panel
     anchorItem: root.anchorItem
     bar: root.bar
     open: root.opened
     namespace: "velum-surface"   // Hyprland: blur with ignore_alpha 0.6 (only the material, never the shadow), no layer animation
+    align: "right"
     focusTarget: keyCatcher
-    kind: "panel"
+    toWidth: keyCatcher.width + 2 * pad
+    contentHeight: keyCatcher.height
     onDismissed: root.close()
+    onReopenRequested: root.open()
     onEscapePressed: root.close()
 
     PanelKeyCatcher {
       id: keyCatcher
       width: Math.min(Style.space(560), panel.screenW - 2 * panel.margin - 2 * panel.pad)
-      height: Math.min(calendarColumn.implicitHeight, panel.screenH - panel.barStrip - panel.gap - panel.margin - 2 * panel.pad)
+      height: Math.min(calendarColumn.implicitHeight, panel.maxContentHeight)
       blocked: root.editingLife
       onMoveRequested: function(dx, dy) {
         if (dx !== 0) root.moveMonth(dx)
