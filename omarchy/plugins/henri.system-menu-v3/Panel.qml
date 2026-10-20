@@ -5,12 +5,12 @@ import qs.Commons
 import qs.Ui
 import "file:///home/henri/.local/share/velum/qml/Velum"
 
-// System menu v3 (Velum) — the macOS Apple menu. The Omarchy logo sits on the
-// bar's left island; a click grows that island into the menu (VIslandWindow,
-// Henri's wish: the one exception to "menus open with no transition"); in it
-// the highlight jumps, a chosen item blinks once, then it acts. "About This
-// Computer" morphs the island into an About card; restart, shut down and log
-// out ask first on a confirm card, like the "…" items on macOS.
+// System menu v3 (Velum) — the macOS Apple menu, laid out like the Control
+// Center. The Omarchy logo sits on the bar's left island; a click grows that
+// island into a panel of tiles (VIslandWindow): the computer (opens About),
+// Sleep / Restart / Shut Down / Lock as round badges, then settings, App Store,
+// Force Quit and Log Out as rows. Restart, shut down and log out ask first on
+// a confirm card, like the "…" items on macOS.
 Panel {
   id: root
   moduleName: "henri.system-menu-v3"
@@ -26,21 +26,21 @@ Panel {
   property var info: ({})
   property bool logoSqueezed: false
 
-  readonly property var items: [
-    { text: "About This Computer", page: "about" },
-    { separator: true },
-    { text: "System Settings…", cmd: "omarchy-menu toggle root" },
-    { text: "App Store…", cmd: "xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-install" },
-    { separator: true },
-    { text: "Force Quit…", cmd: "hyprctl kill" },
-    { separator: true },
-    { text: "Sleep", cmd: "systemctl suspend" },
-    { text: "Restart…", cmd: "omarchy-system-reboot", title: "Are you sure you want to restart your computer now?", confirm: "Restart" },
-    { text: "Shut Down…", cmd: "omarchy-system-shutdown", title: "Are you sure you want to shut down your computer now?", confirm: "Shut Down" },
-    { separator: true },
-    { text: "Lock Screen", cmd: "omarchy-system-lock" },
-    { text: "Log Out " + userName + "…", cmd: "omarchy-system-logout", title: "Are you sure you want to log out now?", confirm: "Log Out" }
+  // the power badges, then the rows (choose(i) over IPC counts about, power, rows in this order)
+  readonly property var about: ({ text: "About This Computer", page: "about" })
+  readonly property var power: [
+    { text: "Sleep", icon: "sleep", cmd: "systemctl suspend" },
+    { text: "Restart", icon: "restart", cmd: "omarchy-system-reboot", title: "Are you sure you want to restart your computer now?", confirm: "Restart" },
+    { text: "Shut Down", icon: "power", cmd: "omarchy-system-shutdown", title: "Are you sure you want to shut down your computer now?", confirm: "Shut Down" },
+    { text: "Lock", icon: "lock", cmd: "omarchy-system-lock" }
   ]
+  readonly property var rows: [
+    { text: "System Settings…", icon: "settings", cmd: "omarchy-menu toggle root" },
+    { text: "App Store…", icon: "store", cmd: "xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-install" },
+    { text: "Force Quit…", icon: "force-quit", cmd: "hyprctl kill" }
+  ]
+  readonly property var logout: ({ text: "Log Out " + userName + "…", icon: "logout", cmd: "omarchy-system-logout", title: "Are you sure you want to log out now?", confirm: "Log Out" })
+  readonly property var items: [about].concat(power, rows, [logout])
 
   function perform(item) {
     if (item.page) { page = item.page; return }
@@ -70,14 +70,10 @@ Panel {
     function toggle(): void { root.toggle() }
     // Opens straight onto the About card.
     function about(): void { root.page = "about"; root.open() }
-    function state(): string { return JSON.stringify({ opened: root.opened, page: root.page, menu: menu.open, highlighted: menu.highlighted }) }
-    function hl(i: int): void { menu.highlighted = i }
-    function choose(i: int): void { menu.choose(i) }
+    function state(): string { return JSON.stringify({ opened: root.opened, page: root.page }) }
+    function choose(i: int): void { if (root.items[i]) root.perform(root.items[i]) }
   }
 
-  // the menu shows on the menu page only; VMenu closes itself after a choice, so it is set, not bound
-  function syncMenu() { menu.open = root.opened && root.page === "menu" }
-  onPageChanged: syncMenu()
   onOpenedChanged: {
     if (opened) {
       if (page !== "about") page = "menu"
@@ -87,7 +83,6 @@ Panel {
     } else {
       resetPage.restart()
     }
-    syncMenu()
   }
   // Back to the menu once the cards have faded, not while they still show.
   Timer {
@@ -140,10 +135,10 @@ Panel {
     align: "left"
     focusTarget: keys
     readonly property bool onMenu: root.page === "menu"
-    pad: onMenu ? 0 : Theme.layout.module.pad
-    cornerRadius: onMenu ? Theme.m.radius.menu : Theme.m.radius.panel + Theme.layout.module.tileInset
-    toWidth: (onMenu ? menu.implicitWidth : root.page === "about" ? aboutCol.width : confirmCol.width) + 2 * pad
-    contentHeight: onMenu ? menu.implicitHeight : root.page === "about" ? aboutCol.implicitHeight : confirmCol.implicitHeight
+    pad: Theme.layout.module.pad
+    cornerRadius: Theme.m.radius.panel + Theme.layout.module.tileInset
+    toWidth: (onMenu ? grid.width : root.page === "about" ? aboutCol.width : confirmCol.width) + 2 * pad
+    contentHeight: onMenu ? grid.implicitHeight : root.page === "about" ? aboutCol.implicitHeight : confirmCol.implicitHeight
     onDismissed: root.close()
     onReopenRequested: root.open()
 
@@ -152,22 +147,81 @@ Panel {
       focus: true
       Keys.onPressed: function (e) {
         if (e.key === Qt.Key_Escape) { if (root.page !== "menu") root.page = "menu"; else root.close(); e.accepted = true; return }
-        if (root.page === "menu") {
-          if (e.key === Qt.Key_Down) { menu.step(1); e.accepted = true }
-          else if (e.key === Qt.Key_Up) { menu.step(-1); e.accepted = true }
-          else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) { menu.choose(menu.highlighted); e.accepted = true }
-        } else if (root.page === "confirm" && (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && root.pending) {
+        if (root.page === "confirm" && (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && root.pending) {
           root.run(root.pending.cmd); e.accepted = true
         }
         if (e.key === Qt.Key_Tab || e.key === Qt.Key_Backtab) { root.switchPanel(e.key === Qt.Key_Backtab ? -1 : 1); e.accepted = true }
       }
     }
 
-    VMenu {
-      id: menu
-      bare: true
-      model: root.items
-      onTriggered: function (i) { root.perform(root.items[i]) }
+    // ------------------------------------------------------------- menu
+    Column {
+      id: grid
+      readonly property bool shown: root.opened && root.page === "menu"
+      visible: shown
+      width: Theme.layout.module.width * 3 / 4
+      spacing: Theme.layout.module.gap
+
+      // the computer: logo, model, Omarchy version — opens About
+      VTile {
+        id: hero
+        width: parent.width; height: Theme.layout.meter.card
+        Spring { id: heroPress; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: heroMouse.pressed ? Theme.scale("press") : 1 }
+        scale: heroPress.value
+        Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.r.popover.fillHover; visible: heroMouse.containsMouse }
+        Text {
+          id: heroLogo
+          x: Theme.layout.module.pad; anchors.verticalCenter: parent.verticalCenter
+          text: root.logo; font.family: "omarchy"; font.pixelSize: Theme.layout.module.quick; color: Theme.r.popover.ink
+        }
+        Column {
+          x: heroLogo.x + heroLogo.width + Theme.layout.module.pad; width: chev.x - x - Theme.layout.module.pad
+          anchors.verticalCenter: parent.verticalCenter
+          VText { width: parent.width; elide: Text.ElideRight; text: root.info.model || "Omarchy"; color: Theme.r.popover.ink; font.weight: Font.DemiBold }
+          VText { width: parent.width; elide: Text.ElideRight; tone: "secondary"; font.pixelSize: Theme.m.type.small
+            text: root.info.omarchy ? "Omarchy " + root.info.omarchy : (root.info.host || "") }
+        }
+        VIcon { id: chev; anchors.right: parent.right; anchors.rightMargin: Theme.layout.module.pad; anchors.verticalCenter: parent.verticalCenter
+          name: "chevron.right"; weight: "bold"; color: Theme.r.popover.inkSecondary }
+        MouseArea { id: heroMouse; anchors.fill: parent; hoverEnabled: true; onClicked: root.perform(root.about) }
+      }
+
+      // sleep, restart, shut down, lock: round badges with their names under them
+      VTile {
+        width: parent.width; height: powerRow.height + 2 * Theme.layout.module.pad
+        Row {
+          id: powerRow
+          x: Theme.layout.module.pad; y: Theme.layout.module.pad; width: parent.width - 2 * x
+          Repeater {
+            model: root.power
+            delegate: Column {
+              required property var modelData
+              width: powerRow.width / root.power.length
+              spacing: Theme.layout.list.gap
+              VBadge { anchors.horizontalCenter: parent.horizontalCenter; size: Theme.layout.module.quick; on: false; icon: modelData.icon
+                onTapped: root.perform(modelData) }
+              VText { width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight; text: modelData.text
+                font.pixelSize: Theme.m.type.small; color: Theme.r.popover.ink }
+            }
+          }
+        }
+      }
+
+      // settings, App Store, Force Quit | Log Out
+      VTile {
+        width: parent.width; height: rowsCol.height + 2 * Theme.layout.module.tileInset
+        Column {
+          id: rowsCol
+          y: Theme.layout.module.tileInset; width: parent.width
+          Repeater {
+            model: root.rows
+            delegate: VModuleRow { required property var modelData; width: rowsCol.width; icon: modelData.icon; text: modelData.text
+              onClicked: root.perform(modelData) }
+          }
+          VModuleSep { width: parent.width }
+          VModuleRow { width: parent.width; icon: root.logout.icon; text: root.logout.text; onClicked: root.perform(root.logout) }
+        }
+      }
     }
 
     // ------------------------------------------------------------ about
