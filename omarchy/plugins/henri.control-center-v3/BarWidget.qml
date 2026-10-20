@@ -148,7 +148,7 @@ BarWidget {
     anchorItem: pill
     bar: root.bar
     namespace: "velum-surface"   // Hyprland: blur with ignore_alpha 0.6 (only the material, never the shadow), no layer animation
-    toWidth: Theme.layout.module.width
+    toWidth: Theme.layout.module.island
     contentHeight: pages.implicitHeight
     face: Component { Face {} }
     onDismissed: root.close()

@@ -73,11 +73,13 @@ Item {
     property string opens: ""
     default property alias body: cardBody.data
     width: parent ? parent.width : 0
-    height: (title ? Theme.layout.module.section : 0) + cardBody.childrenRect.height + Theme.layout.module.tileInset * 2
-    VText { visible: card.title !== ""; x: Theme.layout.module.pad; height: Theme.layout.module.section; verticalAlignment: Text.AlignVCenter
+    readonly property real naturalHeight: (title ? Theme.layout.module.section : 0) + cardBody.childrenRect.height + Theme.layout.module.tileInset * 2
+    height: naturalHeight
+    VText { id: cardTitle; visible: card.title !== ""; x: Theme.layout.module.pad; height: Theme.layout.module.section; verticalAlignment: Text.AlignVCenter
       text: card.title; font.weight: Font.DemiBold; color: Theme.r.popover.ink }
     VText { visible: card.titleDetail !== ""; anchors.right: parent.right; anchors.rightMargin: Theme.layout.module.pad
-      height: Theme.layout.module.section; verticalAlignment: Text.AlignVCenter; text: card.titleDetail; tone: "secondary" }
+      width: Math.min(implicitWidth, card.width - cardTitle.x - cardTitle.width - 2 * Theme.layout.module.pad); elide: Text.ElideRight
+      horizontalAlignment: Text.AlignRight; height: Theme.layout.module.section; verticalAlignment: Text.AlignVCenter; text: card.titleDetail; tone: "secondary" }
     MouseArea { visible: card.opens !== ""; width: parent.width; height: Theme.layout.module.section; onClicked: cc.push(card.opens) }
     Item { id: cardBody; y: (card.title ? Theme.layout.module.section : Theme.layout.module.tileInset); width: parent.width; height: childrenRect.height }
   }
@@ -220,28 +222,34 @@ Item {
         }
       }
 
-      // -- Display, Sound: thick sliders
-      Card {
-        title: "Display"; opens: "display"
-        titleDetail: cc.be.brightnessAvailable ? "" : (cc.be.focusedMonitor || "")
-        Item {
-          visible: cc.be.brightnessAvailable; width: parent.width; height: visible ? Theme.layout.meter.slider + Theme.layout.module.pad : 0
-          VFillSlider { x: Theme.layout.module.pad; width: parent.width - 2 * x; icon: "brightness"
-            value: cc.be.brightness / 100; readout: cc.be.brightness + " %"; onMoved: v => cc.be.setBrightness(v * 100) }
+      // -- Display | Sound: thick sliders, side by side (one height: the taller card)
+      Row {
+        spacing: cc.gap
+        readonly property real cardH: Math.max(dispCard.naturalHeight, soundCard.naturalHeight)
+        Card {
+          id: dispCard; width: mp.colW; height: parent.cardH
+          title: "Display"; opens: "display"
+          titleDetail: cc.be.brightnessAvailable ? "" : (cc.be.focusedMonitor || "")
+          Item {
+            visible: cc.be.brightnessAvailable; width: parent.width; height: visible ? Theme.layout.meter.slider + Theme.layout.module.pad : 0
+            VFillSlider { x: Theme.layout.module.pad; width: parent.width - 2 * x; icon: "brightness"
+              value: cc.be.brightness / 100; readout: cc.be.brightness + " %"; onMoved: v => cc.be.setBrightness(v * 100) }
+          }
+          MRow { visible: !cc.be.brightnessAvailable; height: visible ? Theme.layout.module.row : 0; icon: "display"
+            text: "Appearance"; detail: Theme.variant.charAt(0).toUpperCase() + Theme.variant.slice(1) + " · " + (Theme.dark ? "Dark" : "Light")
+            onClicked: cc.push("display") }
         }
-        MRow { visible: !cc.be.brightnessAvailable; height: visible ? Theme.layout.module.row : 0; icon: "display"
-          text: "Appearance & Style"; detail: Theme.variant.charAt(0).toUpperCase() + Theme.variant.slice(1) + " · " + (Theme.dark ? "Dark" : "Light")
-          onClicked: cc.push("display") }
-      }
-      Card {
-        title: "Sound"; opens: cc.be.airpodsActive ? "airpods" : "sound"
-        titleDetail: cc.be.airpodsActive ? cc.be.airpodsName : (cc.be.sinkRows.filter(r => r.active).map(r => r.label)[0] || "")
-        Item {
-          width: parent.width; height: Theme.layout.meter.slider + Theme.layout.module.pad
-          VFillSlider { x: Theme.layout.module.pad; width: parent.width - 2 * x
-            icon: cc.be.muted || cc.be.volume <= 0 ? "sound.mute" : cc.be.volume < 0.34 ? "sound.low" : cc.be.volume < 0.67 ? "sound.mid" : "sound"
-            value: cc.be.muted ? 0 : cc.be.volume; readout: cc.be.muted ? "Muted" : Math.round(cc.be.volume * 100) + " %"
-            onMoved: v => cc.be.setVolume(v); onIconClicked: cc.be.toggleMute() }
+        Card {
+          id: soundCard; width: mp.colW; height: parent.cardH
+          title: "Sound"; opens: cc.be.airpodsActive ? "airpods" : "sound"
+          titleDetail: cc.be.airpodsActive ? cc.be.airpodsName : (cc.be.sinkRows.filter(r => r.active).map(r => r.label)[0] || "")
+          Item {
+            width: parent.width; height: Theme.layout.meter.slider + Theme.layout.module.pad
+            VFillSlider { x: Theme.layout.module.pad; width: parent.width - 2 * x
+              icon: cc.be.muted || cc.be.volume <= 0 ? "sound.mute" : cc.be.volume < 0.34 ? "sound.low" : cc.be.volume < 0.67 ? "sound.mid" : "sound"
+              value: cc.be.muted ? 0 : cc.be.volume; readout: cc.be.muted ? "Muted" : Math.round(cc.be.volume * 100) + " %"
+              onMoved: v => cc.be.setVolume(v); onIconClicked: cc.be.toggleMute() }
+          }
         }
       }
 
