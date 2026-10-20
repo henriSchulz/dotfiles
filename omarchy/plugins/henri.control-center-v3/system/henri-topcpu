@@ -1,0 +1,53 @@
+#!/bin/bash
+# Read-only: the programs using the most CPU right now, for the Hardware page
+# of henri.control-center. The panel calls it every 2 s while the page shows;
+# each call compares the CPU time of every process with the previous call
+# (kept per calling shell in $XDG_RUNTIME_DIR) and sums it per program name.
+#
+# Prints one JSON line: {"procs":[{"name":…,"cpu":…,"count":…},…]}
+#   cpu    percent of the whole CPU (all cores) over the last interval, as the CPU ring
+#   count  how many processes of that name
+# The first call has nothing to compare with and prints an empty list.
+set -u
+export PATH=/usr/bin
+N=${1:-5}
+state="${XDG_RUNTIME_DIR:-/tmp}/henri-topcpu.$PPID"
+now=$(cut -d' ' -f1 /proc/uptime)
+hz=$(getconf CLK_TCK)
+ncpu=$(nproc)
+cur=$(mktemp "${state}.XXXXXX")
+# pid ticks name; the name sits in parentheses and may contain spaces
+cat /proc/[0-9]*/stat 2>/dev/null | awk '{
+  o = index($0, " ("); c = 0; for (i = length($0); i > 0; i--) if (substr($0, i, 1) == ")") { c = i; break }
+  if (!o || !c) next
+  name = substr($0, o + 2, c - o - 2); split(substr($0, c + 2), f, " ")
+  gsub(/[ \t]/, "_", name)
+  print substr($0, 1, o - 1), f[12] + f[13], name
+}' > "$cur"
+if [[ -r $state ]]; then
+  read -r prev < "$state"
+  awk -v now="$now" -v prev="$prev" -v hz="$hz" -v ncpu="$ncpu" -v n="$N" '
+    NR == FNR { if (FNR > 1) old[$1] = $2; next }
+    { if ($1 in old) { d = $2 - old[$1]; if (d > 0) { cpu[$3] += d; if (d > top[$3]) { top[$3] = d; rep[$3] = $1 } } }; cnt[$3]++ }
+    END {
+      dt = now - prev; if (dt <= 0) dt = 1
+      m = 0; for (k in cpu) { names[++m] = k }
+      for (i = 1; i <= m; i++) for (j = i + 1; j <= m; j++) if (cpu[names[j]] > cpu[names[i]]) { t = names[i]; names[i] = names[j]; names[j] = t }
+      printf "{\"procs\":["
+      for (i = 1; i <= m && i <= n; i++) {
+        nm = names[i]
+        # the kernel cuts names at 15 characters: take the program file from the command line then
+        if (length(nm) == 15 && rep[nm]) {
+          f = "/proc/" rep[nm] "/cmdline"; rs = RS; RS = "\0"; arg = ""; getline arg < f; close(f); RS = rs
+          sub(/.*\//, "", arg); if (index(arg, nm) == 1) nm = arg
+        }
+        gsub(/\\/, "\\\\", nm); gsub(/"/, "\\\"", nm); gsub(/_/, " ", nm)
+        printf "%s{\"name\":\"%s\",\"cpu\":%.1f,\"count\":%d}", (i > 1 ? "," : ""), nm, 100 * cpu[names[i]] / hz / dt / ncpu, cnt[names[i]]
+      }
+      print "]}"
+    }' "$state" "$cur"
+else
+  echo '{"procs":[]}'
+fi
+{ echo "$now"; cat "$cur"; } > "$state"
+rm -f "$cur"

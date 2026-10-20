@@ -507,6 +507,37 @@ Item {
   Timer { interval: Theme.delay("settle"); running: root.opened; onTriggered: root.refreshHardware() }
   Timer { interval: root.hwInterval; repeat: true; running: root.opened; onTriggered: root.refreshHardware() }
 
+  // ---- Top processes (system/henri-topcpu, on the Hardware page): the programs using the most CPU,
+  // summed per name, in percent of the whole CPU; a program with a desktop entry shows its name and icon
+  readonly property string topCpuPath: String(Qt.resolvedUrl("system/henri-topcpu")).replace(/^file:\/\//, "")
+  readonly property bool topPolling: opened && page === "hardware"
+  property var topProcs: []
+  property var appInfoCache: ({})
+  onTopPollingChanged: if (topPolling) { topProcs = []; if (!topCpuProc.running) topCpuProc.running = true }
+  Timer { interval: root.hwInterval; repeat: true; running: root.topPolling; onTriggered: if (!topCpuProc.running) topCpuProc.running = true }
+  Process {
+    id: topCpuProc
+    command: [root.topCpuPath, "5"]
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: {
+      var o; try { o = JSON.parse(String(text || "").trim()) } catch (e) { return }
+      // the first call only takes a sample: keep the rows until a real one comes
+      if (o.procs.length) root.topProcs = o.procs.map(p => Object.assign({}, p, root.appInfo(p.name)))
+    } }
+  }
+  // a desktop entry for a process name, only when it really is that app (heuristicLookup guesses wide)
+  function appInfo(name) {
+    if (appInfoCache[name] !== undefined) return appInfoCache[name]
+    var n = String(name).toLowerCase(), e = null
+    try { e = DesktopEntries.byId(name) || DesktopEntries.byId(n) || DesktopEntries.heuristicLookup(name) } catch (err) {}
+    if (e && !(String(e.id).toLowerCase().indexOf(n) >= 0 || String(e.startupClass || "").toLowerCase() === n || String(e.name).toLowerCase() === n)) e = null
+    var path = ""
+    if (e && e.icon) { try { path = Quickshell.iconPath(e.icon, true) } catch (err2) {} }
+    var info = { label: e && e.name ? e.name : name, iconPath: path || "" }
+    var c = Object.assign({}, appInfoCache); c[name] = info; appInfoCache = c
+    return info
+  }
+  function openActivityMonitor() { root.closeRequested(); run("omarchy-launch-or-focus-tui btop") }
+
   // ---- Low-power rendering (Experiments)
   readonly property string renderPowerPath: String(Qt.resolvedUrl("system/henri-render-power")).replace(/^file:\/\//, "")
   function refreshRenderPower() { if (!renderPowerProc.running) renderPowerProc.running = true }

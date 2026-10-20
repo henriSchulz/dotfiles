@@ -635,7 +635,7 @@ Item {
 
   // ================================================================ Hardware
   // Three rings (CPU, memory, disk) that sweep in when the page shows, the CPU
-  // load as a live strip chart, and the sensors as meters; fans turn with their speed.
+  // load as a live strip chart, the programs using the most CPU (btop shows all); fans turn with their speed.
   component RingCell: Column {
     id: rcell
     property real value: 0
@@ -668,12 +668,6 @@ Item {
       text: mrow.detail; tone: "secondary" }
     VMeter { x: parent.width / 2 - mrow.pad; width: parent.width - x - Theme.layout.meter.readout - 2 * mrow.pad; anchors.verticalCenter: parent.verticalCenter
       value: mrow.value; color: mrow.hot ? Theme.r.danger : Theme.r.accent.base; colorTop: mrow.hot ? Theme.r.danger : Theme.r.accent.top }
-  }
-  // each board sensor shows what it measures (Apple SMC labels); anything else is a thermometer
-  function sensorIcon(label) {
-    var l = String(label).toLowerCase()
-    return l.indexOf("nand") >= 0 || l.indexOf("ssd") >= 0 ? "disk" : l.indexOf("battery") >= 0 ? "battery"
-         : l.indexOf("charge") >= 0 ? "energy" : l.indexOf("wifi") >= 0 || l.indexOf("wi-fi") >= 0 ? "wifi" : "thermometer"
   }
   Component {
     id: hwPage
@@ -711,19 +705,35 @@ Item {
         }
       }
 
-      // -- sensors
+      // -- the programs using the most CPU; the full list opens in btop
+      Card {
+        title: "Top Processes"; titleDetail: "% CPU"
+        Column {
+          width: parent.width
+          VText { visible: cc.be.topProcs.length === 0; x: Theme.layout.module.pad; height: Theme.layout.module.row
+            verticalAlignment: Text.AlignVCenter; text: "Measuring…"; tone: "secondary" }
+          Repeater {
+            model: cc.be.topProcs
+            MeterRow {
+              required property var modelData
+              text: modelData.label + (modelData.count > 1 ? " (" + modelData.count + ")" : ""); detail: Math.round(modelData.cpu) + " %"
+              value: modelData.cpu / 100; hot: modelData.cpu >= 85
+              Image { visible: modelData.iconPath !== ""; anchors.centerIn: parent; source: modelData.iconPath
+                width: Theme.layout.icon.regular; height: width; sourceSize.width: width * 2; sourceSize.height: height * 2 }
+              VIcon { visible: modelData.iconPath === ""; anchors.centerIn: parent; name: "apps"; color: Theme.r.popover.inkSecondary }
+            }
+          }
+          MSep {}
+          MRow { icon: "gauge"; text: "Show All Processes"; detail: "btop"; onClicked: cc.be.openActivityMonitor()
+            VIcon { name: "chevron.right"; weight: "bold"; size: Theme.layout.icon.small; color: Theme.r.popover.inkSecondary } }
+        }
+      }
+
+      // -- fans, swap, uptime
       VTile {
         width: parent.width; height: sensors.height + 2 * Theme.layout.module.tileInset
         Column {
           id: sensors; y: Theme.layout.module.tileInset; width: parent.width
-          MeterRow { visible: hp.hw.temp >= 0; icon: "thermometer"; text: "Temperature"; detail: hp.hw.temp + " °C"
-            value: hp.hw.temp / 100; hot: hp.hw.temp >= 85 }
-          Repeater {
-            model: hp.hw.temps || []
-            MeterRow { required property var modelData; required property int index
-              icon: cc.sensorIcon(modelData.label); text: modelData.label.replace("WiFi/BT", "Wi-Fi & Bluetooth"); detail: modelData.c + " °C"
-              value: modelData.c / 100; hot: modelData.c >= 85 }
-          }
           Repeater {
             model: hp.hw.fans || []
             MeterRow {
