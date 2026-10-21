@@ -123,6 +123,9 @@ Item {
       }
       Connections { target: cc.be; function onOpenedChanged() { if (cc.be.opened && cc.current === "main") mp.reveal() } }
 
+      // -- every workspace as a miniature; a click switches there
+      Spaces { width: parent.width; active: cc.be.opened && cc.current === "main"; onChosen: cc.closeRequested() }
+
       // -- connectivity | focus + quick badges
       Item {
         width: parent.width; height: conn.height
