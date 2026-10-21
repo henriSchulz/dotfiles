@@ -2086,13 +2086,15 @@ Item {
       property bool stripExpanded: false
       // False while hidden, so every strip transition snaps there.
       property bool stripAnimates: false
-      readonly property real stripFullH: Math.round(panel.height * 0.155)
+      // Unfolded, the strip ends where the island card does: pad, tiles, labels, pad.
+      readonly property real stripFullH: Math.round(panel.pill.y + panel.islandPad + panel.stripTileH + panel.stripLabelBand + V.Theme.layout.module.pad)
       readonly property real stripCollapsedH: Math.round(panel.stripLabelBand + panel.stripPad * 2)
       readonly property real stripH: panel.stripExpanded ? panel.stripFullH : panel.stripCollapsedH
       readonly property real stripPad: Math.round(12 * uiScale)
-      readonly property real stripGap: Math.round(22 * uiScale)
-      readonly property int stripLabelSize: Math.max(9, Math.round(15 * uiScale))
-      readonly property real stripLabelBand: Math.round(stripLabelSize * 1.9)
+      // Island rhythm (Velum): the gap between tiles is the card's padding.
+      readonly property real stripGap: panel.islandPad
+      readonly property int stripLabelSize: V.Theme.m.type.body
+      readonly property real stripLabelBand: stripLabelSize + V.Theme.layout.module.pad
 
       // Thumbnails keep the screen's aspect ratio, so each is a faithful
       // miniature. Fit to whichever axis runs out first -- with a dozen
@@ -2101,11 +2103,11 @@ Item {
       readonly property int deskCount: Math.max(1, panel.slotIds.length)
       // 86% of the width for the row, leaving the right edge to the "+".
       readonly property real stripTileH: Math.min(
-          stripFullH - stripLabelBand - stripPad * 2,
+          Math.round(panel.height * 0.115),
           ((panel.width * 0.86) - (deskCount - 1) * stripGap) / deskCount * (panel.height / panel.width))
       readonly property real stripTileW: stripTileH * panel.width / panel.height
-      // The "+" is half a thumbnail wide, at the right edge (macOS).
-      readonly property real plusW: Math.round(panel.stripTileW * 0.5)
+      // The "+" is square, as tall as a thumbnail, after the last one.
+      readonly property real plusW: panel.stripTileH
       readonly property real plusX: panel.stripRowX + panel.slotIds.length * panel.stripPitch
       readonly property bool plusVisible: panel.slotIds.length < panel.maxDesktops && Hyprland.usingLua
 
@@ -2355,7 +2357,8 @@ Item {
 
       // Scaled with the rest of the overview geometry (which follows the
       // screen, not the font).
-      readonly property real thumbRadius: Style.space(8 * panel.uiScale)
+      // Concentric with the island card: card radius = padding + this.
+      readonly property real thumbRadius: V.Theme.m.radius.control
       readonly property real ringRadius: Style.space(10 * panel.uiScale)
       readonly property real hairlineAlpha: 0.10
       readonly property real secondaryInkAlpha: 0.65
@@ -2380,9 +2383,10 @@ Item {
       // The row: thumbnails, then the "+" right after the last one.
       readonly property real rowW: panel.slotIds.length * panel.stripPitch - panel.stripGap
           + (panel.plusVisible ? panel.stripGap + panel.plusW : 0)
-      readonly property real islandW: panel.rowW + 2 * panel.stripGap
+      readonly property real islandPad: V.Theme.layout.module.pad + 2 * V.Theme.layout.module.tileInset
+      readonly property real islandW: panel.rowW + 2 * panel.islandPad
       readonly property real islandH: panel.stripFullH - panel.pill.y
-      readonly property real islandRadius: V.Theme.m.radius.panel + V.Theme.layout.module.tileInset
+      readonly property real islandRadius: panel.islandPad + panel.thumbRadius
 
       // --- selection --------------------------------------------------------
       // Index into panel.windows; -1 when the desktop is empty.
@@ -2779,8 +2783,7 @@ Item {
           visible: strip.reveal > 0.001
 
           // Top of the thumbnail row, centred in the island.
-          readonly property real rowY:
-              Math.round(panel.pill.y + (panel.islandH - panel.stripTileH - panel.stripLabelBand) / 2)
+          readonly property real rowY: Math.round(panel.pill.y + panel.islandPad)
           // Where the labels sit while the strip is folded: on their own,
           // centred in the band.
           readonly property real foldedLabelY: Math.round((panel.stripCollapsedH - panel.stripLabelBand) / 2)
@@ -2823,7 +2826,7 @@ Item {
               font.family: root.fontFamily
               font.pixelSize: panel.stripLabelSize
               color: slotLabel.marked ? panel.stripInk
-                                      : Util.alpha(panel.stripInk, panel.secondaryInkAlpha)
+                                      : V.Theme.r.popover.inkSecondary
               Behavior on color {
                 ColorAnimation {
                   duration: Motion.instant
@@ -3065,18 +3068,6 @@ Item {
                       // source above still takes one frame straight away.
                       live: root.shown && root.settled && panel.stripExpanded
                       paintCursor: false
-                    }
-                  }
-
-                  Rectangle {
-                    anchors.fill: parent
-                    color: "#05060a"
-                    opacity: deskCell.isFocused ? 0.0 : (deskHover.hovered || deskCell.held || deskCell.dropHover ? 0.10 : 0.28)
-                    Behavior on opacity {
-                      NumberAnimation {
-                        duration: Motion.instant
-                        easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
-                      }
                     }
                   }
                 }
