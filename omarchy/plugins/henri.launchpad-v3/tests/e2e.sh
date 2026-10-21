@@ -319,6 +319,87 @@ if runs N09; then
   shut
 fi
 
+# ---- N10 workflows ------------------------------------------------------------
+if runs N10; then
+  fresh; open ""
+  ids=("$(pageItem 0 1)" "$(pageItem 0 3)")
+  for id in "${ids[@]}"; do
+    read -r x y <<<"$(at "$id")"
+    ( WAYLAND_DISPLAY=$NWL wtype -M shift -s 500 -m shift & ); sleep 0.15
+    pt m "$x" "$y" d s 40 u; sleep 0.5
+  done
+  pt m 960 1060 rd s 50 ru; sleep 0.3
+  want N10-1 "picks offer a workflow" '(.menuItems | index("New Workflow with 2 Apps")) != null'
+  key -k Down; key -k Down; key -k Return; sleep 1.0
+  want N10-2 "the workflow is made and Get Info opens for it" '.info | startswith("workflow:")'
+  key -M ctrl a -m ctrl "Start work"; key -k Return; sleep 0.6
+  wid=$(lay | jq -r '.workflows | keys[0]')
+  want N10-3 "it sits after its first app and keeps both apps on the grid" "(.pages[0] | index(\"workflow:$wid\")) == 2 and .workflows[\"$wid\"].name == \"Start work\" and ([.pages[][]] | index(\"${ids[1]}\")) != null" "$(lay)"
+  key -k Escape; sleep 0.3
+  shot N10-tile
+  read -r x y <<<"$(at "workflow:$wid")"
+  pt m "$x" "$y" d s 50 u; sleep 0.6
+  want N10-4 "one click starts every app in it" ".lastRun == [\"${ids[0]}\", \"${ids[1]}\"] and .opened == false"
+  open ""; key "start wo"; sleep 0.3
+  want N10-5 "search finds the workflow" '.results0 == "workflow"'
+  shut
+fi
+
+# ---- N11 emoji -----------------------------------------------------------------
+if runs N11; then
+  fresh; open ""
+  key ":rocket"; sleep 0.3
+  want N11-1 "a colon searches emoji" '.results0 == "emoji" and .results >= 1'
+  shot N11-emoji
+  key -k Return; sleep 0.5
+  want N11-2 "Enter copies the emoji and closes" '.lastCopy == "🚀" and .opened == false'
+fi
+
+# ---- N12 clipboard ---------------------------------------------------------------
+if runs N12; then
+  open ""
+  key "clip"; sleep 0.3
+  want N12-1 "clip lists the clipboard history" '.results0 == "clip" and .results >= 1'
+  key -k Return; sleep 0.5
+  want N12-2 "Enter copies an entry and closes" '.lastCopy == "clip:0" and .opened == false'
+fi
+
+# ---- N13 image picker ------------------------------------------------------------
+if runs N13; then
+  fresh; open ""
+  c testMove "$(pageItem 0 3) onto $(pageItem 0 4)" >/dev/null; sleep 0.3
+  fid=$(lay | jq -r '.folders | keys[0]')
+  c getInfo "folder:$fid" >/dev/null; sleep 0.6
+  c choose cover >/dev/null; sleep 0.8
+  want N13-1 "Choose… opens the picker over Get Info" '.pickFor == "cover" and .info != ""'
+  shot N13-picker
+  img=$(readlink -f ~/.local/state/omarchy/current/background)
+  c testPicked "$img" >/dev/null; sleep 0.3
+  key -k Return; sleep 0.6
+  want N13-2 "the picked picture becomes the folder cover" ".folders[\"$fid\"].cover == \"$img\"" "$(lay)"
+  shot N13-cover
+  a=$(pageItem 0 0); c getInfo "$a" >/dev/null; sleep 0.6; c choose icon >/dev/null; sleep 0.4
+  c testPicked "/usr/share/icons/hicolor/48x48/apps/foot.png" >/dev/null; sleep 0.2; key -k Return; sleep 0.5
+  want N13-3 "the picked picture becomes the app icon" ".apps[\"$a\"].icon == \"/usr/share/icons/hicolor/48x48/apps/foot.png\"" "$(lay)"
+  shut
+fi
+
+# ---- N14 background video --------------------------------------------------------
+if runs N14 && command -v ffmpeg >/dev/null; then
+  fresh
+  vid="$R/home/lp-test.mp4"
+  ffmpeg -loglevel error -y -f lavfi -i testsrc=size=640x360:rate=24 -t 2 -pix_fmt yuv420p "$vid"
+  vid=$(readlink -f "$vid")
+  c testSettings "{\"wallpaper\":{\"kind\":\"video\",\"path\":\"$vid\"}}" >/dev/null
+  open ""; sleep 1.5
+  want N14-1 "a background video plays while open" '.video == 1'
+  shot N14-video
+  shut; sleep 0.4
+  want N14-2 "and pauses when closed" '.video != 1'
+  c testSettings '{"wallpaper":{"kind":"desktop"}}' >/dev/null
+  rm -f "$vid"
+fi
+
 # ---- G01 pinch event (the gesture itself is Hyprland's, not testable here) --
 if runs G01; then
   hyprctl dispatch 'hl.dsp.event("launchpad open")' >/dev/null; sleep 0.8

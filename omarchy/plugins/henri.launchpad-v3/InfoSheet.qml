@@ -11,32 +11,46 @@ VSheet {
   property string itemId: ""
   open: itemId !== ""
   readonly property bool isFolder: LM.isFolder(itemId)
+  readonly property bool isWorkflow: LM.isWorkflow(itemId)
+  readonly property var workflow: isWorkflow && launchpad ? ((launchpad.layout.workflows || {})[LM.workflowKey(itemId)] || null) : null
+  property var steps: []                // the workflow's items while editing
+  property string cover: ""
   readonly property var lp: Theme.core.surface.launchpad
   readonly property var folder: isFolder && launchpad ? (launchpad.layout.folders[LM.folderKey(itemId)] || null) : null
-  readonly property var override: !isFolder && launchpad && itemId !== "" ? (launchpad.layout.apps[itemId] || {}) : ({})
-  readonly property var entry: !isFolder && launchpad ? (launchpad.entries[itemId] || null) : null
+  readonly property bool isApp: LM.isApp(itemId)
+  readonly property var override: isApp && launchpad ? (launchpad.layout.apps[itemId] || {}) : ({})
+  readonly property var entry: isApp && launchpad ? (launchpad.entries[itemId] || null) : null
+  function setIcon(path) { iconField.text = path }
+  function setCover(path) { sheet.cover = path }
 
   // the edit, filled when the sheet opens
   property string color: ""
   property bool showTitle: true
 
-  onItemIdChanged: {
+  // the derived properties (isFolder, workflow …) update after this handler, so fill a tick later
+  onItemIdChanged: Qt.callLater(sheet.fill)
+  function fill() {
     if (itemId === "") return
     if (isFolder && folder) {
       nameField.text = folder.name
       emojiField.text = folder.emoji || ""
       sheet.color = folder.color || ""
+      sheet.cover = folder.cover || ""
+    } else if (isWorkflow && workflow) {
+      nameField.text = workflow.name
+      sheet.steps = workflow.items.slice()
     } else {
       nameField.text = override.name || ""
       iconField.text = override.icon || ""
       sheet.showTitle = !override.hideTitle
     }
-    Qt.callLater(nameField.focusField)
+    nameField.focusField()
   }
 
   function apply() {
     if (!launchpad || itemId === "") return
-    if (isFolder) launchpad.commit(LM.styleFolder(launchpad.layout, itemId, { name: nameField.text, color: sheet.color || null, emoji: emojiField.text.trim() || null }))
+    if (isFolder) launchpad.commit(LM.styleFolder(launchpad.layout, itemId, { name: nameField.text, color: sheet.color || null, emoji: emojiField.text.trim() || null, cover: sheet.cover || null }))
+    else if (isWorkflow) launchpad.commit(sheet.steps.length > 0 ? LM.editWorkflow(launchpad.layout, itemId, { name: nameField.text, items: sheet.steps }) : LM.removeWorkflow(launchpad.layout, itemId))
     else launchpad.commit(LM.setOverride(launchpad.layout, itemId, { name: nameField.text.trim(), icon: iconField.text.trim(), hideTitle: !sheet.showTitle }))
     sheet.dismissed()
   }
@@ -66,10 +80,10 @@ VSheet {
     Row {
       spacing: Theme.layout.sheet.gap
       Image {
-        visible: !sheet.isFolder
+        visible: sheet.isApp
         width: Look.info.icon; height: Look.info.icon
         sourceSize.width: Look.info.icon * 2; sourceSize.height: Look.info.icon * 2
-        source: !sheet.isFolder && sheet.launchpad && sheet.itemId ? sheet.launchpad.iconFor(sheet.itemId) : ""
+        source: sheet.isApp && sheet.launchpad && sheet.itemId ? sheet.launchpad.iconFor(sheet.itemId) : ""
         fillMode: Image.PreserveAspectFit; mipmap: true
       }
       Column {
@@ -78,6 +92,7 @@ VSheet {
         VText {
           tone: "secondary"
           text: sheet.isFolder ? (sheet.folder ? sheet.folder.items.length + (sheet.folder.items.length === 1 ? " app" : " apps") : "")
+                : sheet.isWorkflow ? "Workflow · starts everything below in one click"
                 : (sheet.entry ? sheet.entry.name + " · " + sheet.entry.desktopId : "")
         }
       }
@@ -90,23 +105,27 @@ VSheet {
         VField {
           id: nameField
           width: Look.info.field
-          placeholder: sheet.isFolder ? "Folder" : (sheet.entry ? sheet.entry.name : "")
+          placeholder: sheet.isFolder ? "Folder" : sheet.isWorkflow ? "Workflow" : (sheet.entry ? sheet.entry.name : "")
           onAccepted: sheet.apply()
         }
       }
       VListRow {
-        visible: !sheet.isFolder
+        visible: sheet.isApp
         text: "Show title"
         VSwitch { checked: sheet.showTitle; onToggled: function(c) { sheet.showTitle = c } }
       }
       VListRow {
-        visible: !sheet.isFolder
+        visible: sheet.isApp
         text: "Icon"
-        VField {
-          id: iconField
-          width: Look.info.field
-          placeholder: "Icon name or file"
-          onAccepted: sheet.apply()
+        Row {
+          spacing: Theme.layout.control.gap
+          VField {
+            id: iconField
+            width: Look.info.field - Look.info.chooseButton - Theme.layout.control.gap
+            placeholder: "Icon name or file"
+            onAccepted: sheet.apply()
+          }
+          VButton { text: "Choose…"; onClicked: sheet.launchpad.choosePicture("icon") }
         }
       }
       VListRow {
@@ -137,6 +156,15 @@ VSheet {
       }
       VListRow {
         visible: sheet.isFolder
+        text: "Cover"; detail: sheet.cover ? sheet.cover.slice(sheet.cover.lastIndexOf("/") + 1) : "None"
+        Row {
+          spacing: Theme.layout.control.gap
+          VButton { visible: sheet.cover !== ""; text: "None"; onClicked: sheet.cover = "" }
+          VButton { text: "Choose…"; onClicked: sheet.launchpad.choosePicture("cover") }
+        }
+      }
+      VListRow {
+        visible: sheet.isFolder
         text: "Emoji"
         VField {
           id: emojiField
@@ -147,11 +175,27 @@ VSheet {
       }
     }
 
+    // a workflow's steps, in order
+    VGroup {
+      visible: sheet.isWorkflow
+      width: parent.width
+      VListRow { visible: sheet.steps.length === 0; text: "No steps — Done removes the workflow"; ink: Theme.ink("window", "secondary") }
+      Repeater {
+        model: sheet.isWorkflow ? sheet.steps : []
+        VListRow {
+          required property var modelData
+          required property int index
+          text: sheet.launchpad ? sheet.launchpad.titleFor(modelData) : ""
+          VButton { text: "Remove"; onClicked: { var n = sheet.steps.slice(); n.splice(index, 1); sheet.steps = n } }
+        }
+      }
+    }
+
     Row {
       anchors.right: parent.right
       spacing: Theme.layout.control.gap
       VButton {
-        visible: !sheet.isFolder
+        visible: sheet.isApp
         text: "Reset"
         onClicked: { nameField.text = ""; iconField.text = ""; sheet.showTitle = true }
       }

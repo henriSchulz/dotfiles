@@ -10,6 +10,7 @@
       4,
       4
     ],
+    "categoriesPage": false,
     "wallpaper": {
       "kind": "desktop",
       "path": null,
@@ -32,21 +33,21 @@
       "folder:f4",
       "folder:f5",
       "app:Discord",
-      "app:Docker",
       "app:org.gnome.Papers",
       "app:gtkwave",
       "app:keepass",
       "app:localsend",
-      "app:nvim",
       "app:md.obsidian.Obsidian",
       "app:signal",
       "app:omarchy-settings",
-      "app:dev.tensaku.Tensaku",
       "app:vim",
       "app:com.microsoft.VSCode",
       "app:WhatsApp",
       "app:com.github.xournalpp.xournalpp",
-      "app:YouTube"
+      "app:YouTube",
+      "dir:d1",
+      "dir:d2",
+      "dir:d3"
     ]
   ],
   "folders": {
@@ -103,10 +104,28 @@
         "app:cliamp",
         "app:com.github.wwmm.easyeffects",
         "app:Zoom",
-        "app:xdvi"
+        "app:xdvi",
+        "app:dev.tensaku.Tensaku",
+        "app:Docker",
+        "app:nvim"
       ]
     }
   },
+  "dirs": {
+    "d1": {
+      "path": "/home/henri/Documents/Notizen",
+      "name": "Notizen"
+    },
+    "d2": {
+      "path": "/home/henri/Documents",
+      "name": "Documents"
+    },
+    "d3": {
+      "path": "/home/henri/Downloads",
+      "name": "Downloads"
+    }
+  },
+  "workflows": {},
   "apps": {},
   "hidden": [
     "app:1password"

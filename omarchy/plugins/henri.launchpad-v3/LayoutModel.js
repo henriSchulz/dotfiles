@@ -27,6 +27,8 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
 
 function isApp(id) { return typeof id === "string" && id.indexOf("app:") === 0 && id.length > 4 }
 function isFolder(id) { return typeof id === "string" && id.indexOf("folder:") === 0 && id.length > 7 }
+function isWorkflow(id) { return typeof id === "string" && id.indexOf("workflow:") === 0 && id.length > 9 }
+function workflowKey(id) { return id.slice(9) }
 function isDir(id) { return typeof id === "string" && id.indexOf("dir:") === 0 && id.length > 4 }
 function dirKey(id) { return id.slice(4) }
 function folderKey(id) { return id.slice(7) }
@@ -35,7 +37,7 @@ function appId(desktopId) { return "app:" + desktopId }
 function perPage(l) { return l.settings.columns * l.settings.rows }
 
 function empty() {
-  return { version: VERSION, settings: clone(DEFAULT_SETTINGS), pages: [[]], folders: {}, dirs: {}, apps: {}, hidden: [], seen: [] }
+  return { version: VERSION, settings: clone(DEFAULT_SETTINGS), pages: [[]], folders: {}, dirs: {}, workflows: {}, apps: {}, hidden: [], seen: [] }
 }
 
 function mergeSettings(raw) {
@@ -50,7 +52,7 @@ function mergeSettings(raw) {
     s.folderGrid = [clamp(Math.round(raw.folderGrid[0]) || 4, 3, 5), clamp(Math.round(raw.folderGrid[1]) || 4, 3, 8)]
   if (raw.wallpaper && typeof raw.wallpaper === "object") {
     var w = raw.wallpaper
-    if (w.kind === "desktop" || w.kind === "image" || w.kind === "solid") s.wallpaper.kind = w.kind
+    if (w.kind === "desktop" || w.kind === "image" || w.kind === "video" || w.kind === "solid") s.wallpaper.kind = w.kind
     if (typeof w.path === "string" || w.path === null) s.wallpaper.path = w.path
     if (typeof w.blur === "number") s.wallpaper.blur = clamp(Math.round(w.blur), 0, 100)
     if (typeof w.dim === "number") s.wallpaper.dim = clamp(w.dim, 0, 1)
@@ -70,6 +72,8 @@ function normalize(input) {
   var taken = {}
   var folders = {}
   var dirs = {}
+  var workflows = {}
+  var srcFlows = l.workflows && typeof l.workflows === "object" ? l.workflows : {}
   var srcDirs = l.dirs && typeof l.dirs === "object" ? l.dirs : {}
   var pages = []
   var hidden = []
@@ -81,6 +85,17 @@ function normalize(input) {
       var id = src[i]
       if (taken[id]) continue
       if (isApp(id)) { taken[id] = true; page.push(id); continue }
+      if (isWorkflow(id)) {
+        var wf = srcFlows[workflowKey(id)]
+        if (!wf || !Array.isArray(wf.items) || taken[id]) continue
+        // a workflow points at apps and paths; it holds no places, so apps stay on the grid too
+        var steps = wf.items.filter(function(x) { return isApp(x) || (typeof x === "string" && x.indexOf("file:/") === 0) })
+        if (steps.length === 0) continue
+        taken[id] = true
+        workflows[workflowKey(id)] = { name: typeof wf.name === "string" && wf.name ? wf.name.slice(0, 64) : "Workflow", items: steps }
+        page.push(id)
+        continue
+      }
       if (isDir(id)) {
         var dd = srcDirs[dirKey(id)]
         if (!dd || typeof dd.path !== "string" || dd.path.charAt(0) !== "/") continue
@@ -120,6 +135,7 @@ function normalize(input) {
   l.pages = reflow(pages, perPage(l))
   l.folders = folders
   l.dirs = dirs
+  l.workflows = workflows
   l.hidden = hidden
   return l
 }
@@ -160,6 +176,7 @@ function load(text, desktopIds) {
       l.pages = Array.isArray(raw.pages) ? raw.pages.filter(Array.isArray) : [[]]
       l.folders = raw.folders && typeof raw.folders === "object" ? raw.folders : {}
       l.dirs = raw.dirs && typeof raw.dirs === "object" ? raw.dirs : {}
+      l.workflows = raw.workflows && typeof raw.workflows === "object" ? raw.workflows : {}
       l.apps = raw.apps && typeof raw.apps === "object" ? cleanOverrides(raw.apps) : {}
       l.hidden = Array.isArray(raw.hidden) ? raw.hidden : []
       l.seen = Array.isArray(raw.seen) ? raw.seen.filter(isApp) : []
@@ -202,6 +219,7 @@ function sync(input, desktopIds) {
   var keep = function(id) { return !isApp(id) || installed[id] === true }
   for (var p = 0; p < l.pages.length; p++) l.pages[p] = l.pages[p].filter(keep)
   for (var key in l.folders) l.folders[key].items = l.folders[key].items.filter(keep)
+  for (var wk in (l.workflows || {})) l.workflows[wk].items = l.workflows[wk].items.filter(keep)
   l.hidden = l.hidden.filter(keep)
 
   var placed = {}
@@ -281,7 +299,7 @@ function detach(l, id) {
 // folder emptied this way is removed.
 function move(input, id, toPage, toIndex) {
   var l = clone(input)
-  if (!isApp(id) && !isFolder(id) && !isDir(id)) return l
+  if (!isApp(id) && !isFolder(id) && !isDir(id) && !isWorkflow(id)) return l
   if (isFolder(id) && !l.folders[folderKey(id)]) return l
   detach(l, id)
   toPage = clamp(Math.floor(toPage), 0, l.pages.length)
@@ -361,6 +379,39 @@ function addDir(input, path, name) {
   return l
 }
 
+// A workflow tile right after the first of its apps: one click starts them all.
+function addWorkflow(input, ids, name) {
+  var l = clone(input)
+  var steps = ids.filter(function(x) { return isApp(x) || (typeof x === "string" && x.indexOf("file:/") === 0) })
+  if (steps.length < 1) return l
+  var n = 1
+  while (l.workflows["w" + n]) n++
+  l.workflows["w" + n] = { name: name ? String(name).slice(0, 64) : "Workflow", items: steps }
+  var at = locate(l, steps[0])
+  if (at && at.where === "page") l.pages[at.page].splice(at.index + 1, 0, "workflow:w" + n)
+  else l.pages[l.pages.length - 1].push("workflow:w" + n)
+  l = normalize(l)
+  l.lastWorkflow = "workflow:w" + n
+  return l
+}
+
+function editWorkflow(input, id, patch) {
+  var l = clone(input)
+  var w = l.workflows[workflowKey(id)]
+  if (!w) return l
+  if (typeof patch.name === "string" && patch.name.trim()) w.name = patch.name.trim().slice(0, 64)
+  if (Array.isArray(patch.items)) w.items = patch.items
+  return normalize(l)
+}
+
+function removeWorkflow(input, id) {
+  var l = clone(input)
+  if (!isWorkflow(id)) return l
+  detach(l, id)
+  delete l.workflows[workflowKey(id)]
+  return normalize(l)
+}
+
 function removeDir(input, id) {
   var l = clone(input)
   if (!isDir(id)) return l
@@ -401,6 +452,7 @@ function styleFolder(input, folderId, patch) {
   }
   if ("color" in patch) f.color = /^#[0-9a-fA-F]{6}$/.test(String(patch.color)) ? patch.color : null
   if ("emoji" in patch) f.emoji = patch.emoji ? String(patch.emoji).slice(0, 8) : null
+  if ("cover" in patch) f.cover = typeof patch.cover === "string" && patch.cover.charAt(0) === "/" ? patch.cover : null
   return l
 }
 
@@ -445,8 +497,10 @@ function reset(input, desktopIds) {
   l.apps = clone(input.apps)
   l.hidden = clone(input.hidden)
   l = sync(normalize(l), desktopIds)
-  // folder tiles stay, at the end
+  // folder tiles and workflows stay, at the end
   l.dirs = clone(input.dirs || {})
   for (var k in l.dirs) l.pages[l.pages.length - 1].push("dir:" + k)
+  l.workflows = clone(input.workflows || {})
+  for (var w in l.workflows) l.pages[l.pages.length - 1].push("workflow:" + w)
   return normalize(l)
 }

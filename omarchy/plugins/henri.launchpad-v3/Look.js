@@ -55,7 +55,8 @@ var results = {
   maxRows: 9,
   fileRows: 4,             // files under the apps
   fileMinChars: 2,
-  fileDebounce: 180        // ms after the last key before fd runs
+  fileDebounce: 180,       // ms after the last key before fd runs
+  clipChars: 90            // clipboard rows show this much of the text
 }
 
 var settings = {
@@ -73,9 +74,21 @@ var info = {
   field: 200,              // name / icon field width
   emojiField: 72,
   swatch: 20,              // folder colour dots
-  swatchRing: 2
+  swatchRing: 2,
+  chooseButton: 84         // the "Choose…" button beside a field
 }
 
 var folderPage = {
   dotsGap: 14              // folder page dots below the panel's grid
+}
+
+var picker = {
+  columns: 4,
+  thumb: 88,
+  maxHeight: 300,          // thumbnail area, scrolls beyond
+  maxResults: 120
+}
+
+var workflow = {
+  previewGrid: 2           // 2 × 2 mini icons on a workflow tile
 }

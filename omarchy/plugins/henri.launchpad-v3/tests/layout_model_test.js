@@ -170,4 +170,27 @@ assert.deepStrictEqual(r.layout.pages[0], ["app:x"]);                           
 // categories page setting
 assert.strictEqual(M.setSettings(small(1), { categoriesPage: true }).settings.categoriesPage, true);
 
+// workflows: a tile after the first app, apps stay on the grid, uninstall shrinks, empty goes
+let wf = M.addWorkflow(small(6), ["app:a01", "app:a03", "file:/home/h/notes.md"], "Morning");
+assert.strictEqual(wf.lastWorkflow, "workflow:w1");
+assert.deepStrictEqual(wf.pages[0].slice(0, 3), ["app:a00", "app:a01", "workflow:w1"]);
+assert.deepStrictEqual(wf.workflows.w1, { name: "Morning", items: ["app:a01", "app:a03", "file:/home/h/notes.md"] });
+assert.ok(wf.pages.flat().includes("app:a03"));
+noDupes(wf);
+r = M.load(M.serialize(wf), ids(6));
+assert.deepStrictEqual(r.layout.workflows, wf.workflows);
+let wf2 = M.sync(wf, ids(6).filter(x => x !== "a01"));
+assert.deepStrictEqual(wf2.workflows.w1.items, ["app:a03", "file:/home/h/notes.md"]);
+wf2 = M.editWorkflow(wf2, "workflow:w1", { name: " Abend ", items: ["app:a03"] });
+assert.deepStrictEqual(wf2.workflows.w1, { name: "Abend", items: ["app:a03"] });
+let wf3 = M.sync(wf2, ids(6).filter(x => x !== "a03" && x !== "a01"));
+assert.ok(!wf3.workflows.w1 && !wf3.pages.flat().includes("workflow:w1"));        // nothing left to start
+assert.ok(M.reset(wf, ids(6)).pages.flat().includes("workflow:w1"));
+assert.ok(!M.removeWorkflow(wf, "workflow:w1").pages.flat().includes("workflow:w1"));
+assert.deepStrictEqual(M.dropOnto(wf, "app:a00", "workflow:w1").pages, wf.pages);  // apps do not drop into a workflow
+// folder cover
+let cv = M.styleFolder(d, "folder:f1", { cover: "/home/h/Pictures/a.png" });
+assert.strictEqual(cv.folders.f1.cover, "/home/h/Pictures/a.png");
+assert.strictEqual(M.styleFolder(cv, "folder:f1", { cover: "rel.png" }).folders.f1.cover, null);
+
 console.log("layout_model_test: ok");

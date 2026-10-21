@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import QtQuick
 import QtQuick.Effects
+import QtMultimedia
 import "file:///home/henri/.local/share/velum/qml/Velum"
 import "LayoutModel.js" as LM
 import "FuzzySearch.js" as Fuzzy
@@ -51,7 +52,9 @@ Item {
       lastCopy: root.lastCopy, firstResult: root.results.length ? (root.results[0].kind || "app") + ":" + root.results[0].title : "",
       dragId: root.dragId, armed: root.armedTarget, hover: root.hoverTarget, drag: [Math.round(root.dragX), Math.round(root.dragY)], hidden: root.layout.hidden.length, lastLaunch: root.lastLaunch,
       folderTitle: root.openFolder !== "" && root.folderData(root.openFolder) ? root.folderData(root.openFolder).name : "",
-      lastOpen: root.lastOpen, wallpaper: root.wallpaperSource, cats: root.catIds.length, dirs: Object.keys(root.layout.dirs || {}).length,
+      lastOpen: root.lastOpen, wallpaper: root.wallpaperSource, lastRun: root.lastRun, pickFor: root.pickFor, infoSteps: infoSheet.steps.length,
+      video: root.videoBackground ? bgVideo.playbackState : -1,
+      results0: root.results.length ? root.results[0].kind || "app" : "", cats: root.catIds.length, dirs: Object.keys(root.layout.dirs || {}).length,
       dirSheet: root.dirSheetOpen,
       screen: win.screen ? win.screen.name : "", screens: Quickshell.screens.map(function(s) { return s.name }), forced: root.forcedScreen, scrim: Math.round(root.scrimAlpha * 100) / 100
     })
@@ -98,6 +101,8 @@ Item {
     var p = dots.mapToItem(stage, (parseInt(n) + 0.5) * (Look.dots.size + Look.dots.gap), Look.dots.hit / 2)
     return Math.round(p.x) + " " + Math.round(p.y)
   }
+  function testPicked(path) { root.picturePicked(String(path)); return "ok" }
+  function choose(purpose) { root.choosePicture(String(purpose)); return "ok" }
   function getInfo(id) { root.infoId = String(id || ""); return "ok" }
   function pick(id) { root.togglePick(String(id)); return "ok" }
   function testHide(id) { root.commit(LM.hide(root.layout, String(id))); return "ok" }
@@ -397,6 +402,7 @@ Item {
   }
   function titleFor(id) {
     if (root.isGroup(id)) { var f = root.folderData(id); return f ? f.name : "" }
+    if (LM.isWorkflow(id)) { var w = (root.layout.workflows || {})[LM.workflowKey(id)]; return w ? w.name : "" }
     if (root.isFile(id)) return root.baseOf(id)
     var o = root.layout.apps[id]
     if (o && o.name) return o.name
@@ -513,6 +519,10 @@ Item {
   onQueryChanged: { root.runSearch(); root.selIndex = root.query !== "" ? 0 : -1 }
   function runSearch() {
     if (root.query === "") { root.results = []; return }
+    // ":" searches emoji, "clip" the clipboard history
+    if (root.query.charAt(0) === ":") { root.results = root.emojiRows(root.query.slice(1)); return }
+    var clipM = /^clip(board)?(\s+(.*))?$/i.exec(root.query)
+    if (clipM) { root.results = root.clipRows(clipM[3] || ""); return }
     var folderOf = {}
     for (var key in root.layout.folders) {
       var f = root.layout.folders[key]
@@ -532,6 +542,10 @@ Item {
         hiddenApp: hidden[id] === true, folderName: folderOf[id] || ""
       })
     }
+    for (var wk in (root.layout.workflows || {})) {
+      var wfl = root.layout.workflows[wk]
+      rows.push({ id: "workflow:" + wk, kind: "workflow", title: wfl.name, domain: "Workflow · " + wfl.items.length + (wfl.items.length === 1 ? " step" : " steps"), tags: ["workflow"] })
+    }
     var found = Fuzzy.search(root.query, rows)
     var calc = Calc.evaluate(root.query)
     if (calc !== null) found.unshift({ id: "calc", kind: "calc", title: "= " + Calc.format(calc), domain: "Calculator · Enter copies", value: Calc.format(calc) })
@@ -539,6 +553,62 @@ Item {
     var files = calc === null && root.fileHitsQuery === root.query ? root.fileHits : []
     root.results = found.slice(0, Look.results.maxRows - files.length).concat(files)
     if (calc === null && root.query.length >= Look.results.fileMinChars && root.fileHitsQuery !== root.query) fileDebounce.restart()
+  }
+
+  // ------------------------------------------------------- emoji, clipboard
+  property var emojis: []
+  FileView {
+    path: root.omarchyBase + "/shell/plugins/emojis/emojis.json"
+    printErrors: false
+    onLoaded: { try { root.emojis = JSON.parse(text()) } catch (e) { root.emojis = [] } }
+  }
+  function emojiRows(q) {
+    var words = q.toLowerCase().trim().split(/\s+/).filter(function(w) { return w.length > 0 })
+    var out = []
+    for (var i = 0; i < root.emojis.length && out.length < Look.results.maxRows; i++) {
+      var it = root.emojis[i]
+      var k = String(it.k || "")
+      var ok = true
+      for (var w = 0; w < words.length; w++) if (k.indexOf(words[w]) < 0) { ok = false; break }
+      if (ok) out.push({ id: "emoji:" + it.e, kind: "emoji", title: it.e + "  " + k.split(" ").slice(0, 4).join(" "), domain: "Emoji · Enter copies", value: it.e })
+    }
+    return out
+  }
+  // Omarchy's clipboard history (newest first), read here only
+  property var clipHistory: []
+  FileView {
+    path: root.home + "/.local/state/omarchy/clipboard-history.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { var h = JSON.parse(text()); root.clipHistory = Array.isArray(h) ? h : [] } catch (e) { root.clipHistory = [] } }
+  }
+  function clipRows(q) {
+    var needle = q.toLowerCase()
+    var out = []
+    for (var i = 0; i < root.clipHistory.length && out.length < Look.results.maxRows; i++) {
+      var c = root.clipHistory[i]
+      if (!c) continue
+      if (c.type === "image") {
+        if (needle === "" || "image".indexOf(needle) === 0)
+          out.push({ id: "clip:" + i, kind: "clip", index: i, image: c.path, mime: c.mime || "image/png", title: "Image", domain: "Clipboard · " + String(c.path).slice(String(c.path).lastIndexOf("/") + 1) })
+        continue
+      }
+      var t = String(c.text || "")
+      if (needle !== "" && t.toLowerCase().indexOf(needle) < 0) continue
+      var line = t.replace(/\s+/g, " ").trim()
+      out.push({ id: "clip:" + i, kind: "clip", index: i, title: line.slice(0, Look.results.clipChars), domain: "Clipboard · Enter copies" })
+    }
+    return out
+  }
+  function copyClip(r) {
+    root.lastCopy = "clip:" + r.index
+    if (!root.inRig) {
+      if (r.image) Quickshell.execDetached([root.omarchyBase + "/bin/omarchy-clipboard-paste-file", "--copy-only", r.mime, r.image])
+      else Quickshell.execDetached([root.omarchyBase + "/bin/omarchy-clipboard-paste-text", "--copy-only", "--history-index", String(r.index)])
+    }
+    toast.say("Copied")
+    root.hideAnimated(false)
   }
 
   // ---------------------------------------------------------- file search
@@ -584,17 +654,41 @@ Item {
   // In a test rig nothing is started: uwsm-app would open the app in the live session.
   readonly property bool inRig: (Quickshell.env("VELUM_SHELL_RIG") || "") !== ""
   property string lastLaunch: ""
-  function launch(id) {
+  function startApp(id) {
     var e = root.entries[id]
-    if (!e) return
+    if (!e) return false
     root.lastLaunch = id
     if (!root.inRig) Quickshell.execDetached(["uwsm-app", "--", "gtk-launch", e.desktopId + ".desktop"])
+    return true
+  }
+  function launch(id) {
+    if (root.startApp(id)) root.hideAnimated(true)
+  }
+  // a workflow starts every app and opens every path in it, then the Launchpad goes
+  property var lastRun: []
+  function runWorkflow(id) {
+    var w = (root.layout.workflows || {})[LM.workflowKey(id)]
+    if (!w) return
+    var ran = []
+    for (var i = 0; i < w.items.length; i++) {
+      var it = w.items[i]
+      if (LM.isApp(it)) { if (root.startApp(it)) ran.push(it) }
+      else if (root.isFile(it)) {
+        var path = it.slice(5).replace(/\/$/, "")
+        if (!root.inRig) Quickshell.execDetached(["uwsm-app", "--", "xdg-open", path])
+        ran.push(it)
+      }
+    }
+    root.lastRun = ran
     root.hideAnimated(true)
   }
   function activateResult(r) {
     if (!r) return
     if (r.kind === "calc") root.copyText(r.value)
     else if (r.kind === "file") root.openPath(r.path)
+    else if (r.kind === "workflow") root.runWorkflow(r.id)
+    else if (r.kind === "emoji") { root.copyText(r.value); root.hideAnimated(false) }
+    else if (r.kind === "clip") root.copyClip(r)
     else root.launch(r.id)
   }
   function copyText(t) {
@@ -612,6 +706,7 @@ Item {
     if (root.isGroup(id)) root.openFolderById(id)
     else if (LM.isApp(id)) root.launch(id)
     else if (root.isFile(id)) root.openPath(String(id).slice(5).replace(/\/$/, ""))
+    else if (LM.isWorkflow(id)) root.runWorkflow(id)
   }
 
   // --------------------------------------------------------- open / close
@@ -683,6 +778,7 @@ Item {
   // ----------------------------------------------------------- wallpaper
   readonly property string wallpaperLink: home + "/.local/state/omarchy/current/background"
   property string wallpaperToken: ""
+  readonly property bool videoBackground: root.settings.wallpaper.kind === "video" && !!root.settings.wallpaper.path && !Theme.reduceMotion
   readonly property string wallpaperSource: {
     var w = root.settings.wallpaper
     if (w.kind === "image" && w.path) return "file://" + w.path
@@ -700,6 +796,7 @@ Item {
   // mean brightness of the wallpaper (0..1), measured once per picture
   property real wallpaperBrightness: 0.5
   readonly property real scrimAlpha: root.settings.wallpaper.kind === "solid" ? 1
+    : root.videoBackground ? root.lp.scrimVideo
     : Math.max(root.lp.scrimMin, Math.min(root.lp.scrimMax, 1 - root.lp.scrimTarget / Math.max(root.wallpaperBrightness, root.lp.scrimTarget)))
 
   // ------------------------------------------------------------- pages
@@ -829,7 +926,7 @@ Item {
   function movable(id, from) {
     if (from === "folder") return LM.isApp(id) && !root.isVirtualGroup(root.openFolder)
     var at = root.slots[id]
-    return (LM.isApp(id) || LM.isFolder(id) || LM.isDir(id)) && !!at && at.page < root.layout.pages.length
+    return (LM.isApp(id) || LM.isFolder(id) || LM.isDir(id) || LM.isWorkflow(id)) && !!at && at.page < root.layout.pages.length
   }
   function beginDrag(id, from, px, py, ox, oy) {
     if (!root.movable(id, from)) return
@@ -952,13 +1049,18 @@ Item {
     var m = []
     var picked = root.pickedInOrder()
     if (LM.isApp(id)) m = [{ text: "Open", act: "open" }, { text: "Get Info…", act: "info" }, { separator: true }, { text: "Hide", act: "hide" }]
+    else if (LM.isWorkflow(id)) m = [{ text: "Run", act: "open" }, { text: "Get Info…", act: "info" }, { separator: true }, { text: "Remove", act: "removeWorkflow" }]
     else if (LM.isFolder(id)) m = [{ text: "Open", act: "open" }, { text: "Get Info…", act: "info" }, { text: "Rename", act: "rename" }, { separator: true }, { text: "Ungroup", act: "ungroup" }]
     else if (LM.isDir(id)) m = [{ text: "Open", act: "open" }, { text: "Open in Files", act: "reveal" }, { separator: true }, { text: "Remove", act: "removeDir" }]
     else if (root.isCat(id)) m = [{ text: "Open", act: "open" }]
     else if (root.isFile(id)) m = [{ text: "Open", act: "open" }, { text: "Copy Path", act: "copyPath" }]
     else m = [{ text: root.editing ? "Done Editing" : "Edit Layout", act: "edit" }, { text: "Add Folder Tile…", act: "addDir" }, { text: "Settings…", act: "settings" },
               { separator: true }, { text: "Sort by Name", act: "reset" }]
-    if (picked.length >= 2 && (id === "" || root.picks[id])) m = [{ text: "New Folder with " + picked.length + " Apps", act: "group" }, { separator: true }].concat(m)
+    if (picked.length >= 1 && (id === "" || root.picks[id])) {
+      var top = [{ text: "New Workflow with " + picked.length + (picked.length === 1 ? " App" : " Apps"), act: "workflow" }]
+      if (picked.length >= 2) top.unshift({ text: "New Folder with " + picked.length + " Apps", act: "group" })
+      m = top.concat([{ separator: true }], m)
+    }
     contextMenu.model = m
     contextMenu.x = Math.min(px, win.width - contextMenu.width)
     contextMenu.y = Math.min(py, win.height - contextMenu.height)
@@ -988,6 +1090,15 @@ Item {
     else if (act === "info") root.infoId = id
     else if (act === "reveal") { var fd0 = root.folderData(id); if (fd0) root.openPath(fd0.path) }
     else if (act === "removeDir") root.commit(LM.removeDir(root.layout, id))
+    else if (act === "removeWorkflow") root.commit(LM.removeWorkflow(root.layout, id))
+    else if (act === "workflow") {
+      var ids = root.pickedInOrder()
+      var nw = LM.addWorkflow(root.layout, ids, "Workflow")
+      var wid = nw.lastWorkflow
+      root.clearPicks()
+      root.commit(nw)
+      if (wid) Qt.callLater(function() { root.infoId = wid })
+    }
     else if (act === "addDir") root.dirSheetOpen = true
     else if (act === "copyPath") root.copyText(String(id).slice(5).replace(/\/$/, ""))
     else if (act === "group") root.groupPicks()
@@ -1001,6 +1112,7 @@ Item {
       event.accepted = true
       if (contextMenu.open) { contextMenu.open = false; return }
       if (root.settingsOpen) { root.settingsOpen = false; return }
+      if (root.pickFor !== "") { root.pickFor = ""; return }
       if (root.infoId !== "") { root.infoId = ""; return }
       if (root.dirSheetOpen) { root.dirSheetOpen = false; return }
       if (root.dragId !== "") { root.cancelDrag(); return }
@@ -1072,7 +1184,7 @@ Item {
         Image {
           id: wallpaper
           anchors.fill: parent
-          visible: root.settings.wallpaper.kind !== "solid" && !Theme.reduceTransparency
+          visible: root.settings.wallpaper.kind !== "solid" && !root.videoBackground && !Theme.reduceTransparency
           source: root.shown || root.layoutReady ? root.wallpaperSource : ""
           sourceSize.width: Math.ceil(win.width / 2); sourceSize.height: Math.ceil(win.height / 2)
           fillMode: Image.PreserveAspectCrop
@@ -1087,6 +1199,20 @@ Item {
             autoPaddingEnabled: false
           }
           onStatusChanged: if (status === Image.Ready) brightness.measure()
+        }
+        // a looping, muted video instead, playing only while the Launchpad is up
+        Video {
+          id: bgVideo
+          anchors.fill: parent
+          visible: root.videoBackground && !Theme.reduceTransparency
+          source: root.videoBackground ? "file://" + root.settings.wallpaper.path : ""
+          fillMode: VideoOutput.PreserveAspectCrop
+          loops: MediaPlayer.Infinite
+          muted: true
+          readonly property bool want: visible && root.shown
+          onWantChanged: want ? play() : pause()
+          layer.enabled: visible
+          layer.effect: MultiEffect { blurEnabled: true; blurMax: 64; blur: root.settings.wallpaper.blur / 100; autoPaddingEnabled: false }
         }
         Rectangle {
           anchors.fill: parent
@@ -1167,10 +1293,13 @@ Item {
                 visible: (slot !== null || isDragged) && !(isDragged && root.dragFrom === "folder")
                 width: root.cellW; height: root.cellH
                 folder: LM.isFolder(tid) || root.isCat(tid)
+                workflow: LM.isWorkflow(tid)
+                cover: { root.tilesRev; var fc = LM.isFolder(tid) ? root.layout.folders[LM.folderKey(tid)] : null; return fc && fc.cover ? fc.cover : "" }
                 title: { root.tilesRev; root.catGroups; return root.titleFor(tid) }
                 iconSource: { root.entries; root.xdgDirs; return folder ? "" : root.iconFor(tid) }
                 previews: {
                   root.tilesRev; root.catGroups
+                  if (LM.isWorkflow(tid)) { var wf = (root.layout.workflows || {})[LM.workflowKey(tid)]; return wf ? wf.items.slice(0, 4).map(function(a) { return root.iconFor(a) }) : [] }
                   if (!folder) return []
                   var f = root.folderData(tid)
                   return f ? f.items.slice(0, 9).map(function(a) { return root.iconFor(a) }) : []
@@ -1291,9 +1420,14 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Look.results.icon; height: Look.results.icon
                 sourceSize.width: Look.results.icon * 2; sourceSize.height: Look.results.icon * 2
-                source: modelData.kind === "calc" ? "" : (modelData.kind === "file" ? root.fileIcon(modelData.id) : root.iconFor(modelData.id))
+                source: modelData.kind === "calc" || modelData.kind === "emoji" || modelData.kind === "workflow" || (modelData.kind === "clip" && !modelData.image) ? ""
+                  : modelData.kind === "clip" ? "file://" + modelData.image
+                  : (modelData.kind === "file" ? root.fileIcon(modelData.id) : root.iconFor(modelData.id))
                 asynchronous: true; mipmap: true
-                VIcon { anchors.centerIn: parent; visible: modelData.kind === "calc"; name: "calculator"; weight: "fill"; size: Look.results.icon * 0.8; color: root.lp.label } // lint-ok: glyph in icon box
+                VIcon { anchors.centerIn: parent; visible: modelData.kind === "calc" || modelData.kind === "workflow" || (modelData.kind === "clip" && !modelData.image)
+                  name: modelData.kind === "calc" ? "calculator" : (modelData.kind === "workflow" ? "workflow" : "clipboard")
+                  weight: "fill"; size: Look.results.icon * 0.8; color: root.lp.label } // lint-ok: glyph in icon box
+                Text { anchors.centerIn: parent; visible: modelData.kind === "emoji"; text: modelData.value || ""; font.pixelSize: Look.results.icon * 0.8 } // lint-ok: glyph in icon box
               }
               Column {
                 anchors.left: rIcon.right; anchors.leftMargin: Theme.layout.row.gap
@@ -1340,7 +1474,7 @@ Item {
         anchors.fill: parent
         // clicks count only once the Launchpad is really on screen: a surface you cannot
         // see must never launch what happens to be under the pointer
-        enabled: root.opened && !root.settingsOpen && root.infoId === "" && !root.dirSheetOpen && root.openness > 0.5
+        enabled: root.opened && !root.settingsOpen && root.infoId === "" && !root.dirSheetOpen && root.pickFor === "" && root.openness > 0.5
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         preventStealing: true
         hoverEnabled: false
@@ -1518,6 +1652,17 @@ Item {
         onDismissed: { root.dirSheetOpen = false; search.forceActiveFocus() }
       }
 
+      ImageSheet {
+        id: imageSheet
+        z: 35
+        launchpad: root
+        open: root.pickFor !== ""
+        video: root.pickFor === "video"
+        title: root.pickFor === "cover" ? "Folder Cover" : root.pickFor === "icon" ? "App Icon" : root.pickFor === "video" ? "Background Video" : "Background Image"
+        onPicked: function(path) { root.picturePicked(path) }
+        onDismissed: { root.pickFor = ""; if (root.infoId === "" && !root.settingsOpen) search.forceActiveFocus() }
+      }
+
       SettingsSheet {
         id: settingsSheet
         z: 30
@@ -1574,6 +1719,17 @@ Item {
   onEditingChanged: if (!editing) clearPicks()
 
   property string infoId: ""             // Get Info sheet open for this id
+  // image picker: what the chosen file is for ("icon" | "cover" -> the Get Info sheet, "wallpaper" | "video" -> settings)
+  property string pickFor: ""
+  function choosePicture(purpose) { root.pickFor = purpose }
+  function picturePicked(path) {
+    var what = root.pickFor
+    root.pickFor = ""
+    if (what === "icon") infoSheet.setIcon(path)
+    else if (what === "cover") infoSheet.setCover(path)
+    else if (what === "wallpaper") root.commit(LM.setSettings(root.layout, { wallpaper: { kind: "image", path: path } }))
+    else if (what === "video") root.commit(LM.setSettings(root.layout, { wallpaper: { kind: "video", path: path } }))
+  }
   property string lastCopy: ""
 
   Component.onCompleted: {

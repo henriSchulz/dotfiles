@@ -63,19 +63,14 @@ VSheet {
       width: parent.width
       VListRow {
         text: "Background"
-        VSegment { model: ["Desktop", "Image", "Solid"]; currentIndex: sheet.s.wallpaper.kind === "solid" ? 2 : (sheet.s.wallpaper.kind === "image" ? 1 : 0)
-          onActivated: function(i) { sheet.set({ wallpaper: { kind: ["desktop", "image", "solid"][i] } }) } }
+        VSegment { model: ["Desktop", "Image", "Video", "Solid"]; currentIndex: ["desktop", "image", "video", "solid"].indexOf(sheet.s.wallpaper.kind)
+          onActivated: function(i) { sheet.set({ wallpaper: { kind: ["desktop", "image", "video", "solid"][i] } }) } }
       }
       VListRow {
-        visible: sheet.s.wallpaper.kind === "image"
-        text: "Image file"
-        VField {
-          id: imageField
-          width: Look.info.field
-          placeholder: "~/Pictures/background.jpg"
-          text: sheet.s.wallpaper.path || ""
-          onAccepted: sheet.set({ wallpaper: { kind: "image", path: imageField.text.trim().replace(/^~/, sheet.launchpad.home) || null } })
-        }
+        visible: sheet.s.wallpaper.kind === "image" || sheet.s.wallpaper.kind === "video"
+        text: sheet.s.wallpaper.kind === "video" ? "Video file" : "Image file"
+        detail: sheet.s.wallpaper.path ? sheet.s.wallpaper.path.slice(sheet.s.wallpaper.path.lastIndexOf("/") + 1) : "None"
+        VButton { text: "Choose…"; onClicked: sheet.launchpad.choosePicture(sheet.s.wallpaper.kind === "video" ? "video" : "wallpaper") }
       }
       VListRow {
         text: "Blur"

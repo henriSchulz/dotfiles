@@ -25,6 +25,10 @@ Item {
   property string folderColor: ""    // "#rrggbb" or "" (Get Info)
   property string emoji: ""          // shown instead of the mini icons
   property bool picked: false        // Shift-click selection for a new folder
+  property string cover: ""          // folder cover image (absolute path)
+  property bool workflow: false      // a workflow tile: 2 × 2 minis + a lightning badge
+  readonly property bool plate: folder || workflow
+  readonly property int miniGrid: workflow ? Look.workflow.previewGrid : Look.folder.previewGrid
   property bool showBadge: editing && !folder
 
   readonly property var lp: Theme.core.surface.launchpad
@@ -35,7 +39,7 @@ Item {
   readonly property real iconY: 0
 
   Accessible.role: Accessible.Button
-  Accessible.name: folder ? title + ", folder" : title
+  Accessible.name: folder ? title + ", folder" : (workflow ? title + ", workflow" : title)
 
   scale: dragging ? lp.dragScale : (dropTarget ? lp.folderTarget : (pressed ? Look.grid.pressedScale : 1))
   Behavior on scale { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
@@ -61,11 +65,11 @@ Item {
 
     // app icon
     Image {
-      visible: !tile.folder
+      visible: !tile.plate
       anchors.centerIn: parent
       width: tile.body; height: tile.body
       sourceSize.width: Math.ceil(tile.body * 2); sourceSize.height: Math.ceil(tile.body * 2)
-      source: tile.folder ? "" : tile.iconSource
+      source: tile.plate ? "" : tile.iconSource
       fillMode: Image.PreserveAspectFit
       asynchronous: true
       smooth: true; mipmap: true
@@ -75,27 +79,41 @@ Item {
 
     // folder: plate + 3 × 3 mini icons
     Rectangle {
-      visible: tile.folder
+      id: plateRect
+      visible: tile.plate
       anchors.centerIn: parent
       width: tile.body; height: tile.body
       radius: tile.iconSize * Look.folder.tileRadius
       // "#rrggbb" + the tint as alpha → "#aarrggbb"
       color: tile.folderColor !== "" ? "#" + ("0" + Math.round(tile.lp.folderTint * 255).toString(16)).slice(-2) + tile.folderColor.slice(1) : tile.lp.folderTile
+      // cover image, clipped to the plate's rounded shape
+      Image {
+        id: coverImg
+        visible: tile.cover !== ""
+        anchors.fill: parent
+        source: tile.cover !== "" ? "file://" + tile.cover : ""
+        sourceSize.width: Math.ceil(tile.body * 2); sourceSize.height: Math.ceil(tile.body * 2)
+        fillMode: Image.PreserveAspectCrop
+        asynchronous: true
+        layer.enabled: visible
+        layer.effect: MultiEffect { maskEnabled: true; maskSource: coverMask; maskThresholdMin: 0.5; maskSpreadAtMin: 1 }
+      }
+      Rectangle { id: coverMask; anchors.fill: parent; radius: parent.radius; visible: false; layer.enabled: true }
       Text {
-        visible: tile.emoji !== ""
+        visible: tile.emoji !== "" && tile.cover === ""
         anchors.centerIn: parent
         text: tile.emoji
         font.pixelSize: tile.body * Look.folder.emojiSize
       }
       Grid {
-        visible: tile.emoji === ""
+        visible: tile.emoji === "" && tile.cover === ""
         anchors.centerIn: parent
-        columns: Look.folder.previewGrid
+        columns: tile.miniGrid
         spacing: tile.iconSize * Look.folder.previewGap
         readonly property real cell: (tile.body - 2 * tile.iconSize * Look.folder.tileInset
-                                      - (Look.folder.previewGrid - 1) * spacing) / Look.folder.previewGrid
+                                      - (tile.miniGrid - 1) * spacing) / tile.miniGrid
         Repeater {
-          model: tile.folder ? tile.previews.slice(0, Look.folder.previewGrid * Look.folder.previewGrid) : []
+          model: tile.plate ? tile.previews.slice(0, tile.miniGrid * tile.miniGrid) : []
           Image {
             required property var modelData
             width: parent.cell; height: parent.cell
@@ -106,6 +124,17 @@ Item {
           }
         }
       }
+    }
+
+    // workflow: a lightning badge on the bottom-right corner
+    Rectangle {
+      visible: tile.workflow && !tile.picked
+      x: tile.iconSize - Look.badge.size - (tile.iconSize - tile.body) / 2 - tile.iconSize * Look.badge.offset
+      y: tile.iconSize - Look.badge.size - (tile.iconSize - tile.body) / 2 - tile.iconSize * Look.badge.offset
+      width: Look.badge.size; height: Look.badge.size
+      radius: width / 2
+      color: tile.lp.pick
+      VIcon { anchors.centerIn: parent; name: "workflow"; weight: "fill"; size: Look.badge.glyph; color: tile.lp.badgeInk }
     }
 
     // Shift-click pick: a check on the bottom-right corner
