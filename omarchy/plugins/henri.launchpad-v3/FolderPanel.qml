@@ -14,28 +14,7 @@ Item {
   readonly property string folderId: launchpad ? launchpad.openFolder : ""
   // the last open folder stays drawn while the panel shrinks away
   property string shownId: ""
-  onFolderIdChanged: {
-    if (folderId !== "") {
-      shownId = folderId
-      closer.stop()
-      // reopening mid-close: the spring goes on from what is on screen
-      if (closeVal > 0.001) grow.from(closeVal)
-    } else {
-      // closing is quicker than opening (Velum: exit faster than enter): a short
-      // eased fade of panel and blur instead of the spring's long tail
-      closeVal = Math.max(0, grow.value)
-      closer.restart()
-    }
-  }
-  property real closeVal: 0
-  NumberAnimation {
-    id: closer
-    target: panelRoot; property: "closeVal"; to: 0
-    duration: Theme.reduceMotion ? Theme.dur("fast") : Math.round(panelRoot.lp.folderClose * Theme.speed)
-    // in-out: the panel visibly shrinks back into its tile (ease-out was over in ~40 ms);
-    // the grid's blur is squared, so it still clears in the first half
-    easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut")
-  }
+  onFolderIdChanged: if (folderId !== "") shownId = folderId
   readonly property var folder: launchpad && shownId !== "" ? launchpad.folderData(shownId) : null
   readonly property bool editable: folder !== null && folder.editable === true
   readonly property var items: folder ? folder.items : []
@@ -60,10 +39,12 @@ Item {
   readonly property real panelY: (height - panelH) / 2
 
   visible: progress > 0.001
-  readonly property real progress: folderId !== "" ? Math.max(0, grow.value) : closeVal
+  readonly property real progress: Math.max(0, grow.value)
   Spring {
     id: grow
-    preset: panelRoot.lp.folderOpen
+    // closing is the opening backwards, on the same spring, only quicker (exit factor)
+    preset: panelRoot.folderId !== "" ? panelRoot.lp.folderOpen
+      : { response: panelRoot.lp.folderOpen.response * Theme.core.motion.exitFactor, dampingRatio: panelRoot.lp.folderOpen.dampingRatio }
     reduced: Theme.reduceMotion
     target: panelRoot.folderId !== "" ? 1 : 0
   }
