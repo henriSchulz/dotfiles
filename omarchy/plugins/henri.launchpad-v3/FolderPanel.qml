@@ -31,9 +31,10 @@ Item {
   NumberAnimation {
     id: closer
     target: panelRoot; property: "closeVal"; to: 0
-    duration: Theme.reduceMotion ? Theme.dur("fast") : panelRoot.lp.folderClose
-    // ease-out: the blur is mostly gone at once, not held until the end
-    easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out")
+    duration: Theme.reduceMotion ? Theme.dur("fast") : Math.round(panelRoot.lp.folderClose * Theme.speed)
+    // in-out: the panel visibly shrinks back into its tile (ease-out was over in ~40 ms);
+    // the grid's blur is squared, so it still clears in the first half
+    easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut")
   }
   readonly property var folder: launchpad && shownId !== "" ? launchpad.folderData(shownId) : null
   readonly property bool editable: folder !== null && folder.editable === true

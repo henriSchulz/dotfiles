@@ -52,6 +52,7 @@ Item {
       lastCopy: root.lastCopy, firstResult: root.results.length ? (root.results[0].kind || "app") + ":" + root.results[0].title : "",
       dragId: root.dragId, armed: root.armedTarget, hover: root.hoverTarget, drag: [Math.round(root.dragX), Math.round(root.dragY)], hidden: root.layout.hidden.length, lastLaunch: root.lastLaunch,
       folderTitle: root.openFolder !== "" && root.folderData(root.openFolder) ? root.folderData(root.openFolder).name : "",
+      folderProgress: Math.round(folderPanel.progress * 100) / 100, folderVisible: folderPanel.visible,
       lastOpen: root.lastOpen, wallpaper: root.wallpaperSource, lastRun: root.lastRun, pickFor: root.pickFor, infoSteps: infoSheet.steps.length,
       video: root.videoBackground ? bgVideo.playbackState : -1,
       results0: root.results.length ? root.results[0].kind || "app" : "", cats: root.catIds.length, dirs: Object.keys(root.layout.dirs || {}).length,
