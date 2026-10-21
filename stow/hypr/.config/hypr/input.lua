@@ -66,13 +66,15 @@ hl.config({
   },
 })
 
--- 4-Finger-Wisch hoch/runter: Mission Control (henri.missioncontrol).
--- Hoch öffnet Mission Control, runter App Exposé (nur die Fenster der aktiven
--- App), wie am Mac; die Gegenrichtung schließt. Folgt den Fingern: Start/
--- Update/Ende gehen als Custom-Event über Hyprlands Event-Socket an das
--- Plugin, das die Animation live mitführt und beim Loslassen je nach Weg und
--- Tempo öffnet oder schließt. Tasten dazu: F8 / Shift+F8 / Ctrl+F8 in
--- bindings.lua.
+-- 4-Finger-Wisch hoch/runter: Mission Control.
+-- Mit hyprmc (~/Projects/hyprmc, Hyprland-Plugin, README dort) zoomt Hoch aus
+-- der Spur der Desktops heraus – die echten Fenster, im Compositor, ab dem
+-- ersten Bild unter den Fingern; Runter zoomt in den gewählten Desktop. Fehlt
+-- das Plugin (z. B. nach einem Hyprland-Update ohne
+-- `~/Projects/hyprmc/scripts/install.sh`), geht der Wisch wie früher ans
+-- QML-Plugin henri.missioncontrol-v3: Hoch öffnet Mission Control, Runter App
+-- Exposé, Start/Update/Ende als Custom-Event über Hyprlands Event-Socket.
+-- Tasten dazu: F8 / Shift+F8 / Ctrl+F8 in bindings.lua.
 -- Hinweis: Ein `hyprctl reload` startet ohne Gesten und registriert sie neu
 -- (geprüft 2026-09-26 in einer verschachtelten Instanz); zur Laufzeit entfernt
 -- sie nur `action = "unset"`.
@@ -80,17 +82,21 @@ local function mc_event(phase, value, time_ms)
   hl.dispatch(hl.dsp.event(string.format("mission-control-gesture:%s:%s:%d",
     phase, value, math.floor(time_ms or 0))))
 end
--- Test (2026-10-21): ist hyprmc geladen (~/Projects/hyprmc, das Plugin, das die
--- echten Fenster im Compositor verkleinert), geht der Wisch dorthin statt ans
--- QML-Mission-Control. Ohne das Plugin bleibt alles wie vorher.
-local function hyprmc_loaded()
-  return hl.plugin and hl.plugin.hyprmc and hl.plugin.hyprmc.gesture
+-- Lädt das Plugin (mit Hinweis, wenn die .so fehlt). Fehlt das ganze Repo,
+-- bleibt hyprmc nil und alles geht ans QML-Plugin.
+local hyprmc_lua = os.getenv("HOME") .. "/Projects/hyprmc/hyprmc.lua"
+local hyprmc = nil
+local hyprmc_fh = io.open(hyprmc_lua, "r")
+if hyprmc_fh then
+  hyprmc_fh:close()
+  local ok, mod = pcall(dofile, hyprmc_lua)
+  if ok then hyprmc = mod() end
 end
 local function mc_gesture(phase, e)
-  local dy = e.delta and e.delta.y or 0
-  if hyprmc_loaded() then
-    hl.plugin.hyprmc.gesture(phase, phase == "end" and 0 or dy, e.time_ms or 0)
+  if hyprmc and hyprmc.available() then
+    hyprmc.gesture(phase, e)
   else
+    local dy = e.delta and e.delta.y or 0
     mc_event(phase, phase == "end" and (e.cancelled and 1 or 0) or string.format("%.3f", dy), e.time_ms)
   end
 end
@@ -128,13 +134,10 @@ local function mc_hswipe_event(phase, value, time_ms)
 end
 -- Ist hyprmc offen (es schaltet diesen Modus selbst ein und aus), wählt die
 -- Seitwärtsbewegung dort den Desktop; sonst geht sie wie bisher ans QML-Plugin.
-local function hyprmc_session()
-  return hyprmc_loaded() and string.find(hl.plugin.hyprmc.state(), '"session":true', 1, true) ~= nil
-end
 local function mc_hswipe(phase, e)
   local dx = e.delta and e.delta.x or 0
-  if hyprmc_session() then
-    hl.plugin.hyprmc.pan(phase, phase == "end" and 0 or dx, e.time_ms or 0)
+  if hyprmc and hyprmc.session() then
+    hyprmc.pan(phase, e)
   else
     mc_hswipe_event(phase, phase == "end" and (e.cancelled and 1 or 0) or string.format("%.3f", dx), e.time_ms)
   end

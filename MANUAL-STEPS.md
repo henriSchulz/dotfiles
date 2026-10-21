@@ -84,14 +84,22 @@ with `git restore`, and check `hyprland.lua` (not tracked) for the
 
 ## 6. After every Hyprland update
 
-`hyprswipe` is a compiled Hyprland plugin and is tied to the exact build:
+`hyprswipe` and `hyprmc` are compiled Hyprland plugins and are tied to the
+exact build:
 
 ```bash
 ~/Projects/hyprswipe/scripts/install.sh   # rebuilds and reinstalls the .so
+~/Projects/hyprmc/scripts/install.sh      # Mission Control (zoom out of the desktop track)
 ```
 
-Without it the 4-finger horizontal swipe is simply off — `input.lua` guards the
-call, so nothing breaks.
+then log out and in (Hyprland itself has to restart after its update anyway);
+the config loads both.
+
+Without them the 4-finger horizontal swipe is simply off, and F8 / the
+vertical swipe fall back to the QML Mission Control — `input.lua` guards the
+calls, so nothing breaks. Never install over a loaded .so in a running
+session: `hyprctl plugin unload <so>` first, then install, then
+`hyprctl plugin load <so>` (a reload alone does not load it again).
 
 ## 7. Personal data
 

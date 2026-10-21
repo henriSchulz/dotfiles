@@ -224,18 +224,21 @@ o.bind("ALT + SHIFT + Alt_L", nil, hl.dsp.event("app-switcher commit"), { releas
 -- Prozess pro Taste. F9 hatte Omarchy mit voxtype-Push-to-Talk belegt
 -- (default/hypr/bindings/voxtype.lua, Druck = start, Loslassen = stop); das
 -- fliegt hier raus, Diktat läuft über die rechte Strg und SUPER+CTRL+X.
-o.bind("F8", "Mission Control", hl.dsp.event("mission-control toggle"))
+-- F8 öffnet hyprmc (das Compositor-Plugin, ~/Projects/hyprmc), wenn es geladen
+-- ist; sonst wie früher das QML-Mission-Control.
+local function mission_control_key()
+  if hl.plugin and hl.plugin.hyprmc and hl.plugin.hyprmc.toggle then
+    hl.plugin.hyprmc.toggle()
+  else
+    hl.dispatch(hl.dsp.event("mission-control toggle"))
+  end
+end
+o.bind("F8", "Mission Control", mission_control_key)
 hl.unbind("F9")
 o.bind("F9", "App Exposé", hl.dsp.event("mission-control toggle app"))
 o.bind("SHIFT + F8", "App Exposé", hl.dsp.event("mission-control toggle app"))
 o.bind("CTRL + F8", "Show Desktop", hl.dsp.event("mission-control toggle desktop"))
-o.bind("XF86Display", "Mission Control", hl.dsp.event("mission-control toggle"))
--- Test (2026-10-21): ALT+F8 = hyprmc, das neue Compositor-Plugin, das die
--- echten Fenster verkleinert (~/Projects/hyprmc). Nur wenn es geladen ist
--- (hyprctl plugin load ~/.local/lib/hyprmc/hyprmc.so), sonst passiert nichts.
-o.bind("ALT + F8", "Mission Control (hyprmc test)", function()
-  if hl.plugin and hl.plugin.hyprmc and hl.plugin.hyprmc.toggle then hl.plugin.hyprmc.toggle() end
-end)
+o.bind("XF86Display", "Mission Control", mission_control_key)
 o.bind("SHIFT + XF86Display", "App Exposé", hl.dsp.event("mission-control toggle app"))
 o.bind("CTRL + XF86Display", "Show Desktop", hl.dsp.event("mission-control toggle desktop"))
 
