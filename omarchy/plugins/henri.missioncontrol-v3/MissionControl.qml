@@ -660,6 +660,17 @@ Item {
 
   signal slideRequested(int dir)
 
+  // A click on a desktop thumbnail: slide over to it inside the overview
+  // first, and close only once that slide has landed (Henri, 2026-10-21).
+  // The arrow keys still switch and stay open.
+  property bool closeAfterSlide: false
+  function slideLanded() {
+    if (!root.closeAfterSlide || root.slidePendingDir !== 0 || root.slideTracking)
+      return;
+    root.closeAfterSlide = false;
+    root.dismiss();
+  }
+
   // The sideways swipe sits under the fingers too; this is its release spring.
   FrameAnimation {
     id: slideSpring
@@ -675,6 +686,7 @@ Item {
         root.slideSettling = false;
         root.slideVelocity = 0;
         root.slide = to;
+        root.slideLanded();
       }
     }
   }
@@ -688,6 +700,7 @@ Item {
     property: "slide"
     easing.type: Easing.BezierSpline
     easing.bezierCurve: Motion.easeInOut
+    onFinished: root.slideLanded()
   }
 
   Timer {
@@ -714,6 +727,7 @@ Item {
     root.slideSettling = false;
     root.slideTracking = false;
     root.slidePendingDir = 0;
+    root.closeAfterSlide = false;
     root.slide = 0;
     root.slideTarget = 0;
     root.slideVelocity = 0;
@@ -738,6 +752,7 @@ Item {
     const dist = Math.abs(target - root.slide);
     if (Motion.reduced || dist < 0.001) {
       root.slide = target;
+      root.slideLanded();
       return;
     }
     slideAnim.from = root.slide;
@@ -2651,11 +2666,12 @@ Item {
         const ti = panel.deskIndexOf(id);
         const target = root.safeWorkspaceId(id);
         if (ci < 0 || ti < 0 || ci === ti || target === "")
-          return;
+          return false;
         panel.transitFrom = cur.id;
         panel.transitDesk = id;
         root.slidePendingDir = ti - ci;
         root.dispatch("hl.dsp.focus({ workspace = \"" + target + "\" })", "workspace " + target);
+        return true;
       }
 
       function cycleWindow() {
@@ -3160,7 +3176,19 @@ Item {
                 HoverHandler { id: deskHover }
                 // Switches the desktop and stays open, like the arrow and
                 // number keys (Henri: switching and closing at once felt wrong).
-                TapHandler { onTapped: if (deskCell.wsId >= 0) panel.switchTo(deskCell.wsId) }
+                // Another desktop: slide there, then close. This one: close.
+                TapHandler {
+                  onTapped: {
+                    if (deskCell.wsId < 0)
+                      return;
+                    if (deskCell.isFocused) {
+                      root.dismiss();
+                      return;
+                    }
+                    if (panel.switchTo(deskCell.wsId))
+                      root.closeAfterSlide = true;
+                  }
+                }
 
                 // Positions are read off the scene, not the handler's own
                 // translation: the tile moves under the pointer, and a
