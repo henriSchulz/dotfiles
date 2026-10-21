@@ -578,6 +578,8 @@ Item {
     onTriggered: root.armedTarget = root.hoverTarget
   }
   property var pendingSlot: null         // { page, to, key } waiting for reorderTimer
+  property real restX: 0                 // where the pointer last came to rest
+  property real restY: 0
   Timer {
     id: reorderTimer
     interval: root.lp.reorderHover
@@ -638,7 +640,7 @@ Item {
     var under = root.itemAt(root.page, index)
     var c = root.slotPos(root.page, index)
     var cx = c.x - root.page * win.width + root.cellW / 2, cy = c.y + root.iconSize / 2
-    var near = Math.abs(px - cx) < root.iconSize * 0.3 && Math.abs(py - cy) < root.iconSize * 0.3 // lint-ok: drop zone
+    var near = Math.abs(px - cx) < root.iconSize * root.lp.folderZone && Math.abs(py - cy) < root.iconSize * root.lp.folderZone
     if (under && under !== root.dragId && near && LM.isApp(root.dragId)) {
       reorderTimer.stop()
       if (root.hoverTarget !== under) { root.hoverTarget = under; root.armedTarget = ""; folderTimer.restart() }
@@ -649,8 +651,10 @@ Item {
     var to = Math.min(index, len)
     var key2 = root.page + ":" + to
     if (key2 === root.lastPreview) { reorderTimer.stop(); return }
-    // the icons make room only once the pointer rests on the slot
-    if (!root.pendingSlot || root.pendingSlot.key !== key2) {
+    // the icons make room only once the pointer stops: any real movement restarts the wait
+    var moved = Math.abs(px - root.restX) > root.lp.restSlop || Math.abs(py - root.restY) > root.lp.restSlop
+    if (moved) { root.restX = px; root.restY = py }
+    if (!root.pendingSlot || root.pendingSlot.key !== key2 || moved) {
       root.pendingSlot = { page: root.page, to: to, key: key2 }
       reorderTimer.restart()
     }

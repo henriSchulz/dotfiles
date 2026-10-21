@@ -122,6 +122,25 @@ if runs R01; then
   shut
 fi
 
+# ---- R02 a slow, human drag onto an app makes a folder ------------------
+if runs R02; then
+  fresh; open ""
+  a=$(pageItem 0 0); b=$(pageItem 0 2)
+  read -r ax ay <<<"$(at "$a")"; read -r bx by <<<"$(at "$b")"
+  # BUG-006: a slow approach crossed the gap before the target long enough to reorder,
+  # the target slid away. Here: 1.2 s from the first to the third app, with a pause on the way.
+  pt m "$ax" "$ay" d s 700 g $(((ax + bx) / 2)) "$ay" 24 25 s 120 g "$bx" "$by" 24 25 s 600
+  want R02-1 "a slow drag onto an app arms a folder" ".armed == \"$b\""
+  pt u; sleep 0.6
+  want R02-2 "and the drop makes the folder" "(.folders | length) == 1" "$(lay)"
+  # resting in the gap between two icons still makes room (reorder)
+  c="$(pageItem 0 4)"; read -r cx cy <<<"$(at "$c")"
+  d="$(pageItem 0 0)"; read -r dx dy <<<"$(at "$d")"
+  pt m "$dx" "$dy" d s 60 g $((cx - 110)) $((cy + 30)) 20 20 s 700 u; sleep 0.6
+  want R02-3 "resting in the gap between icons reorders" "(.pages[0] | index(\"$d\")) == 3 or (.pages[0] | index(\"$d\")) == 4" "$(lay)"
+  shut
+fi
+
 # ---- F07 close without launching --------------------------------------
 if runs F07; then
   fresh; open ""
