@@ -233,11 +233,8 @@ o.bind("XF86Display", "Mission Control", hl.dsp.event("mission-control toggle"))
 -- Test (2026-10-21): ALT+F8 = hyprmc, das neue Compositor-Plugin, das die
 -- echten Fenster verkleinert (~/Projects/hyprmc). Nur wenn es geladen ist
 -- (hyprctl plugin load ~/.local/lib/hyprmc/hyprmc.so), sonst passiert nichts.
-local hyprmc_open = false
 o.bind("ALT + F8", "Mission Control (hyprmc test)", function()
-  if not (hl.plugin and hl.plugin.hyprmc) then return end
-  hyprmc_open = not hyprmc_open
-  hl.plugin.hyprmc.animate(hyprmc_open and "open" or "close")
+  if hl.plugin and hl.plugin.hyprmc and hl.plugin.hyprmc.toggle then hl.plugin.hyprmc.toggle() end
 end)
 o.bind("SHIFT + XF86Display", "App Exposé", hl.dsp.event("mission-control toggle app"))
 o.bind("CTRL + XF86Display", "Show Desktop", hl.dsp.event("mission-control toggle desktop"))

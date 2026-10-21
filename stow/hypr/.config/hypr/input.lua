@@ -80,14 +80,28 @@ local function mc_event(phase, value, time_ms)
   hl.dispatch(hl.dsp.event(string.format("mission-control-gesture:%s:%s:%d",
     phase, value, math.floor(time_ms or 0))))
 end
+-- Test (2026-10-21): ist hyprmc geladen (~/Projects/hyprmc, das Plugin, das die
+-- echten Fenster im Compositor verkleinert), geht der Wisch dorthin statt ans
+-- QML-Mission-Control. Ohne das Plugin bleibt alles wie vorher.
+local function hyprmc_loaded()
+  return hl.plugin and hl.plugin.hyprmc and hl.plugin.hyprmc.gesture
+end
+local function mc_gesture(phase, e)
+  local dy = e.delta and e.delta.y or 0
+  if hyprmc_loaded() then
+    hl.plugin.hyprmc.gesture(phase, phase == "end" and 0 or dy, e.time_ms or 0)
+  else
+    mc_event(phase, phase == "end" and (e.cancelled and 1 or 0) or string.format("%.3f", dy), e.time_ms)
+  end
+end
 hl.gesture({
   fingers = 4,
   direction = "vertical",
   action = {
-    start = function(e) mc_event("start", string.format("%.3f", e.delta and e.delta.y or 0), e.time_ms) end,
-    update = function(e) mc_event("update", string.format("%.3f", e.delta and e.delta.y or 0), e.time_ms) end,
+    start = function(e) mc_gesture("start", e) end,
+    update = function(e) mc_gesture("update", e) end,
     -- Hyprland names the release callback `finish`, not `end`.
-    finish = function(e) mc_event("end", e.cancelled and 1 or 0, e.time_ms) end,
+    finish = function(e) mc_gesture("end", e) end,
   },
 })
 
