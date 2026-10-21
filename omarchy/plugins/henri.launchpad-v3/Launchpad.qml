@@ -85,6 +85,25 @@ Item {
     return "ok"
   }
 
+  // The F4 bind comes in as a Hyprland event (`custom>>launchpad toggle`), not
+  // a command: no process per key press, so the grid starts coming at once
+  // (same path as henri.menu-v3's Super+Space). Through shell.toggle() when
+  // the host API is there, so its open/closed bookkeeping stays right.
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event.name !== "custom") return
+      var data = String(event.data)
+      if (data.indexOf("launchpad") !== 0) return
+      var verb = data.slice(9).trim() || "toggle"
+      var id = root.manifest && root.manifest.id ? root.manifest.id : "henri.launchpad-v3"
+      if (verb === "close") { root.hideAnimated(false); return }
+      if (verb === "open") { if (!root.opened) root.open("{}"); return }
+      if (root.shell && typeof root.shell.toggle === "function") root.shell.toggle(id, "{}")
+      else root.toggle()
+    }
+  }
+
   // ----------------------------------------------------------------- state
   readonly property var lp: Theme.core.surface.launchpad
   readonly property string home: Quickshell.env("HOME")

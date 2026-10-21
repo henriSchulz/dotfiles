@@ -242,6 +242,15 @@ o.bind("XF86Display", "Mission Control", mission_control_key)
 o.bind("SHIFT + XF86Display", "App Exposé", hl.dsp.event("mission-control toggle app"))
 o.bind("CTRL + XF86Display", "Show Desktop", hl.dsp.event("mission-control toggle desktop"))
 
+-- Launchpad (henri.launchpad-v3) auf F4, ohne Fn: mit fnmode=1 sendet die
+-- Taste ihre Mac-Medienfunktion. Welches Keysym das ist, hängt am Treiber
+-- (KEY_DASHBOARD = XF86LaunchB, KEY_SEARCH = XF86Search; die Tastatur kann
+-- beide), deshalb beide, dazu F4 selbst (Fn+F4). Als Hyprland-Ereignis direkt
+-- ans Plugin (custom>>launchpad toggle), kein Prozess pro Taste.
+o.bind("XF86LaunchB", "Launchpad", hl.dsp.event("launchpad toggle"))
+o.bind("XF86Search", "Launchpad", hl.dsp.event("launchpad toggle"))
+o.bind("F4", "Launchpad", hl.dsp.event("launchpad toggle"))
+
 -- Die F8-Taste selbst (ohne Fn) ist auf dem XPS 13 9310 in der Firmware als
 -- Windows+P verdrahtet (Dells "Display umschalten") -- per evdev gemessen:
 -- Scancode 0xdb (LEFTMETA) + 0x19 (P), von einem echten Super+P nicht zu
