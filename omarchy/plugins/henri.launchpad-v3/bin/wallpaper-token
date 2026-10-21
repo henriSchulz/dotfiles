@@ -1,0 +1,13 @@
+#!/bin/sh
+# Prints a cache token for Omarchy's current background, or nothing.
+# A token, not a path: the Launchpad always loads the fixed state symlink; this
+# only changes the URL's query when the picture behind the link changes, so
+# QtQuick's URL-keyed image cache reloads. Prints nothing unless the target is
+# a regular, non-empty file of at most 64 MiB.
+set -eu
+link="${HOME:?}/.local/state/omarchy/current/background"
+target=$(readlink -f "$link" 2>/dev/null) || exit 0
+[ -n "$target" ] && [ -f "$target" ] || exit 0
+size=$(stat -c %s "$target" 2>/dev/null) || exit 0
+[ "$size" -gt 0 ] && [ "$size" -le 67108864 ] || exit 0
+printf '%s-%s\n' "$size" "$(basename "$target")"

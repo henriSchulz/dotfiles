@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.launchpad-v3",
+  "name": "Launchpad (v3, Velum)",
+  "version": "0.1.0",
+  "author": "Henri Schulz",
+  "description": "Full-screen app launcher on Velum: every app on the blurred wallpaper, paged, type to search, folders, edit mode with drag and drop, layout saved to ~/.config/omarchy/launchpad/layout.json",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Launchpad.qml"
+  }
+}
