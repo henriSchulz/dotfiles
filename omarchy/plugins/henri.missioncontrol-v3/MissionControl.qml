@@ -1648,7 +1648,7 @@ Item {
 
       readonly property real stripPitch: panel.stripTileW + panel.stripGap
       readonly property real stripRowX:
-          Math.round((panel.width - panel.slotIds.length * panel.stripPitch + panel.stripGap) / 2)
+          Math.round((panel.width - panel.rowW) / 2)
 
       // The tile being dragged and the slot it would land in.
       property int dragTile: -1
@@ -2106,7 +2106,7 @@ Item {
       readonly property real stripTileW: stripTileH * panel.width / panel.height
       // The "+" is half a thumbnail wide, at the right edge (macOS).
       readonly property real plusW: Math.round(panel.stripTileW * 0.5)
-      readonly property real plusX: panel.width - panel.stripPad * 2 - panel.plusW
+      readonly property real plusX: panel.stripRowX + panel.slotIds.length * panel.stripPitch
       readonly property bool plusVisible: panel.slotIds.length < panel.maxDesktops && Hyprland.usingLua
 
       // The exposé is NOT a grid of equal cells. macOS shrinks the whole
@@ -2360,6 +2360,30 @@ Item {
       readonly property real hairlineAlpha: 0.10
       readonly property real secondaryInkAlpha: 0.65
 
+      // --- the Spaces island (Velum) ------------------------------------------
+      // The Spaces strip is no full-width band any more: it is the bar's centre
+      // island grown into a card that holds the thumbnails, as the Control
+      // Center grows out of it (Henri, 2026-10-21). It rides the same progress
+      // the band did, so it follows the fingers: from the pill's rect (which
+      // henri.control-center-v3 publishes in V.Theme.centreIslands) to its own.
+      // The row inside fades in once the card is most of the way there, as
+      // VIslandWindow's content does. The ink is the island's, not white.
+      readonly property color stripInk: V.Theme.r.popover.ink
+      readonly property var pill: {
+        const r = V.Theme.centreIslands[panel.screen ? panel.screen.name : ""];
+        if (r)
+          return r;
+        // No Control Center on this screen: a pill of the same make, centred.
+        const h = Math.max(1, panel.barBand - 2 * V.Theme.layout.module.tileInset);
+        return { x: Math.round(panel.width / 2 - 2 * h), y: V.Theme.layout.module.tileInset, width: 4 * h, height: h };
+      }
+      // The row: thumbnails, then the "+" right after the last one.
+      readonly property real rowW: panel.slotIds.length * panel.stripPitch - panel.stripGap
+          + (panel.plusVisible ? panel.stripGap + panel.plusW : 0)
+      readonly property real islandW: panel.rowW + 2 * panel.stripGap
+      readonly property real islandH: panel.stripFullH - panel.pill.y
+      readonly property real islandRadius: V.Theme.m.radius.panel + V.Theme.layout.module.tileInset
+
       // --- selection --------------------------------------------------------
       // Index into panel.windows; -1 when the desktop is empty.
       property int selected: panel.windows.length > 0 ? 0 : -1
@@ -2464,7 +2488,8 @@ Item {
           // and size, so both share one decoded image.
           width: panel.width
           height: panel.height
-          opacity: root.stripProgress
+          // Mission Control keeps the real bar: its centre island grows out of it.
+          opacity: root.missionMode ? 0 : root.stripProgress
           source: root.wallpaperSource
           fillMode: Image.PreserveAspectCrop
           // Do NOT add sourceSize here. Omarchy's wallpapers are 5K and the
@@ -2681,7 +2706,66 @@ Item {
           }
         }
 
-        Rectangle {
+        // The island card. Geometry (not a scale) between the two rects, so its
+        // corners stay round; the frosted wallpaper under it is blurred here in
+        // QML for the same reason the background is (no compositor blur on a
+        // full-screen layer, see there).
+        Item {
+          id: island
+          readonly property real t: strip.reveal
+          visible: island.t > 0.001
+          x: Math.round(root.lerp(panel.pill.x, (panel.width - panel.islandW) / 2, island.t))
+          y: panel.pill.y
+          width: Math.round(root.lerp(panel.pill.width, panel.islandW, island.t))
+          height: Math.round(root.lerp(panel.pill.height, panel.islandH, island.t))
+          readonly property real radius: Math.min(panel.islandRadius, height / 2)
+          // A click on the card itself is no click on the background: it does not dismiss.
+          TapHandler {}
+
+          V.VShadow { layers: V.Theme.r.popover.shadow; radius: island.radius; opacity: island.t }
+          Item {
+            anchors.fill: parent
+            visible: !V.Theme.reduceTransparency
+            layer.enabled: true
+            layer.effect: MultiEffect {
+              blurEnabled: true
+              blur: 1
+              blurMax: 64
+              // No padding: the blur must end at the card's edge, under its mask.
+              autoPaddingEnabled: false
+              maskEnabled: true
+              maskSource: islandMask
+              maskThresholdMin: 0.5
+              maskSpreadAtMin: 1.0
+            }
+            Image {
+              x: -island.x
+              y: -island.y
+              width: panel.width
+              height: panel.height
+              source: wallpaper.source
+              fillMode: Image.PreserveAspectCrop
+              asynchronous: true
+              cache: true
+            }
+          }
+          Item {
+            id: islandMask
+            anchors.fill: parent
+            layer.enabled: true
+            visible: false
+            Rectangle { anchors.fill: parent; radius: island.radius; color: "black" }
+          }
+          Rectangle {
+            anchors.fill: parent
+            radius: island.radius
+            color: V.Theme.reduceTransparency ? V.Theme.r.popover.bgOpaque : V.Theme.r.popover.bg
+            border.width: V.Theme.layout.separator
+            border.color: V.Theme.r.line.rim
+          }
+        }
+
+        Item {
           id: strip
           width: parent.width
           height: panel.stripH
@@ -2689,20 +2773,14 @@ Item {
           // it, which is where macOS puts the motion. Driven by stripProgress,
           // which holds it in place on a non-swipe close -- see stripHold.
           readonly property real reveal: root.stripProgress * stage.stripIn
-          y: root.lerp(-panel.stripH, 0, root.stripProgress) - Motion.px(Motion.distanceLg) * (1 - stage.stripIn)
-          opacity: strip.reveal
+          // The island grows, the row stays put and fades in over the last 30 %.
+          y: -Motion.px(Motion.distanceLg) * (1 - stage.stripIn)
+          opacity: Math.max(0, Math.min(1, (strip.reveal - 0.7) / 0.3))
           visible: strip.reveal > 0.001
-          color: Qt.rgba(1, 1, 1, 0.07)
 
-          Rectangle {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            height: 1
-            color: Util.alpha(panel.overlayInk, panel.hairlineAlpha)
-          }
-
-          // Top of the thumbnail row, centred in the unfolded strip.
+          // Top of the thumbnail row, centred in the island.
           readonly property real rowY:
-              Math.round((panel.stripFullH - panel.stripTileH - panel.stripLabelBand) / 2)
+              Math.round(panel.pill.y + (panel.islandH - panel.stripTileH - panel.stripLabelBand) / 2)
           // Where the labels sit while the strip is folded: on their own,
           // centred in the band.
           readonly property real foldedLabelY: Math.round((panel.stripCollapsedH - panel.stripLabelBand) / 2)
@@ -2744,16 +2822,14 @@ Item {
               // once they are scaled up.
               font.family: root.fontFamily
               font.pixelSize: panel.stripLabelSize
-              color: slotLabel.marked ? panel.overlayInk
-                                      : Util.alpha(panel.overlayInk, panel.secondaryInkAlpha)
+              color: slotLabel.marked ? panel.stripInk
+                                      : Util.alpha(panel.stripInk, panel.secondaryInkAlpha)
               Behavior on color {
                 ColorAnimation {
                   duration: Motion.instant
                   easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut
                 }
               }
-              style: Text.Raised
-              styleColor: Qt.rgba(0, 0, 0, 0.55)
             }
           }
 
@@ -3023,12 +3099,12 @@ Item {
                 Rectangle {
                   anchors.fill: parent
                   radius: panel.thumbRadius
-                  color: Util.alpha(panel.overlayInk, 0)
+                  color: Util.alpha(panel.stripInk, 0)
                   border.width: Math.max(1, Math.round(2 * panel.uiScale))
                   border.color: deskCell.dropHover ? V.Theme.r.accent.base
-                              : deskCell.isFocused ? Util.alpha(panel.overlayInk, 0.96)
-                              : deskHover.hovered || deskCell.held ? Util.alpha(panel.overlayInk, 0.55)
-                              : Util.alpha(panel.overlayInk, 0.16)
+                              : deskCell.isFocused ? V.Theme.r.accent.base
+                              : deskHover.hovered || deskCell.held ? Util.alpha(panel.stripInk, 0.55)
+                              : Util.alpha(panel.stripInk, 0.16)
                   Behavior on border.color {
                     ColorAnimation {
                       duration: Motion.instant
@@ -3161,10 +3237,10 @@ Item {
             width: panel.plusW
             height: panel.stripTileH
             radius: panel.thumbRadius
-            color: Util.alpha(panel.overlayInk, plusTap.pressed ? 0.28 : plusTile.lit ? 0.22 : 0.12)
+            color: Util.alpha(panel.stripInk, plusTap.pressed ? 0.28 : plusTile.lit ? 0.22 : 0.12)
             border.width: Math.max(1, Math.round(2 * panel.uiScale))
             border.color: plusTile.dropHover ? V.Theme.r.accent.base
-                        : Util.alpha(panel.overlayInk, plusTile.lit ? 0.55 : 0.16)
+                        : Util.alpha(panel.stripInk, plusTile.lit ? 0.55 : 0.16)
             opacity: plusTile.unfold * (panel.plusVisible ? 1 : 0)
             visible: opacity > 0.001
             Behavior on color {
@@ -3186,7 +3262,7 @@ Item {
               // Guarded: the tile height is NaN for a frame before the panel
               // has a size, and a NaN size is a warning per frame.
               size: Math.max(8, Math.round(isFinite(panel.stripTileH) ? panel.stripTileH * 0.32 : 8))
-              color: panel.overlayInk
+              color: panel.stripInk
             }
             HoverHandler { id: plusHover }
             TapHandler {

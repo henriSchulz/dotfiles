@@ -140,7 +140,18 @@ BarWidget {
   }
   function close() { island.from = islandRect(); island.open = false }
   function toggle() { if (island.open) close(); else open() }
-  onRestWChanged: if (!island.shown) Qt.callLater(function () { if (!island.shown) island.from = root.islandRect() })
+  onRestWChanged: { if (!island.shown) Qt.callLater(function () { if (!island.shown) island.from = root.islandRect() }); Qt.callLater(root.publishIsland) }
+  // the rest rect, for Mission Control's Spaces island (it grows out of this pill)
+  function publishIsland() {
+    var win = root.QsWindow.window
+    if (!win || !win.screen) return
+    var r = islandRect(), all = Object.assign({}, Theme.centreIslands)
+    all[win.screen.name] = { x: r.x, y: r.y, width: r.width, height: r.height }
+    Theme.centreIslands = all
+  }
+  Component.onCompleted: Qt.callLater(root.publishIsland)
+  onWidthChanged: Qt.callLater(root.publishIsland)
+  onXChanged: Qt.callLater(root.publishIsland)
 
   VIslandWindow {
     id: island
