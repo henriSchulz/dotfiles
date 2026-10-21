@@ -77,6 +77,11 @@ o.bind("SUPER + CTRL + G", "Control Center", "omarchy-shell henri.control-center
 hl.unbind("XF86Sleep")
 o.bind("XF86Sleep", "Control Center", "omarchy-shell henri.control-center-v3 toggle", { locked = true })
 
+-- Ausknopf (XF86PowerOff) öffnet das Menü oben links (Apple-Menü) statt
+-- Omarchys Spotlight-Power-Menü.
+hl.unbind("XF86PowerOff")
+o.bind("XF86PowerOff", "System menu", "omarchy-shell henri.system-menu toggle", { locked = true })
+
 -- SUPER+CTRL+SPACE war Omarchys Hintergrund-Switcher (nur Bilder des Themes).
 -- Jetzt öffnet es den globalen Wallpaper-Picker (Plugin henri.wallpaper,
 -- Ordner ~/Pictures/Wallpaper, Auswahl bleibt über Theme-Wechsel erhalten).
