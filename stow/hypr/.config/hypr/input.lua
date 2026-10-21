@@ -126,6 +126,19 @@ local function mc_hswipe_event(phase, value, time_ms)
   hl.dispatch(hl.dsp.event(string.format("mission-control-hswipe:%s:%s:%d",
     phase, value, math.floor(time_ms or 0))))
 end
+-- Ist hyprmc offen (es schaltet diesen Modus selbst ein und aus), wählt die
+-- Seitwärtsbewegung dort den Desktop; sonst geht sie wie bisher ans QML-Plugin.
+local function hyprmc_session()
+  return hyprmc_loaded() and string.find(hl.plugin.hyprmc.state(), '"session":true', 1, true) ~= nil
+end
+local function mc_hswipe(phase, e)
+  local dx = e.delta and e.delta.x or 0
+  if hyprmc_session() then
+    hl.plugin.hyprmc.pan(phase, phase == "end" and 0 or dx, e.time_ms or 0)
+  else
+    mc_hswipe_event(phase, phase == "end" and (e.cancelled and 1 or 0) or string.format("%.3f", dx), e.time_ms)
+  end
+end
 local mc_hswipe_active = false
 function mission_control_swipe_mode(open)
   open = open and true or false
@@ -137,9 +150,9 @@ function mission_control_swipe_mode(open)
       fingers = 4,
       direction = "horizontal",
       action = {
-        start = function(e) mc_hswipe_event("start", string.format("%.3f", e.delta and e.delta.x or 0), e.time_ms) end,
-        update = function(e) mc_hswipe_event("update", string.format("%.3f", e.delta and e.delta.x or 0), e.time_ms) end,
-        finish = function(e) mc_hswipe_event("end", e.cancelled and 1 or 0, e.time_ms) end,
+        start = function(e) mc_hswipe("start", e) end,
+        update = function(e) mc_hswipe("update", e) end,
+        finish = function(e) mc_hswipe("end", e) end,
       },
     })
   else
