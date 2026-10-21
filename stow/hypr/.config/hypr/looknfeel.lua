@@ -251,3 +251,11 @@ do
   local h = io.open(f, "r")
   if h then h:close(); dofile(f) end
 end
+
+-- Tablet mode (tablet.lua): one app per workspace, no gaps, touchscreen on the built-in panel —
+-- only while Velum's "tablet" setting is on (`tablet-mode on|off|toggle`). Guarded: a fault in it
+-- must never take the rest of the config down.
+do
+  local ok, err = pcall(require, "hypr.tablet")
+  if not ok then pcall(hl.notification.create, { text = "tablet.lua: " .. tostring(err), timeout = 8000 }) end
+end

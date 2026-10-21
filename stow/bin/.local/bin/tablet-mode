@@ -1,0 +1,25 @@
+#!/bin/bash
+# tablet-mode on|off|toggle|status — Velum's tablet mode: touch density for the shell, the home
+# indicator and its edge gestures (henri.tablet-v3, henri.bar-v3), one app per workspace in
+# Hyprland (~/.config/hypr/tablet.lua). One switch: "tablet" in ~/.local/state/velum/settings.json,
+# which every shell plugin watches; Hyprland is told through `hyprctl eval`.
+# Later the tablet's side button calls `tablet-mode toggle`.
+set -euo pipefail
+settings="${XDG_STATE_HOME:-$HOME/.local/state}/velum/settings.json"
+[[ -s $settings ]] || { mkdir -p "$(dirname "$settings")"; echo '{}' > "$settings"; }
+current=$(jq -r 'if .tablet == true then "on" else "off" end' "$settings")
+case "${1:-status}" in
+  on) want=on ;;
+  off) want=off ;;
+  toggle) [[ $current == on ]] && want=off || want=on ;;
+  status) echo "$current"; exit 0 ;;
+  *) echo "usage: tablet-mode on|off|toggle|status" >&2; exit 2 ;;
+esac
+if [[ $want != "$current" ]]; then
+  value=$([[ $want == on ]] && echo true || echo false)
+  # written in place (not replaced): the shell's file watch stays on the same file
+  new=$(jq --argjson v "$value" '.tablet = $v' "$settings")
+  printf '%s\n' "$new" > "$settings"
+fi
+hyprctl eval "if henri_tablet then henri_tablet.set($([[ $want == on ]] && echo true || echo false)) end" >/dev/null 2>&1 || true
+echo "$want"
