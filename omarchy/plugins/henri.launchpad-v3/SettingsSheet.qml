@@ -49,6 +49,10 @@ VSheet {
         VSwitch { checked: sheet.s.showTitles; onToggled: function(c) { sheet.set({ showTitles: c }) } }
       }
       VListRow {
+        text: "Categories page"
+        VSwitch { checked: sheet.s.categoriesPage; onToggled: function(c) { sheet.set({ categoriesPage: c }) } }
+      }
+      VListRow {
         text: "Search field"
         VSegment { model: ["Top", "Centre"]; currentIndex: sheet.s.searchPosition === "center" ? 1 : 0
           onActivated: function(i) { sheet.set({ searchPosition: i === 1 ? "center" : "top" }) } }
@@ -59,14 +63,30 @@ VSheet {
       width: parent.width
       VListRow {
         text: "Background"
-        VSegment { model: ["Wallpaper", "Solid"]; currentIndex: sheet.s.wallpaper.kind === "solid" ? 1 : 0
-          onActivated: function(i) { sheet.set({ wallpaper: { kind: i === 1 ? "solid" : "desktop" } }) } }
+        VSegment { model: ["Desktop", "Image", "Solid"]; currentIndex: sheet.s.wallpaper.kind === "solid" ? 2 : (sheet.s.wallpaper.kind === "image" ? 1 : 0)
+          onActivated: function(i) { sheet.set({ wallpaper: { kind: ["desktop", "image", "solid"][i] } }) } }
+      }
+      VListRow {
+        visible: sheet.s.wallpaper.kind === "image"
+        text: "Image file"
+        VField {
+          id: imageField
+          width: Look.info.field
+          placeholder: "~/Pictures/background.jpg"
+          text: sheet.s.wallpaper.path || ""
+          onAccepted: sheet.set({ wallpaper: { kind: "image", path: imageField.text.trim().replace(/^~/, sheet.launchpad.home) || null } })
+        }
       }
       VListRow {
         text: "Blur"
         VSlider { width: Look.settings.sliderWidth; from: 0; to: 100; value: sheet.s.wallpaper.blur
           onMoved: function(v) { sheet.set({ wallpaper: { blur: Math.round(v) } }) } }
       }
+    }
+
+    VGroup {
+      width: parent.width
+      VListRow { text: "Open"; detail: "F4 · pinch with three fingers" }
     }
 
     VSectionHeader { text: "Hidden Apps" }

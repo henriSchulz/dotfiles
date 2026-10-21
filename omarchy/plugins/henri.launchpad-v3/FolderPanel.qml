@@ -15,7 +15,8 @@ Item {
   // the last open folder stays drawn while the panel shrinks away
   property string shownId: ""
   onFolderIdChanged: if (folderId !== "") shownId = folderId
-  readonly property var folder: launchpad && shownId !== "" ? (launchpad.layout.folders[LM.folderKey(shownId)] || null) : null
+  readonly property var folder: launchpad && shownId !== "" ? launchpad.folderData(shownId) : null
+  readonly property bool editable: folder !== null && folder.editable === true
   readonly property var items: folder ? folder.items : []
 
   readonly property int cols: launchpad ? launchpad.settings.folderGrid[0] : 4
@@ -74,12 +75,13 @@ Item {
 
   // ---------------------------------------------------------------- rename
   function startRename() {
+    if (!editable) return
     title.readOnly = false
     title.forceActiveFocus()
     title.selectAll()
   }
   function commitTitle() {
-    if (title.readOnly || !launchpad || folderId === "") return
+    if (title.readOnly || !launchpad || folderId === "" || !editable) return
     title.readOnly = true
     if (title.text.trim() !== "" && folder && title.text !== folder.name)
       launchpad.commit(LM.styleFolder(launchpad.layout, folderId, { name: title.text }))
@@ -129,6 +131,15 @@ Item {
         jiggle: panelRoot.launchpad.jiggleFor(modelData)
         picked: panelRoot.launchpad.picks[modelData] === true
       }
+    }
+
+    // an empty folder tile (or one still being listed)
+    Text {
+      visible: panelRoot.items.length === 0
+      anchors.centerIn: parent
+      text: panelRoot.folder && panelRoot.folder.path && panelRoot.launchpad.dirFiles[panelRoot.folder.path] === undefined ? "Loading…" : "Empty"
+      color: panelRoot.lp.fieldPlaceholder
+      font.family: Theme.font; font.pixelSize: Theme.core.type.title3
     }
 
     // page dots of a big folder

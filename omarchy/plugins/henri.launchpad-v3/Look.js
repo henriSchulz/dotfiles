@@ -52,7 +52,10 @@ var badge = {
 var results = {
   width: 560,              // search results column
   row: 44, icon: 28,
-  maxRows: 9
+  maxRows: 9,
+  fileRows: 4,             // files under the apps
+  fileMinChars: 2,
+  fileDebounce: 180        // ms after the last key before fd runs
 }
 
 var settings = {

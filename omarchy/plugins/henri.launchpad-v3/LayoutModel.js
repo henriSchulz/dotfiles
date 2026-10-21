@@ -14,6 +14,7 @@ var VERSION = 1
 var DEFAULT_SETTINGS = {
   columns: 7, rows: 5, iconSize: 88, showTitles: true, searchPosition: "top",
   folderGrid: [4, 4],
+  categoriesPage: false,
   wallpaper: { kind: "desktop", path: null, blur: 40, dim: 0.25 },
   newApps: "end"
 }
@@ -26,13 +27,15 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
 
 function isApp(id) { return typeof id === "string" && id.indexOf("app:") === 0 && id.length > 4 }
 function isFolder(id) { return typeof id === "string" && id.indexOf("folder:") === 0 && id.length > 7 }
+function isDir(id) { return typeof id === "string" && id.indexOf("dir:") === 0 && id.length > 4 }
+function dirKey(id) { return id.slice(4) }
 function folderKey(id) { return id.slice(7) }
 function appId(desktopId) { return "app:" + desktopId }
 
 function perPage(l) { return l.settings.columns * l.settings.rows }
 
 function empty() {
-  return { version: VERSION, settings: clone(DEFAULT_SETTINGS), pages: [[]], folders: {}, apps: {}, hidden: [], seen: [] }
+  return { version: VERSION, settings: clone(DEFAULT_SETTINGS), pages: [[]], folders: {}, dirs: {}, apps: {}, hidden: [], seen: [] }
 }
 
 function mergeSettings(raw) {
@@ -53,6 +56,7 @@ function mergeSettings(raw) {
     if (typeof w.dim === "number") s.wallpaper.dim = clamp(w.dim, 0, 1)
   }
   if (raw.newApps === "end" || raw.newApps === "first-free") s.newApps = raw.newApps
+  if (typeof raw.categoriesPage === "boolean") s.categoriesPage = raw.categoriesPage
   return s
 }
 
@@ -65,6 +69,8 @@ function normalize(input) {
   var l = clone(input)
   var taken = {}
   var folders = {}
+  var dirs = {}
+  var srcDirs = l.dirs && typeof l.dirs === "object" ? l.dirs : {}
   var pages = []
   var hidden = []
 
@@ -75,6 +81,14 @@ function normalize(input) {
       var id = src[i]
       if (taken[id]) continue
       if (isApp(id)) { taken[id] = true; page.push(id); continue }
+      if (isDir(id)) {
+        var dd = srcDirs[dirKey(id)]
+        if (!dd || typeof dd.path !== "string" || dd.path.charAt(0) !== "/") continue
+        taken[id] = true
+        dirs[dirKey(id)] = { path: dd.path, name: typeof dd.name === "string" && dd.name ? dd.name.slice(0, 64) : baseName(dd.path) }
+        page.push(id)
+        continue
+      }
       if (isFolder(id)) {
         var f = l.folders[folderKey(id)]
         if (!f || !Array.isArray(f.items)) continue
@@ -105,6 +119,7 @@ function normalize(input) {
 
   l.pages = reflow(pages, perPage(l))
   l.folders = folders
+  l.dirs = dirs
   l.hidden = hidden
   return l
 }
@@ -144,6 +159,7 @@ function load(text, desktopIds) {
       l.settings = mergeSettings(raw.settings)
       l.pages = Array.isArray(raw.pages) ? raw.pages.filter(Array.isArray) : [[]]
       l.folders = raw.folders && typeof raw.folders === "object" ? raw.folders : {}
+      l.dirs = raw.dirs && typeof raw.dirs === "object" ? raw.dirs : {}
       l.apps = raw.apps && typeof raw.apps === "object" ? cleanOverrides(raw.apps) : {}
       l.hidden = Array.isArray(raw.hidden) ? raw.hidden : []
       l.seen = Array.isArray(raw.seen) ? raw.seen.filter(isApp) : []
@@ -265,7 +281,7 @@ function detach(l, id) {
 // folder emptied this way is removed.
 function move(input, id, toPage, toIndex) {
   var l = clone(input)
-  if (!isApp(id) && !isFolder(id)) return l
+  if (!isApp(id) && !isFolder(id) && !isDir(id)) return l
   if (isFolder(id) && !l.folders[folderKey(id)]) return l
   detach(l, id)
   toPage = clamp(Math.floor(toPage), 0, l.pages.length)
@@ -323,6 +339,34 @@ function newFolderKey(l) {
   var n = 1
   while (l.folders["f" + n]) n++
   return "f" + n
+}
+
+function baseName(path) {
+  var p = String(path || "").replace(/\/+$/, "")
+  return p.slice(p.lastIndexOf("/") + 1) || p
+}
+
+// A folder tile (Downloads, Documents …) at the end of the last page; one per path.
+function addDir(input, path, name) {
+  var l = clone(input)
+  var p = String(path || "").replace(/\/+$/, "") || "/"
+  if (p.charAt(0) !== "/") return l
+  for (var k in l.dirs) if (l.dirs[k].path === p) { l.lastDir = "dir:" + k; return l }
+  var n = 1
+  while (l.dirs["d" + n]) n++
+  l.dirs["d" + n] = { path: p, name: name ? String(name).slice(0, 64) : baseName(p) }
+  l.pages[l.pages.length - 1].push("dir:d" + n)
+  l = normalize(l)
+  l.lastDir = "dir:d" + n
+  return l
+}
+
+function removeDir(input, id) {
+  var l = clone(input)
+  if (!isDir(id)) return l
+  detach(l, id)
+  delete l.dirs[dirKey(id)]
+  return normalize(l)
 }
 
 // Reorders an app inside its folder.
@@ -400,5 +444,9 @@ function reset(input, desktopIds) {
   l.settings = clone(input.settings)
   l.apps = clone(input.apps)
   l.hidden = clone(input.hidden)
-  return sync(normalize(l), desktopIds)
+  l = sync(normalize(l), desktopIds)
+  // folder tiles stay, at the end
+  l.dirs = clone(input.dirs || {})
+  for (var k in l.dirs) l.pages[l.pages.length - 1].push("dir:" + k)
+  return normalize(l)
 }

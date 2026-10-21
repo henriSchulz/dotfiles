@@ -147,4 +147,27 @@ assert.strictEqual(rs.pages.flat().length, 5);
 assert.deepStrictEqual(M.locate(d, "app:a03"), { where: "folder", folder: "folder:f1", index: 1 });
 assert.strictEqual(M.folderOf(d, "app:a00"), "");
 
+// folder tiles (dir:): add once per path, move, survive load, sort and sync, remove
+let dl = M.addDir(small(3), "/home/h/Downloads/", "");
+assert.strictEqual(dl.lastDir, "dir:d1");
+assert.deepStrictEqual(dl.dirs.d1, { path: "/home/h/Downloads", name: "Downloads" });
+assert.strictEqual(dl.pages[0].slice(-1)[0], "dir:d1");
+assert.strictEqual(M.addDir(dl, "/home/h/Downloads", "x").lastDir, "dir:d1");   // same path: no second tile
+assert.deepStrictEqual(Object.keys(M.addDir(dl, "relative/path").dirs), ["d1"]);
+dl = M.move(dl, "dir:d1", 0, 0);
+assert.strictEqual(dl.pages[0][0], "dir:d1");
+dl = M.sync(dl, ids(3));
+assert.strictEqual(dl.pages[0][0], "dir:d1");
+r = M.load(M.serialize(dl), ids(3));
+assert.deepStrictEqual(r.layout.dirs, dl.dirs);
+assert.strictEqual(r.layout.pages[0][0], "dir:d1");
+assert.ok(M.reset(dl, ids(3)).pages.flat().includes("dir:d1"));
+assert.deepStrictEqual(M.dropOnto(dl, "dir:d1", "app:a00").pages, dl.pages);   // no folder tile into a folder
+let rd = M.removeDir(dl, "dir:d1");
+assert.ok(!rd.pages.flat().includes("dir:d1")); assert.deepStrictEqual(rd.dirs, {});
+r = M.load(JSON.stringify({ version: 1, settings: {}, pages: [["dir:zz", "app:x"]], dirs: { zz: { path: "nope" } }, folders: {}, apps: {}, hidden: [], seen: [] }), ["x"]);
+assert.deepStrictEqual(r.layout.pages[0], ["app:x"]);                             // a broken tile is dropped
+// categories page setting
+assert.strictEqual(M.setSettings(small(1), { categoriesPage: true }).settings.categoriesPage, true);
+
 console.log("layout_model_test: ok");

@@ -50,7 +50,9 @@ Item {
       picks: Object.keys(root.picks).length, info: root.infoId, folderPage: folderPanel.fpage, folderPages: folderPanel.pageCount,
       lastCopy: root.lastCopy, firstResult: root.results.length ? (root.results[0].kind || "app") + ":" + root.results[0].title : "",
       dragId: root.dragId, armed: root.armedTarget, hover: root.hoverTarget, drag: [Math.round(root.dragX), Math.round(root.dragY)], hidden: root.layout.hidden.length, lastLaunch: root.lastLaunch,
-      folderTitle: root.openFolder !== "" && root.layout.folders[LM.folderKey(root.openFolder)] ? root.layout.folders[LM.folderKey(root.openFolder)].name : "",
+      folderTitle: root.openFolder !== "" && root.folderData(root.openFolder) ? root.folderData(root.openFolder).name : "",
+      lastOpen: root.lastOpen, wallpaper: root.wallpaperSource, cats: root.catIds.length, dirs: Object.keys(root.layout.dirs || {}).length,
+      dirSheet: root.dirSheetOpen,
       screen: win.screen ? win.screen.name : "", screens: Quickshell.screens.map(function(s) { return s.name }), forced: root.forcedScreen, scrim: Math.round(root.scrimAlpha * 100) / 100
     })
   }
@@ -77,7 +79,7 @@ Item {
   function tileCenter(id) {
     var at = root.slots[String(id)]
     if (root.openFolder !== "") {
-      var items = (root.layout.folders[LM.folderKey(root.openFolder)] || { items: [] }).items
+      var items = (root.folderData(root.openFolder) || { items: [] }).items
       var fi = items.indexOf(String(id))
       if (fi >= 0) { var r = folderPanel.cellRect(fi); return Math.round(r.x + folderPanel.cellW / 2) + " " + Math.round(r.y + root.iconSize / 2) }
     }
@@ -87,6 +89,15 @@ Item {
   }
   // centre of colour swatch N in the Get Info sheet ("x y", window pixels)
   function swatchCenter(n) { var p = infoSheet.swatchCenter(parseInt(n)); return p ? Math.round(p.x) + " " + Math.round(p.y) : "" }
+  function showDirSheet(on) { root.dirSheetOpen = String(on) !== "false"; return "ok" }
+  function addDir(path) { root.commit(LM.addDir(root.layout, String(path), "")); return "ok" }
+  function testSettings(json) { root.commit(LM.setSettings(root.layout, JSON.parse(String(json)))); return "ok" }
+  function pageItems(n) { return JSON.stringify(root.pages[parseInt(n)] || []) }
+  function folderItems() { return JSON.stringify((root.folderData(root.openFolder) || { items: [] }).items) }
+  function dotCenter(n) {
+    var p = dots.mapToItem(stage, (parseInt(n) + 0.5) * (Look.dots.size + Look.dots.gap), Look.dots.hit / 2)
+    return Math.round(p.x) + " " + Math.round(p.y)
+  }
   function getInfo(id) { root.infoId = String(id || ""); return "ok" }
   function pick(id) { root.togglePick(String(id)); return "ok" }
   function testHide(id) { root.commit(LM.hide(root.layout, String(id))); return "ok" }
@@ -142,10 +153,132 @@ Item {
   property bool launching: false
 
   readonly property var settings: layout.settings
+
+  // ------------------------------------------ folders: real and virtual
+  // folder:  the user's folders (layout.folders)
+  // cat:     the categories page's automatic folders, read-only
+  // dir:     a folder tile for a directory; its items are the files in it, read-only
+  // file:    one file or directory inside a dir: tile, or a search result
+  function isCat(id) { return typeof id === "string" && id.indexOf("cat:") === 0 }
+  function isFile(id) { return typeof id === "string" && id.indexOf("file:") === 0 }
+  function isGroup(id) { return LM.isFolder(id) || root.isCat(id) || LM.isDir(id) }
+  function isVirtualGroup(id) { return root.isCat(id) || LM.isDir(id) }
+  readonly property var categoryNames: ({ AudioVideo: "Media", Audio: "Media", Video: "Media", Development: "Development",
+      Education: "Education", Game: "Games", Graphics: "Graphics", Network: "Internet", Office: "Office",
+      Science: "Science", Settings: "Settings", System: "System", Utility: "Utilities" })
+  // category -> app ids, every installed app that is not hidden, by display name
+  readonly property var catGroups: {
+    if (!root.settings.categoriesPage) return ({})
+    var hidden = {}
+    for (var h = 0; h < root.layout.hidden.length; h++) hidden[root.layout.hidden[h]] = true
+    var g = {}
+    for (var i = 0; i < root.desktopIds.length; i++) {
+      var id = "app:" + root.desktopIds[i]
+      var e = root.entries[id]
+      if (!e || hidden[id]) continue
+      var name = "Other"
+      for (var c = 0; c < e.categories.length; c++) if (root.categoryNames[e.categories[c]]) { name = root.categoryNames[e.categories[c]]; break }
+      if (!g[name]) g[name] = []
+      g[name].push(id)
+    }
+    return g
+  }
+  readonly property var catIds: Object.keys(catGroups).sort(function(a, b) { return a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b) }).map(function(k) { return "cat:" + k })
+  // what the grid shows: the layout's pages, then the categories page
+  readonly property var pages: root.settings.categoriesPage && root.catIds.length > 0
+    ? root.layout.pages.concat([root.catIds.slice(0, root.perPage)]) : root.layout.pages
+
+  function folderData(id) {
+    if (LM.isFolder(id)) {
+      var f = root.layout.folders[LM.folderKey(id)]
+      return f ? { name: f.name, items: f.items, color: f.color, emoji: f.emoji, editable: true } : null
+    }
+    if (root.isCat(id)) {
+      var items = root.catGroups[id.slice(4)]
+      return items ? { name: id.slice(4), items: items, editable: false } : null
+    }
+    if (LM.isDir(id)) {
+      var d = (root.layout.dirs || {})[LM.dirKey(id)]
+      return d ? { name: d.name, items: root.dirFiles[d.path] || [], editable: false, path: d.path } : null
+    }
+    return null
+  }
+
+  // ------------------------------------------------- directory listings
+  property var dirFiles: ({})            // path -> ["file:/abs/path" …], directories end in "/"
+  property string dirLoading: ""
+  Process {
+    id: dirProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var rows = String(text || "").split("\n").filter(function(l) { return l.length > 2 })
+        var files = rows.map(function(l) { return "file:" + l.slice(2) + (l.charAt(0) === "d" ? "/" : "") })
+        files.sort(function(a, b) {
+          var da = a.slice(-1) === "/", db = b.slice(-1) === "/"
+          return da !== db ? (da ? -1 : 1) : root.baseOf(a).localeCompare(root.baseOf(b))
+        })
+        var n = Object.assign({}, root.dirFiles)
+        n[root.dirLoading] = files
+        root.dirFiles = n
+      }
+    }
+  }
+  function loadDir(path) {
+    root.dirLoading = path
+    dirProc.running = false
+    // one level, no dotfiles, at most 200 entries; type marker d/f in front
+    dirProc.command = ["bash", "-c", "fd --max-depth 1 --max-results 200 --color never --absolute-path . \"$1\" 2>/dev/null | while IFS= read -r p; do if [[ -d $p ]]; then printf 'd\\t%s\\n' \"${p%/}\"; else printf 'f\\t%s\\n' \"$p\"; fi; done", "bash", path]
+    dirProc.running = true
+  }
+  function baseOf(fileId) {
+    var p = String(fileId).replace(/^file:/, "").replace(/\/$/, "")
+    return p.slice(p.lastIndexOf("/") + 1)
+  }
+  function prettyPath(p) {
+    var h = root.home
+    return p === h ? "~" : (p.indexOf(h + "/") === 0 ? "~" + p.slice(h.length) : p)
+  }
+  // a themed icon for a file by its type, a folder icon for a directory tile by its XDG role
+  function fileIcon(fileId) {
+    var p = String(fileId).replace(/^file:/, "")
+    if (p.slice(-1) === "/") return Quickshell.iconPath(root.dirIconName(p.slice(0, -1)), "folder")
+    var ext = p.slice(p.lastIndexOf(".") + 1).toLowerCase()
+    var byExt = { pdf: "application-pdf", png: "image-x-generic", jpg: "image-x-generic", jpeg: "image-x-generic", gif: "image-x-generic",
+      webp: "image-x-generic", heic: "image-x-generic", svg: "image-svg+xml", mp3: "audio-x-generic", flac: "audio-x-generic", wav: "audio-x-generic",
+      mp4: "video-x-generic", mkv: "video-x-generic", mov: "video-x-generic", zip: "package-x-generic", tar: "package-x-generic", gz: "package-x-generic",
+      md: "text-markdown", txt: "text-x-generic", html: "text-html", json: "text-x-script", sh: "text-x-script", py: "text-x-python",
+      doc: "x-office-document", docx: "x-office-document", odt: "x-office-document", xls: "x-office-spreadsheet", xlsx: "x-office-spreadsheet",
+      ods: "x-office-spreadsheet", ppt: "x-office-presentation", pptx: "x-office-presentation", odp: "x-office-presentation" }
+    return Quickshell.iconPath(byExt[ext] || "text-x-generic", "text-x-generic")
+  }
+  function dirIconName(path) {
+    var x = root.xdgDirs
+    var roles = { DESKTOP: "user-desktop", DOWNLOAD: "folder-download", DOCUMENTS: "folder-documents", MUSIC: "folder-music",
+      PICTURES: "folder-pictures", VIDEOS: "folder-videos", PUBLICSHARE: "folder-publicshare", TEMPLATES: "folder-templates" }
+    for (var k in x) if (x[k] === path && roles[k]) return roles[k]
+    return path === root.home ? "user-home" : "folder"
+  }
+
+  // XDG user directories from ~/.config/user-dirs.dirs (DOWNLOAD -> /home/…/Downloads)
+  property var xdgDirs: ({})
+  FileView {
+    path: root.home + "/.config/user-dirs.dirs"
+    printErrors: false
+    onLoaded: {
+      var out = {}
+      var lines = text().split("\n")
+      for (var i = 0; i < lines.length; i++) {
+        var m = /^XDG_([A-Z]+)_DIR="(.*)"\s*$/.exec(lines[i])
+        if (m) out[m[1]] = m[2].replace("$HOME", root.home).replace(/\/+$/, "") || "/"
+      }
+      root.xdgDirs = out
+    }
+  }
+  property bool dirSheetOpen: false
   readonly property int cols: settings.columns
   readonly property int rows: settings.rows
   readonly property int perPage: cols * rows
-  readonly property int pageCount: layout.pages.length + (dragId !== "" && dragFrom === "grid" ? 1 : 0)
+  readonly property int pageCount: pages.length + (dragId !== "" && dragFrom === "grid" ? 1 : 0)
 
   // ------------------------------------------------------------- geometry
   readonly property real gridX: win.width * Look.grid.marginX
@@ -253,6 +386,8 @@ Item {
   }
 
   function iconFor(id) {
+    if (root.isFile(id)) return root.fileIcon(id)
+    if (LM.isDir(id)) { var dd = (root.layout.dirs || {})[LM.dirKey(id)]; return Quickshell.iconPath(dd ? root.dirIconName(dd.path) : "folder", "folder") }
     var o = root.layout.apps[id]
     var value = o && o.icon ? o.icon : (root.entries[id] ? root.entries[id].icon : "")
     if (value.indexOf("file://") === 0 || value.indexOf("image://") === 0) return value
@@ -261,16 +396,15 @@ Item {
     return themed || Quickshell.iconPath("application-x-executable", true)
   }
   function titleFor(id) {
-    if (LM.isFolder(id)) { var f = root.layout.folders[LM.folderKey(id)]; return f ? f.name : "" }
+    if (root.isGroup(id)) { var f = root.folderData(id); return f ? f.name : "" }
+    if (root.isFile(id)) return root.baseOf(id)
     var o = root.layout.apps[id]
     if (o && o.name) return o.name
     return root.entries[id] ? root.entries[id].name : id.slice(4)
   }
   function folderNameFor(targetId) {
     var e = root.entries[targetId]
-    var names = { AudioVideo: "Media", Audio: "Media", Video: "Media", Development: "Development",
-      Education: "Education", Game: "Games", Graphics: "Graphics", Network: "Internet", Office: "Office",
-      Science: "Science", Settings: "Settings", System: "System", Utility: "Utilities" }
+    var names = root.categoryNames
     if (e) for (var i = 0; i < e.categories.length; i++) if (names[e.categories[i]]) return names[e.categories[i]]
     return "Folder"
   }
@@ -353,10 +487,10 @@ Item {
   function rebuildTiles() {
     var want = {}
     var s = {}
-    for (var p = 0; p < root.layout.pages.length; p++)
-      for (var i = 0; i < root.layout.pages[p].length; i++) {
-        want[root.layout.pages[p][i]] = true
-        s[root.layout.pages[p][i]] = { page: p, index: i }
+    for (var p = 0; p < root.pages.length; p++)
+      for (var i = 0; i < root.pages[p].length; i++) {
+        want[root.pages[p][i]] = true
+        s[root.pages[p][i]] = { page: p, index: i }
       }
     // a dragged app that is inside a folder still needs its tile on the grid
     if (root.dragId !== "" && !s[root.dragId]) want[root.dragId] = true
@@ -366,11 +500,11 @@ Item {
     for (var id in want) if (!have[id]) tiles.append({ tid: id })
     root.slots = s
     root.tilesRev++
-    if (root.page >= root.layout.pages.length) root.setPage(root.layout.pages.length - 1)
+    if (root.page >= root.pages.length) root.setPage(root.pages.length - 1)
   }
 
   function itemAt(pageIndex, index) {
-    var pg = root.layout.pages[pageIndex]
+    var pg = root.pages[pageIndex]
     return pg && index >= 0 && index < pg.length ? pg[index] : ""
   }
 
@@ -401,7 +535,49 @@ Item {
     var found = Fuzzy.search(root.query, rows)
     var calc = Calc.evaluate(root.query)
     if (calc !== null) found.unshift({ id: "calc", kind: "calc", title: "= " + Calc.format(calc), domain: "Calculator · Enter copies", value: Calc.format(calc) })
-    root.results = found.slice(0, Look.results.maxRows)
+    // files come in a moment later from fd; until then the last answer for this query, if any
+    var files = calc === null && root.fileHitsQuery === root.query ? root.fileHits : []
+    root.results = found.slice(0, Look.results.maxRows - files.length).concat(files)
+    if (calc === null && root.query.length >= Look.results.fileMinChars && root.fileHitsQuery !== root.query) fileDebounce.restart()
+  }
+
+  // ---------------------------------------------------------- file search
+  // fd over $HOME, names only, no dotfiles; the answer is ranked here like the apps
+  property var fileHits: []
+  property string fileHitsQuery: ""
+  property string fileScanFor: ""
+  readonly property var fileExcludes: [".git", "node_modules", ".cache", ".npm", ".cargo", ".rustup", ".venv", "__pycache__", ".var", "Trash"]
+  Timer { id: fileDebounce; interval: Look.results.fileDebounce; onTriggered: root.scanFiles() }
+  function scanFiles() {
+    var q = root.query
+    if (q.length < Look.results.fileMinChars) return
+    var pattern = q.split(/\s+/).filter(function(t) { return t.length > 0 })
+      .map(function(t) { return t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") }).join(".*")
+    var cmd = ["fd", "--max-results", "80", "--color", "never", "--absolute-path", "--ignore-case"]
+    for (var i = 0; i < root.fileExcludes.length; i++) cmd.push("--exclude", root.fileExcludes[i])
+    cmd.push("--", pattern, root.home)
+    root.fileScanFor = q
+    fileProc.running = false
+    fileProc.command = cmd
+    fileProc.running = true
+  }
+  Process {
+    id: fileProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        if (root.fileScanFor !== root.query) return      // typed on meanwhile
+        var rows = String(text || "").split("\n").filter(function(l) { return l.length > 0 }).map(function(l) {
+          var dirEntry = l.slice(-1) === "/"
+          var path = dirEntry ? l.slice(0, -1) : l
+          var cut = path.lastIndexOf("/")
+          return { id: "file:" + path + (dirEntry ? "/" : ""), kind: "file", path: path,
+                   title: path.slice(cut + 1), domain: root.prettyPath(path.slice(0, cut) || "/") }
+        })
+        root.fileHits = Fuzzy.search(root.fileScanFor, rows).slice(0, Look.results.fileRows)
+        root.fileHitsQuery = root.fileScanFor
+        root.runSearch()
+      }
+    }
   }
 
   // -------------------------------------------------------------- launch
@@ -418,6 +594,7 @@ Item {
   function activateResult(r) {
     if (!r) return
     if (r.kind === "calc") root.copyText(r.value)
+    else if (r.kind === "file") root.openPath(r.path)
     else root.launch(r.id)
   }
   function copyText(t) {
@@ -425,9 +602,16 @@ Item {
     Quickshell.execDetached(["bash", "-c", "printf '%s' \"$1\" | wl-copy", "bash", String(t)])
     toast.say("Copied " + t)
   }
+  property string lastOpen: ""
+  function openPath(path) {
+    root.lastOpen = path
+    if (!root.inRig) Quickshell.execDetached(["uwsm-app", "--", "xdg-open", path])
+    root.hideAnimated(true)
+  }
   function activate(id) {
-    if (LM.isFolder(id)) root.openFolderById(id)
+    if (root.isGroup(id)) root.openFolderById(id)
     else if (LM.isApp(id)) root.launch(id)
+    else if (root.isFile(id)) root.openPath(String(id).slice(5).replace(/\/$/, ""))
   }
 
   // --------------------------------------------------------- open / close
@@ -487,8 +671,12 @@ Item {
     var screens = Quickshell.screens
     if (root.forcedScreen !== "")
       for (var j = 0; j < screens.length; j++) if (screens[j].name === root.forcedScreen) { win.screen = screens[j]; return }
+    // a headless output (HEADLESS-SPARE parks the test rigs) is never where Henri looks:
+    // with focus there, take the first real screen instead
+    var real = function(sc) { return String(sc.name).indexOf("HEADLESS") !== 0 }
     for (var i = 0; i < screens.length; i++)
-      if (mon && screens[i].name === mon.name) { win.screen = screens[i]; return }
+      if (mon && screens[i].name === mon.name && (real(screens[i]) || root.inRig)) { win.screen = screens[i]; return }
+    for (var k = 0; k < screens.length; k++) if (real(screens[k])) { win.screen = screens[k]; return }
     if (screens.length > 0) win.screen = screens[0]
   }
 
@@ -522,7 +710,7 @@ Item {
 
   function setPage(n) {
     root.page = Math.max(0, Math.min(root.pageCount - 1, n))
-    if (root.query === "") root.selIndex = root.selIndex >= 0 ? Math.min(root.selIndex, Math.max(0, (root.layout.pages[root.page] || []).length - 1)) : -1
+    if (root.query === "") root.selIndex = root.selIndex >= 0 ? Math.min(root.selIndex, Math.max(0, (root.pages[root.page] || []).length - 1)) : -1
   }
   function rubber(pos) {
     var maxP = root.pageCount - 1
@@ -624,6 +812,12 @@ Item {
       root.rebuildTiles()
     }
   }
+  property int dotTarget: -1
+  Timer {
+    id: dotTimer
+    interval: root.lp.edgeHover
+    onTriggered: if (root.dotTarget >= 0) { root.setPage(root.dotTarget); root.lastPreview = "" }
+  }
   Timer {
     id: edgeTimer
     interval: root.lp.edgeHover
@@ -631,7 +825,14 @@ Item {
     onTriggered: if (root.edgeDir !== 0) { root.setPage(root.page + root.edgeDir); root.lastPreview = "" }
   }
 
+  // what may be picked up: apps, folders and folder tiles on the layout's pages, apps in a real folder
+  function movable(id, from) {
+    if (from === "folder") return LM.isApp(id) && !root.isVirtualGroup(root.openFolder)
+    var at = root.slots[id]
+    return (LM.isApp(id) || LM.isFolder(id) || LM.isDir(id)) && !!at && at.page < root.layout.pages.length
+  }
   function beginDrag(id, from, px, py, ox, oy) {
+    if (!root.movable(id, from)) return
     root.dragId = id
     root.dragFrom = from
     root.baseLayout = root.layout
@@ -660,6 +861,13 @@ Item {
       root.openFolder = ""
       root.lastPreview = ""
     }
+    // over a page dot: that page after edgeHover
+    var dotHit = dots.visible ? dots.indexAt(px, py) : -1
+    if (dotHit >= 0 && dotHit !== root.page) {
+      if (root.dotTarget !== dotHit) { root.dotTarget = dotHit; dotTimer.restart() }
+      return
+    }
+    root.dotTarget = -1; dotTimer.stop()
     // page edges
     var dir = px < Look.grid.edgeZone ? -1 : (px > win.width - Look.grid.edgeZone ? 1 : 0)
     if (dir !== root.edgeDir) { root.edgeDir = dir; if (dir !== 0) edgeTimer.restart(); else edgeTimer.stop() }
@@ -674,7 +882,7 @@ Item {
     var c = root.slotPos(root.page, index)
     var cx = c.x - root.page * win.width + root.cellW / 2, cy = c.y + root.iconSize / 2
     var near = Math.abs(px - cx) < root.iconSize * root.lp.folderZone && Math.abs(py - cy) < root.iconSize * root.lp.folderZone
-    if (under && under !== root.dragId && near && LM.isApp(root.dragId)) {
+    if (under && under !== root.dragId && near && LM.isApp(root.dragId) && (LM.isApp(under) || LM.isFolder(under))) {
       reorderTimer.stop()
       if (root.hoverTarget !== under) { root.hoverTarget = under; root.armedTarget = ""; folderTimer.restart() }
       return
@@ -719,7 +927,8 @@ Item {
   // ------------------------------------------------------------ folders
   property var folderFrom: ({ x: 0, y: 0, w: 1, h: 1 })   // tile rect the panel grows from
   function openFolderById(id) {
-    if (!LM.isFolder(id) || !root.layout.folders[LM.folderKey(id)]) return
+    if (!root.isGroup(id) || !root.folderData(id)) return
+    if (LM.isDir(id)) root.loadDir(root.folderData(id).path)
     var at = root.slots[id]
     if (at) {
       var p = root.slotPos(at.page, at.index)
@@ -744,7 +953,10 @@ Item {
     var picked = root.pickedInOrder()
     if (LM.isApp(id)) m = [{ text: "Open", act: "open" }, { text: "Get Info…", act: "info" }, { separator: true }, { text: "Hide", act: "hide" }]
     else if (LM.isFolder(id)) m = [{ text: "Open", act: "open" }, { text: "Get Info…", act: "info" }, { text: "Rename", act: "rename" }, { separator: true }, { text: "Ungroup", act: "ungroup" }]
-    else m = [{ text: root.editing ? "Done Editing" : "Edit Layout", act: "edit" }, { text: "Settings…", act: "settings" },
+    else if (LM.isDir(id)) m = [{ text: "Open", act: "open" }, { text: "Open in Files", act: "reveal" }, { separator: true }, { text: "Remove", act: "removeDir" }]
+    else if (root.isCat(id)) m = [{ text: "Open", act: "open" }]
+    else if (root.isFile(id)) m = [{ text: "Open", act: "open" }, { text: "Copy Path", act: "copyPath" }]
+    else m = [{ text: root.editing ? "Done Editing" : "Edit Layout", act: "edit" }, { text: "Add Folder Tile…", act: "addDir" }, { text: "Settings…", act: "settings" },
               { separator: true }, { text: "Sort by Name", act: "reset" }]
     if (picked.length >= 2 && (id === "" || root.picks[id])) m = [{ text: "New Folder with " + picked.length + " Apps", act: "group" }, { separator: true }].concat(m)
     contextMenu.model = m
@@ -774,6 +986,10 @@ Item {
     else if (act === "settings") root.settingsOpen = true
     else if (act === "reset") root.commit(LM.reset(root.layout, root.desktopIds))
     else if (act === "info") root.infoId = id
+    else if (act === "reveal") { var fd0 = root.folderData(id); if (fd0) root.openPath(fd0.path) }
+    else if (act === "removeDir") root.commit(LM.removeDir(root.layout, id))
+    else if (act === "addDir") root.dirSheetOpen = true
+    else if (act === "copyPath") root.copyText(String(id).slice(5).replace(/\/$/, ""))
     else if (act === "group") root.groupPicks()
     search.forceActiveFocus()
   }
@@ -786,6 +1002,7 @@ Item {
       if (contextMenu.open) { contextMenu.open = false; return }
       if (root.settingsOpen) { root.settingsOpen = false; return }
       if (root.infoId !== "") { root.infoId = ""; return }
+      if (root.dirSheetOpen) { root.dirSheetOpen = false; return }
       if (root.dragId !== "") { root.cancelDrag(); return }
       if (search.text !== "") { search.text = ""; return }
       if (root.openFolder !== "") { root.closeFolder(); return }
@@ -809,7 +1026,7 @@ Item {
       return
     }
     // grid / folder navigation
-    var list = root.openFolder !== "" ? (root.layout.folders[LM.folderKey(root.openFolder)] || { items: [] }).items : (root.layout.pages[root.page] || [])
+    var list = root.openFolder !== "" ? (root.folderData(root.openFolder) || { items: [] }).items : (root.pages[root.page] || [])
     var cols = root.openFolder !== "" ? root.settings.folderGrid[0] : root.cols
     var s = root.selIndex
     if (k === Qt.Key_Right || k === Qt.Key_Left || k === Qt.Key_Down || k === Qt.Key_Up) {
@@ -818,8 +1035,8 @@ Item {
       var step = k === Qt.Key_Right ? 1 : k === Qt.Key_Left ? -1 : k === Qt.Key_Down ? cols : -cols
       var n = s + step
       if (root.openFolder === "" && (k === Qt.Key_Right || k === Qt.Key_Left)) {
-        if (n >= list.length && root.page < root.layout.pages.length - 1) { root.setPage(root.page + 1); root.selIndex = 0; return }
-        if (n < 0 && root.page > 0) { root.setPage(root.page - 1); root.selIndex = (root.layout.pages[root.page] || []).length - 1; return }
+        if (n >= list.length && root.page < root.pages.length - 1) { root.setPage(root.page + 1); root.selIndex = 0; return }
+        if (n < 0 && root.page > 0) { root.setPage(root.page - 1); root.selIndex = (root.pages[root.page] || []).length - 1; return }
       }
       if (n >= 0 && n < list.length) root.selIndex = n
       return
@@ -949,14 +1166,14 @@ Item {
                 z: isDragged ? 10 : 0
                 visible: (slot !== null || isDragged) && !(isDragged && root.dragFrom === "folder")
                 width: root.cellW; height: root.cellH
-                folder: LM.isFolder(tid)
-                title: { root.tilesRev; return root.titleFor(tid) }
-                iconSource: { root.entries; return folder ? "" : root.iconFor(tid) }
+                folder: LM.isFolder(tid) || root.isCat(tid)
+                title: { root.tilesRev; root.catGroups; return root.titleFor(tid) }
+                iconSource: { root.entries; root.xdgDirs; return folder ? "" : root.iconFor(tid) }
                 previews: {
-                  root.tilesRev
+                  root.tilesRev; root.catGroups
                   if (!folder) return []
-                  var f = root.layout.folders[LM.folderKey(tid)]
-                  return f ? f.items.map(function(a) { return root.iconFor(a) }) : []
+                  var f = root.folderData(tid)
+                  return f ? f.items.slice(0, 9).map(function(a) { return root.iconFor(a) }) : []
                 }
                 iconSize: root.iconSize
                 showTitle: root.settings.showTitles && !((root.layout.apps[tid] || {}).hideTitle)
@@ -982,12 +1199,14 @@ Item {
         // page dots
         Row {
           id: dots
-          visible: root.query === "" && root.pageCount > 1
+          visible: root.query === "" && (root.pages.length > 1 || root.page >= root.pages.length)
           anchors.horizontalCenter: parent.horizontalCenter
           anchors.bottom: parent.bottom
           anchors.bottomMargin: Look.dots.bottom - Look.dots.hit / 2
           Repeater {
-            model: root.pageCount
+            // the spare page a drag opens gets its dot only once you are on it:
+            // a dot appearing at drag start would shift every dot under the pointer
+            model: root.pages.length + (root.page >= root.pages.length ? 1 : 0)
             Item {
               required property int index
               width: Look.dots.size + Look.dots.gap; height: Look.dots.hit
@@ -1072,7 +1291,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Look.results.icon; height: Look.results.icon
                 sourceSize.width: Look.results.icon * 2; sourceSize.height: Look.results.icon * 2
-                source: modelData.kind === "calc" ? "" : root.iconFor(modelData.id)
+                source: modelData.kind === "calc" ? "" : (modelData.kind === "file" ? root.fileIcon(modelData.id) : root.iconFor(modelData.id))
                 asynchronous: true; mipmap: true
                 VIcon { anchors.centerIn: parent; visible: modelData.kind === "calc"; name: "calculator"; weight: "fill"; size: Look.results.icon * 0.8; color: root.lp.label } // lint-ok: glyph in icon box
               }
@@ -1121,7 +1340,7 @@ Item {
         anchors.fill: parent
         // clicks count only once the Launchpad is really on screen: a surface you cannot
         // see must never launch what happens to be under the pointer
-        enabled: root.opened && !root.settingsOpen && root.infoId === "" && root.openness > 0.5
+        enabled: root.opened && !root.settingsOpen && root.infoId === "" && !root.dirSheetOpen && root.openness > 0.5
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         preventStealing: true
         hoverEnabled: false
@@ -1140,7 +1359,7 @@ Item {
             if (fd >= 0) return { kind: "folderDot", index: fd }
             if (!folderPanel.contains(px, py)) return { kind: "outside" }
             var fi = folderPanel.indexAt(px, py)
-            var items = (root.layout.folders[LM.folderKey(root.openFolder)] || { items: [] }).items
+            var items = (root.folderData(root.openFolder) || { items: [] }).items
             if (fi >= 0 && fi < items.length) {
               var r = folderPanel.cellRect(fi)
               return { kind: "folderItem", id: items[fi], index: fi, ox: px - r.x, oy: py - r.y }
@@ -1238,7 +1457,7 @@ Item {
             else root.activate(h.id)
             break
           case "badge": root.commit(LM.hide(root.layout, h.id)); break
-          case "folderItem": if (!root.editing) root.launch(h.id); break
+          case "folderItem": if (!root.editing || root.isVirtualGroup(root.openFolder)) root.activate(h.id); break
           case "folderTitle": folderPanel.startRename(); break
           case "outside": root.closeFolder(); break
           case "result": root.activateResult(root.results[h.index]); break
@@ -1290,6 +1509,13 @@ Item {
         launchpad: root
         itemId: root.infoId
         onDismissed: { root.infoId = ""; search.forceActiveFocus() }
+      }
+
+      DirSheet {
+        z: 30
+        launchpad: root
+        open: root.dirSheetOpen
+        onDismissed: { root.dirSheetOpen = false; search.forceActiveFocus() }
       }
 
       SettingsSheet {

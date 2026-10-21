@@ -222,6 +222,103 @@ if runs N04; then
   shut
 fi
 
+# ---- N05 file search -------------------------------------------------------
+if runs N05; then
+  fresh
+  touch "$R/home/zebrafile-launchpad-test.txt"
+  open ""
+  key "zebrafile"; sleep 0.8
+  want N05-1 "files show up under the apps" '.firstResult == "file:zebrafile-launchpad-test.txt"'
+  shot N05-files
+  key -k Return; sleep 0.5
+  want N05-2 "Enter opens the file" ".lastOpen == \"$(cd "$R/home" && pwd)/zebrafile-launchpad-test.txt\" and .opened == false"
+  rm -f "$R/home/zebrafile-launchpad-test.txt"
+fi
+
+# ---- N06 categories page -----------------------------------------------------
+if runs N06; then
+  fresh; open ""
+  pages0=$(st | jq .pages)
+  c testSettings '{"categoriesPage":true}' >/dev/null; sleep 0.5
+  want N06-1 "the categories page is one more page" ".pages == $((pages0 + 1)) and .cats >= 2"
+  c goPage "$pages0" >/dev/null; sleep 0.8
+  shot N06-categories
+  cat1=$(c pageItems "$pages0" | jq -r '.[0]')
+  read -r x y <<<"$(at "$cat1")"
+  pt m "$x" "$y" d s 50 u; sleep 0.8
+  want N06-2 "a category opens like a folder" ".folder == \"$cat1\""
+  shot N06-category-open
+  key -k Escape; sleep 0.4
+  read -r x y <<<"$(at "$cat1")"
+  pt m "$x" "$y" d s 700
+  want N06-3 "a category cannot be picked up" '.dragId == ""'
+  pt u; key -k Escape
+  c testSettings '{"categoriesPage":false}' >/dev/null; sleep 0.4
+  want N06-4 "switching it off removes the page" ".pages == $pages0"
+  shut
+fi
+
+# ---- N07 folder tiles ----------------------------------------------------------
+if runs N07; then
+  fresh
+  mkdir -p "$R/home/lp-tile-test/sub"; touch "$R/home/lp-tile-test/a.pdf" "$R/home/lp-tile-test/b.txt"
+  tdir=$(cd "$R/home/lp-tile-test" && pwd)
+  open ""
+  pt m 960 1060 rd s 50 ru; sleep 0.3
+  want N07-1 "the layout menu offers a folder tile" '(.menuItems | index("Add Folder Tile…")) != null'
+  key -k Down; key -k Down; key -k Return; sleep 0.8
+  want N07-2 "it opens the folder tile sheet" '.dirSheet == true'
+  shot N07-sheet
+  key "$tdir" -k Return; sleep 0.6
+  want N07-3 "a path adds a tile" "(.dirs | length) == 1 and ([.pages[][]] | map(select(startswith(\"dir:\"))) | length) == 1" "$(lay)"
+  did=$(lay | jq -r '[.pages[][]] | map(select(startswith("dir:")))[0]')
+  dpage=$(lay | jq --arg d "$did" '[.pages | to_entries[] | select(.value | index($d)) | .key][0]')
+  c goPage "$dpage" >/dev/null; sleep 0.8
+  read -r x y <<<"$(at "$did")"
+  pt m "$x" "$y" d s 50 u; sleep 1.0
+  want N07-4 "the tile opens its files" ".folder == \"$did\" and .folderTitle == \"lp-tile-test\""
+  shot N07-files
+  f1=$(c folderItems "" | jq -r '.[0]')
+  want N07-5 "folders first, then files by name" '. == ["file:'"$tdir"'/sub/", "file:'"$tdir"'/a.pdf", "file:'"$tdir"'/b.txt"]' "$(c folderItems "")"
+  read -r x y <<<"$(at "file:$tdir/a.pdf")"
+  pt m "$x" "$y" d s 50 u; sleep 0.5
+  want N07-6 "clicking a file opens it" ".lastOpen == \"$tdir/a.pdf\""
+  open ""; c goPage "$dpage" >/dev/null; sleep 0.8
+  read -r x y <<<"$(at "$did")"
+  pt m "$x" "$y" rd s 50 ru; sleep 0.3
+  key -k Down; key -k Down; key -k Down; key -k Return; sleep 0.5
+  want N07-7 "Remove takes the tile away" '(.dirs | length) == 0' "$(lay)"
+  rm -rf "$R/home/lp-tile-test"
+  shut
+fi
+
+# ---- N08 drop onto a page dot -----------------------------------------------
+if runs N08; then
+  fresh; open ""
+  c edit true >/dev/null
+  for i in $(seq 1 3); do c testMove "$(pageItem 0 0) 1 0" >/dev/null; done; sleep 0.4
+  a=$(pageItem 0 0); read -r ax ay <<<"$(at "$a")"
+  # the second dot: dots are centred above the bottom edge
+  read -r dx dy <<<"$(c dotCenter 1)"
+  pt m "$ax" "$ay" d s 60 g "$dx" "$dy" 16 20 s 800
+  want N08-1 "holding over a page dot goes to that page" '.page == 1'
+  pt g 700 400 10 15 s 400 u; sleep 0.6
+  want N08-2 "and the app lands there" "(.pages[1] | index(\"$a\")) != null" "$(lay)"
+  shut
+fi
+
+# ---- N09 own background image ----------------------------------------------------
+if runs N09; then
+  fresh
+  img=$(readlink -f ~/.local/state/omarchy/current/background)
+  c testSettings "{\"wallpaper\":{\"kind\":\"image\",\"path\":\"$img\"}}" >/dev/null
+  open ""; sleep 0.6
+  want N09-1 "an own image is used" ".wallpaper == \"file://$img\""
+  c testSettings '{"wallpaper":{"kind":"desktop"}}' >/dev/null; sleep 0.3
+  want N09-2 "back to the desktop's" '(.wallpaper | test("current/background"))'
+  shut
+fi
+
 # ---- G01 pinch event (the gesture itself is Hyprland's, not testable here) --
 if runs G01; then
   hyprctl dispatch 'hl.dsp.event("launchpad open")' >/dev/null; sleep 0.8
@@ -338,7 +435,7 @@ if runs F06; then
   key -k Escape
   pt m 960 1060 rd s 50 ru; sleep 0.4
   want F06-H5 "right click on empty space shows the layout menu" '(.menuItems | index("Settings…")) != null'
-  key -k Down; key -k Down; key -k Return; sleep 0.8
+  key -k Down; key -k Down; key -k Down; key -k Return; sleep 0.8
   want F06-H6 "Settings… opens the settings sheet" '.settingsOpen == true'
   shot F06-settings
   key -k Escape; sleep 0.5
