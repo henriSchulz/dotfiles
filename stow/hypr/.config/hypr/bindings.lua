@@ -241,6 +241,14 @@ o.bind("CTRL + F8", "Show Desktop", hl.dsp.event("mission-control toggle desktop
 o.bind("XF86Display", "Mission Control", mission_control_key)
 o.bind("SHIFT + XF86Display", "App Exposé", hl.dsp.event("mission-control toggle app"))
 o.bind("CTRL + XF86Display", "Show Desktop", hl.dsp.event("mission-control toggle desktop"))
+-- Die F3-Taste des M1 (Apple-Tastatur, fnmode=1): ohne Fn schickt sie die
+-- Mission-Control-Taste (KEY_SCALE = XF86LaunchA), mit Fn F3. Beides öffnet
+-- Mission Control wie F8. Ctrl+F3 bleibt „Focus the Dock" (Omarchy).
+o.bind("XF86LaunchA", "Mission Control", mission_control_key)
+o.bind("F3", "Mission Control", mission_control_key)
+o.bind("SHIFT + XF86LaunchA", "App Exposé", hl.dsp.event("mission-control toggle app"))
+o.bind("SHIFT + F3", "App Exposé", hl.dsp.event("mission-control toggle app"))
+o.bind("CTRL + XF86LaunchA", "Show Desktop", hl.dsp.event("mission-control toggle desktop"))
 
 -- Launchpad (henri.launchpad-v3) auf F4, ohne Fn: mit fnmode=1 sendet die
 -- Taste ihre Mac-Medienfunktion. Welches Keysym das ist, hängt am Treiber
