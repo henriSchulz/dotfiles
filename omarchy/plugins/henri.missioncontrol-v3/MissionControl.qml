@@ -2730,41 +2730,38 @@ Item {
           }
         }
 
-        // The island card. Geometry (not a scale) between the two rects, so its
-        // corners stay round; the frosted wallpaper under it is blurred here in
-        // QML for the same reason the background is (no compositor blur on a
-        // full-screen layer, see there).
+        // The island card. Geometry (not a scale) between the two rects, so the corners stay
+        // round; not rounded to whole pixels either -- x and width rounded on
+        // their own made the edges jitter by a pixel while it grew. Shadow,
+        // frost and material are three layers in that order.
         Item {
-          id: island
-          readonly property real t: strip.reveal
-          visible: island.t > 0.001
-          x: Math.round(root.lerp(panel.pill.x, (panel.width - panel.islandW) / 2, island.t))
-          y: panel.pill.y
-          width: Math.round(root.lerp(panel.pill.width, panel.islandW, island.t))
-          height: Math.round(root.lerp(panel.pill.height, panel.islandH, island.t))
-          readonly property real radius: Math.min(panel.islandRadius, height / 2)
-          // A click on the card itself is no click on the background: it does not dismiss.
-          TapHandler {}
-
+          id: islandShadow
+          x: island.x; y: island.y; width: island.width; height: island.height
+          visible: island.visible
           V.VShadow { layers: V.Theme.r.popover.shadow; radius: island.radius; opacity: island.t }
+        }
+
+        // The frosted wallpaper under the card, blurred here in QML for the
+        // same reason the background is (no compositor blur on a full-screen
+        // layer). Blurred ONCE, into a texture the size of the open card, and
+        // shown through the card's shape: blurring a layer that changed size
+        // every frame re-allocated and re-blurred it per frame, and the island
+        // stuttered on open and close. Per frame now only the mask moves.
+        Item {
+          id: frost
+          x: (panel.width - panel.islandW) / 2
+          y: panel.pill.y
+          width: panel.islandW
+          height: panel.islandH
+          visible: island.visible && !V.Theme.reduceTransparency
           Item {
+            id: frostSrc
             anchors.fill: parent
-            visible: !V.Theme.reduceTransparency
+            visible: false
             layer.enabled: true
-            layer.effect: MultiEffect {
-              blurEnabled: true
-              blur: 1
-              blurMax: 64
-              // No padding: the blur must end at the card's edge, under its mask.
-              autoPaddingEnabled: false
-              maskEnabled: true
-              maskSource: islandMask
-              maskThresholdMin: 0.5
-              maskSpreadAtMin: 1.0
-            }
             Image {
-              x: -island.x
-              y: -island.y
+              x: -frost.x
+              y: -frost.y
               width: panel.width
               height: panel.height
               source: wallpaper.source
@@ -2774,12 +2771,55 @@ Item {
             }
           }
           Item {
-            id: islandMask
+            id: frostBlurred
             anchors.fill: parent
-            layer.enabled: true
             visible: false
-            Rectangle { anchors.fill: parent; radius: island.radius; color: "black" }
+            layer.enabled: true
+            MultiEffect {
+              anchors.fill: parent
+              source: frostSrc
+              blurEnabled: true
+              blur: 1
+              blurMax: 64
+              // No padding: the frost ends at the card's edge.
+              autoPaddingEnabled: false
+            }
           }
+          Item {
+            id: frostMask
+            anchors.fill: parent
+            visible: false
+            layer.enabled: true
+            Rectangle {
+              x: island.x - frost.x
+              y: island.y - frost.y
+              width: island.width
+              height: island.height
+              radius: island.radius
+              color: "black"
+            }
+          }
+          MultiEffect {
+            anchors.fill: parent
+            source: frostBlurred
+            maskEnabled: true
+            maskSource: frostMask
+            maskThresholdMin: 0.5
+            maskSpreadAtMin: 1.0
+          }
+        }
+
+        Item {
+          id: island
+          readonly property real t: strip.reveal
+          visible: island.t > 0.001
+          x: root.lerp(panel.pill.x, (panel.width - panel.islandW) / 2, island.t)
+          y: panel.pill.y
+          width: root.lerp(panel.pill.width, panel.islandW, island.t)
+          height: root.lerp(panel.pill.height, panel.islandH, island.t)
+          readonly property real radius: Math.min(panel.islandRadius, height / 2)
+          // A click on the card itself is no click on the background: it does not dismiss.
+          TapHandler {}
           Rectangle {
             anchors.fill: parent
             radius: island.radius
