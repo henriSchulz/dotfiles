@@ -42,7 +42,7 @@ Item {
   function reload() { layoutFile.reload(); return "ok" }
   function state() {
     return JSON.stringify({
-      opened: root.opened, page: root.page, pages: root.pageCount, editing: root.editing,
+      opened: root.opened, openness: Math.round(root.openness * 100) / 100, page: root.page, pages: root.pageCount, editing: root.editing,
       folder: root.openFolder, query: root.query, results: root.results.length, selected: root.selIndex,
       apps: root.desktopIds.length, readOnly: root.readOnly, error: root.loadError,
       settingsOpen: root.settingsOpen, menu: contextMenu.open, menuItems: contextMenu.open ? contextMenu.model.map(function(m) { return m.text || "-" }) : [],
@@ -417,8 +417,9 @@ Item {
     root.settingsOpen = false
     search.text = ""
     root.selIndex = -1
-    openSpring.snap(0)
+    // from(): the target may already be 1, so setting it alone would start nothing
     openSpring.target = 1
+    openSpring.from(0)
     search.forceActiveFocus()
   }
   function hideAnimated(launch) {
@@ -428,7 +429,6 @@ Item {
     root.cancelDrag()
     root.contextId = ""
     contextMenu.open = false
-    openSpring.target = 1
     closeAnim.from = 1; closeAnim.to = 0
     if (Theme.reduceMotion) closeAnim.duration = Theme.dur("fast")
     closeAnim.restart()
@@ -1043,7 +1043,9 @@ Item {
       MouseArea {
         id: pointer
         anchors.fill: parent
-        enabled: root.opened && !root.settingsOpen
+        // clicks count only once the Launchpad is really on screen: a surface you cannot
+        // see must never launch what happens to be under the pointer
+        enabled: root.opened && !root.settingsOpen && root.openness > 0.5
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         preventStealing: true
         hoverEnabled: false

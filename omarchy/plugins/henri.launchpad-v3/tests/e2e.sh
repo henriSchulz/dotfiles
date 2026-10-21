@@ -112,6 +112,16 @@ if runs F02; then
   shut
 fi
 
+# ---- R01 regressions ---------------------------------------------------
+if runs R01; then
+  # BUG-005: after a close, the next open stayed invisible but caught clicks
+  open ""; key -k Escape; sleep 0.5; open ""; sleep 0.5
+  want R01-1 "a second open is visible" '.opened == true and .openness > 0.95'
+  shut; open ""; sleep 0.5
+  want R01-2 "a third open is visible" '.openness > 0.95'
+  shut
+fi
+
 # ---- F07 close without launching --------------------------------------
 if runs F07; then
   fresh; open ""
