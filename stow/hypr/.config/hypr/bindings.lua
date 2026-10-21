@@ -166,9 +166,16 @@ o.bind("CTRL + Control_R", "Dictation toggle", "voxtype record toggle")
 o.bind("Control_R", "Dictation toggle", "voxtype record toggle")
 
 -- Verschrieben? `voxtype record cancel` wirft die laufende Aufnahme weg,
--- ohne Text einzufuegen. Omarchys Standard SUPER+CTRL+X (Toggle) bleibt als
--- zweiter Weg bestehen; Omarchys F9-Push-to-Talk ist zugunsten von App Exposé
+-- ohne Text einzufuegen. Omarchys F9-Push-to-Talk ist zugunsten von App Exposé
 -- abgeschaltet (siehe Mission Control unten).
+
+-- Die Mikrofon-Taste (F5 ohne Fn, Keysym XF86AudioMicMute) schaltet das Diktat
+-- um statt das Mikrofon stummzuschalten; Fn+F5 bleibt F5 (Neu laden im Browser).
+-- Stummschalten wandert dafür auf SUPER+CTRL+X, wo Omarchy das Diktat hatte.
+hl.unbind("XF86AudioMicMute")
+hl.unbind("SUPER + CTRL + X")
+o.bind("XF86AudioMicMute", "Dictation toggle", "voxtype record toggle")
+o.bind("SUPER + CTRL + X", "Mute microphone", "omarchy-audio-input-mute", { locked = true })
 
 -- SUPER+A = Alles auswählen, wie Cmd+A am Mac (vorher öffnete es den
 -- Sprach-Assistenten henri.assistant). Muster wie Omarchys Super+C/V/X
@@ -223,7 +230,7 @@ o.bind("ALT + SHIFT + Alt_L", nil, hl.dsp.event("app-switcher commit"), { releas
 -- Hyprland-Ereignis direkt ans Plugin, wie Spotlight und die Switcher: kein
 -- Prozess pro Taste. F9 hatte Omarchy mit voxtype-Push-to-Talk belegt
 -- (default/hypr/bindings/voxtype.lua, Druck = start, Loslassen = stop); das
--- fliegt hier raus, Diktat läuft über die rechte Strg und SUPER+CTRL+X.
+-- fliegt hier raus, Diktat läuft über die rechte Strg und die Mikrofon-Taste (F5).
 -- F8 öffnet hyprmc (das Compositor-Plugin, ~/Projects/hyprmc), wenn es geladen
 -- ist; sonst wie früher das QML-Mission-Control.
 local function mission_control_key()
