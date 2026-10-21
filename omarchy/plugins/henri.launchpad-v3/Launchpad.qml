@@ -1262,13 +1262,15 @@ Item {
           anchors.fill: parent
           opacity: root.query !== "" ? 0 : 1 - folderPanel.progress * 0.5   // lint-ok: dim factor
           visible: opacity > 0
-          Behavior on opacity { NumberAnimation { duration: Theme.dur("fast") } }
+          // eases the search toggle; while a folder moves, opacity follows it directly (no lag)
+          Behavior on opacity { enabled: folderPanel.progress < 0.001; NumberAnimation { duration: Theme.dur("fast") } }
           // the grid behind an open folder blurs away (only while one is open)
           layer.enabled: folderPanel.progress > 0.001 && !Theme.reduceTransparency
           layer.effect: MultiEffect {
             blurEnabled: true
             blurMax: 48
-            blur: folderPanel.progress
+            // squared: blur reads strong long after it starts fading, so it leaves faster than the dim
+            blur: folderPanel.progress * folderPanel.progress
             autoPaddingEnabled: false
           }
 

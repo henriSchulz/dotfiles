@@ -32,7 +32,8 @@ Item {
     id: closer
     target: panelRoot; property: "closeVal"; to: 0
     duration: Theme.reduceMotion ? Theme.dur("fast") : panelRoot.lp.folderClose
-    easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("exit")
+    // ease-out: the blur is mostly gone at once, not held until the end
+    easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out")
   }
   readonly property var folder: launchpad && shownId !== "" ? launchpad.folderData(shownId) : null
   readonly property bool editable: folder !== null && folder.editable === true
