@@ -369,6 +369,10 @@ Item {
   // is the point there.
   property bool stripHold: false
   readonly property real stripProgress: root.stripHold ? 1 : Math.max(0, Math.min(1, root.progress))
+  // The Spaces island is not held: under it is the real bar, not a copy of the
+  // wallpaper, so shrinking it back into the bar's pill changes that region
+  // once, not twice. It closes the way it opened, on every close.
+  readonly property real islandProgress: Math.max(0, Math.min(1, root.progress))
   // Reset for the next open, once nothing is on screen to see it move.
   onShownChanged: {
     root.setSwipeMode(root.shown);
@@ -2776,7 +2780,7 @@ Item {
           // Slides down from off-screen as the desktop shrinks to make room for
           // it, which is where macOS puts the motion. Driven by stripProgress,
           // which holds it in place on a non-swipe close -- see stripHold.
-          readonly property real reveal: root.stripProgress * stage.stripIn
+          readonly property real reveal: root.islandProgress * stage.stripIn
           // The island grows, the row stays put and fades in over the last 30 %.
           y: -Motion.px(Motion.distanceLg) * (1 - stage.stripIn)
           opacity: Math.max(0, Math.min(1, (strip.reveal - 0.7) / 0.3))
