@@ -14,7 +14,26 @@ Item {
   readonly property string folderId: launchpad ? launchpad.openFolder : ""
   // the last open folder stays drawn while the panel shrinks away
   property string shownId: ""
-  onFolderIdChanged: if (folderId !== "") shownId = folderId
+  onFolderIdChanged: {
+    if (folderId !== "") {
+      shownId = folderId
+      closer.stop()
+      // reopening mid-close: the spring goes on from what is on screen
+      if (closeVal > 0.001) grow.from(closeVal)
+    } else {
+      // closing is quicker than opening (Velum: exit faster than enter): a short
+      // eased fade of panel and blur instead of the spring's long tail
+      closeVal = Math.max(0, grow.value)
+      closer.restart()
+    }
+  }
+  property real closeVal: 0
+  NumberAnimation {
+    id: closer
+    target: panelRoot; property: "closeVal"; to: 0
+    duration: Theme.reduceMotion ? Theme.dur("fast") : panelRoot.lp.folderClose
+    easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("exit")
+  }
   readonly property var folder: launchpad && shownId !== "" ? launchpad.folderData(shownId) : null
   readonly property bool editable: folder !== null && folder.editable === true
   readonly property var items: folder ? folder.items : []
@@ -39,7 +58,7 @@ Item {
   readonly property real panelY: (height - panelH) / 2
 
   visible: progress > 0.001
-  readonly property real progress: Math.max(0, grow.value)
+  readonly property real progress: folderId !== "" ? Math.max(0, grow.value) : closeVal
   Spring {
     id: grow
     preset: panelRoot.lp.folderOpen
