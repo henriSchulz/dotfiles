@@ -20,9 +20,6 @@
   },
   "pages": [
     [
-      "folder:f1",
-      "folder:f2",
-      "folder:f4",
       "app:de.henri.Finder",
       "app:things-clone",
       "app:mdview",
@@ -30,6 +27,9 @@
       "app:chromium",
       "app:claude-quick",
       "app:foot",
+      "folder:f1",
+      "folder:f2",
+      "folder:f4",
       "folder:f5",
       "app:Discord",
       "app:Docker",

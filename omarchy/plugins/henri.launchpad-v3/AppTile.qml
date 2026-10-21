@@ -22,6 +22,9 @@ Item {
   property bool dragging: false
   property bool dropTarget: false
   property real jiggle: 0            // degrees, driven by the Launchpad's clock
+  property string folderColor: ""    // "#rrggbb" or "" (Get Info)
+  property string emoji: ""          // shown instead of the mini icons
+  property bool picked: false        // Shift-click selection for a new folder
   property bool showBadge: editing && !folder
 
   readonly property var lp: Theme.core.surface.launchpad
@@ -76,8 +79,16 @@ Item {
       anchors.centerIn: parent
       width: tile.body; height: tile.body
       radius: tile.iconSize * Look.folder.tileRadius
-      color: tile.lp.folderTile
+      // "#rrggbb" + the tint as alpha → "#aarrggbb"
+      color: tile.folderColor !== "" ? "#" + ("0" + Math.round(tile.lp.folderTint * 255).toString(16)).slice(-2) + tile.folderColor.slice(1) : tile.lp.folderTile
+      Text {
+        visible: tile.emoji !== ""
+        anchors.centerIn: parent
+        text: tile.emoji
+        font.pixelSize: tile.body * Look.folder.emojiSize
+      }
       Grid {
+        visible: tile.emoji === ""
         anchors.centerIn: parent
         columns: Look.folder.previewGrid
         spacing: tile.iconSize * Look.folder.previewGap
@@ -95,6 +106,17 @@ Item {
           }
         }
       }
+    }
+
+    // Shift-click pick: a check on the bottom-right corner
+    Rectangle {
+      visible: tile.picked && !tile.dragging
+      x: tile.iconSize - Look.badge.size - (tile.iconSize - tile.body) / 2 - tile.iconSize * Look.badge.offset
+      y: tile.iconSize - Look.badge.size - (tile.iconSize - tile.body) / 2 - tile.iconSize * Look.badge.offset
+      width: Look.badge.size; height: Look.badge.size
+      radius: width / 2
+      color: tile.lp.pick
+      VIcon { anchors.centerIn: parent; name: "check"; weight: "bold"; size: Look.badge.glyph; color: tile.lp.badgeInk }
     }
 
     // edit mode: the round "hide" badge on the top-left corner

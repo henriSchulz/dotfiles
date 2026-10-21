@@ -141,6 +141,97 @@ if runs R02; then
   shut
 fi
 
+# ---- N01 calculator ----------------------------------------------------
+if runs N01; then
+  fresh; open ""
+  key "2,5*4"
+  want N01-1 "arithmetic shows a calculator row first" '.firstResult == "calc:= 10"'
+  shot N01-calc
+  key -k Return; sleep 0.4
+  want N01-2 "Enter copies the result and keeps the Launchpad open" '.lastCopy == "10" and .opened == true'
+  key -k Escape; key "chrom"
+  want N01-3 "a plain word shows no calculator" '.firstResult != "" and (.firstResult | startswith("calc:") | not)'
+  shut
+fi
+
+# ---- N02 Get Info ------------------------------------------------------
+if runs N02; then
+  fresh; open ""
+  a=$(pageItem 0 1); read -r x y <<<"$(at "$a")"
+  pt m "$x" "$y" rd s 50 ru; sleep 0.3
+  want N02-1 "the app menu has Get Info…" '(.menuItems | index("Get Info…")) != null'
+  key -k Down; key -k Down; key -k Return; sleep 0.8
+  want N02-2 "Get Info opens the sheet" ".info == \"$a\""
+  key -M ctrl a -m ctrl "Web"; key -k Return; sleep 0.6
+  want N02-3 "renaming an app sticks" ".apps[\"$a\"].name == \"Web\"" "$(lay)"
+  shot N02-renamed
+  c getInfo "$a" >/dev/null; sleep 0.6; key -k Escape; sleep 0.4
+  want N02-4 "Esc closes Get Info, the Launchpad stays" '.info == "" and .opened == true'
+  # folder: colour and emoji
+  c testMove "$(pageItem 0 3) onto $(pageItem 0 4)" >/dev/null; sleep 0.4
+  fid=$(lay | jq -r '.folders | keys[0]')
+  c getInfo "folder:$fid" >/dev/null; sleep 0.8
+  shot N02-folder-info
+  # the swatches sit in the sheet's colour row; pick by IPC-free click is layout-dependent,
+  # so set colour and emoji through the fields: emoji by typing, colour by a click on the 2nd dot
+  read -r sx sy <<<"$(c swatchCenter 2)"
+  pt m "$sx" "$sy" d s 50 u; sleep 0.2
+  key -k Tab; key "🛠"; key -k Return; sleep 0.6
+  want N02-5 "a folder gets a colour and an emoji" "(.folders[\"$fid\"].color | type) == \"string\" and .folders[\"$fid\"].emoji == \"🛠\"" "$(lay)"
+  shot N02-folder-styled
+  shut
+fi
+
+# ---- N03 Shift-click several apps into a new folder ---------------------
+if runs N03; then
+  fresh; open ""
+  ids=("$(pageItem 0 0)" "$(pageItem 0 2)" "$(pageItem 0 5)")
+  for id in "${ids[@]}"; do
+    read -r x y <<<"$(at "$id")"
+    ( WAYLAND_DISPLAY=$NWL wtype -M shift -s 500 -m shift & ); sleep 0.15
+    pt m "$x" "$y" d s 40 u; sleep 0.5
+  done
+  want N03-1 "Shift-click picks apps and enters edit mode" '.picks == 3 and .editing == true'
+  shot N03-picked
+  pt m 960 1060 rd s 50 ru; sleep 0.3
+  want N03-2 "the menu offers a folder for the picks" '(.menuItems[0] | startswith("New Folder with 3"))'
+  key -k Down; key -k Return; sleep 1.0
+  want N03-3 "the picked apps are in one folder, in grid order" "([.folders[] | .items] == [[\"${ids[0]}\", \"${ids[1]}\", \"${ids[2]}\"]])" "$(lay)"
+  want N03-4 "the new folder opens for its name" '.folder != "" and .picks == 0'
+  key -k Escape; key -k Escape; sleep 0.4
+  shut
+fi
+
+# ---- N04 a big folder pages ---------------------------------------------
+if runs N04; then
+  fresh; open ""
+  first=$(pageItem 0 0)
+  for i in $(seq 1 18); do c testMove "$(pageItem 0 1) onto $first" >/dev/null 2>&1 || true; first=$(lay | jq -r '.pages[0][0]'); done
+  fid=$(lay | jq -r '.folders | keys[0]')
+  want N04-1 "a folder with more than 16 apps" "(.folders[\"$fid\"].items | length) > 16" "$(lay)"
+  c folderOpen "folder:$fid" >/dev/null; sleep 0.8
+  want N04-2 "it has two pages" '.folderPages == 2 and .folderPage == 0'
+  shot N04-folder-p1
+  pt m 960 540 w 1 1 0; sleep 0.5
+  want N04-3 "the wheel turns the folder's page" '.folderPage == 1'
+  shot N04-folder-p2
+  last=$(lay | jq -r ".folders[\"$fid\"].items[-1]")
+  read -r x y <<<"$(at "$last")"
+  pt m "$x" "$y" d s 50 u; sleep 0.5
+  want N04-4 "an app on the second page launches" ".lastLaunch == \"$last\""
+  shut
+fi
+
+# ---- G01 pinch event (the gesture itself is Hyprland's, not testable here) --
+if runs G01; then
+  hyprctl dispatch 'hl.dsp.event("launchpad open")' >/dev/null; sleep 0.8
+  want G01-1 "launchpad open event opens it" '.opened == true and .openness > 0.95'
+  hyprctl dispatch 'hl.dsp.event("launchpad open")' >/dev/null; sleep 0.3
+  want G01-2 "a second open keeps it open" '.opened == true'
+  hyprctl dispatch 'hl.dsp.event("launchpad close")' >/dev/null; sleep 0.5
+  want G01-3 "launchpad close event closes it" '.opened == false'
+fi
+
 # ---- F07 close without launching --------------------------------------
 if runs F07; then
   fresh; open ""
@@ -234,7 +325,7 @@ if runs F06; then
   pt m "$x" "$y" rd s 50 ru; sleep 0.4
   want F06-H1 "right click shows the app menu" '.menu == true and (.menuItems | index("Hide")) != null'
   shot F06-menu
-  key -k Down; key -k Down; key -k Return; sleep 0.4
+  key -k Down; key -k Down; key -k Down; key -k Return; sleep 0.4
   want F06-H2 "Hide from the menu hides the app" ".hidden == 1 and .menu == false"
   want F06-H3 "the hidden app is off the grid" "(.pages | flatten | index(\"$a\")) == null and .hidden == [\"$a\"]" "$(lay)"
   key "$(c entryInfo "$a" | jq -r '.name' | cut -c1-5)"

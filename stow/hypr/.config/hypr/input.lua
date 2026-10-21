@@ -216,3 +216,10 @@ hl.on("input.keyboard.key", function(_, _, state)
   kbdlight_last = now
   hl.dispatch(hl.dsp.event("kbdlight key"))
 end)
+
+-- 3-Finger-Pinch: Launchpad (henri.launchpad-v3) wie am Mac. Zusammenziehen
+-- öffnet, Auseinanderziehen schließt. Als Hyprland-Ereignis direkt ans Plugin
+-- (custom>>launchpad open|close), kein Prozess pro Geste. Die 4-Finger-Gesten
+-- oben (Mission Control, Workspaces) bleiben unberührt.
+hl.gesture({ fingers = 3, direction = "pinchin", action = function() hl.dispatch(hl.dsp.event("launchpad open")) end })
+hl.gesture({ fingers = 3, direction = "pinchout", action = function() hl.dispatch(hl.dsp.event("launchpad close")) end })

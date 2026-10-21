@@ -35,6 +35,7 @@ var folder = {
   tileRadius: 0.23,        // × iconSize, plate behind the mini icons
   tileInset: 0.12,         // × iconSize
   previewGrid: 3,          // 3 × 3 mini icons on the tile
+  emojiSize: 0.5,          // emoji height × visible icon body
   previewGap: 0.04,        // × iconSize
   panelWidth: 0.62,        // × screen width
   panelMaxWidth: 1100,
@@ -62,4 +63,16 @@ var settings = {
 var toast = {
   bottom: 96,
   hold: 3200               // ms on screen
+}
+
+var info = {
+  icon: 48,                // app icon in the Get Info head
+  field: 200,              // name / icon field width
+  emojiField: 72,
+  swatch: 20,              // folder colour dots
+  swatchRing: 2
+}
+
+var folderPage = {
+  dotsGap: 14              // folder page dots below the panel's grid
 }

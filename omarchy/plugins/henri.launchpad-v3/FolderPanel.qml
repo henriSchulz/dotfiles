@@ -20,11 +20,20 @@ Item {
 
   readonly property int cols: launchpad ? launchpad.settings.folderGrid[0] : 4
   readonly property int maxRows: launchpad ? launchpad.settings.folderGrid[1] : 4
+  // a folder fuller than cols × maxRows gets pages, with dots under its grid
+  readonly property int perPage: cols * maxRows
+  readonly property int pageCount: Math.max(1, Math.ceil(items.length / perPage))
+  property int fpage: 0
+  onShownIdChanged: fpage = 0
+  onPageCountChanged: if (fpage >= pageCount) fpage = pageCount - 1
+  function turn(d) { fpage = Math.max(0, Math.min(pageCount - 1, fpage + d)) }
+  function pageOf(i) { return Math.floor(i / perPage) }
+  readonly property real dotsH: pageCount > 1 ? Look.dots.hit + Look.folderPage.dotsGap : 0
   readonly property int rowCount: Math.max(1, Math.min(maxRows, Math.ceil(items.length / cols)))
   readonly property real panelW: Math.min(width * Look.folder.panelWidth, Look.folder.panelMaxWidth)
   readonly property real cellW: (panelW - 2 * Look.folder.panelPad) / cols
   readonly property real cellH: launchpad ? launchpad.cellH : cellW
-  readonly property real panelH: rowCount * cellH + 2 * Look.folder.panelPad
+  readonly property real panelH: rowCount * cellH + 2 * Look.folder.panelPad + dotsH
   readonly property real panelX: (width - panelW) / 2
   readonly property real panelY: (height - panelH) / 2
 
@@ -47,10 +56,20 @@ Item {
     if (gx < 0 || gy < 0 || gx >= cols * cellW) return -1
     var r = Math.floor(gy / cellH)
     if (r >= rowCount) return -1
-    return r * cols + Math.floor(gx / cellW)
+    return fpage * perPage + r * cols + Math.floor(gx / cellW)
+  }
+  // the page dot under the pointer, or -1
+  function dotAt(px, py) {
+    if (pageCount < 2) return -1
+    var y0 = panelY + panelH - Look.folder.panelPad / 2 - Look.dots.hit
+    var x0 = (width - pageCount * (Look.dots.size + Look.dots.gap)) / 2
+    if (py < y0 || py > y0 + Look.dots.hit || px < x0) return -1
+    var d = Math.floor((px - x0) / (Look.dots.size + Look.dots.gap))
+    return d < pageCount ? d : -1
   }
   function cellRect(i) {
-    return { x: panelX + Look.folder.panelPad + (i % cols) * cellW, y: panelY + Look.folder.panelPad + Math.floor(i / cols) * cellH }
+    var local = i - pageOf(i) * perPage
+    return { x: panelX + Look.folder.panelPad + (local % cols) * cellW, y: panelY + Look.folder.panelPad + Math.floor(local / cols) * cellH }
   }
 
   // ---------------------------------------------------------------- rename
@@ -99,7 +118,7 @@ Item {
         readonly property var cell: panelRoot.cellRect(index)
         x: cell.x - panelRoot.panelX; y: cell.y - panelRoot.panelY
         width: panelRoot.cellW; height: panelRoot.cellH
-        visible: modelData !== panelRoot.launchpad.dragId
+        visible: modelData !== panelRoot.launchpad.dragId && panelRoot.pageOf(index) === panelRoot.fpage
         title: panelRoot.launchpad.titleFor(modelData)
         iconSource: panelRoot.launchpad.iconFor(modelData)
         iconSize: panelRoot.launchpad.iconSize
@@ -108,6 +127,26 @@ Item {
         pressed: panelRoot.launchpad.pressId === modelData && !panelRoot.launchpad.editing
         editing: panelRoot.launchpad.editing
         jiggle: panelRoot.launchpad.jiggleFor(modelData)
+        picked: panelRoot.launchpad.picks[modelData] === true
+      }
+    }
+
+    // page dots of a big folder
+    Row {
+      visible: panelRoot.pageCount > 1
+      anchors.horizontalCenter: parent.horizontalCenter
+      anchors.bottom: parent.bottom; anchors.bottomMargin: Look.folder.panelPad / 2
+      Repeater {
+        model: panelRoot.pageCount
+        Item {
+          required property int index
+          width: Look.dots.size + Look.dots.gap; height: Look.dots.hit
+          Rectangle {
+            anchors.centerIn: parent
+            width: Look.dots.size; height: Look.dots.size; radius: width / 2
+            color: index === panelRoot.fpage ? panelRoot.lp.dotActive : panelRoot.lp.dot
+          }
+        }
       }
     }
   }

@@ -35,6 +35,16 @@ VSheet {
           onMoved: function(v) { if (Math.round(v) !== sheet.s.iconSize) sheet.set({ iconSize: Math.round(v) }) } }
       }
       VListRow {
+        text: "Folder columns"
+        VSegment { model: ["3", "4", "5"]; currentIndex: sheet.s.folderGrid[0] - 3
+          onActivated: function(i) { sheet.set({ folderGrid: [i + 3, sheet.s.folderGrid[1]] }) } }
+      }
+      VListRow {
+        text: "Folder rows"; detail: String(sheet.s.folderGrid[1])
+        VSlider { width: Look.settings.sliderWidth; from: 3; to: 8; value: sheet.s.folderGrid[1]
+          onMoved: function(v) { if (Math.round(v) !== sheet.s.folderGrid[1]) sheet.set({ folderGrid: [sheet.s.folderGrid[0], Math.round(v)] }) } }
+      }
+      VListRow {
         text: "Show titles"
         VSwitch { checked: sheet.s.showTitles; onToggled: function(c) { sheet.set({ showTitles: c }) } }
       }

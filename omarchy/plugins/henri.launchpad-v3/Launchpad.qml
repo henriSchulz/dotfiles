@@ -9,6 +9,7 @@ import "LayoutModel.js" as LM
 import "FuzzySearch.js" as Fuzzy
 import "AppAliases.js" as AppAliases
 import "Look.js" as Look
+import "Calc.js" as Calc
 
 // Launchpad on Velum: every app full screen on the blurred wallpaper, paged,
 // type to search, folders, edit mode with drag and drop. Spec:
@@ -46,6 +47,8 @@ Item {
       folder: root.openFolder, query: root.query, results: root.results.length, selected: root.selIndex,
       apps: root.desktopIds.length, readOnly: root.readOnly, error: root.loadError,
       settingsOpen: root.settingsOpen, menu: contextMenu.open, menuItems: contextMenu.open ? contextMenu.model.map(function(m) { return m.text || "-" }) : [],
+      picks: Object.keys(root.picks).length, info: root.infoId, folderPage: folderPanel.fpage, folderPages: folderPanel.pageCount,
+      lastCopy: root.lastCopy, firstResult: root.results.length ? (root.results[0].kind || "app") + ":" + root.results[0].title : "",
       dragId: root.dragId, armed: root.armedTarget, hover: root.hoverTarget, drag: [Math.round(root.dragX), Math.round(root.dragY)], hidden: root.layout.hidden.length, lastLaunch: root.lastLaunch,
       folderTitle: root.openFolder !== "" && root.layout.folders[LM.folderKey(root.openFolder)] ? root.layout.folders[LM.folderKey(root.openFolder)].name : "",
       screen: win.screen ? win.screen.name : "", screens: Quickshell.screens.map(function(s) { return s.name }), forced: root.forcedScreen, scrim: Math.round(root.scrimAlpha * 100) / 100
@@ -61,9 +64,13 @@ Item {
   function layoutJson() { return LM.serialize(root.layout) }
   // test drags without a pointer: "app:x page index" or "app:x onto app:y"
   function testMove(arg) {
-    var p = String(arg || "").split(" ")
-    if (p[1] === "onto") { root.commit(LM.dropOnto(root.layout, p[0], p[2], root.folderNameFor(p[2]))); return "ok" }
-    root.commit(LM.move(root.layout, p[0], parseInt(p[1]), parseInt(p[2])))
+    // ids may hold spaces ("app:Disk Usage"): split on " onto " or take the two trailing numbers
+    var t = String(arg || "")
+    var onto = t.indexOf(" onto ")
+    if (onto > 0) { var tg = t.slice(onto + 6); root.commit(LM.dropOnto(root.layout, t.slice(0, onto), tg, root.folderNameFor(tg))); return "ok" }
+    var m = /^(.*) (\d+) (\d+)$/.exec(t)
+    if (!m) return "usage"
+    root.commit(LM.move(root.layout, m[1], parseInt(m[2]), parseInt(m[3])))
     return "ok"
   }
   // centre of a tile's icon in window pixels ("x y"), for the pointer tests
@@ -78,6 +85,10 @@ Item {
     var p = root.slotPos(at.page, at.index)
     return Math.round(p.x - at.page * win.width + root.cellW / 2) + " " + Math.round(p.y + root.iconSize / 2)
   }
+  // centre of colour swatch N in the Get Info sheet ("x y", window pixels)
+  function swatchCenter(n) { var p = infoSheet.swatchCenter(parseInt(n)); return p ? Math.round(p.x) + " " + Math.round(p.y) : "" }
+  function getInfo(id) { root.infoId = String(id || ""); return "ok" }
+  function pick(id) { root.togglePick(String(id)); return "ok" }
   function testHide(id) { root.commit(LM.hide(root.layout, String(id))); return "ok" }
   function testUnhide(id) { root.commit(LM.unhide(root.layout, String(id))); return "ok" }
   function testContext(id) {
@@ -364,6 +375,7 @@ Item {
   }
 
   // ------------------------------------------------------------- search
+  onSelIndexChanged: if (root.openFolder !== "" && root.selIndex >= 0) folderPanel.fpage = folderPanel.pageOf(root.selIndex)
   onQueryChanged: { root.runSearch(); root.selIndex = root.query !== "" ? 0 : -1 }
   function runSearch() {
     if (root.query === "") { root.results = []; return }
@@ -386,7 +398,10 @@ Item {
         hiddenApp: hidden[id] === true, folderName: folderOf[id] || ""
       })
     }
-    root.results = Fuzzy.search(root.query, rows).slice(0, Look.results.maxRows)
+    var found = Fuzzy.search(root.query, rows)
+    var calc = Calc.evaluate(root.query)
+    if (calc !== null) found.unshift({ id: "calc", kind: "calc", title: "= " + Calc.format(calc), domain: "Calculator · Enter copies", value: Calc.format(calc) })
+    root.results = found.slice(0, Look.results.maxRows)
   }
 
   // -------------------------------------------------------------- launch
@@ -399,6 +414,16 @@ Item {
     root.lastLaunch = id
     if (!root.inRig) Quickshell.execDetached(["uwsm-app", "--", "gtk-launch", e.desktopId + ".desktop"])
     root.hideAnimated(true)
+  }
+  function activateResult(r) {
+    if (!r) return
+    if (r.kind === "calc") root.copyText(r.value)
+    else root.launch(r.id)
+  }
+  function copyText(t) {
+    root.lastCopy = String(t)
+    Quickshell.execDetached(["bash", "-c", "printf '%s' \"$1\" | wl-copy", "bash", String(t)])
+    toast.say("Copied " + t)
   }
   function activate(id) {
     if (LM.isFolder(id)) root.openFolderById(id)
@@ -524,7 +549,15 @@ Item {
   property real lastWheelTime: 0
   property real wheelCooldown: 0
   function onWheelEvent(wheel) {
-    if (root.query !== "" || root.openFolder !== "" || root.settingsOpen) return
+    if (root.openFolder !== "" && root.query === "") {
+      var nowF = Date.now()
+      if (nowF > root.wheelCooldown) {
+        var dd = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : (wheel.angleDelta.x !== 0 ? wheel.angleDelta.x : -wheel.pixelDelta.x)
+        if (dd !== 0) { folderPanel.turn(dd < 0 ? 1 : -1); root.wheelCooldown = nowF + Theme.dur("slow") }
+      }
+      return
+    }
+    if (root.query !== "" || root.openFolder !== "" || root.settingsOpen || root.infoId !== "") return
     var now = Date.now()
     if (wheel.pixelDelta.x !== 0 || wheel.pixelDelta.y !== 0) {
       var dx = Math.abs(wheel.pixelDelta.x) >= Math.abs(wheel.pixelDelta.y) ? wheel.pixelDelta.x : wheel.pixelDelta.y
@@ -708,15 +741,26 @@ Item {
   function openContext(id, px, py) {
     root.contextId = id === "" ? "empty" : id
     var m = []
-    if (LM.isApp(id)) m = [{ text: "Open", act: "open" }, { separator: true }, { text: "Hide", act: "hide" }]
-    else if (LM.isFolder(id)) m = [{ text: "Open", act: "open" }, { text: "Rename", act: "rename" }, { separator: true }, { text: "Ungroup", act: "ungroup" }]
+    var picked = root.pickedInOrder()
+    if (LM.isApp(id)) m = [{ text: "Open", act: "open" }, { text: "Get Info…", act: "info" }, { separator: true }, { text: "Hide", act: "hide" }]
+    else if (LM.isFolder(id)) m = [{ text: "Open", act: "open" }, { text: "Get Info…", act: "info" }, { text: "Rename", act: "rename" }, { separator: true }, { text: "Ungroup", act: "ungroup" }]
     else m = [{ text: root.editing ? "Done Editing" : "Edit Layout", act: "edit" }, { text: "Settings…", act: "settings" },
               { separator: true }, { text: "Sort by Name", act: "reset" }]
+    if (picked.length >= 2 && (id === "" || root.picks[id])) m = [{ text: "New Folder with " + picked.length + " Apps", act: "group" }, { separator: true }].concat(m)
     contextMenu.model = m
     contextMenu.x = Math.min(px, win.width - contextMenu.width)
     contextMenu.y = Math.min(py, win.height - contextMenu.height)
     contextMenu.highlighted = -1
     contextMenu.open = true
+  }
+  function groupPicks() {
+    var ids = root.pickedInOrder()
+    if (ids.length < 2) return
+    var next = LM.groupInto(root.layout, ids, root.folderNameFor(ids[0]))
+    var fid = next.lastFolder
+    root.clearPicks()
+    root.commit(next)
+    if (fid) Qt.callLater(function() { root.openFolderById(fid); Qt.callLater(folderPanel.startRename) })
   }
   function runContext(act) {
     var id = root.contextId
@@ -729,6 +773,8 @@ Item {
     else if (act === "edit") root.editing = !root.editing
     else if (act === "settings") root.settingsOpen = true
     else if (act === "reset") root.commit(LM.reset(root.layout, root.desktopIds))
+    else if (act === "info") root.infoId = id
+    else if (act === "group") root.groupPicks()
     search.forceActiveFocus()
   }
 
@@ -739,9 +785,11 @@ Item {
       event.accepted = true
       if (contextMenu.open) { contextMenu.open = false; return }
       if (root.settingsOpen) { root.settingsOpen = false; return }
+      if (root.infoId !== "") { root.infoId = ""; return }
       if (root.dragId !== "") { root.cancelDrag(); return }
       if (search.text !== "") { search.text = ""; return }
       if (root.openFolder !== "") { root.closeFolder(); return }
+      if (Object.keys(root.picks).length > 0) { root.clearPicks(); return }
       if (root.editing) { root.editing = false; return }
       root.hideAnimated(false)
       return
@@ -755,8 +803,7 @@ Item {
       if (k === Qt.Key_Down) { root.selIndex = Math.min(root.results.length - 1, root.selIndex + 1); event.accepted = true }
       else if (k === Qt.Key_Up) { root.selIndex = Math.max(0, root.selIndex - 1); event.accepted = true }
       else if (k === Qt.Key_Return || k === Qt.Key_Enter) {
-        var r = root.results[Math.max(0, root.selIndex)]
-        if (r) root.launch(r.id)
+        root.activateResult(root.results[Math.max(0, root.selIndex)])
         event.accepted = true
       }
       return
@@ -834,7 +881,7 @@ Item {
       // measures the mean brightness of the wallpaper on a tiny canvas
       Canvas {
         id: brightness
-        width: 16; height: 9; visible: false  // lint-ok: sample size
+        width: 32; height: 18; visible: false  // lint-ok: sample size
         renderStrategy: Canvas.Immediate
         property string url: ""
         function measure() {
@@ -847,9 +894,11 @@ Item {
           var ctx = getContext("2d")
           ctx.drawImage(url, 0, 0, width, height)
           var d = ctx.getImageData(0, 0, width, height).data
-          var sum = 0
-          for (var i = 0; i < d.length; i += 4) sum += (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255 // lint-ok: Rec. 709 luma
-          root.wallpaperBrightness = sum / (d.length / 4)
+          // the bright end, not the mean: labels have to read on the brightest parts too
+          var lumas = []
+          for (var i = 0; i < d.length; i += 4) lumas.push((0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255) // lint-ok: Rec. 709 luma
+          lumas.sort(function(a, b) { return a - b })
+          root.wallpaperBrightness = lumas[Math.min(lumas.length - 1, Math.floor(lumas.length * root.lp.scrimQuantile))]
         }
       }
 
@@ -916,6 +965,9 @@ Item {
                 editing: root.editing
                 dragging: isDragged
                 dropTarget: root.armedTarget === tid
+                picked: root.picks[tid] === true
+                folderColor: { root.tilesRev; var f = folder ? root.layout.folders[LM.folderKey(tid)] : null; return f && f.color ? f.color : "" }
+                emoji: { root.tilesRev; var f = folder ? root.layout.folders[LM.folderKey(tid)] : null; return f && f.emoji ? f.emoji : "" }
                 jiggle: isDragged ? 0 : root.jiggleFor(tid)
 
                 Spring { id: sx; preset: root.lp.reflow; reduced: Theme.reduceMotion; target: t.home.x }
@@ -1020,8 +1072,9 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Look.results.icon; height: Look.results.icon
                 sourceSize.width: Look.results.icon * 2; sourceSize.height: Look.results.icon * 2
-                source: root.iconFor(modelData.id)
+                source: modelData.kind === "calc" ? "" : root.iconFor(modelData.id)
                 asynchronous: true; mipmap: true
+                VIcon { anchors.centerIn: parent; visible: modelData.kind === "calc"; name: "calculator"; weight: "fill"; size: Look.results.icon * 0.8; color: root.lp.label } // lint-ok: glyph in icon box
               }
               Column {
                 anchors.left: rIcon.right; anchors.leftMargin: Theme.layout.row.gap
@@ -1036,7 +1089,7 @@ Item {
                 Text {
                   width: parent.width; elide: Text.ElideRight
                   visible: text !== ""
-                  text: modelData.hiddenApp ? "Hidden" : (modelData.folderName ? "In " + modelData.folderName : modelData.domain)
+                  text: modelData.hiddenApp ? "Hidden" : (modelData.folderName ? "In " + modelData.folderName : (modelData.domain || ""))
                   color: root.lp.fieldPlaceholder
                   font.family: Theme.font; font.pixelSize: Theme.core.type.subheadline
                 }
@@ -1068,7 +1121,7 @@ Item {
         anchors.fill: parent
         // clicks count only once the Launchpad is really on screen: a surface you cannot
         // see must never launch what happens to be under the pointer
-        enabled: root.opened && !root.settingsOpen && root.openness > 0.5
+        enabled: root.opened && !root.settingsOpen && root.infoId === "" && root.openness > 0.5
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         preventStealing: true
         hoverEnabled: false
@@ -1083,6 +1136,8 @@ Item {
 
         function hitAt(px, py) {
           if (root.openFolder !== "") {
+            var fd = folderPanel.dotAt(px, py)
+            if (fd >= 0) return { kind: "folderDot", index: fd }
             if (!folderPanel.contains(px, py)) return { kind: "outside" }
             var fi = folderPanel.indexAt(px, py)
             var items = (root.layout.folders[LM.folderKey(root.openFolder)] || { items: [] }).items
@@ -1127,6 +1182,12 @@ Item {
           hit = hitAt(mouse.x, mouse.y)
           if (mouse.button === Qt.RightButton) {
             root.openContext(hit.kind === "tile" || hit.kind === "folderItem" ? hit.id : "", mouse.x, mouse.y)
+            hit = { kind: "swallowed" }
+            return
+          }
+          // Shift-click picks apps for a new folder (and enters edit mode)
+          if (mouse.button === Qt.LeftButton && (mouse.modifiers & Qt.ShiftModifier) && (hit.kind === "tile" || hit.kind === "folderItem") && LM.isApp(hit.id)) {
+            root.togglePick(hit.id)
             hit = { kind: "swallowed" }
             return
           }
@@ -1180,7 +1241,8 @@ Item {
           case "folderItem": if (!root.editing) root.launch(h.id); break
           case "folderTitle": folderPanel.startRename(); break
           case "outside": root.closeFolder(); break
-          case "result": root.launch(root.results[h.index].id); break
+          case "result": root.activateResult(root.results[h.index]); break
+          case "folderDot": folderPanel.fpage = h.index; break
           case "dot": root.setPage(h.index); break
           case "panel": break
           default:
@@ -1222,6 +1284,14 @@ Item {
         onTriggered: function(index) { root.runContext(model[index].act) }
       }
 
+      InfoSheet {
+        id: infoSheet
+        z: 30
+        launchpad: root
+        itemId: root.infoId
+        onDismissed: { root.infoId = ""; search.forceActiveFocus() }
+      }
+
       SettingsSheet {
         id: settingsSheet
         z: 30
@@ -1255,6 +1325,30 @@ Item {
   }
 
   property string pressId: ""
+
+  // Shift-click picks (apps) for "New Folder with N Apps"
+  property var picks: ({})
+  function togglePick(id) {
+    if (!LM.isApp(id)) return
+    var n = Object.assign({}, root.picks)
+    if (n[id]) delete n[id]; else n[id] = true
+    root.picks = n
+    if (!root.editing) root.editing = true
+  }
+  function clearPicks() { if (Object.keys(root.picks).length > 0) root.picks = ({}) }
+  // picks in grid order, so the new folder keeps the arrangement
+  function pickedInOrder() {
+    var out = []
+    var order = []
+    for (var p = 0; p < root.layout.pages.length; p++) order = order.concat(root.layout.pages[p])
+    for (var key in root.layout.folders) order = order.concat(root.layout.folders[key].items)
+    for (var i = 0; i < order.length; i++) if (root.picks[order[i]]) out.push(order[i])
+    return out
+  }
+  onEditingChanged: if (!editing) clearPicks()
+
+  property string infoId: ""             // Get Info sheet open for this id
+  property string lastCopy: ""
 
   Component.onCompleted: {
     mkdir.running = true
