@@ -380,6 +380,7 @@ Item {
       return;
     root.resetSlide();
     root.stripHold = false;
+    root.stopFollow();
     progressTween.stop();
     progressSpring.stop();
     root.springSettling = false;
@@ -896,8 +897,32 @@ Item {
     }
   }
 
+  // Under the fingers, through a short critically damped spring (the `instant`
+  // rate) instead of straight onto them. Showing the overview stalls the QML
+  // thread for 40-100 ms; on a fast swipe the finger events queue up behind
+  // that and land together, and set straight onto `progress` the overview's
+  // first frame was already 53-77 % open (measured in the rig, 2026-10-21):
+  // it popped in half way. Following them, it starts from where it is and
+  // catches up over a few frames. It cannot overshoot (critically damped).
+  property real fingerTarget: 0
+  property real followVelocity: 0
+  FrameAnimation {
+    id: fingerFollow
+    onTriggered: {
+      const next = root.springStep(root.progress, root.followVelocity, root.fingerTarget,
+                                   Motion.springRate(Motion.instant), Math.min(frameTime, 1 / 30));
+      root.followVelocity = next[1];
+      root.progress = next[0];
+    }
+  }
+  function stopFollow() {
+    fingerFollow.stop();
+    root.followVelocity = 0;
+  }
+
   function handleGesture(phase, value, time) {
     if (phase === "start") {
+      root.stopFollow();
       progressTween.stop();
       progressSpring.stop();
       root.springSettling = false;
@@ -955,8 +980,15 @@ Item {
       root.springTarget = raw <= 0 ? 0
           : raw <= 1 ? raw
           : 1 + root.rubberBand(raw - 1);
-      root.progress = root.springTarget;
+      if (Motion.reduced) {
+        root.progress = root.springTarget;
+      } else {
+        root.fingerTarget = root.springTarget;
+        if (!fingerFollow.running)
+          fingerFollow.start();
+      }
     } else if (phase === "end" && root.tracking) {
+      root.stopFollow();
       root.tracking = false;
       trackWatchdog.stop();
       // Fingers held still before lifting: no fling. A cancelled swipe (the

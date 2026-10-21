@@ -410,3 +410,18 @@ survive, only what left is removed and what arrived appended. Object values
 It is only ever true for the workspace of the *focused* monitor, so a panel on
 a second monitor never found its desktop and fell back to the first one. The
 desktop on a monitor is `HyprlandMonitor.activeWorkspace`.
+
+## 17. A fast swipe used to open in one frame
+
+Showing the overview stalls the QML thread for 40–100 ms (the open path, see
+section 12; the Spaces island adds ~20 ms of it). Finger events that arrive in that
+time queue up and are handled back to back after it. While `progress` was set
+straight from them, the overview's **first rendered frame was already 53–77 %
+open** on a fast swipe up (rig, 2026-10-21: a `FrameAnimation` logging
+`progress` per frame, swipes replayed as `mission-control-gesture:` events).
+It popped in half way, which is what "choppy on a fast swipe" was.
+
+`progress` now follows the fingers through a critically damped spring at the
+`instant` rate (`fingerFollow`): first frame at 0 %, at most 0.08–0.14 per
+frame afterwards, the same range as the keyboard open. The lag on an ordinary
+drag is a few hundredths of the travel. Reduced motion keeps the direct mapping.
