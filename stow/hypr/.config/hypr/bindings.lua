@@ -71,6 +71,12 @@ o.bind("SUPER + CTRL + W", "Wi-Fi", "omarchy-shell henri.control-center-v2 toggl
 -- Popup mit Tab/Shift+Tab durch die Kacheln navigieren.
 o.bind("SUPER + CTRL + G", "Control Center", "omarchy-shell henri.control-center-v2 toggle")
 
+-- F6 (Keysym XF86Sleep, schickte früher den Rechner schlafen) öffnet das
+-- Kontrollzentrum v3 — auch über Vollbild-Fenstern (die Insel liegt im
+-- Overlay-Layer); locked, damit es auch bei aktiver Eingabesperre geht.
+hl.unbind("XF86Sleep")
+o.bind("XF86Sleep", "Control Center", "omarchy-shell henri.control-center-v3 toggle", { locked = true })
+
 -- SUPER+CTRL+SPACE war Omarchys Hintergrund-Switcher (nur Bilder des Themes).
 -- Jetzt öffnet es den globalen Wallpaper-Picker (Plugin henri.wallpaper,
 -- Ordner ~/Pictures/Wallpaper, Auswahl bleibt über Theme-Wechsel erhalten).
