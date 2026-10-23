@@ -1,0 +1,16 @@
+#!/bin/bash
+# Play the URL on the clipboard in mpv (SUPER + ALT + M, stow/hypr bindings.lua).
+# In Chromium, Alt+Shift+L (Omarchy's copy-url extension) copies the page URL
+# first. mpv streams it through yt-dlp without the page around it — on the Acer
+# tablet that is far less CPU than a YouTube tab; ~/.config/mpv/mpv.conf there
+# asks for H.264, which its GPU decodes.
+set -euo pipefail
+
+url=$(wl-paste --no-newline 2>/dev/null || true)
+if [[ ! $url =~ ^https?:// ]]; then
+  notify-send -a mpv "Nothing to play" "Copy a video link first (in Chromium: Alt+Shift+L)."
+  exit 1
+fi
+
+notify-send -a mpv -t 2000 "Opening in mpv" "$url"
+exec setsid -f mpv --force-window=immediate -- "$url" >/dev/null 2>&1

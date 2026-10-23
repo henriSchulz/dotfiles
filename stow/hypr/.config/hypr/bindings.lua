@@ -299,6 +299,11 @@ o.bind("SUPER + ALT + D", "Toggle Dock hiding", hl.dsp.event("dock toggle-autohi
 o.bind("SUPER + D", "Show or hide the Dock", hl.dsp.event("dock toggle"))
 o.bind("CTRL + F3", "Focus the Dock", hl.dsp.event("dock focus"))
 
+-- Kopierten Video-Link in mpv abspielen (stow/bin mpv-url): im Browser erst
+-- Alt+Shift+L (URL kopieren). Auf dem Acer-Tablet viel sparsamer als ein
+-- YouTube-Tab.
+o.bind("SUPER + ALT + M", "Play copied video link in mpv", "mpv-url")
+
 -- Bluetooth-Tastaturmodus (btpad) ist abgeschaltet; Projekt: ~/Projects/btpad
 
 -- Status des Mac ohne Bildschirm: online und eingeloggt → Ton + Hinweis, sonst
