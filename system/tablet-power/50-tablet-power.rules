@@ -1,0 +1,10 @@
+# Acer Switch Alpha 12 (SA5-271): runtime power management, installed by
+# install/99-tablet-power.sh. Five PCI devices (Wi-Fi card, SATA, sensor hub,
+# LPC, host bridge) stayed "on" for good; "auto" lets them sleep when idle.
+ACTION=="add|bind", SUBSYSTEM=="pci", TEST=="power/control", ATTR{power/control}="auto"
+
+# USB autosuspend only for the camera and the card reader. Keyboard cover and
+# mouse stay awake on purpose: suspended, the first key press or movement after
+# a pause is late or lost. Bluetooth is left to btusb.
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0bda", ATTR{idProduct}=="56c1", TEST=="power/control", ATTR{power/control}="auto"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0bda", ATTR{idProduct}=="0129", TEST=="power/control", ATTR{power/control}="auto"
