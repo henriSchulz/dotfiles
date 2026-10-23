@@ -101,7 +101,10 @@ Item {
     onFileChanged: reload()
   }
 
-  readonly property bool autoHide: settings.autoHide === true
+  // Tablet mode (Theme.touch, dock at the bottom): the dock always hides and a finger pulls it up
+  // out of the home zone (henri.tablet-v3 → VGestures "dock"); it sits above that zone.
+  readonly property bool touchMode: Theme.touch && position === "bottom"
+  readonly property bool autoHide: settings.autoHide === true || touchMode
   readonly property bool magnificationOn: settings.magnification === true
   readonly property bool showIndicators: settings.showIndicators !== false
   readonly property bool animateOpeningApps: settings.animateOpeningApps !== false
@@ -177,7 +180,7 @@ Item {
   readonly property real planeWidth: plane.width
   readonly property real planeHeight: plane.height
   readonly property real mainLength: horizontal ? planeWidth : planeHeight
-  readonly property real edgeGap: Style.space(Look.dock.edgeGap)
+  readonly property real edgeGap: Style.space(Look.dock.edgeGap) + (touchMode ? Theme.core.surface.tablet.homeZone : 0)
   readonly property real padCross: Style.space(Look.dock.padCross)
   readonly property real padMain: Style.space(Look.dock.padMain)
   readonly property real separatorWidth: 1 + Style.space(Look.dock.separatorPad) * 2
@@ -1331,7 +1334,35 @@ Item {
   readonly property var dockWorkspace: { var m = Hyprland.monitorFor(root.screen); return m ? m.activeWorkspace : null }
   readonly property bool emptySpace: dockWorkspace && dockWorkspace.toplevels ? dockWorkspace.toplevels.values.length === 0 : false
   onEmptySpaceChanged: { if (!autoHide) return; if (emptySpace) { hideTimer.stop(); dockHidden = false } else armAutoHide() }
-  onHiddenNowChanged: if (!swapAnim.running) hideAnim.go(hiddenNow ? 1 : 0)
+  onHiddenNowChanged: if (!swapAnim.running && !touchPull) hideAnim.go(hiddenNow ? 1 : 0)
+  // ---- the finger (tablet mode): hideOffset follows it 1:1, the release decides
+  property bool touchPull: false        // a pull is under way and moves the dock
+  property bool touchIgnore: false      // the dock was already out when the pull began
+  Timer { id: touchHold; interval: Theme.core.surface.tablet.dockHold; onTriggered: root.armAutoHide() }
+  Connections {
+    target: VGestures
+    function onPull(surface, screenName, phase, travel, velocity) {
+      if (surface !== "dock" || !root.touchMode || !root.screen || screenName !== root.screen.name) return
+      if (phase === "move") {
+        if (!root.touchPull && !root.touchIgnore) {
+          if (!root.hiddenNow || root.manualHidden) { root.touchIgnore = true; return }
+          root.touchPull = true
+          hideAnim.stop(); hideTimer.stop(); touchHold.stop()
+          root.dockHidden = false
+        }
+        if (root.touchPull) root.hideOffset = 1 - Math.max(0, Math.min(1, travel / root.hiddenDistance))
+        return
+      }
+      var was = root.touchPull
+      root.touchPull = false; root.touchIgnore = false
+      if (!was) return
+      if (phase === "end" && VGestures.commits(travel, root.hiddenDistance, velocity)) {
+        root.dockHidden = false; hideAnim.go(0); touchHold.restart()
+      } else {
+        root.dockHidden = true; hideAnim.go(1)
+      }
+    }
+  }
   // Fullscreen: Hyprland draws "top" layers under a fullscreen window, so the
   // dock vanishes with it. Super+D then lifts both surfaces to the overlay
   // layer (visible above the window); Super+D again drops them back. When the
@@ -1363,7 +1394,7 @@ Item {
     function go(v) { stop(); to = v; start() }
   }
   Timer { id: revealTimer; interval: Number(root.settings.autoHideDelay) || root.mo.autoHideDelay; onTriggered: root.dockHidden = false }
-  Timer { id: hideTimer; interval: root.mo.autoHideLeave; onTriggered: if (root.autoHide && !root.hovering && !root.popupOpen && !root.dragging && !root.externalDrag && !fx.running && !root.kbMode && !root.emptySpace) root.dockHidden = true }
+  Timer { id: hideTimer; interval: root.mo.autoHideLeave; onTriggered: if (root.autoHide && !root.hovering && !root.popupOpen && !root.dragging && !root.externalDrag && !fx.running && !root.kbMode && !root.emptySpace && !root.touchPull && !touchHold.running) root.dockHidden = true }
   function armAutoHide() { if (autoHide) hideTimer.restart() }
 
   property string pendingPosition: ""

@@ -1,8 +1,10 @@
 {
   "pinned": [
     "de.henri.Finder",
+    "mdview",
+    "foot",
     "chromium",
-    "md.obsidian.Obsidian",
-    "foot"
+    "things-clone",
+    "signal"
   ]
 }

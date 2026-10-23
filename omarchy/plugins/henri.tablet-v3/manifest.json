@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.tablet-v3",
+  "name": "Tablet mode (v3, Velum)",
+  "version": "0.1.0",
+  "author": "Henri Schulz",
+  "license": "MIT",
+  "description": "Tablet mode on Velum: the home indicator along the bottom edge and its gestures (dock, home, App Switcher, next app). Active while the Velum setting \"tablet\" is on (`tablet-mode on`).",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Tablet.qml"
+  },
+  "tags": [
+    "tablet",
+    "touch",
+    "gestures",
+    "quickshell",
+    "hyprland"
+  ]
+}

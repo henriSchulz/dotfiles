@@ -96,6 +96,22 @@ Panel {
     root.controller.hide()
   }
   function toggle() { opened ? close() : open() }
+  // Tablet mode: a finger pulls the panel down from the top edge (henri.bar-v3 → VGestures)
+  Connections {
+    target: VGestures
+    function onPull(surface, screenName, phase, travel, velocity) {
+      if (surface !== "notifications" || !panel.screen || panel.screen.name !== screenName) return
+      if (phase === "move") {
+        if (root.opened) return
+        if (!panel.pulling) root.refresh()
+        panel.pull = Math.max(0, travel)
+        return
+      }
+      if (!panel.pulling) return
+      if (phase === "end" && VGestures.commits(travel, panel.dropDistance, velocity)) root.open()
+      panel.pull = -1
+    }
+  }
   function switchPanel(direction) {
     if (root.bar && typeof root.bar.switchPanelFrom === "function")
       return root.bar.switchPanelFrom(root.barIdentity, direction)

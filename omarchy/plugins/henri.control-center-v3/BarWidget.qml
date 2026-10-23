@@ -140,6 +140,26 @@ BarWidget {
   }
   function close() { island.from = islandRect(); island.open = false }
   function toggle() { if (island.open) close(); else open() }
+  // Tablet mode: a finger pulls the island open from the top edge (henri.bar-v3 → VGestures);
+  // the island grows with it and, let go, opens or shrinks back.
+  Connections {
+    target: VGestures
+    function onPull(surface, screenName, phase, travel, velocity) {
+      if (surface !== "controlCenter") return
+      var w = root.QsWindow.window
+      if (!w || !w.screen || w.screen.name !== screenName) return
+      var dist = Theme.core.surface.tablet.pullTravel
+      if (phase === "move") {
+        if (island.open) return
+        if (!island.pulling) island.from = root.islandRect(pw.value)
+        island.pull = Math.max(0, travel) / dist
+        return
+      }
+      if (!island.pulling) return
+      if (phase === "end" && VGestures.commits(travel, dist, velocity)) island.open = true
+      island.pull = -1
+    }
+  }
   onRestWChanged: { if (!island.shown) Qt.callLater(function () { if (!island.shown) island.from = root.islandRect() }); Qt.callLater(root.publishIsland) }
   // the rest rect, for Mission Control's Spaces island (it grows out of this pill)
   function publishIsland() {

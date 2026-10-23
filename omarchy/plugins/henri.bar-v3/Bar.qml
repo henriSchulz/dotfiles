@@ -1124,10 +1124,12 @@ Item {
     mask: barWindow.peekMode && !barWindow.peeked ? edgeMask : null
     Region {
       id: edgeMask
-      x: root.position === "right" ? barWindow.width - Theme.core.size.edgeTrigger : 0
-      y: root.position === "bottom" ? barWindow.height - Theme.core.size.edgeTrigger : 0
-      width: root.vertical ? Theme.core.size.edgeTrigger : barWindow.width
-      height: root.vertical ? barWindow.height : Theme.core.size.edgeTrigger
+      // a finger needs a wider strip than the pointer (tablet mode: surface.tablet.topZone)
+      readonly property real strip: Theme.touch ? Theme.core.surface.tablet.topZone : Theme.core.size.edgeTrigger
+      x: root.position === "right" ? barWindow.width - strip : 0
+      y: root.position === "bottom" ? barWindow.height - strip : 0
+      width: root.vertical ? strip : barWindow.width
+      height: root.vertical ? barWindow.height : strip
     }
 
     ScreenMoveRemap {
@@ -1165,6 +1167,43 @@ Item {
           edgeHideTimer.restart()
         }
       }
+    }
+    // Tablet mode: a finger dragged down from the bar (or from the top strip over a fullscreen
+    // app) pulls Control Center (right third) or Notification Center (the rest) after it —
+    // VGestures, the surfaces follow. Below surface.tablet.slop it stays a tap on the bar.
+    DragHandler {
+      id: touchPull
+      enabled: Theme.touch && root.position === "top"
+      target: null
+      xAxis.enabled: false
+      dragThreshold: Theme.core.surface.tablet.slop
+      grabPermissions: PointerHandler.CanTakeOverFromAnything
+      property string surface: ""
+      property bool cancelled: false
+      property var samples: []       // [ms, travel] over the last surface.tablet.sampleWindow
+      function travel() { return samples.length ? samples[samples.length - 1][1] : 0 }
+      function speed() {
+        if (samples.length < 2) return 0
+        var a = samples[0], b = samples[samples.length - 1]
+        return b[0] > a[0] ? (b[1] - a[1]) * 1000 / (b[0] - a[0]) : 0
+      }
+      onActiveChanged: {
+        var name = barWindow.screen ? barWindow.screen.name : ""
+        if (active) {
+          surface = centroid.pressPosition.x > barWindow.width * (1 - Theme.core.surface.tablet.controlCenterShare) ? "controlCenter" : "notifications"
+          cancelled = false; samples = []
+        } else if (!cancelled) {
+          VGestures.pull(surface, name, "end", travel(), speed())
+        }
+      }
+      onActiveTranslationChanged: {
+        if (!active) return
+        var now = Date.now(), list = samples.concat([[now, activeTranslation.y]])
+        while (list.length > 2 && now - list[0][0] > Theme.core.surface.tablet.sampleWindow) list.shift()
+        samples = list
+        VGestures.pull(surface, barWindow.screen ? barWindow.screen.name : "", "move", activeTranslation.y, 0)
+      }
+      onCanceled: { cancelled = true; VGestures.pull(surface, barWindow.screen ? barWindow.screen.name : "", "cancel", 0, 0) }
     }
     Timer {
       id: edgeRevealTimer
