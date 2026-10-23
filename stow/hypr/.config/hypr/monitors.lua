@@ -16,6 +16,11 @@ hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy
 -- starts with HEADLESS because plugins (henri.dock) skip such outputs when
 -- they pick their screen.
 hl.monitor({ output = "DP-1", mode = "preferred", position = "0x0", scale = omarchy_monitor_scale })
+-- Acer Switch Alpha 12 panel: 2160x1440 on 250x170 mm (~219 ppi). At the
+-- shared 1.25 everything was too small; 1.6 gives 1350x900 points, close to
+-- a MacBook Air's default, and divides both sides evenly. Matched by
+-- description so the M1 (also eDP-1 inside) keeps its own scale.
+hl.monitor({ output = "desc:Wistron Corporation 0x3316", mode = "preferred", position = "0x0", scale = 1.6 })
 -- Shaped for the iPad, not for the monitor: ipadcast (~/Projects/m1-power/ipadcast)
 -- mirrors this output to the iPad while the real monitor is unplugged, which
 -- makes the iPad the display. The iPad Air 11" is 2360x1640 on 11 inches; at
