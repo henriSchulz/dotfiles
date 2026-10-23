@@ -195,12 +195,17 @@ hl.config({
 -- Keine eigene Beschleunigungskurve: die des XPS (custom 1 0 0.7 1.8 3.3 5.2
 -- 7.5 10.2) war auf dessen Touchpad abgestimmt und macht den Zeiger auf dem
 -- M1-Trackpad viel zu schnell. libinputs Standard (adaptive) gilt.
-hl.device({
-  name = "apple-spi-trackpad",  -- M1 MacBook Air (the XPS was dll0945:00-06cb:cde6-touchpad)
-  drag_3fg = 1,
-  tap_and_drag = true,
-  drag_lock = 1,
-})
+for _, name in ipairs({
+  "apple-spi-trackpad",                     -- M1 MacBook Air (the XPS was dll0945:00-06cb:cde6-touchpad)
+  "chicony-acer-hawaii-keyboard-touchpad",  -- Acer Switch Alpha 12, keyboard cover
+}) do
+  hl.device({
+    name = name,
+    drag_3fg = 1,
+    tap_and_drag = true,
+    drag_lock = 1,
+  })
+end
 
 -- Tastaturbeleuchtung (henri.kbdlight): jeder Tastendruck meldet sich als
 -- Custom-Event beim Shell-Dienst, der die Beleuchtung einblendet und seine
