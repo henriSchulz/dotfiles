@@ -1339,6 +1339,10 @@ Item {
   property bool touchPull: false        // a pull is under way and moves the dock
   property bool touchIgnore: false      // the dock was already out when the pull began
   Timer { id: touchHold; interval: Theme.core.surface.tablet.dockHold; onTriggered: root.armAutoHide() }
+  // Out over an app in tablet mode: a tap anywhere else sends it away (and is swallowed, as the
+  // click outside a menu). On an empty space it stays, as it does there with a pointer.
+  readonly property bool touchOut: touchMode && !hiddenNow && !manualHidden && !emptySpace && !touchPull
+  function touchDismiss() { touchHold.stop(); hideTimer.stop(); hovering = false; dockHidden = true }
   Connections {
     target: VGestures
     function onPull(surface, screenName, phase, travel, velocity) {
@@ -1586,7 +1590,7 @@ Item {
     exclusionMode: ExclusionMode.Ignore
     anchors { top: true; bottom: true; left: true; right: true }
 
-    readonly property bool captureAll: root.popupOpen || root.dragging || root.landing || root.resizing
+    readonly property bool captureAll: root.popupOpen || root.dragging || root.landing || root.resizing || root.touchOut
     readonly property var zoneRect: {
       var visibleDock = !root.manualHidden && !(root.autoHide && root.dockHidden && !root.hovering)
       if (!visibleDock || root.bgLength <= 0) return { x: 0, y: 0, w: 0, h: 0 }
@@ -1639,6 +1643,13 @@ Item {
           enabled: root.stackOpen && !root.menuOpen && !root.settingsOpen
           acceptedButtons: Qt.AllButtons
           onPressed: root.closeStack()
+        }
+        MouseArea {
+          anchors.fill: parent
+          z: -1
+          enabled: root.touchOut && !root.popupOpen && !root.dragging
+          acceptedButtons: Qt.AllButtons
+          onPressed: root.touchDismiss()
         }
 
         // The strip along the screen edge that brings a hidden dock back: the
