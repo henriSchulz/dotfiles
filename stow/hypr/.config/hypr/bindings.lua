@@ -316,3 +316,14 @@ o.bind("SUPER + SHIFT + XF86AudioMute", "Headless status (Apple top row)", "head
 -- der Adresse für Safari. Ohne Fn sendet F9 XF86AudioNext, darum beide Varianten.
 o.bind("SUPER + SHIFT + F9", "Screen mirror (phone/tablet)", "ipadcast-toggle")
 o.bind("SUPER + SHIFT + XF86AudioNext", "Screen mirror (Apple top row)", "ipadcast-toggle")
+
+-- Windows-Taste an der Seite des Acer Switch Alpha 12 schaltet den Tablet-Modus
+-- (~/.local/bin/tablet-mode, tablet.lua). Die Taste kommt über intel-vbtn als
+-- Super_L vom Gerät "intel-virtual-buttons"; der Gerätefilter lässt die Super-
+-- Taste der Tastatur unberührt. Beim Loslassen, weil Super dann sicher wieder
+-- oben ist; ignore_mods, weil Super_L beim Loslassen selbst noch als Mod zählt.
+o.bind("SUPER_L", "Toggle tablet mode (side button)", "tablet-mode toggle", {
+  release = true,
+  ignore_mods = true,
+  device = { inclusive = true, list = { "intel-virtual-buttons" } },
+})
