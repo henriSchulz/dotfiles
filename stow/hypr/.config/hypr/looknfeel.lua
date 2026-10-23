@@ -223,20 +223,6 @@ if low_power_render then
   })
 end
 
--- No effects, switched from Control Center → Experiments (same helper, flag
--- no-effects). For the M1 power measurements in ~/Projects/m1-power: blur,
--- shadows and Hyprland's own animations off. Blur off also takes the glass
--- from the bar, dock and panels, so the helper sets noEffects in henri-ui's
--- Prefs.js and the menus turn solid; the shell plugins still animate themselves.
-local no_effects = io.open((os.getenv("HOME") or "") .. "/.local/state/henri/no-effects", "r")
-if no_effects then
-  no_effects:close()
-  hl.config({
-    decoration = { blur = { enabled = false }, shadow = { enabled = false } },
-    animations = { enabled = false },
-  })
-end
-
 -- System Settings (omarchy-settings, ~/Projects/settings): a macOS-27-shaped
 -- settings window. 868 × 768 = the 723 × 640 measured on macOS at the app's
 -- own 1.2 scale. It tiles like any other window (it used to float and centre itself); its
@@ -250,6 +236,22 @@ do
   local f = os.getenv("HOME") .. "/.local/state/velum/hypr.lua"
   local h = io.open(f, "r")
   if h then h:close(); dofile(f) end
+end
+
+-- No effects, switched from Control Center → Experiments (same helper, flag
+-- no-effects). For the M1 power measurements in ~/Projects/m1-power: blur,
+-- shadows and Hyprland's own animations off. Blur off also takes the glass
+-- from the bar, dock and panels, so the helper sets noEffects in henri-ui's
+-- Prefs.js and the menus turn solid; the shell plugins still animate themselves.
+-- It comes after the Velum frame on purpose: that file turns the sheet shadow
+-- back on, so above it the shadows stayed (seen on the Acer tablet).
+local no_effects = io.open((os.getenv("HOME") or "") .. "/.local/state/henri/no-effects", "r")
+if no_effects then
+  no_effects:close()
+  hl.config({
+    decoration = { blur = { enabled = false }, shadow = { enabled = false } },
+    animations = { enabled = false },
+  })
 end
 
 -- Tablet mode (tablet.lua): one app per workspace, no gaps, touchscreen on the built-in panel —
