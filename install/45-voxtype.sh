@@ -22,13 +22,33 @@ log "Dictation (voxtype)"
 
 need_cmd voxtype "run install/10-packages.sh first"
 
-# aarch64 ships a single ONNX build; the XPS used voxtype-onnx-avx512.
-onnx=/usr/lib/voxtype/voxtype-onnx
+# aarch64 ships a single ONNX build; x86_64 ships one per CPU level
+# (voxtype-onnx-avx512 on the XPS, -avx2 on the Acer tablet). The service's
+# drop-in runs ~/.local/lib/voxtype/voxtype-onnx, linked here to the right one.
 model=parakeet-tdt-0.6b-v3-int8
+onnx=
+for cand in voxtype-onnx voxtype-onnx-avx512 voxtype-onnx-avx2; do
+  [[ -x /usr/lib/voxtype/$cand ]] || continue
+  case $cand in
+    *-avx512) grep -qw avx512f /proc/cpuinfo || continue ;;
+    *-avx2)   grep -qw avx2 /proc/cpuinfo || continue ;;
+  esac
+  onnx=/usr/lib/voxtype/$cand
+  break
+done
 
-if [[ ! -x $onnx ]]; then
-  warn "$onnx missing — voxtype-bin may have dropped the ONNX build"
+if [[ -z $onnx ]]; then
+  warn "no ONNX build of voxtype for this CPU in /usr/lib/voxtype — voxtype-bin may have dropped it"
   exit 0
+fi
+
+link="$HOME/.local/lib/voxtype/voxtype-onnx"
+if [[ "$(readlink "$link" 2>/dev/null)" == "$onnx" ]]; then
+  skip "${link/#"$HOME"/\~} → $onnx"
+else
+  info "linking ${link/#"$HOME"/\~} → $onnx"
+  run mkdir -p "$(dirname "$link")"
+  run ln -sfn "$onnx" "$link"
 fi
 
 # ~650 MB, only fetched when it is not already there.
