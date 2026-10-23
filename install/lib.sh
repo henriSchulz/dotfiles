@@ -4,6 +4,13 @@
 DOTFILES_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export DOTFILES_ROOT
 
+# Omarchy exports OMARCHY_PATH only in the graphical session. Over SSH it is
+# empty, and `omarchy theme set` then looks for its templates in
+# /default/themed, finds none and still exits 0 — the theme comes out without
+# foot.ini, alacritty.toml and the rest (the Acer tablet, set up over SSH).
+: "${OMARCHY_PATH:=/usr/share/omarchy}"
+export OMARCHY_PATH
+
 # Set DRY_RUN=1 to print actions without changing anything.
 : "${DRY_RUN:=0}"
 
