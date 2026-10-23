@@ -550,7 +550,7 @@ Item {
   property bool hoverSeparator: false
   property bool invertMagnification: false
   readonly property bool layoutActive: hovering || dragging || landing || resizing || activeSprings > 0 || hideAnim.running || swapAnim.running || fx.running || kbMode || externalDrag
-  readonly property bool magnifyNow: (magnificationOn !== invertMagnification) && (hovering || dragging || kbMode) && !resizing && !menuFrozen && !hiddenNow
+  readonly property bool magnifyNow: (magnificationOn !== invertMagnification) && !touchMode && (hovering || dragging || kbMode) && !resizing && !menuFrozen && !hiddenNow
 
   function springRunning(on) { activeSprings = Math.max(0, activeSprings + (on ? 1 : -1)) }
   function layoutDirty() { Qt.callLater(relayout) }
@@ -1676,7 +1676,9 @@ Item {
             onExited: { if (!pressed) { root.hovering = false; root.invertMagnification = false; root.armAutoHide() } }
             onPositionChanged: function (mouse) { root.moveTo(zone.x + mouse.x, zone.y + mouse.y, pressed, mouse.modifiers) }
             onPressed: function (mouse) { root.pressAt(zone.x + mouse.x, zone.y + mouse.y, mouse.button, mouse.modifiers) }
-            onReleased: function (mouse) { root.releaseAt(zone.x + mouse.x, zone.y + mouse.y, mouse.button); if (!containsMouse) { root.hovering = false; root.armAutoHide() } }
+            // a finger lifts without an exit: in tablet mode the hover ends with the touch, or the
+            // dock would stay out (and ignore the next pull) with a label up
+            onReleased: function (mouse) { root.releaseAt(zone.x + mouse.x, zone.y + mouse.y, mouse.button); if (!containsMouse || root.touchMode) { root.hovering = false; root.invertMagnification = false; root.armAutoHide() } }
             onPressAndHold: root.longPress()
             onCanceled: { root.pressedIndex = -1; if (root.dragging) root.endDrag(); root.resizing = false }
           }
@@ -1715,7 +1717,7 @@ Item {
             readonly property var focusTile: root.kbMode ? rep.itemAt(root.kbIndex) : null
             readonly property var src: tile || focusTile
             text: root.removeMode ? "Remove" : (src && src.item ? src.item.name : text)
-            shown: (root.removeMode) || ((root.hovering || root.kbMode) && src !== null && !root.popupOpen && !root.dragging && !root.resizing)
+            shown: (root.removeMode) || ((root.hovering && !root.touchMode || root.kbMode) && src !== null && !root.popupOpen && !root.dragging && !root.resizing)
             anchorMain: root.dragging ? root.ghostMain : (src ? src.main : anchorMain)
             anchorCross: root.dragging ? root.ghostCross + root.tileSize + Style.space(Look.dock.labelGap)
                                        : (src ? root.dockBaseline + src.visSize + Style.space(Look.dock.labelGap) : anchorCross)
@@ -1781,7 +1783,9 @@ Item {
     WlrLayershell.namespace: "henri-dock"
     WlrLayershell.layer: root.overFullscreen ? WlrLayer.Overlay : WlrLayer.Top
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-    exclusionMode: ExclusionMode.Normal
+    // Tablet mode: the home zone reserves the bottom edge, and edgeGap already lifts the sheet
+    // over it — a Normal window would be pushed up once more, off the icons (which ignore zones)
+    exclusionMode: root.touchMode ? ExclusionMode.Ignore : ExclusionMode.Normal
     // Nothing is reserved before the settings are read: a zone that is taken
     // back during startup stays behind in Hyprland as dead space under the windows.
     exclusiveZone: !root.settingsLoaded || root.autoHide || root.manualHidden ? 0 : Math.round(root.bgThickness)
