@@ -88,9 +88,9 @@ if runs T03; then
   c henri.tablet clearLog >/dev/null
   pt m $X $B d s 60 g $X $((B - 260)) 8 10 u
   sleep 0.9; shot T03
-  want T03 "a flick up goes home (Launchpad)" "$(layer launchpad),$(log | jq -r '.[-1]')" "true,home"
+  want T03 "a flick up goes home (Mission Control)" "$(layer mission-control),$(log | jq -r '.[-1]')" "true,home"
   want T03b "the dock went back" "$(dockHidden)" "true"
-  c shell hide henri.launchpad-v3 >/dev/null; sleep 0.6
+  hyprctl dispatch 'hl.dsp.event("mission-control hide")' >/dev/null; sleep 0.6
 fi
 
 if runs T04; then

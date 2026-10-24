@@ -10,7 +10,7 @@ import "Gesture.js" as Gesture
 // along the bottom edge of every screen, with the home indicator, and what a finger does there
 // (Gesture.js decides):
 //   pull up a little          the dock follows (VGestures "dock"; henri.dock-v3)
-//   pull up far / flick        home: Launchpad (custom event "launchpad open")
+//   pull up far / flick        home: Mission Control (custom event "mission-control toggle mission")
 //   pull up and pause          App Switcher: Mission Control under the finger (the
 //                              "mission-control-gesture:…" events its touchpad swipe uses)
 //   slide along the edge       next / previous app (one app per workspace in tablet mode)
@@ -42,7 +42,7 @@ Item {
       if (a.do === "dock") {
         VGestures.pull("dock", screenName, a.phase, a.travel || 0, a.velocity || 0)
       } else if (a.do === "home") {
-        event("launchpad open")
+        event("mission-control toggle mission")
       } else if (a.do === "switcher") {
         var t = Date.now()
         if (a.phase === "end") event("mission-control-gesture:end:" + (a.cancelled ? 1 : 0) + ":" + t)
