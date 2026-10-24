@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+# Keyboard backlight of the Acer Switch Alpha 12 keyboard (USB 04f2:1558,
+# Holtek HT66FB570, firmware 097/099) for henri.kbdlight.
+#
+# The LED is one GPIO: on or off, no levels. The firmware takes a vendor
+# SET_FEATURE on interface 1, report 6: 06 15 65 5A A5 70 00 00 = off,
+# ... 71 00 00 = on (found by disassembling the firmware; Fn+F9 flips the
+# same flag). Nothing else may be sent there: 06 01 jumps to the ISP
+# bootloader, and other commands of the same handler write EEPROM.
+#
+# Long-lived: reads "on", "off" or "probe" lines from stdin and answers each
+# with "present" or "absent". The hidraw node is looked up per line, so the
+# keyboard can be detached and attached again. Access comes from
+# /etc/udev/rules.d/70-acer-kbd-hidraw.rules (uaccess), no root.
+
+import fcntl
+import glob
+import os
+import sys
+
+COMMANDS = {"on": 0x71, "off": 0x70}
+
+
+def node():
+    for d in glob.glob("/sys/class/hidraw/hidraw*"):
+        p = os.path.realpath(d)
+        if ":04F2:1558." in p and p.split("/")[-4].endswith(":1.1"):
+            return "/dev/" + os.path.basename(d)
+    return None
+
+
+def send(path, cmd):
+    buf = bytes([0x06, 0x15, 0x65, 0x5A, 0xA5, cmd, 0x00, 0x00])
+    hidiocsfeature = (3 << 30) | (len(buf) << 16) | (ord("H") << 8) | 0x06
+    fd = os.open(path, os.O_RDWR)
+    try:
+        fcntl.ioctl(fd, hidiocsfeature, buf)
+    finally:
+        os.close(fd)
+
+
+for line in sys.stdin:
+    word = line.strip()
+    path = node()
+    if path and word in COMMANDS:
+        try:
+            send(path, COMMANDS[word])
+        except OSError:
+            path = None
+    print("present" if path else "absent", flush=True)

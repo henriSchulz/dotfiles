@@ -15,6 +15,13 @@
 // must not mean a fork per frame). Perceptual curve (squared) like the screen
 // backlight in henri.osd.
 //
+// The tablet's detachable keyboard (Acer Switch Alpha 12) has no LED device:
+// its light is on or off, set through a vendor HID report by the
+// henri-kbdlight-hid helper (one long-lived process; it answers every line
+// with present/absent, so a detached keyboard makes the service unavailable
+// and an attached one gets the current state again). There the level is 0 or
+// 1 (`binary`) and the light switches instead of fading.
+//
 // State: ~/.local/state/henri/kbdlight.json ({ level, timeout }), machine-local.
 
 import QtQuick
@@ -34,7 +41,9 @@ Item {
   readonly property string statePath: Quickshell.env("HOME") + "/.local/state/henri/kbdlight.json"
 
   property real maxRaw: 0
-  readonly property bool available: maxRaw > 0
+  property bool hidPresent: false
+  readonly property bool binary: maxRaw <= 0 && hidPresent
+  readonly property bool available: maxRaw > 0 || hidPresent
 
   // What the user set (0 = off, 1 = full) and how long the keys stay lit
   // after the last press (seconds, 0 = never turn off).
@@ -48,7 +57,7 @@ Item {
   function rawFor(l) { return l <= 0 ? 0 : Math.max(1, Math.round(maxRaw * l * l)) }
 
   function setLevel(v) {
-    level = clamp(v)
+    level = binary ? (v > 0 ? 1 : 0) : clamp(v)
     wake()
     save.restart()
   }
@@ -87,9 +96,43 @@ Item {
 
   Process {
     id: writer
-    running: root.available
+    running: root.maxRaw > 0
     stdinEnabled: true
     command: ["bash", "-c", "while read -r v; do brightnessctl -q -d " + root.device + " set \"$v\"; done"]
+  }
+
+  // ── On/off keyboard (henri-kbdlight-hid) ─────────────────────────────────
+  readonly property bool hidOn: lit && level > 0
+  property string hidSent: ""
+  function hidSend(force) {
+    var w = hidOn ? "on" : "off"
+    if (!hid.running || (!force && w === hidSent)) return
+    hidSent = w
+    hid.write(w + "\n")
+  }
+  onHidOnChanged: if (binary) hidSend(false)
+  Process {
+    id: hid
+    running: root.maxRaw <= 0
+    stdinEnabled: true
+    command: ["henri-kbdlight-hid"]
+    stdout: SplitParser {
+      onRead: line => {
+        var present = line === "present"
+        if (present === root.hidPresent) return
+        root.hidPresent = present
+        // attached (again): the firmware may have kept or lost the light, set it
+        if (present) { root.level = root.level > 0 ? 1 : 0; root.wake(); root.hidSend(true) }
+        else root.hidSent = ""
+      }
+    }
+    onRunningChanged: if (running) write("probe\n")
+  }
+  Timer {
+    interval: 10000
+    repeat: true
+    running: hid.running
+    onTriggered: hid.write("probe\n")
   }
 
   property int sentRaw: -1
@@ -138,7 +181,7 @@ Item {
     function timeout(seconds: int): string { root.setTimeoutSeconds(seconds); return "ok" }
     function wake(): string { root.wake(); return "ok" }
     function status(): string {
-      return JSON.stringify({ available: root.available, level: root.level, timeout: root.timeout, lit: root.lit, raw: root.sentRaw })
+      return JSON.stringify({ available: root.available, binary: root.binary, level: root.level, timeout: root.timeout, lit: root.lit, raw: root.sentRaw, hid: root.hidSent })
     }
   }
 }

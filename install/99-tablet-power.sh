@@ -1,7 +1,8 @@
 #!/bin/bash
 # Power tuning for the Acer Switch Alpha 12 (SA5-271) only: runtime PM for
 # PCI and some USB devices, PCIe ASPM powersupersave, no NMI watchdog
-# (system/tablet-power). Wi-Fi power saving and the battery power profile are
+# (system/tablet-power), plus hidraw access to the keyboard for its backlight
+# (henri-kbdlight-hid). Wi-Fi power saving and the battery power profile are
 # left alone on purpose — Henri chose a stable connection and "balanced".
 # The M1 has its own power rules in ~/Projects/m1-power; nothing here runs there.
 #
@@ -20,9 +21,11 @@ src="$DOTFILES_ROOT/system/tablet-power"
 run sudo install -Dm644 "$src/50-tablet-power.rules" /etc/udev/rules.d/50-tablet-power.rules
 run sudo install -Dm644 "$src/50-tablet-power.conf" /etc/sysctl.d/50-tablet-power.conf
 run sudo install -Dm644 "$src/50-tablet-power-aspm.conf" /etc/tmpfiles.d/50-tablet-power-aspm.conf
+# hidraw of the detachable keyboard for the logged-in user: henri-kbdlight-hid switches its backlight
+run sudo install -Dm644 "$src/70-acer-kbd-hidraw.rules" /etc/udev/rules.d/70-acer-kbd-hidraw.rules
 
 # apply now instead of at the next boot
 run sudo udevadm control --reload
-run sudo udevadm trigger --subsystem-match=pci --subsystem-match=usb --action=add
+run sudo udevadm trigger --subsystem-match=pci --subsystem-match=usb --subsystem-match=hidraw --action=add
 run sudo sysctl -q --load /etc/sysctl.d/50-tablet-power.conf
 run sudo systemd-tmpfiles --create /etc/tmpfiles.d/50-tablet-power-aspm.conf || warn "the BIOS keeps ASPM control — policy stays at default"

@@ -1,0 +1,3 @@
+# Acer Switch Alpha 12 keyboard (Chicony 04f2:1558) and its Holtek ISP bootloader (04f2:1556): hidraw access for the logged-in user
+KERNEL=="hidraw*", ATTRS{idVendor}=="04f2", ATTRS{idProduct}=="1558", TAG+="uaccess", MODE="0660", GROUP="input"
+KERNEL=="hidraw*", ATTRS{idVendor}=="04f2", ATTRS{idProduct}=="1556", TAG+="uaccess", MODE="0660", GROUP="input"
