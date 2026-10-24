@@ -2,6 +2,9 @@
 Description=ipadcast: mirror the screen to a phone or tablet (Safari, H.264)
 # Not enabled at boot: Super+Shift+F9 (ipadcast-toggle) starts and stops it.
 # The hardware encoder is only loaded while somebody watches (see the server).
+# Only with a Hyprland session: before the login (the tablet's "ssh mac-start" opens a user manager
+# then too) the login screen has its own ipadcast on the port (m1-power/ipadcast/greeter).
+ConditionEnvironment=HYPRLAND_INSTANCE_SIGNATURE
 
 [Service]
 ExecStart=/usr/bin/python3 %h/Projects/m1-power/ipadcast/server.py
