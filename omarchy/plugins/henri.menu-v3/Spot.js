@@ -21,7 +21,6 @@ var spotlight = {
   buttonIcon: 21,
   buttonGap: 8,
   buttonOffset: 9,
-  buttonSlide: 8,
   // Aufgeklappt: ein Panel (851 × 522 px / 1,54), Feldzeile oben, Trennlinie,
   // Filter-Kapseln, zweizeilige Ergebnisse
   width: 560,

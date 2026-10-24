@@ -683,7 +683,6 @@ Item {
   readonly property color scrim: Util.alpha(Theme.r.popover.bgOpaque, 0.5)
   readonly property color selectedBackground: Theme.r.accent.base
   readonly property color selectedText: Theme.r.ink.onAccent
-  function stagger(index) { return Math.min(Math.max(0, index), Theme.core.motion.stagger.max) * Theme.core.motion.stagger.step }
 
   readonly property int compactWidth: pt(sp.compactWidth)
   readonly property int compactHeight: pt(sp.compactHeight)
@@ -699,7 +698,6 @@ Item {
   readonly property int buttonIconSize: pt(sp.buttonIcon)
   readonly property int buttonGap: pt(sp.buttonGap)
   readonly property int buttonOffset: pt(sp.buttonOffset)
-  readonly property int buttonSlide: pt(sp.buttonSlide)
   readonly property int panelRadius: pt(sp.radius)
   readonly property int fieldRow: pt(sp.fieldRow)
   readonly property int panelInset: pt(sp.panelInset)
@@ -2753,9 +2751,8 @@ Item {
       id: spot
       x: Math.round((panel.width - width) / 2)
       y: panel.fieldTop
-      width: widthS.value
-      height: heightS.value
-      transformOrigin: Item.Top
+      width: targetWidth
+      height: targetHeight
       opacity: root.opened ? 1 : 0
       Behavior on opacity {
         NumberAnimation {
@@ -2771,35 +2768,15 @@ Item {
         ? root.rowsTop + root.visibleRowsHeight + root.bottomPad
         : (root.dmenuActive ? root.fieldRow : root.compactHeight)
       readonly property real targetRadius: expanded ? root.panelRadius : targetHeight / 2
-      Spring { id: widthS; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion || settleGeometry.running; target: spot.targetWidth }
-      Spring { id: heightS; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion || settleGeometry.running; target: spot.targetHeight }
-      Spring { id: radiusS; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion || settleGeometry.running; target: spot.targetRadius }
-      function snapGeometry() {
-        widthS.snap(targetWidth); heightS.snap(targetHeight); radiusS.snap(targetRadius)
-      }
-
-      // while it opens, the window still takes its size from the compositor: the geometry jumps to it,
-      // only the scale springs; afterwards results widen and grow on the springs again
-      Timer { id: settleGeometry; interval: Theme.dur("slow"); onTriggered: spot.snapGeometry() }
-      // opens out of launcherFrom on the gentle spring (Velum lab Spotlight)
-      Spring { id: enterScale; preset: Theme.spring("gentle"); reduced: Theme.reduceMotion; target: 1; value: 1 }
-      scale: enterScale.value
+      // Geometry jumps: the panel is a blurred, clipping glass surface, and
+      // resizing it per frame re-lays out every row and re-blurs the whole
+      // area under it. Only the open/close fade runs (opacity, one layer).
       Connections {
         target: root
         function onOpenedChanged() {
-          if (!root.opened) return
-          if (spot.opacity < 0.01) {
-            // A fresh open starts in its final pose; only the fade/scale runs.
-            spot.snapGeometry()
-            enterScale.from(Theme.scale("launcherFrom"))
-            // the final width is known only after the first layout pass: take it then, too,
-            // or the field grows out of a sliver while it scales in
-            settleGeometry.restart()
-          }
-          Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+          if (root.opened) Qt.callLater(function() { keyCatcher.forceActiveFocus() })
         }
       }
-      Component.onCompleted: snapGeometry()
 
       // The round category buttons appear beside the compact capsule while
       // the pointer is over Spotlight (or after a category key), sliding in
@@ -2826,7 +2803,7 @@ Item {
       Rectangle {
         id: card
         anchors.fill: parent
-        radius: radiusS.value
+        radius: spot.targetRadius
         color: root.glassFill
         border.width: 1
         border.color: root.glassBorder
@@ -2884,11 +2861,8 @@ Item {
             color: root.pageOpen ? Util.alpha(root.accent, 0.22) : root.capsuleFill
             border.width: 1
             border.color: root.pageOpen ? Util.alpha(root.accent, 0.35) : root.glassBorder
-            Behavior on color { ColorAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
-            opacity: shown ? 1 : 0
-            visible: opacity > 0
+            visible: shown
             clip: true
-            Behavior on opacity { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
             Text {
               id: chipLabel
               anchors.centerIn: parent
@@ -2963,7 +2937,6 @@ Item {
               opacity: root.caretOn && !root.hasSelection && !root.infoPage ? 1 : 0
               x: queryInput.x + Math.max(0, Math.min(queryInput.width, queryInput.cursorRectangle.x)) + (queryRow.hasQuery && root.caretPos === queryRow.shownQuery.length ? queryRow.caretGap : 0)
               anchors.verticalCenter: parent.verticalCenter
-              Behavior on opacity { NumberAnimation { duration: Theme.dur("instant"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
             }
 
             // The pointer in the text: a click puts the caret, a drag (or a
@@ -3027,8 +3000,7 @@ Item {
           width: parent.width - root.panelInset * 2
           height: 1
           color: root.separator
-          opacity: spot.expanded ? 1 : 0
-          Behavior on opacity { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
+          visible: spot.expanded
         }
 
         // ------------------------------------------------- filter capsules
@@ -3042,9 +3014,7 @@ Item {
           width: parent.width - root.panelInset * 2
           height: root.capsuleHeight
           spacing: root.capsuleGap
-          opacity: spot.expanded && root.showCapsules ? 1 : 0
-          visible: opacity > 0
-          Behavior on opacity { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
+          visible: spot.expanded && root.showCapsules
           Repeater {
             model: root.categories
             delegate: Item {
@@ -3060,7 +3030,6 @@ Item {
                 color: capsule.active ? root.capsuleSelectedFill : press.hovered ? root.capsuleHoverFill : root.capsuleFill
                 border.width: 1
                 border.color: root.glassBorder
-                Behavior on color { ColorAnimation { duration: press.hovered ? Theme.dur("instant") : Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
               }
               VPressable {
                 id: press
@@ -3092,28 +3061,17 @@ Item {
           width: parent.width - root.rowInset * 2
           height: root.visibleRowsHeight
           clip: true
-          opacity: spot.expanded ? 1 : 0
-          visible: opacity > 0
-          Behavior on y { NumberAnimation { duration: Theme.move(Theme.dur("slow")); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut") } }
-          Behavior on opacity {
-            NumberAnimation {
-              duration: spot.expanded ? Theme.dur("fast") : Theme.exit(Theme.dur("fast"))
-              easing.type: Easing.BezierSpline
-              easing.bezierCurve: spot.expanded ? Theme.curve("out") : Theme.curve("exit")
-            }
-          }
+          visible: spot.expanded
 
-          // Drill-in (henri-ui §3b): the list moves 30 % left and fades while
-          // the action page slides in from the right; back is the mirror.
+          // Drill-in: list and action page crossfade in place (no slide: moving
+          // the panes repaints the whole clipped, blurred panel per frame).
           Item {
             id: mainPane
             width: parent.width
             height: parent.height
-            x: root.pageOpen && !Theme.reduceMotion ? -Math.round(width * Theme.core.motion.offset.pageParallax) : 0
             opacity: root.pageOpen ? 0 : 1
             visible: opacity > 0
-            Behavior on x { NumberAnimation { duration: Theme.dur("slow"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut") } }
-            Behavior on opacity { NumberAnimation { duration: Theme.dur("slow"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut") } }
+            Behavior on opacity { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
 
           ListView {
             id: resultList
@@ -3430,11 +3388,9 @@ Item {
             id: pagePane
             width: parent.width
             height: parent.height
-            x: root.pageOpen ? 0 : (Theme.reduceMotion ? 0 : width)
             opacity: root.pageOpen ? 1 : 0
             visible: opacity > 0
-            Behavior on x { NumberAnimation { duration: Theme.dur("slow"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut") } }
-            Behavior on opacity { NumberAnimation { duration: Theme.dur("slow"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut") } }
+            Behavior on opacity { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
 
             // Head of the page: the item the actions belong to (or the
             // sub-page's subject), over a hairline — what says "you are
@@ -3586,7 +3542,7 @@ Item {
                 }
                 Text {
                   textFormat: Text.PlainText
-                  visible: prow.plain
+                  visible: prow.plain && prow.detail.length > 0
                   anchors.left: parent.left
                   anchors.leftMargin: root.rowTextX + root.infoLabelWidth
                   anchors.right: parent.right
@@ -3597,8 +3553,6 @@ Item {
                   font.family: root.uiFont
                   font.pixelSize: root.actionFontSize
                   elide: Text.ElideMiddle
-                  opacity: prow.detail.length > 0 ? 1 : 0
-                  Behavior on opacity { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
                 }
 
                 Text {
@@ -3737,16 +3691,10 @@ Item {
             readonly property bool shown: spot.buttonsShown
             width: root.buttonSize
             height: root.buttonSize
-            opacity: 0
+            opacity: shown ? 1 : 0
             visible: opacity > 0
             enabled: shown
-            transform: Translate { x: slide.value }
-            // In: fade + slide from the field, staggered; out: all together, faster.
-            onShownChanged: {
-              if (shown) { if (root.stagger(index) === 0) catButton.opacity = 1; else inDelay.restart() }
-              else { inDelay.stop(); catButton.opacity = 0 }
-            }
-            Timer { id: inDelay; interval: root.stagger(catButton.index); onTriggered: catButton.opacity = 1 }
+            // One fade for all four, out faster than in.
             Behavior on opacity {
               NumberAnimation {
                 duration: catButton.shown ? Theme.dur("fast") : Theme.exit(Theme.dur("fast"))
@@ -3754,7 +3702,6 @@ Item {
                 easing.bezierCurve: catButton.shown ? Theme.curve("out") : Theme.curve("exit")
               }
             }
-            Spring { id: slide; preset: Theme.spring("smooth"); target: (catButton.shown || Theme.reduceMotion) ? 0 : -root.buttonSlide }
 
             Rectangle {
               id: glass
@@ -3769,7 +3716,6 @@ Item {
               anchors.fill: parent
               radius: width / 2
               color: catButton.focused ? Theme.r.popover.fillHover : Util.alpha(Theme.r.popover.fillHover, 0)
-              Behavior on color { ColorAnimation { duration: catButton.focused ? Theme.dur("instant") : Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
             }
             Rectangle {
               anchors.fill: parent
@@ -3778,8 +3724,7 @@ Item {
               color: "transparent"
               border.width: Style.space(Theme.core.size.focusRing)
               border.color: Util.alpha(root.accent, 0.6)
-              opacity: catButton.focused ? 1 : 0
-              Behavior on opacity { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
+              visible: catButton.focused
             }
             VPressable {
               id: press
