@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 import Quickshell.Bluetooth
 import Quickshell.Networking
 import Quickshell.Services.Pipewire
@@ -609,6 +610,36 @@ Item {
   property bool brightnessAvailable: false
   property string internalMonitor: ""
   property int queuedBrightness: -1
+  // While a tablet casts the Mac (mac-cast through ipadcast) its panel follows this machine's
+  // backlight, so the slider shows and moves that backlight even with no internal panel.
+  // ipadcast sends "osd cast on|off" (repeated every few seconds while connected).
+  property bool cast: false
+  property string castBacklight: ""
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event.name !== "custom") return
+      var d = String(event.data)
+      if (d === "osd cast on" || d === "osd cast off") {
+        var on = d === "osd cast on"
+        if (on !== root.cast) { root.cast = on; if (root.opened) root.refresh() }
+      }
+    }
+  }
+  Process {
+    id: castBrightProc
+    command: ["brightnessctl", "-m", "-c", "backlight"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var f = String(text || "").trim().split("\n")[0].split(",")
+        if (!root.cast || f.length < 5) return
+        root.castBacklight = f[0]
+        root.brightnessAvailable = true
+        root.brightness = Math.max(1, Math.min(100, parseInt(f[3], 10) || 0))
+      }
+    }
+  }
 
   // ---- Keyboard backlight (henri.kbdlight service: level + turn-off delay).
   //      Looked up on every open: the service may load after this panel.
@@ -672,7 +703,9 @@ Item {
     brightness = percent
     if (brightnessProc.running) { queuedBrightness = percent; return }
     queuedBrightness = -1
-    brightnessProc.command = ["omarchy-brightness-display", "--no-osd", "--monitor", internalMonitor, percent + "%"]
+    brightnessProc.command = cast && castBacklight !== ""
+      ? ["brightnessctl", "-q", "-d", castBacklight, "set", percent + "%"]
+      : ["omarchy-brightness-display", "--no-osd", "--monitor", internalMonitor, percent + "%"]
     brightnessProc.running = true
   }
   function refresh() {
@@ -743,6 +776,7 @@ Item {
         root.focusedMonitor = String(lines[5] || "").trim()
         root.monitorScale = Display.normalizeScale(String(lines[6] || "").trim())
         root.displays = Display.parseDisplays(String(lines[7] || "[]").trim())
+        if (root.cast && !castBrightProc.running) castBrightProc.running = true
       }
     }
   }

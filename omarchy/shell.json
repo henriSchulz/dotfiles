@@ -15,6 +15,9 @@
       ],
       "right": [
         {
+          "id": "henri.cast-v3"
+        },
+        {
           "id": "henri.power-v3",
           "chargeLimitStep": 5,
           "historyHours": "24",

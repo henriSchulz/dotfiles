@@ -230,7 +230,8 @@ Item {
   property var pending: []
   Process {
     id: reader
-    command: ["cat", "/sys/class/backlight/" + root.backlight + "/actual_brightness"]
+    // while casting, the panel is not there and actual_brightness stays at 1: the set value counts
+    command: ["cat", "/sys/class/backlight/" + root.backlight + (root.cast ? "/brightness" : "/actual_brightness")]
     stdout: StdioCollector {
       onStreamFinished: {
         root.resync(parseInt(text, 10))
@@ -271,7 +272,13 @@ Item {
 
   readonly property real dimAlpha: maxDim * Math.max(0, -fromGrid(glow.value))
 
+  // A tablet casting the Mac (mac-cast through ipadcast) follows this backlight: while it is
+  // connected the keys and the HUD act on the backlight, whichever monitor has focus.
+  // ipadcast sends "osd cast on|off" when the first viewer comes and the last one goes.
+  property bool cast: false
+
   function internalFocused() {
+    if (cast) return true
     var m = Hyprland.focusedMonitor
     return !m || /^(eDP|LVDS|DSI)-/.test(m.name)
   }
@@ -360,6 +367,7 @@ Item {
       var parts = data.slice(4).trim().split(/\s+/)
       if (parts[0] === "volume") root.volumeKey(parts[1] || "up")
       else if (parts[0] === "brightness") root.brightnessKey(parts[1] || "up")
+      else if (parts[0] === "cast") root.cast = parts[1] === "on"
     }
   }
 

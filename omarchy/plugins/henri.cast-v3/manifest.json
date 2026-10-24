@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.cast-v3",
+  "name": "Tablet Cast (v3, Velum)",
+  "version": "1.0.0",
+  "author": "henri",
+  "description": "While the tablet shows this Mac (mac-cast through ipadcast): the tablet and its battery in the menu bar; a click grows the right island into its numbers — battery, draw, latency, connection, frame and data rate, screen — and a brightness slider for its panel. Hidden while no tablet is connected.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Tablet Cast v3",
+    "description": "The casting tablet, its battery and stream; only while it is connected",
+    "category": "System",
+    "allowMultiple": false,
+    "defaults": {},
+    "schema": []
+  }
+}
