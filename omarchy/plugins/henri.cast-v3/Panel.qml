@@ -55,6 +55,10 @@ Panel {
   function setBrightness(v) {
     Quickshell.execDetached(["brightnessctl", "-q", "-c", "backlight", "set", Math.max(1, Math.round(v * 100)) + "%"])
   }
+  // ipadcast hears this on Hyprland's event socket and hands it to the tablet
+  function setKeyboardLight(on) {
+    Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.event(\"ipadcast kbdlight " + (on ? "on" : "off") + "\")"])
+  }
 
   IpcHandler {
     target: "henri.cast"
@@ -170,6 +174,13 @@ Panel {
           value: content.i.brightness >= 0 ? content.i.brightness : 0
           readout: content.i.brightness >= 0 ? Math.round(content.i.brightness * 100) + " %" : ""
           onMoved: v => root.setBrightness(v) }
+      }
+
+      // -- its keyboard's light (on or off only); hidden while no keyboard is attached
+      VModuleRow {
+        width: parent.width; visible: content.i.keyboard === true; clickable: false
+        icon: "keyboard.light"; text: "Keyboard Light"
+        VSwitch { surface: "popover"; checked: content.i.kbdlight === true; onToggled: c => root.setKeyboardLight(c) }
       }
 
       VText {
