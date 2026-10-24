@@ -273,6 +273,14 @@ do
     flag:close()
     hl.config({ cursor = { invisible = true } })
   end
+  -- the tablet's fingers arrive on the touchscreen "ipadcast touch" (ztouch): it covers the output
+  -- the tablet shows, which ipadcast names in this file (the Mac has no touchscreen of its own)
+  local touch = io.open((os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/ipadcast/touch-output", "r")
+  if touch then
+    local output = touch:read("l")
+    touch:close()
+    if output and output ~= "" then hl.config({ input = { touchdevice = { output = output } } }) end
+  end
   -- hyprshape (~/Projects/hyprshape) posts the pointer shape the apps ask for, so the tablet draws
   -- the same text beam, hand or resize arrows; only when it is built for this Hyprland
   local shape = os.getenv("HOME") .. "/.local/lib/hyprshape/hyprshape.so"
