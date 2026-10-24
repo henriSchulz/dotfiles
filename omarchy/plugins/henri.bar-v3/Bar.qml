@@ -46,6 +46,9 @@ Item {
   // list is refreshed by several plugins at their own times and is not
   // guaranteed to be newer than the event.
   property var fullscreenWorkspaces: ({})
+  // A fullscreen mac-cast (the tablet showing the Mac) is a screen of its own, not an app:
+  // there the bar stays under it, with no edge strip to peek from and no input at all.
+  property var kioskWorkspaces: ({})
   function coveredByFullscreen(workspace) {
     return !!workspace && workspace.hasFullscreen === true && fullscreenWorkspaces[workspace.id] === true
   }
@@ -59,13 +62,17 @@ Item {
     command: ["hyprctl", "clients", "-j"]
     stdout: StdioCollector {
       onStreamFinished: {
-        var map = {}
+        var map = {}, kiosk = {}
         try {
           var clients = JSON.parse(text)
           for (var i = 0; i < clients.length; i++)
-            if (clients[i].fullscreen === 2 && clients[i].workspace) map[clients[i].workspace.id] = true
+            if (clients[i].fullscreen === 2 && clients[i].workspace) {
+              map[clients[i].workspace.id] = true
+              if (clients[i].class === "mac-cast") kiosk[clients[i].workspace.id] = true
+            }
         } catch (e) { return }
         root.fullscreenWorkspaces = map
+        root.kioskWorkspaces = kiosk
       }
     }
     onExited: if (again) { again = false; running = true }
@@ -1107,6 +1114,8 @@ Item {
     readonly property var hyprMonitor: Hyprland.monitorFor(barWindow.screen)
     readonly property bool fullscreenHere: root.coveredByFullscreen(hyprMonitor ? hyprMonitor.activeWorkspace : null)
     readonly property bool peekMode: root.barHidden || fullscreenHere
+    readonly property bool kioskHere: fullscreenHere && hyprMonitor && hyprMonitor.activeWorkspace
+      && root.kioskWorkspaces[hyprMonitor.activeWorkspace.id] === true
     onFullscreenHereChanged: root.coveredBars += fullscreenHere ? 1 : -1
     Component.onDestruction: if (fullscreenHere) root.coveredBars -= 1
     property bool peeked: false
@@ -1121,7 +1130,8 @@ Item {
     exclusionMode: root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto
     // Hidden = only the edge strip is clickable; everything else falls through
     // to whatever is under the (transparent) bar.
-    mask: barWindow.peekMode && !barWindow.peeked ? edgeMask : null
+    mask: barWindow.kioskHere ? noInput : barWindow.peekMode && !barWindow.peeked ? edgeMask : null
+    Region { id: noInput }
     Region {
       id: edgeMask
       // a finger needs a wider strip than the pointer (tablet mode: surface.tablet.topZone)
@@ -1151,7 +1161,7 @@ Item {
     color: "transparent"
     surfaceFormat.opaque: false
     WlrLayershell.namespace: "omarchy-bar"
-    WlrLayershell.layer: barWindow.fullscreenHere ? WlrLayer.Overlay : WlrLayer.Top
+    WlrLayershell.layer: barWindow.fullscreenHere && !barWindow.kioskHere ? WlrLayer.Overlay : WlrLayer.Top
 
     // Sees the pointer on the edge strip while hidden and anywhere on the bar
     // while shown — the loader's own handler only covers the (slid-away) face.
