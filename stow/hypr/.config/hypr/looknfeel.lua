@@ -273,4 +273,12 @@ do
     flag:close()
     hl.config({ cursor = { invisible = true } })
   end
+  -- hyprshape (~/Projects/hyprshape) posts the pointer shape the apps ask for, so the tablet draws
+  -- the same text beam, hand or resize arrows; only when it is built for this Hyprland
+  local shape = os.getenv("HOME") .. "/.local/lib/hyprshape/hyprshape.so"
+  local so = io.open(shape, "r")
+  if so then
+    so:close()
+    pcall(hl.plugin.load, shape)
+  end
 end
