@@ -1,0 +1,13 @@
+# Hyprland moves itself to SCHED_RR at start when it holds CAP_SYS_NICE
+# (NInit::gainRealTime). A package update replaces the binary and drops the
+# file capability, so put it back after every hyprland install/upgrade.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = hyprland
+
+[Action]
+Description = Granting Hyprland CAP_SYS_NICE for realtime scheduling...
+When = PostTransaction
+Exec = /usr/bin/setcap cap_sys_nice+ep /usr/bin/Hyprland
