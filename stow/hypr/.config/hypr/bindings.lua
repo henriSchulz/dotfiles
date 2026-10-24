@@ -317,13 +317,17 @@ o.bind("SUPER + SHIFT + XF86AudioMute", "Headless status (Apple top row)", "head
 o.bind("SUPER + SHIFT + F9", "Screen mirror (phone/tablet)", "ipadcast-toggle")
 o.bind("SUPER + SHIFT + XF86AudioNext", "Screen mirror (Apple top row)", "ipadcast-toggle")
 
--- Windows-Taste an der Seite des Acer Switch Alpha 12 schaltet den Tablet-Modus
--- (~/.local/bin/tablet-mode, tablet.lua). Die Taste kommt als Super_L (Keycode
--- 133) von einem der eingebauten Geräte; der Gerätefilter nennt nur die, also
--- bleibt die Super-Taste der Tastatur (Chicony) unberührt. Beim Loslassen, weil Super dann sicher wieder
--- oben ist; ignore_mods, weil Super_L beim Loslassen selbst noch als Mod zählt.
-o.bind("SUPER_L", "Toggle tablet mode (side button)", "tablet-mode toggle", {
+-- Windows-Taste an der Seite des Acer Switch Alpha 12 schaltet den Cast-Modus:
+-- das Tablet wird zum Bildschirm des Mac (~/.local/bin/mac-cast-mode, Repo
+-- ~/Projects/mac-cast). Der Tablet-Modus (tablet-mode) hat damit keine Taste mehr.
+-- Die Taste kommt als Super_L (Keycode 133) von einem der eingebauten Geräte; der
+-- Gerätefilter nennt nur die, also bleibt die Super-Taste der Tastatur (Chicony)
+-- unberührt. Beim Loslassen, weil Super dann sicher wieder oben ist; ignore_mods,
+-- weil Super_L beim Loslassen selbst noch als Mod zählt; dont_inhibit, weil mac-cast
+-- alle anderen Kürzel sperrt (jede Taste geht an den Mac) und diese durchkommen muss.
+o.bind("SUPER_L", "Toggle Mac screen (side button)", "mac-cast-mode toggle", {
   release = true,
   ignore_mods = true,
+  dont_inhibit = true,
   device = { inclusive = true, list = { "intel-virtual-buttons", "at-translated-set-2-keyboard", "acer-wmi-hotkeys" } },
 })
