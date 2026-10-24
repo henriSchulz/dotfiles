@@ -8,3 +8,7 @@ ACTION=="add|bind", SUBSYSTEM=="pci", TEST=="power/control", ATTR{power/control}
 # a pause is late or lost. Bluetooth is left to btusb.
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0bda", ATTR{idProduct}=="56c1", TEST=="power/control", ATTR{power/control}="auto"
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0bda", ATTR{idProduct}=="0129", TEST=="power/control", ATTR{power/control}="auto"
+
+# The ASIX AX88772B USB Ethernet adapter of the cable to the Mac (mac-cast): it sleeps
+# while the link carries nothing and wakes on traffic.
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0b95", ATTR{idProduct}=="7e2b", TEST=="power/control", ATTR{power/control}="auto"
