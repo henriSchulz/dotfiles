@@ -5,7 +5,11 @@ local omarchy_gdk_scale = 1
 local omarchy_monitor_scale = 1.25
 
 hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
-hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+-- The parentheses are for omarchy-hyprland-monitor-clamshell, not for Lua: it
+-- reads this file with sed, finds no rule named eDP-1 (the Acer's is matched by
+-- desc: below) and forced the catch-all's 1.25 onto the panel on every monitor
+-- event. A scale it cannot resolve makes it leave the scale to Hyprland.
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = (omarchy_monitor_scale) })
 
 -- Spare virtual output (hypr-spare-output, started from autostart.lua): keeps
 -- Hyprland alive when the only monitor is unplugged — without any output,
