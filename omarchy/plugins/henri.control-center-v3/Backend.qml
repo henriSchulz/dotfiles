@@ -648,6 +648,7 @@ Item {
   //      the row stays Text Size | Layout.
   property var kbd: null
   readonly property bool kbdAvailable: kbd !== null && kbd.available === true
+  readonly property bool kbdBinary: kbdAvailable && kbd.binary === true
   function kbdTimeoutLabel(s) { return s === 0 ? "Never" : s < 60 ? s + " s" : (s / 60) + " min" }
 
   // ---- Display settings: text size, scale presets, monitors

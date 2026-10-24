@@ -8,8 +8,10 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 
 // Control Center v3 — the island in the middle of the bar (Velum). Compact it
 // shows the workspace dots (scroll switches workspace) or a running activity
-// (joining a network, connecting a device); a click grows the island itself
-// into the Control Center (VIslandWindow), which keeps the island's top edge.
+// (joining a network, connecting a device), and the Control Center symbol left
+// of them. A click grows the island itself into the Control Center (VIslandWindow),
+// which keeps the island's top edge: on the symbol the Control Center, on the dots
+// only the workspace miniatures.
 // Backend from v2 (Backend.qml), pages in Pages.qml.
 BarWidget {
   id: root
@@ -60,7 +62,11 @@ BarWidget {
   readonly property real pillH: Math.max(Theme.layout.capsule.height, barSize - 2 * Theme.layout.module.tileInset - 2 * Theme.layout.separator)
   // the widget keeps the hovered width at all times: the pill grows inside it, so the bar never
   // re-centres it under the pointer (that moved it away, hover flickered and clicks were lost)
-  readonly property real restW: (activity ? activityFace.implicitWidth : dots.implicitWidth) + 2 * Theme.layout.capsule.padX
+  readonly property real faceW: activity ? activityFace.implicitWidth : dots.implicitWidth
+  readonly property real iconSize: Theme.layout.icon.small
+  readonly property real restW: faceW + Theme.layout.list.gap + iconSize + 2 * Theme.layout.capsule.padX
+  // clicks left of this (widget x) are on the symbol, right of it on the dots
+  readonly property real splitX: width / 2 + (iconSize - faceW) / 2
   readonly property real pillW: restW + (hover ? Theme.layout.module.pad : 0)
   implicitWidth: restW + 2 * Theme.layout.module.pad
   implicitHeight: barSize
@@ -81,7 +87,7 @@ BarWidget {
       anchors.fill: parent
       hoverEnabled: true
       onContainsMouseChanged: root.hover = containsMouse
-      onClicked: root.toggle()
+      onClicked: function (m) { root.toggle(m.x >= root.splitX) }
       onWheel: function (w) {
         var i = root.wsIds.indexOf(root.focusedWs), n = i + (w.angleDelta.y < 0 ? 1 : -1)
         if (i >= 0 && n >= 0 && n < root.wsIds.length) root.focusWs(root.wsIds[n])
@@ -91,32 +97,40 @@ BarWidget {
   // the compact face, drawn by the bar's island and by the surface while it starts to grow
   component Face: Item {
     Row {
-      id: dotsRow
-      anchors.centerIn: parent
-      spacing: Theme.layout.list.gap / 2 + Theme.layout.separator
-      opacity: root.activity ? 0 : 1
-      Behavior on opacity { NumberAnimation { duration: Theme.dur("fast") } }
-      Repeater {
-        model: root.wsIds
-        Rectangle {
-          required property int modelData
-          readonly property bool current: modelData === root.focusedWs
-          width: current ? Theme.layout.capsule.padX + Theme.layout.list.gap / 2 : Theme.layout.list.gap - Theme.layout.separator
-          height: Theme.layout.list.gap - Theme.layout.separator
-          radius: height / 2
-          anchors.verticalCenter: parent.verticalCenter
-          color: current ? Theme.r.accent.base : root.wsUsed(modelData) ? Theme.r.popover.inkSecondary : Theme.r.ink.tertiary
-          Behavior on width { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
-        }
-      }
-    }
-    Row {
       anchors.centerIn: parent
       spacing: Theme.layout.list.gap
-      opacity: root.activity ? 1 : 0
-      Behavior on opacity { NumberAnimation { duration: Theme.dur("fast") } }
-      VSpinner { anchors.verticalCenter: parent.verticalCenter; visible: root.activity !== ""; color: Theme.r.popover.inkSecondary }
-      VText { anchors.verticalCenter: parent.verticalCenter; text: root.activity; color: Theme.r.popover.ink; font.weight: Font.Medium; font.pixelSize: Theme.m.type.small }
+      VIcon { anchors.verticalCenter: parent.verticalCenter; name: "control-center"; size: root.iconSize; surface: "popover" }
+      Item {
+        width: root.faceW; height: root.pillH
+        Row {
+          id: dotsRow
+          anchors.centerIn: parent
+          spacing: Theme.layout.list.gap / 2 + Theme.layout.separator
+          opacity: root.activity ? 0 : 1
+          Behavior on opacity { NumberAnimation { duration: Theme.dur("fast") } }
+          Repeater {
+            model: root.wsIds
+            Rectangle {
+              required property int modelData
+              readonly property bool current: modelData === root.focusedWs
+              width: current ? Theme.layout.capsule.padX + Theme.layout.list.gap / 2 : Theme.layout.list.gap - Theme.layout.separator
+              height: Theme.layout.list.gap - Theme.layout.separator
+              radius: height / 2
+              anchors.verticalCenter: parent.verticalCenter
+              color: current ? Theme.r.accent.base : root.wsUsed(modelData) ? Theme.r.popover.inkSecondary : Theme.r.ink.tertiary
+              Behavior on width { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
+            }
+          }
+        }
+        Row {
+          anchors.centerIn: parent
+          spacing: Theme.layout.list.gap
+          opacity: root.activity ? 1 : 0
+          Behavior on opacity { NumberAnimation { duration: Theme.dur("fast") } }
+          VSpinner { anchors.verticalCenter: parent.verticalCenter; visible: root.activity !== ""; color: Theme.r.popover.inkSecondary }
+          VText { anchors.verticalCenter: parent.verticalCenter; text: root.activity; color: Theme.r.popover.ink; font.weight: Font.Medium; font.pixelSize: Theme.m.type.small }
+        }
+      }
     }
   }
   // widths of the faces (measured once, outside the pill)
@@ -133,13 +147,15 @@ BarWidget {
     var p = win.itemPosition(root), pw = w === undefined ? root.restW : w
     return Qt.rect(p.x + Math.round((root.width - pw) / 2), p.y + Math.round((root.height - root.pillH) / 2), pw, root.pillH)
   }
-  function open(pageName) {
+  // spaces: only the workspace miniatures (only when the island is not up yet)
+  function open(pageName, spaces) {
+    if (!island.shown) pages.spaces = spaces === true
     island.from = islandRect(pw.value)
     island.open = true
     if (pageName) pages.show(pageName)
   }
   function close() { island.from = islandRect(); island.open = false }
-  function toggle() { if (island.open) close(); else open() }
+  function toggle(spaces) { if (island.open) close(); else open("", spaces) }
   // Tablet mode: a finger pulls the island open from the top edge (henri.bar-v3 → VGestures);
   // the island grows with it and, let go, opens or shrinks back.
   Connections {
@@ -151,7 +167,7 @@ BarWidget {
       var dist = Theme.core.surface.tablet.pullTravel
       if (phase === "move") {
         if (island.open) return
-        if (!island.pulling) island.from = root.islandRect(pw.value)
+        if (!island.pulling) { island.from = root.islandRect(pw.value); if (!island.shown) pages.spaces = false }
         island.pull = Math.max(0, travel) / dist
         return
       }
@@ -194,11 +210,14 @@ BarWidget {
     function open(): void { root.open() }
     function close(): void { root.close() }
     function toggle(): void { root.toggle() }
+    // only the workspace miniatures, as a click on the dots
+    function spaces(): void { root.open("", true) }
+    function toggleSpaces(): void { root.toggle(true) }
     // wifi | wifi-advanced | bluetooth | sound | airpods | display | focus | keyboard | battery | hardware | experiments
     function page(name: string): void { root.open(name) }
     function togglePage(name: string): void { if (island.open && pages.current === name) root.close(); else root.open(name) }
     function back(): void { pages.back() }
-    function state(): string { return JSON.stringify({ open: island.open, shown: island.shown, page: pages.current, from: island.from, variant: Theme.variant, dark: Theme.dark, sf: Theme.sfAvailable, height: pages.implicitHeight }) }
+    function state(): string { return JSON.stringify({ open: island.open, shown: island.shown, page: pages.current, spaces: pages.spaces, from: island.from, variant: Theme.variant, dark: Theme.dark, sf: Theme.sfAvailable, height: pages.implicitHeight }) }
     function set(key: string, value: string): void { velum.set(key, value === "true" ? true : value === "false" ? false : value) }
   }
 }

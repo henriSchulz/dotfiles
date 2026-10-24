@@ -11,8 +11,11 @@ Item {
   id: cc
   property var be: null
   property var velum: null
+  property bool spaces: false         // only the workspace miniatures instead of the pages (a click on the dots)
   signal closeRequested()
-  implicitHeight: stack.implicitHeight
+  // the miniatures sit beside the stack, not on a page: their height is a binding, so it is right
+  // while the island is still closed (a hidden Column does not lay out and keeps its old height)
+  implicitHeight: spaces ? spacesView.height : stack.implicitHeight
 
   // ---- navigation (the backend scans/polls only on the page that shows it)
   property var names: []
@@ -38,7 +41,9 @@ Item {
   }
   function reset() { stack.reset(); names = [] }
 
-  VPageStack { id: stack; width: parent.width; initial: mainPage }
+  VPageStack { id: stack; width: parent.width; initial: mainPage; visible: !cc.spaces }
+  // -- every workspace as a miniature; a click switches there
+  Spaces { id: spacesView; width: parent.width; visible: cc.spaces; active: cc.spaces && cc.be.opened; onChosen: cc.closeRequested() }
 
   // ---- parts: everything takes the page's width
   component MRow: VModuleRow { width: parent ? parent.width : implicitWidth }
@@ -122,9 +127,6 @@ Item {
         revealAnim.restart()
       }
       Connections { target: cc.be; function onOpenedChanged() { if (cc.be.opened && cc.current === "main") mp.reveal() } }
-
-      // -- every workspace as a miniature; a click switches there
-      Spaces { width: parent.width; active: cc.be.opened && cc.current === "main"; onChosen: cc.closeRequested() }
 
       // -- connectivity | focus + quick badges
       Item {
@@ -595,10 +597,17 @@ Item {
     id: kbdPage
     Column {
       spacing: cc.gap
-      MHead { title: "Keyboard Brightness" }
+      MHead { title: cc.be.kbdBinary ? "Keyboard Backlight" : "Keyboard Brightness" }
       Group {
+        visible: !cc.be.kbdBinary
         title: "Brightness"; titleDetail: cc.be.kbd ? Math.round(cc.be.kbd.level * 100) + " %" : ""
         SliderRow { icon: "keyboard.light"; value: cc.be.kbd ? cc.be.kbd.level : 0; onMoved: v => cc.be.kbd.setLevel(v) }
+      }
+      // a keyboard whose light is only on or off (the tablet's): a switch instead of the slider
+      Group {
+        visible: cc.be.kbdBinary
+        MRow { icon: "keyboard.light"; text: "Backlight"; clickable: false
+          VSwitch { surface: "popover"; checked: cc.be.kbd ? cc.be.kbd.level > 0 : false; onToggled: c => cc.be.kbd.setLevel(c ? 1 : 0) } }
       }
       Group {
         title: "Turn Off After Inactivity"
