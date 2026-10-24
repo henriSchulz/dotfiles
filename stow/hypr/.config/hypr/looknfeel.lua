@@ -261,3 +261,16 @@ do
   local ok, err = pcall(require, "hypr.tablet")
   if not ok then pcall(hl.notification.create, { text = "tablet.lua: " .. tostring(err), timeout = 8000 }) end
 end
+
+-- mac-cast: while the tablet draws the Mac's pointer itself, the pointer is invisible here. On the
+-- virtual output Hyprland paints it into the captured picture (the app's own pointer image too, so
+-- a cursor theme cannot hide it), and the tablet showed it a second time, lagging behind its own.
+-- ipadcast writes the flag when the tablet connects, removes it when it goes, and reloads; the
+-- option is never set at run time (that kills the Lua bind callbacks).
+do
+  local flag = io.open((os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/ipadcast/cursor-hidden", "r")
+  if flag then
+    flag:close()
+    hl.config({ cursor = { invisible = true } })
+  end
+end
