@@ -23,6 +23,12 @@
 // 1 (`binary`) and the light switches instead of fading.
 //
 // State: ~/.local/state/henri/kbdlight.json ({ level, timeout }), machine-local.
+//
+// Control Center. Since omarchy 4.0.6 a plugin only gets its own service
+// object, so the Control Center cannot hold this one. It reads the live state
+// from $XDG_RUNTIME_DIR/henri-kbdlight-<Hyprland instance>.json (written here
+// on every change) and sends `kbdlight set <level>` / `kbdlight timeout
+// <seconds>` as Hyprland custom events, the same way the key presses arrive.
 
 import QtQuick
 import Quickshell
@@ -168,10 +174,24 @@ Item {
     onTriggered: stateFile.setText(JSON.stringify({ level: Math.round(root.level * 1000) / 1000, timeout: root.timeout }) + "\n")
   }
 
+  // ── Live state for the Control Center ───────────────────────────────────
+  // per Hyprland instance, so a nested test shell never overwrites the live one's file
+  readonly property string livePath: Quickshell.env("XDG_RUNTIME_DIR") + "/henri-kbdlight-" + Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") + ".json"
+  readonly property string liveText: JSON.stringify({ available: available, binary: binary, level: Math.round(level * 1000) / 1000,
+                                                      timeout: timeout, timeoutChoices: timeoutChoices })
+  onLiveTextChanged: live.restart()
+  Timer { id: live; interval: 50; onTriggered: liveFile.setText(root.liveText + "\n") }
+  FileView { id: liveFile; path: root.livePath; printErrors: false }
+  Component.onCompleted: live.restart()
+
   Connections {
     target: Hyprland
     function onRawEvent(event) {
-      if (event.name === "custom" && String(event.data) === "kbdlight key") root.wake()
+      if (event.name !== "custom") return
+      var d = String(event.data)
+      if (d === "kbdlight key") root.wake()
+      else if (d.indexOf("kbdlight set ") === 0) root.setLevel(parseFloat(d.slice(13)) || 0)
+      else if (d.indexOf("kbdlight timeout ") === 0) root.setTimeoutSeconds(parseInt(d.slice(17), 10) || 0)
     }
   }
 
