@@ -6,31 +6,29 @@
  * fcitx5 owns the seat's input method on Hyprland (zwp_input_method_v2), so the keyboard cannot be
  * one itself. fcitx5 has its own way for an on-screen keyboard instead, the "virtualkeyboard" UI:
  *
- *   - this process owns org.fcitx.Fcitx5.VirtualKeyboard (object /org/fcitx/virtualkeyboard/impanel),
- *     and fcitx5 calls ShowVirtualKeyboard / HideVirtualKeyboard on it when a text field gains or
- *     loses the focus while fcitx5 is in on-screen-keyboard mode;
- *   - in that mode fcitx5 owns org.fcitx.Fcitx5.VirtualKeyboardBackend, and a key sent to its
- *     ProcessKeyEvent goes to the focused text field as a virtual key (it does not end the mode);
+ *   - this process owns org.fcitx.Fcitx5.VirtualKeyboard (object /org/fcitx/virtualkeyboard/impanel);
+ *     fcitx5's Show / Hide calls on focus changes are answered but not followed: the keyboard opens
+ *     only when asked (the window bar's keyboard button) — following them, every tap on a terminal
+ *     opened it again;
+ *   - "open" puts fcitx5 into on-screen-keyboard mode (show and hide at once), where fcitx5 owns
+ *     org.fcitx.Fcitx5.VirtualKeyboardBackend: a key sent to its ProcessKeyEvent goes to the focused
+ *     text field as a virtual key and does not end the mode;
  *   - a key from a real keyboard ends the mode (fcitx5 releases the backend name): the keyboard hides,
  *     as on an iPad when a keyboard is attached.
  *
- * The mode is entered by a finger: on "touch" (ipadcast's velum-touch event, a finger lifted) this asks
- * fcitx5 to show and hide the keyboard at once, which leaves it in that mode, then looks a moment later
- * whether a text field has the focus (Controller1.State) and shows the keyboard if so.
- *
  * Lines in (stdin):
- *     touch                a finger was lifted on the cast screen
+ *     touch                a finger was lifted on the cast screen (ignored)
  *     text UTF8            type these characters
  *     key NAME             press a key by its keysym name (BackSpace, Return, Tab, Left, …)
- *     open | close         the keyboard opened or closed by hand
+ *     open | close         the keyboard opened or closed by hand (open enters the mode)
  * Lines out (stdout):
  *     show | hide          the keyboard should appear / go
  *     mode osk|physical    fcitx5's input method mode
  *
- * Text goes through fcitx5 while a text field there has the focus: keysym, the key code of the
- * compositor's keymap that makes it and the modifiers of its level (Shift, AltGr), so fcitx5 forwards
- * the key the app expects. Without a focused text field (an app without text-input, or none) it goes
- * through wtype instead.
+ * Text goes through fcitx5 while a text field there has the focus: a character as its keysym alone,
+ * which fcitx5 commits as text (needs waylandim PreferKeyEvent=False), a key without a character by
+ * the compositor's key code for it. Without a focused text field (an app without text-input, or
+ * none) it goes through wtype instead.
  */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -54,12 +52,10 @@ extern char **environ;
 #define BACKEND_IFACE "org.fcitx.Fcitx5.VirtualKeyboardBackend1"
 #define PANEL "org.fcitx.Fcitx5.VirtualKeyboard"
 #define PANEL_IFACE "org.fcitx.Fcitx5.VirtualKeyboard1"
-#define LOOK_MS 150          /* after a lifted finger: the app has moved the focus by then */
 
 static sd_bus *bus;
 static struct xkb_keymap *keymap;
 static bool osk_mode, shown, by_hand;
-static uint64_t priming_until, look_at; /* ms: show/hide calls we caused are ours; when to look */
 
 static uint64_t now_ms(void)
 {
@@ -84,19 +80,18 @@ static void set_shown(bool on)
 
 /* ---- fcitx5 calls on our panel object ---------------------------------------------------- */
 
+/* fcitx5's own show / hide on focus in and out are not followed: the keyboard comes only when asked
+ * (the window bar's keyboard button). Following them, every tap on a terminal opened it again, also
+ * the tap that had just closed it (Henri, 2026-10-25). */
 static int m_show(sd_bus_message *m, void *u, sd_bus_error *e)
 {
 	(void)u, (void)e;
-	if (now_ms() >= priming_until)
-		set_shown(true);
 	return sd_bus_reply_method_return(m, NULL);
 }
 
 static int m_hide(sd_bus_message *m, void *u, sd_bus_error *e)
 {
 	(void)u, (void)e;
-	if (now_ms() >= priming_until && !by_hand)
-		set_shown(false);
 	return sd_bus_reply_method_return(m, NULL);
 }
 
@@ -126,8 +121,10 @@ static void set_mode(bool on)
 		return;
 	osk_mode = on;
 	out(on ? "mode osk" : "mode physical");
-	if (!on && !by_hand)
-		set_shown(false); /* a real key was pressed */
+	if (!on) { /* a real key was pressed */
+		by_hand = false;
+		set_shown(false);
+	}
 }
 
 static int on_owner(sd_bus_message *m, void *u, sd_bus_error *e)
@@ -274,15 +271,15 @@ static void press_key(const char *name)
 
 static void line(char *l)
 {
-	if (!strcmp(l, "touch")) {
-		if (!osk_mode && !has_owner(BACKEND)) {
-			/* into on-screen-keyboard mode: shown and hidden at once, both calls are ours */
-			priming_until = now_ms() + 300;
-			fcitx_vk("ShowVirtualKeyboard");
-			fcitx_vk("HideVirtualKeyboard");
-		}
-		look_at = now_ms() + LOOK_MS;
-	} else if (!strncmp(l, "text ", 5))
+	if (!strcmp(l, "open") && !osk_mode && !has_owner(BACKEND)) {
+		/* into on-screen-keyboard mode (shown and hidden at once), so keys reach the focused field as
+		 * fcitx5's virtual keys and do not end the mode */
+		fcitx_vk("ShowVirtualKeyboard");
+		fcitx_vk("HideVirtualKeyboard");
+	}
+	if (!strcmp(l, "touch"))
+		; /* a finger on the cast screen: nothing opens by itself any more */
+	else if (!strncmp(l, "text ", 5))
 		type_text(l + 5);
 	else if (!strncmp(l, "key ", 4))
 		press_key(l + 4);
@@ -337,13 +334,7 @@ int main(int argc, char **argv)
 	for (;;) {
 		while (sd_bus_process(bus, NULL) > 0)
 			;
-		uint64_t t = now_ms();
-		if (look_at && t >= look_at) {
-			look_at = 0;
-			if (!by_hand)
-				set_shown(osk_mode && fcitx_state() > 0);
-		}
-		int wait = look_at ? (int)(look_at - t) : -1;
+		int wait = -1;
 		struct pollfd p[2] = { { .fd = 0, .events = POLLIN }, { .fd = sd_bus_get_fd(bus), .events = sd_bus_get_events(bus) } };
 		uint64_t usec;
 		if (sd_bus_get_timeout(bus, &usec) >= 0 && usec != UINT64_MAX) {

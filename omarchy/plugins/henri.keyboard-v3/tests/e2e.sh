@@ -47,11 +47,11 @@ row() { echo $((top + 8 + $1 * 57 + 25)); }    # centre of row N
 
 want K01 "starts hidden, no surface" "$(st | jq .shown),$(layer)" "false,false"
 hyprctl dispatch 'hl.dsp.event("velum-touch TB")' >/dev/null; sleep 0.4
-want K02 "a lifted finger reaches the bridge as touch" "$(sent)" "touch"
-want K03 "and names the screen" "$(st | jq -r .screen)" "TB"
+want K02 "a lifted finger opens nothing" "$(st | jq .shown),$(sent)" "false,"
+want K03 "but names the screen" "$(st | jq -r .screen)" "TB"
 
-c omarchy.keyboard open >/dev/null; sleep 0.5
-want K04 "open by hand shows the surface" "$(st | jq .shown),$(layer)" "true,true"
+hyprctl dispatch 'hl.dsp.event("velum-keyboard toggle TB")' >/dev/null; sleep 0.5
+want K04 "the window bar's keyboard button opens it" "$(st | jq .shown),$(layer),$(sent)" "true,true,open"
 shot K04-letters
 # q is the first key of row 0; letter width = (1080 - 12 - 10*7) / 12.5 units … take its centre
 unit=$(python3 -c "print((1080 - 12 - 11 * 7) / 12.5)")
@@ -78,6 +78,11 @@ want K10 "the first key there types 1" "$(sent | awk -F'|' '{print $NF}')" "text
 pt m $((W - 30)) "$(row 3)" d s 40 u
 sleep 0.5
 want K11 "the hide key closes it and tells the bridge" "$(st | jq .shown),$(sent | awk -F'|' '{print $NF}'),$(layer)" "false,close,false"
+hyprctl dispatch 'hl.dsp.event("velum-touch TB")' >/dev/null; sleep 0.5
+want K12 "a finger after closing does not bring it back" "$(st | jq .shown),$(layer)" "false,false"
+hyprctl dispatch 'hl.dsp.event("velum-keyboard toggle TB")' >/dev/null; sleep 0.4
+hyprctl dispatch 'hl.dsp.event("velum-keyboard toggle TB")' >/dev/null; sleep 0.5
+want K13 "the button toggles: open, then closed again" "$(st | jq .shown),$(sent | awk -F'|' '{print $NF}')" "false,close"
 
 echo "keyboard e2e: $pass ok, $fail failed"
 [[ -n ${KEEP:-} ]] || rig/rig.sh stop >/dev/null

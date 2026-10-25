@@ -9,12 +9,14 @@ import "Layout.js" as Layout
 // The on-screen keyboard: German keys as on an iPad along the bottom edge of the screen the tablet's
 // fingers are on (the cast screen). It never takes the keyboard focus, so the text field keeps it.
 //
+// It opens only when asked: the keyboard button of the window bar (henri.tablet-v3 sends the custom
+// event "velum-keyboard toggle SCREEN"); its hide key closes it, and so does the first real key, as on
+// an iPad with a keyboard attached. Opening by itself whenever a text field had the focus brought it
+// back after every tap on a terminal, even the tap that had just closed it (Henri, 2026-10-25).
+//
 // fcitx5 holds the seat's input method; the keyboard talks to it through velum-osk (bridge/, built to
-// ~/.local/lib/velum/velum-osk): a finger lifted on the cast screen (ipadcast's custom event
-// "velum-touch SCREEN") puts fcitx5 into on-screen-keyboard mode, and from then on fcitx5 says when a
-// text field gains or loses the focus — the keyboard comes and goes with it. A real key ends the
-// mode and the keyboard goes, as on an iPad with a keyboard attached. Keys go to the text field
-// through fcitx5 (wtype where no field of an input method has the focus).
+// ~/.local/lib/velum/velum-osk), which puts fcitx5 into on-screen-keyboard mode on open. Keys go to
+// the text field through fcitx5 (wtype where no field of an input method has the focus).
 //
 // It reserves its height while it is up (exclusive zone), so the app moves its text above it.
 // IPC: omarchy.keyboard toggle | open | close | state
@@ -110,14 +112,18 @@ Item {
 
   Connections {
     target: Hyprland
-    // "velum-touch SCREEN" from ipadcast: a finger was lifted on that screen
+    // "velum-touch SCREEN" from ipadcast: a finger was lifted there — the screen the keyboard goes to.
+    // "velum-keyboard toggle SCREEN": the window bar's keyboard button.
     function onRawEvent(event) {
       if (event.name !== "custom") return
       var d = String(event.data)
-      if (d.indexOf("velum-touch ") !== 0 || d.length > 64) return
-      var name = d.slice(12).trim()
+      if (d.length > 64) return
+      var name = ""
+      if (d.indexOf("velum-touch ") === 0) name = d.slice(12).trim()
+      else if (d.indexOf("velum-keyboard toggle ") === 0) name = d.slice(22).trim()
+      else return
       if (/^[A-Za-z0-9_-]+$/.test(name)) root.screenName = name
-      root.send("touch")
+      if (d.indexOf("velum-keyboard") === 0) { if (root.shown) root.close(true); else root.open(true) }
     }
   }
 
