@@ -159,6 +159,17 @@ if runs T09; then
   want T09 "a short pull down and back leaves Notification Center shut" "$(c omarchy.clock centerState | jq .opened 2>/dev/null)" "false"
 fi
 
+if runs T10; then
+  # the window bar shares the overlay layer with the Control Center and was mapped later, so it stood
+  # on top of the open Control Center (Henri, 2026-10-25): it hides while a surface covers the screen
+  barUp() { hyprctl layers -j | jq '[.TB.levels[][] | select(.namespace == "velum-surface" and .w < 400)] | length > 0'; }
+  before=$(barUp)
+  c henri.control-center-v3 open; sleep 0.8; shot T10
+  during=$(barUp)
+  c henri.control-center-v3 close; sleep 0.9
+  want T10 "the window bar hides under an open Control Center and comes back" "$before,$during,$(barUp)" "true,false,true"
+fi
+
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"
 [[ ${KEEP:-} ]] || rig/rig.sh stop >/dev/null
 [[ $fail == 0 ]]

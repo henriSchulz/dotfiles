@@ -63,7 +63,10 @@ Item {
     if (!(tabletMode || (castScreen !== "" && screen.name === castScreen))) return false
     if (ipc.workspace && String(ipc.workspace.name).indexOf("special:") === 0) return false
     var m = Hyprland.monitorFor(screen)
-    return !!m && ipc.monitor === m.id
+    if (!m || ipc.monitor !== m.id) return false
+    // on an empty workspace Hyprland names no active window, but activeToplevel keeps the last one:
+    // it must stand on the workspace the screen shows
+    return !m.activeWorkspace || !ipc.workspace || ipc.workspace.id === m.activeWorkspace.id
   }
 
   function close() { if (win && win.wayland) win.wayland.close() }
@@ -82,7 +85,8 @@ Item {
       id: pw
       required property var modelData
       screen: modelData
-      readonly property bool on: wbar.shownOn(modelData)
+      // not over an open Control Center, Notification Center or bar menu: same layer, and the later mapped wins
+      readonly property bool on: wbar.shownOn(modelData) && !VOverlays.covered(modelData.name)
       visible: on || fade.running
       anchors { top: true; left: true }
       exclusionMode: ExclusionMode.Ignore
