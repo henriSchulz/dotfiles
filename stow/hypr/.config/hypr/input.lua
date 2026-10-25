@@ -201,6 +201,7 @@ hl.config({
 for _, name in ipairs({
   "apple-spi-trackpad",                     -- M1 MacBook Air (the XPS was dll0945:00-06cb:cde6-touchpad)
   "chicony-acer-hawaii-keyboard-touchpad",  -- Acer Switch Alpha 12, keyboard cover
+  "ipadcast-touchpad",                      -- that cover's touchpad on the Mac while the tablet casts (ztouch)
 }) do
   hl.device({
     name = name,
