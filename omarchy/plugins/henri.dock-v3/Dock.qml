@@ -994,10 +994,9 @@ Item {
     var wins = item.windows || []
     var visible = wins.filter(function (w) { return !w.minimized })
     if (visible.length === 0 && wins.length > 0) { restoreWindow(wins[0].address, false); return }
-    // the app in front, its icon clicked: its window goes into the Dock (the next click, with no
-    // window left to see, brings it back — above)
+    // the app in front, its icon clicked: nothing happens (as on macOS — no minimize on click)
     var front = activeAddress()
-    for (var i = 0; i < visible.length; i++) if (visible[i].address === front) { minimizeWindow(front, false, true); return }
+    for (var i = 0; i < visible.length; i++) if (visible[i].address === front) return
     if (visible.length > 0) focusWindow(visible[0].address)
   }
   function launchItem(item) {
