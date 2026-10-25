@@ -111,6 +111,17 @@ Item {
     }
   }
 
+  // How long a banner stays up; 0 = until dismissed. Crash toasts from
+  // omarchy-crash-watch arrive as critical, but a crash is already over —
+  // nothing waits on the user, and a crash loop would pile up sticky
+  // banners. They leave like a normal banner and stay clickable in history.
+  function lifetimeFor(app, summary, urgency, expireTimeout) {
+    if (styleFor(app) === "alert") return 0
+    if (String(app) === "omarchy-action" && String(summary).indexOf("Process crashed:") === 0)
+      return durationFor(NotificationUrgency.Normal, expireTimeout)
+    return durationFor(urgency, expireTimeout)
+  }
+
   function requestedDuration(expireTimeout) {
     // FreeDesktop notification spec (and Quickshell) report expireTimeout in
     // milliseconds, so pass it through directly.
@@ -778,7 +789,7 @@ Item {
     var live = []
     for (var i = 0; i < entries.length; i++) {
       var entry = entries[i]
-      var duration = styleFor(entry.app) === "alert" ? 0 : durationFor(entry.urgency, entry.expireTimeout)
+      var duration = lifetimeFor(entry.app, entry.summary, entry.urgency, entry.expireTimeout)
       if (NotificationLogic.popupExpired(entry, duration, now)) {
         // It would have expired on screen had the shell kept running, so it
         // gets archived exactly like an expiry that happened while it did.
@@ -1161,8 +1172,7 @@ Item {
           onMenuOpenChanged: popupList.openMenus += menuOpen ? 1 : -1
           Component.onDestruction: if (menuOpen) popupList.openMenus -= 1
 
-          readonly property real lifetime: service.styleFor(cardSlot.app) === "alert" ? 0
-            : service.durationFor(cardSlot.urgency, cardSlot.expireTimeout)
+          readonly property real lifetime: service.lifetimeFor(cardSlot.app, cardSlot.summary, cardSlot.urgency, cardSlot.expireTimeout)
           property real remainingLifetime: 1.0
           readonly property bool ticking: cardSlot.lifetime > 0 && !card.hovered
 
