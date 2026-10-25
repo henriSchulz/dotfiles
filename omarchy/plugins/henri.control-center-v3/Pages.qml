@@ -44,7 +44,8 @@ Item {
   }
   function reset() { stack.reset(); names = [] }
 
-  VPageStack { id: stack; width: parent.width; initial: mainPage; visible: !cc.spaces }
+  property real maxHeight: 0          // the tallest the island can grow on this screen; taller pages scroll
+  VPageStack { id: stack; width: parent.width; maxHeight: cc.maxHeight; initial: mainPage; visible: !cc.spaces }
   // -- every workspace as a miniature; a click switches there
   Spaces { id: spacesView; width: parent.width; visible: cc.spaces; active: cc.spaces && cc.be.opened; onChosen: cc.closeRequested() }
 

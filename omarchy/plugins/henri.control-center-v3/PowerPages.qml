@@ -155,7 +155,7 @@ Item {
         Repeater {
           model: ov.s.profiles
           ModeCard { required property var modelData
-            width: parent.cell; icon: ov.s.profileIcon(modelData); label: ov.s.profileLabel(modelData)
+            width: parent ? parent.cell : 0; icon: ov.s.profileIcon(modelData); label: ov.s.profileLabel(modelData)
             selected: ov.s.activeProfile === modelData; onChosen: ov.s.setProfile(modelData) }
         }
       }

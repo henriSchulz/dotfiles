@@ -203,7 +203,7 @@ BarWidget {
     onReopenRequested: root.open()
     onEscapePressed: if (!pages.back()) root.close()
     onShownChanged: if (!shown) pages.reset()
-    Pages { id: pages; be: be; velum: velum; width: parent.width; onCloseRequested: root.close() }
+    Pages { id: pages; be: be; velum: velum; width: parent.width; maxHeight: island.maxContentHeight; onCloseRequested: root.close() }
   }
 
   IpcHandler {
@@ -218,7 +218,7 @@ BarWidget {
     function page(name: string): void { root.open(name) }
     function togglePage(name: string): void { if (island.open && pages.current === name) root.close(); else root.open(name) }
     function back(): void { pages.back() }
-    function state(): string { return JSON.stringify({ open: island.open, shown: island.shown, page: pages.current, spaces: pages.spaces, from: island.from, variant: Theme.variant, dark: Theme.dark, sf: Theme.sfAvailable, height: pages.implicitHeight }) }
+    function state(): string { return JSON.stringify({ open: island.open, shown: island.shown, page: pages.current, spaces: pages.spaces, from: island.from, variant: Theme.variant, dark: Theme.dark, sf: Theme.sfAvailable, height: pages.implicitHeight, maxHeight: island.maxContentHeight, screenH: island.screenH }) }
     function set(key: string, value: string): void { velum.set(key, value === "true" ? true : value === "false" ? false : value) }
   }
 }
