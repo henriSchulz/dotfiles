@@ -1,0 +1,19 @@
+{
+  "//": "settings-sync: what is shared between the M1 and the tablet. The M1 is the main machine: on the first run it fills the shared store, the tablet only takes from it. local = keys that stay on each machine (dot paths); drop = plugin ids (entries of id lists) a machine does not have — it neither shows nor removes them. apply = command run after a shared change arrived ({value} = the new value); without one the program watches its file itself.",
+  "primary": "m1",
+  "files": [
+    { "name": "velum",       "type": "json", "path": "~/.local/state/velum/settings.json",
+      "local": ["reduceTransparency", "tablet"] },
+    { "name": "velum-power", "type": "json", "path": "~/.local/state/velum/power.json" },
+    { "name": "shell",       "type": "json", "path": "~/.config/omarchy/shell.json",
+      "drop": { "tablet": ["henri.cast-v3", "henri.assistant-v3", "henri.dictation-v3"] } },
+    { "name": "dock",        "type": "json", "path": "~/.config/omarchy/dock.json" },
+    { "name": "henri-dock",  "type": "json", "path": "~/.config/omarchy/henri.dock.json" },
+    { "name": "menu",        "type": "json", "path": "~/.config/omarchy/menu.json" },
+    { "name": "keystroke",   "type": "json", "path": "~/.config/omarchy/keystroke.json" },
+    { "name": "theme",       "type": "text", "path": "~/.local/state/omarchy/current/theme.name",
+      "apply": ["omarchy-theme-set", "{value}"] },
+    { "name": "wallpaper",   "type": "text", "path": "~/.config/omarchy/global-wallpaper",
+      "apply": ["henri-wallpaper", "set", "{value}"] }
+  ]
+}

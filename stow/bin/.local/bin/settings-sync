@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+"""Keep desktop settings the same on the M1 and the tablet, minus what belongs
+to one machine.
+
+Each file in dotfiles/settings/sync.json has a shared copy in
+~/.local/state/henri/settings-shared (a Syncthing folder, cable only). Every
+2 seconds, per file:
+  1. the live file changed here  -> its shared part goes into the shared copy;
+  2. the shared copy changed     -> the live file is rebuilt from it, keeping
+                                    this machine's own keys, and `apply` runs.
+Shared and own parts:
+  local  dot paths that stay on each machine (Velum's reduceTransparency);
+  drop   ids in id lists (shell.json plugins) this machine does not have: it
+         never gets them and never removes them from the shared copy.
+JSON is compared parsed, so formatting never counts as a change. Files are
+written in place, not replaced, because the shell and Velum watch them.
+
+The primary machine (the M1) fills the shared copy on its first run; the other
+one only takes from it until it has a state of its own.
+
+  settings-sync            run (systemd: settings-sync.service)
+  settings-sync --once     one pass, then exit
+  settings-sync --status   what is shared, what differs
+"""
+import copy, hashlib, json, os, socket, subprocess, sys, time
+
+HOME = os.path.expanduser("~")
+CONF = os.path.join(HOME, "Projects/dotfiles/settings/sync.json")
+SHARED = os.path.join(HOME, ".local/state/henri/settings-shared")
+STATE = os.path.join(HOME, ".local/state/henri/settings-sync")
+HOST = socket.gethostname()
+
+
+def log(*a):
+    print(*a, flush=True)
+
+
+# ---------------------------------------------------------------- id lists
+
+def is_id_list(v):
+    return isinstance(v, list) and v and all(isinstance(e, dict) and "id" in e for e in v)
+
+
+def strip(doc, local, drop, path=""):
+    """The part of a live document that is shared."""
+    if isinstance(doc, dict):
+        out = {}
+        for k, v in doc.items():
+            p = f"{path}.{k}" if path else k
+            if p in local:
+                continue
+            out[k] = strip(v, local, drop, p)
+        return out
+    if is_id_list(doc):
+        return [strip(e, local, drop, path) for e in doc if e["id"] not in drop]
+    return doc
+
+
+def export(live, old, local, drop, path=""):
+    """New shared copy: the live document's shared part, with what this machine
+    cannot see (dropped ids) kept from the old shared copy."""
+    if isinstance(live, dict):
+        out = {}
+        for k, v in live.items():
+            p = f"{path}.{k}" if path else k
+            if p in local:
+                continue
+            out[k] = export(v, old.get(k) if isinstance(old, dict) else None, local, drop, p)
+        return out
+    if is_id_list(live) or (isinstance(live, list) and not live and is_id_list(old)):
+        olds = {e["id"]: e for e in old} if is_id_list(old) else {}
+        out = [export(e, olds.get(e["id"]), local, drop, path) for e in live if e["id"] not in drop]
+        # put the dropped entries back after the entry they followed
+        if is_id_list(old):
+            prev = None
+            for e in old:
+                if e["id"] in drop:
+                    ids = [x["id"] for x in out]
+                    at = ids.index(prev) + 1 if prev in ids else 0
+                    out.insert(at, copy.deepcopy(e))
+                prev = e["id"]
+        return out
+    return live
+
+
+def merge_in(live, shared, local, drop, path=""):
+    """Live document rebuilt from the shared copy, keeping this machine's own keys."""
+    if isinstance(shared, dict):
+        out = {}
+        for k, v in shared.items():
+            p = f"{path}.{k}" if path else k
+            if p in local:
+                continue
+            out[k] = merge_in(live.get(k) if isinstance(live, dict) else None, v, local, drop, p)
+        if isinstance(live, dict):   # own keys stay
+            for k, v in live.items():
+                p = f"{path}.{k}" if path else k
+                if p in local:
+                    out[k] = v
+        return out
+    if is_id_list(shared):
+        lives = {e["id"]: e for e in live} if is_id_list(live) else {}
+        return [merge_in(lives.get(e["id"]), e, local, drop, path) for e in shared if e["id"] not in drop]
+    return copy.deepcopy(shared)
+
+
+# ---------------------------------------------------------------- files
+
+def read_live(f):
+    try:
+        with open(f["path"]) as h:
+            text = h.read()
+    except FileNotFoundError:
+        return None
+    if f["type"] == "json":
+        try:
+            return json.loads(text)
+        except ValueError:
+            return None   # half written; next pass
+    return text.strip()
+
+
+def write_in_place(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "r+" if os.path.exists(path) else "w") as h:
+        h.seek(0)
+        h.write(text)
+        h.truncate()
+
+
+def dump(f, value):
+    if f["type"] == "json":
+        return json.dumps(value, indent=2, ensure_ascii=False) + "\n"
+    return value + "\n"
+
+
+def read_shared(f):
+    p = os.path.join(SHARED, f["name"] + (".json" if f["type"] == "json" else ".txt"))
+    try:
+        with open(p) as h:
+            text = h.read()
+    except FileNotFoundError:
+        return None, None
+    try:
+        value = json.loads(text) if f["type"] == "json" else text.strip()
+    except ValueError:
+        return None, None
+    return value, hashlib.sha1(text.encode()).hexdigest()
+
+
+def write_shared(f, value):
+    p = os.path.join(SHARED, f["name"] + (".json" if f["type"] == "json" else ".txt"))
+    tmp = p + ".tmp"
+    os.makedirs(SHARED, exist_ok=True)
+    with open(tmp, "w") as h:
+        h.write(dump(f, value))
+    os.replace(tmp, p)   # the store is Syncthing's, nobody watches it in place
+    return read_shared(f)[1]
+
+
+def load_state(f):
+    try:
+        with open(os.path.join(STATE, f["name"] + ".json")) as h:
+            return json.load(h)
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+def save_state(f, live, shared_hash):
+    os.makedirs(STATE, exist_ok=True)
+    with open(os.path.join(STATE, f["name"] + ".json"), "w") as h:
+        json.dump({"live": live, "shared": shared_hash}, h)
+
+
+def apply(f, value):
+    cmd = [value if a == "{value}" else a for a in f["apply"]]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    if r.returncode:
+        log(f"{f['name']}: {' '.join(cmd)} failed: {(r.stderr or r.stdout).strip()[-300:]}")
+
+
+def step(f, primary):
+    local = set(f.get("local", []))
+    drop = set(f.get("drop", {}).get(HOST, []))
+    live = read_live(f)
+    shared, shared_hash = read_shared(f)
+    state = load_state(f)
+
+    if state is None:   # first run on this machine
+        if primary:
+            if live is None:
+                return
+            shared_hash = write_shared(f, export(live, shared, local, drop) if f["type"] == "json" else live)
+            save_state(f, live, shared_hash)
+            log(f"{f['name']}: shared copy filled from here")
+            return
+        if shared is None:
+            return   # wait for the primary
+        state = {"live": live, "shared": None}   # take from the shared copy below
+
+    # 1. changed here -> shared copy
+    if live is not None and live != state["live"]:
+        new = export(live, shared, local, drop) if f["type"] == "json" else live
+        if new != shared:
+            shared_hash = write_shared(f, new)
+            shared = new
+            log(f"{f['name']}: change here -> shared")
+        state = {"live": live, "shared": shared_hash}
+        save_state(f, live, shared_hash)
+
+    # 2. shared copy changed -> live file
+    if shared is not None and shared_hash != state["shared"]:
+        if f["type"] == "json":
+            merged = merge_in(live, shared, local, drop)
+            if merged != live:
+                write_in_place(os.path.expanduser(f["path"]), dump(f, merged))
+                log(f"{f['name']}: shared change -> here")
+            live = merged
+        elif shared != live:
+            if f.get("apply"):
+                apply(f, shared)
+            else:
+                write_in_place(os.path.expanduser(f["path"]), dump(f, shared))
+            log(f"{f['name']}: shared change -> here ({shared})")
+            live = read_live(f)
+        save_state(f, live, shared_hash)
+
+
+def main():
+    with open(CONF) as h:
+        conf = json.load(h)
+    files = conf["files"]
+    for f in files:
+        f["path"] = os.path.expanduser(f["path"])
+    primary = HOST == conf.get("primary")
+
+    if "--status" in sys.argv:
+        for f in files:
+            shared, _ = read_shared(f)
+            live = read_live(f)
+            local = set(f.get("local", [])); drop = set(f.get("drop", {}).get(HOST, []))
+            if f["type"] == "json" and live is not None and shared is not None:
+                same = strip(live, local, drop) == strip(shared, local, drop)
+            else:
+                same = live == shared
+            print(f"{f['name']:12} {'same' if same else 'DIFFERS'}  {f['path'].replace(HOME, '~')}")
+        return
+
+    while True:
+        for f in files:
+            try:
+                step(f, primary)
+            except Exception as e:   # one file must not stop the others
+                log(f"{f['name']}: {type(e).__name__}: {e}")
+        if "--once" in sys.argv:
+            return
+        time.sleep(2)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,15 @@
+[Unit]
+Description=Desktop settings shared between the M1 and the tablet (settings-sync)
+After=syncthing.service graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Environment=PATH=%h/.local/bin:/usr/share/omarchy/bin:/usr/local/bin:/usr/bin
+Environment=OMARCHY_PATH=/usr/share/omarchy
+ExecStart=%h/.local/bin/settings-sync
+Restart=on-failure
+RestartSec=10
+Nice=10
+
+[Install]
+WantedBy=graphical-session.target
