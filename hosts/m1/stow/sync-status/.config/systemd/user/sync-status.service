@@ -1,0 +1,7 @@
+[Unit]
+Description=Sync status for the menu bar (sync-status)
+
+[Service]
+Type=oneshot
+Nice=10
+ExecStart=%h/.local/bin/sync-status

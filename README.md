@@ -42,7 +42,7 @@ to one machine only lives in `hosts/<hostname>/`:
 
 `dotfiles-peer-sync` (timer on the M1, `hosts/m1/stow/peer-sync`) keeps this
 repo and `dotfiles-private` the same on both machines over the USB-C Ethernet
-cable, fast-forward only; GitHub is just a backup. Concept:
+cable, fast-forward only; GitHub is just a backup. `sync-status` (timer on the M1, `hosts/m1/stow/sync-status`) writes `$XDG_RUNTIME_DIR/henri/sync.json` every 30 s — Syncthing peer and folders, conflict files, the last peer-sync problems, settings that differ — for the Sync group in `henri.cast-v3`'s popup. Concept:
 `~/Documents/Notizen/Ein Arbeitsplatz auf zwei Geräten.md`.
 
 ## What is here — and what deliberately is not
