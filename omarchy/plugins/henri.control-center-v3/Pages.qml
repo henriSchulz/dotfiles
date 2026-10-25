@@ -10,6 +10,9 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 Item {
   id: cc
   property var be: null
+  // the island was pulled open by a finger: the tiles are already there, the stagger would fade them
+  // out and in again (Henri saw the Control Center dim when let go)
+  property bool skipReveal: false
   property var velum: null
   property bool spaces: false         // only the workspace miniatures instead of the pages (a click on the dots)
   signal closeRequested()
@@ -126,7 +129,10 @@ Item {
         })
         revealAnim.restart()
       }
-      Connections { target: cc.be; function onOpenedChanged() { if (cc.be.opened && cc.current === "main") mp.reveal() } }
+      Connections { target: cc.be; function onOpenedChanged() {
+        if (cc.be.opened && cc.skipReveal) { cc.skipReveal = false; return }
+        if (cc.be.opened && cc.current === "main") mp.reveal()
+      } }
 
       // -- connectivity | focus + quick badges
       Item {

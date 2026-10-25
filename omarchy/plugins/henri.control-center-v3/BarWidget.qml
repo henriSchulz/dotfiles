@@ -173,7 +173,7 @@ BarWidget {
         return
       }
       if (!island.pulling) return
-      if (phase === "end" && VGestures.commits(travel, dist, velocity)) island.open = true
+      if (phase === "end" && VGestures.commits(travel, dist, velocity)) { pages.skipReveal = island.contentShown; island.open = true }
       island.pull = -1
     }
   }
