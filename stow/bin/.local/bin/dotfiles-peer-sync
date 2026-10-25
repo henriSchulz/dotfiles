@@ -1,0 +1,88 @@
+#!/bin/bash
+# Keep dotfiles and dotfiles-private the same on the M1 and the tablet, over the
+# USB-C Ethernet cable, with git. No server: the tablet is often offline (Wi-Fi
+# off while it is the Mac's screen), and GitHub is only a backup.
+#
+# Runs on the M1 only, from dotfiles-peer-sync.timer: the M1 reaches the tablet
+# over SSH, the tablet's key on the M1 may only start ipadcast. Per repository:
+#   1. fetch the tablet's main;
+#   2. tablet ahead  -> fast-forward the M1;
+#      M1 ahead      -> push to the tablet (refs/remotes/m1/main) and
+#                       fast-forward it there;
+#      both have own commits -> nothing is merged automatically, a
+#                       notification asks for a hand merge;
+#   3. push the M1's main to origin when GitHub is reachable.
+# Only fast-forwards: a merge with uncommitted changes in the way fails and is
+# reported, nothing is stashed, reset or overwritten. New stow files arriving on
+# the tablet are linked there with install step 20.
+set -uo pipefail
+
+[[ $(hostname) == m1 ]] || exit 0
+addr=10.55.0.2
+ping -c1 -W1 "$addr" >/dev/null 2>&1 || exit 0   # no cable, nothing to do
+
+export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=5"
+peer="henri@$addr"
+failed=()
+
+# A problem is shown once, not every two minutes while it lasts.
+state="${XDG_STATE_HOME:-$HOME/.local/state}/henri/dotfiles-peer-sync.last"
+mkdir -p "${state%/*}"
+shown=$(cat "$state" 2>/dev/null)
+: >"$state"
+note() {
+  echo "$*"
+  echo "$*" >>"$state"
+  grep -qxF "$*" <<<"$shown" || notify-send -a "Dotfiles sync" -u normal "Dotfiles sync" "$*" 2>/dev/null || true
+}
+
+sync_repo() {
+  local repo=$1 dir="$HOME/Projects/$1" url="ssh://$peer/home/henri/Projects/$1"
+  cd "$dir" || return 1
+  [[ $(git symbolic-ref --short HEAD 2>/dev/null) == main ]] || { note "$repo: M1 is not on main — skipped"; return 1; }
+  git fetch -q "$url" main:refs/remotes/tablet/main || { note "$repo: could not fetch from the tablet"; return 1; }
+
+  local m t
+  m=$(git rev-parse main); t=$(git rev-parse tablet/main)
+  if [[ $m != "$t" ]]; then
+    if git merge-base --is-ancestor main tablet/main; then
+      git merge -q --ff-only tablet/main || { note "$repo: tablet commits could not be applied on the M1 (local changes in the way)"; return 1; }
+      echo "$repo: M1 fast-forwarded to the tablet ($(git rev-parse --short HEAD))"
+    elif git merge-base --is-ancestor tablet/main main; then
+      local before=$t
+      git push -q "$url" main:refs/remotes/m1/main || { note "$repo: push to the tablet failed"; return 1; }
+      ssh -o BatchMode=yes "$peer" "cd ~/Projects/$repo && git merge -q --ff-only m1/main && git update-ref -d refs/remotes/m1/main" \
+        || { note "$repo: the tablet could not apply the M1's commits (local changes in the way)"; return 1; }
+      echo "$repo: tablet fast-forwarded to the M1 ($(git rev-parse --short main))"
+      # New files to link there (stow keeps changed files live, new ones need step 20).
+      if [[ $repo == dotfiles ]] && git diff --name-only --diff-filter=A "$before" main | grep -qE '^(stow/|hosts/tablet/stow/)'; then
+        ssh -o BatchMode=yes "$peer" "cd ~/Projects/dotfiles && ./install_all.sh 20 >/dev/null" \
+          && echo "dotfiles: stow step 20 run on the tablet" \
+          || note "dotfiles: stow step 20 failed on the tablet"
+      fi
+      # Hyprland reloads by itself only for files it already loaded; a new or
+      # moved file (host.lua) needs an explicit reload.
+      if [[ $repo == dotfiles ]] && git diff --name-only "$before" main | grep -qE '^(stow/hypr/|hosts/tablet/stow/hypr/)'; then
+        ssh -o BatchMode=yes "$peer" "hyprctl -i 0 reload >/dev/null" \
+          && echo "dotfiles: Hyprland reloaded on the tablet" \
+          || note "dotfiles: Hyprland reload failed on the tablet"
+      fi
+    else
+      note "$repo: M1 and tablet both have own commits — merge by hand"
+      return 1
+    fi
+  fi
+
+  # GitHub as backup, when it is reachable.
+  if git fetch -q origin main 2>/dev/null; then
+    if git merge-base --is-ancestor origin/main main && [[ $(git rev-parse origin/main) != $(git rev-parse main) ]]; then
+      git push -q origin main && echo "$repo: pushed to origin"
+    fi
+    ssh -o BatchMode=yes "$peer" "cd ~/Projects/$repo && git update-ref refs/remotes/origin/main $(git rev-parse origin/main)" 2>/dev/null || true
+  fi
+}
+
+for repo in dotfiles dotfiles-private; do
+  sync_repo "$repo" || failed+=("$repo")
+done
+((${#failed[@]} == 0))

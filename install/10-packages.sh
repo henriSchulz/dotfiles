@@ -1,5 +1,6 @@
 #!/bin/bash
-# Install the packages listed in packages/packages.txt.
+# Install the packages listed in packages/packages.txt (plus hosts/<host>/packages.txt,
+# minus hosts/<host>/packages.exclude).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -10,7 +11,11 @@ need_cmd yay "run this on a provisioned Omarchy system"
 list="$DOTFILES_ROOT/packages/packages.txt"
 [[ -f $list ]] || die "missing $list"
 
-mapfile -t wanted < <(sed 's/#.*//' "$list" | tr -s ' \t' '\n' | grep -v '^$' | sort -u)
+# Shared list plus this machine's own, minus what it leaves out.
+mapfile -t wanted < <(
+  { list_words "$list"; list_words "$HOST_DIR/packages.txt"; } | sort -u |
+    grep -vxF -f <(list_words "$HOST_DIR/packages.exclude"; echo '') || true
+)
 ((${#wanted[@]})) || { skip "no packages listed"; exit 0; }
 
 # --needed already makes yay idempotent, but filtering first keeps the output

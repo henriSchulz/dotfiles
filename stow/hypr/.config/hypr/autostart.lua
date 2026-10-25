@@ -22,3 +22,16 @@ o.launch_on_start("hypr-spare-output")
 -- Headless use (no screen): sounds for session ready, network, charger, lid, battery.
 -- The keyboard-backlight codes come from the root daemon headless-statusd.
 o.launch_on_start("headless-events")
+
+-- This machine's own settings (hosts/<hostname>/stow/hypr in dotfiles):
+-- monitors, devices and tuning that belong to one machine only. Loaded last so
+-- it can override anything above. Guarded: a fault there shows a notification
+-- instead of costing the rest of the config.
+do
+  local f = io.open((os.getenv("HOME") or "") .. "/.config/hypr/host.lua", "r")
+  if f then
+    f:close()
+    local ok, err = pcall(require, "hypr.host")
+    if not ok then pcall(hl.notification.create, { text = "host.lua: " .. tostring(err), timeout = 8000 }) end
+  end
+end

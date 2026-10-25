@@ -1,0 +1,9 @@
+[Unit]
+Description=Sync dotfiles with the tablet every 2 minutes while the cable is in
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target

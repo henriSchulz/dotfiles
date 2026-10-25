@@ -20,12 +20,7 @@ hl.monitor({ output = "", mode = "preferred", position = "auto", scale = (omarch
 -- starts with HEADLESS because plugins (henri.dock) skip such outputs when
 -- they pick their screen.
 hl.monitor({ output = "DP-1", mode = "preferred", position = "0x0", scale = omarchy_monitor_scale })
--- Acer Switch Alpha 12 panel: 2160x1440 on 250x170 mm (~219 ppi). At the
--- shared 1.25 everything was too small. Integer 2 (1080x720 points) instead
--- of the 1.6 tried first: the HD 520 lagged even moving the pointer, and a
--- whole-number scale spares it the fractional resampling. Matched by
--- description so the M1 (also eDP-1 inside) keeps its own scale.
-hl.monitor({ output = "desc:Wistron Corporation 0x3316", mode = "preferred", position = "0x0", scale = 2 })
+-- The tablet's own panel rule is in hosts/tablet (hypr/host.lua).
 -- Shaped for the iPad, not for the monitor: ipadcast (~/Projects/m1-power/ipadcast)
 -- mirrors this output to the iPad while the real monitor is unplugged, which
 -- makes the iPad the display. The iPad Air 11" is 2360x1640 on 11 inches; at

@@ -32,5 +32,17 @@ run stow --dir "$DOTFILES_ROOT/stow" --target "$HOME" --restow "${packages[@]}"
 
 # henri-ui's Motion.js imports Prefs.js — machine state written by System
 # Settings, so not in git. Start it from the committed defaults.
+# This machine's own packages (hosts/<host>/stow), same rules.
+if [[ -d $HOST_DIR/stow ]]; then
+  mapfile -t host_packages < <(cd "$HOST_DIR/stow" && find . -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | sort)
+  for pkg in "${host_packages[@]}"; do
+    while IFS= read -r rel; do
+      clear_for_stow "$HOME/$rel" "$HOST_DIR/stow/$pkg/$rel"
+    done < <(cd "$HOST_DIR/stow/$pkg" && find . -type f -printf '%P\n')
+  done
+  info "stowing for $HOST: ${host_packages[*]}"
+  run stow --dir "$HOST_DIR/stow" --target "$HOME" --restow "${host_packages[@]}"
+fi
+
 prefs="$DOTFILES_ROOT/stow/henri-ui/.local/share/henri-ui"
 [[ -e $prefs/Prefs.js ]] || run cp "$prefs/Prefs.default.js" "$prefs/Prefs.js"

@@ -28,7 +28,14 @@ fi
 
 [[ ${DRY_RUN:-0} == 1 ]] && log "DRY RUN — no changes will be made"
 
+[[ -d $HOST_DIR ]] || warn "no hosts/$HOST — running every step, no per-machine overlay"
+mapfile -t host_skip < <(list_words "$HOST_DIR/skip")
+
 for step in "${steps[@]}"; do
+  if printf '%s\n' "${host_skip[@]}" | grep -qx "${step%%-*}"; then
+    log "${step%.sh}"; skip "not on $HOST (hosts/$HOST/skip)"
+    continue
+  fi
   bash "install/$step"
 done
 

@@ -1,0 +1,4 @@
+# Install steps that never run on the tablet (one number per line).
+27   # chromium-video: flags for the M1's patched apple-avd decoder
+96   # headless: the M1 without a screen (lid, status sounds, kbd backlight codes)
+97   # ipadcast-usb: iPad over the M1's USB-C ports (dwc3-apple, tps6598x)

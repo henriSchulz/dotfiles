@@ -29,6 +29,22 @@ it, the shell rewrites `shell.json` on save. A read-only stow symlink there
 breaks those writes, so that tree is **copied** by a script, never linked.
 Everything under `stow/` is safe to symlink.
 
+## Two machines: `hosts/`
+
+The M1 (`m1`) and the Acer tablet (`tablet`) run this same repo. What belongs
+to one machine only lives in `hosts/<hostname>/`:
+
+| File | Effect |
+|---|---|
+| `skip` | install steps this machine never runs (`install_all.sh` skips them with a note) |
+| `packages.exclude`, `packages.txt` | packages of the shared list it leaves out, packages only it gets |
+| `stow/<pkg>/` | its own stow packages, linked by step 20 after the shared ones — `hypr/.config/hypr/host.lua` is loaded last by `autostart.lua` and may override anything (the tablet's panel scale lives there) |
+
+`dotfiles-peer-sync` (timer on the M1, `hosts/m1/stow/peer-sync`) keeps this
+repo and `dotfiles-private` the same on both machines over the USB-C Ethernet
+cable, fast-forward only; GitHub is just a backup. Concept:
+`~/Documents/Notizen/Ein Arbeitsplatz auf zwei Geräten.md`.
+
 ## What is here — and what deliberately is not
 
 Every file was diffed against `/usr/share/omarchy/config/`, and only real

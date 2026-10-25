@@ -11,6 +11,16 @@ export DOTFILES_ROOT
 : "${OMARCHY_PATH:=/usr/share/omarchy}"
 export OMARCHY_PATH
 
+# This machine's overlay: hosts/<hostname>/ holds what only one machine gets —
+# steps it skips (skip), packages it leaves out (packages.exclude) or adds
+# (packages.txt), and its own stow packages (stow/).
+HOST="$(hostname)"
+HOST_DIR="$DOTFILES_ROOT/hosts/$HOST"
+export HOST HOST_DIR
+
+# Words of a list file, without comments and blank lines.
+list_words() { [[ -f $1 ]] && sed 's/#.*//' "$1" | tr -s ' \t' '\n' | grep -v '^$' || true; }
+
 # Set DRY_RUN=1 to print actions without changing anything.
 : "${DRY_RUN:=0}"
 

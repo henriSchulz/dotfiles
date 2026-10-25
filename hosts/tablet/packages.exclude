@@ -1,0 +1,5 @@
+# Packages from packages/packages.txt the tablet does not get (Henri's choice,
+# 2026-10-23: no LaTeX on the tablet).
+texlive-basic texlive-latex texlive-latexrecommended texlive-latexextra
+texlive-fontsrecommended texlive-fontsextra texlive-langgerman
+texlive-bibtexextra texlive-binextra texlive-pictures biber
