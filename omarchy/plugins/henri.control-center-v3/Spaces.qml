@@ -9,7 +9,8 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 // The top tile of the Control Center: a miniature of every workspace
 // (wallpaper + live window captures, as the workspace switcher draws them).
 // A click switches there and closes the island. Captures run only while
-// the island is open.
+// the island is open. The "+" after them makes a new workspace (the next free number) and goes
+// there — Hyprland drops an empty workspace nobody is on, so it can't wait in the row.
 VTile {
   id: sp
   property bool active: false
@@ -33,7 +34,7 @@ VTile {
   readonly property real aspect: focusedMon && focusedMon.width > 0 ? focusedMon.height / focusedMon.width : 0.625
   // as wide as the room allows, at most a quarter of the module width
   readonly property real tileW: {
-    const n = Math.max(1, ids.length);
+    const n = ids.length + 1;   // the miniatures and the "+"
     const room = (width - 2 * pad - (n - 1) * pad) / n;
     return Math.max(0, Math.min(Theme.layout.module.width / 4, room));
   }
@@ -70,6 +71,13 @@ VTile {
     if (id === sp.currentId || !/^[0-9]{1,6}$/.test(String(id)))
       return;
     Hyprland.dispatch(Hyprland.usingLua ? "hl.dsp.focus({ workspace = \"" + id + "\" })" : "workspace " + id);
+  }
+  // the lowest number no workspace has yet
+  function addSpace() {
+    let id = 1;
+    while (sp.ids.indexOf(id) >= 0)
+      id++;
+    sp.go(id);
   }
 
   Row {
@@ -175,6 +183,31 @@ VTile {
           font.weight: cell.isCurrent ? Font.DemiBold : Theme.m.type.bodyWeight
           tone: cell.isCurrent ? "primary" : "secondary"
         }
+      }
+    }
+
+    // a new workspace
+    Column {
+      spacing: sp.gap
+      VPressable {
+        id: addButton
+        width: sp.tileW
+        height: sp.tileH
+        radius: Theme.m.radius.control
+        onClicked: sp.addSpace()
+        Rectangle {
+          anchors.fill: parent
+          radius: Theme.m.radius.control
+          color: "transparent"
+          border.width: Theme.layout.separator
+          border.color: Theme.r.line.strong
+        }
+        VIcon { anchors.centerIn: parent; name: "plus"; weight: "bold"; color: addButton.contentColor }
+      }
+      VText {
+        anchors.horizontalCenter: parent.horizontalCenter
+        text: "New"
+        tone: "secondary"
       }
     }
   }
