@@ -1,0 +1,61 @@
+#!/bin/bash
+# Rebuild this machine's copy of a synced project when its commit changed
+# (projects/rebuild.conf in dotfiles says what to do per project and machine).
+#
+# Only commits count, not every saved file: what is installed follows what is
+# committed. A project is handled once its HEAD has stood still for 2 minutes
+# and its Syncthing folder is idle, so a half-synced .git is never built. The
+# last commit handled is kept per machine in ~/.local/state/henri/projects-rebuild.
+# The first run only records the current commits.
+set -uo pipefail
+
+conf="$HOME/Projects/dotfiles/projects/rebuild.conf"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/henri/projects-rebuild"
+cfg="${XDG_STATE_HOME:-$HOME/.local/state}/syncthing/config.xml"
+host=$(hostname)
+[[ -f $conf ]] || exit 0
+first_run=0; [[ -d $state ]] || first_run=1
+mkdir -p "$state"
+key=$(grep -oP '(?<=<apikey>)[^<]+' "$cfg" 2>/dev/null)
+
+note() { echo "$*"; notify-send -a "Projects" "Projects" "$*" 2>/dev/null || true; }
+
+idle() {   # Syncthing folder of the project is idle (or Syncthing is not there)
+  [[ -n $key ]] || return 0
+  local s
+  s=$(curl -sf -H "X-API-Key: $key" "http://127.0.0.1:8384/rest/db/status?folder=proj-$1" 2>/dev/null) || return 0
+  [[ $(python3 -c 'import json,sys; print(json.load(sys.stdin)["state"])' <<<"$s") == idle ]]
+}
+
+while read -r name hosts action command; do
+  [[ -z $name || $name == \#* ]] && continue
+  [[ ,$hosts, == *,"$host",* ]] || continue
+  dir="$HOME/Projects/$name"
+  [[ -d $dir/.git ]] || continue
+  head=$(git -C "$dir" rev-parse HEAD 2>/dev/null) || continue
+  last=$(cat "$state/$name" 2>/dev/null)
+  if ((first_run)) || [[ -z $last ]]; then echo "$head" >"$state/$name"; continue; fi
+  [[ $head == "$last" ]] && continue
+
+  # HEAD must have stood still for 2 minutes
+  ref=$(git -C "$dir" symbolic-ref -q HEAD) && f="$dir/.git/$ref" || f="$dir/.git/HEAD"
+  [[ -f $f ]] || f="$dir/.git/packed-refs"
+  (( $(date +%s) - $(stat -c %Y "$f") >= 120 )) || continue
+  idle "$name" || continue
+
+  short=$(git -C "$dir" rev-parse --short HEAD)
+  case $action in
+    build)
+      echo "$name: building $short ($command)"
+      if (cd "$dir" && nice -n 19 bash -c "$command") >"$state/$name.log" 2>&1; then
+        echo "$head" >"$state/$name"
+        echo "$name: built $short"
+      else
+        note "$name: build of $short failed — log: ${state/#$HOME/\~}/$name.log"
+        echo "$head" >"$state/$name"   # once per commit, not every few minutes
+      fi ;;
+    notify)
+      note "$name changed ($short): rebuild by hand — cd ~/Projects/$name && $command"
+      echo "$head" >"$state/$name" ;;
+  esac
+done <"$conf"

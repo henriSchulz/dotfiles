@@ -1,0 +1,53 @@
+#!/bin/bash
+# Write .stignore for every Syncthing-synced project in ~/Projects.
+#
+# What git ignores must not sync: build output is architecture-specific (the M1
+# is aarch64, the tablet x86_64) and is made on each machine. Syncthing cannot
+# read nested .gitignore files, so each project's .stignore is
+#   - fixed patterns (build dirs, git lock files, git worktree metadata),
+#   - the project's top-level .gitignore, included,
+#   - every path git ignores right now, anchored — that covers the nested
+#     .gitignore files too.
+# Runs on both machines (projects-sync.timer); a file is only rewritten when it
+# changes. Projects = folders whose Syncthing id starts with proj-, or the
+# directories given as arguments (projects-sync, before it adds a folder).
+set -uo pipefail
+
+cfg="${XDG_STATE_HOME:-$HOME/.local/state}/syncthing/config.xml"
+if (($#)); then
+  dirs=("$@")
+else
+  [[ -f $cfg ]] || exit 0
+
+  mapfile -t dirs < <(python3 - "$cfg" <<'PY'
+import sys, xml.etree.ElementTree as ET
+for f in ET.parse(sys.argv[1]).getroot().findall("folder"):
+    if f.get("id", "").startswith("proj-"):
+        print(f.get("path"))
+PY
+  )
+fi
+
+for dir in "${dirs[@]}"; do
+  [[ -d $dir ]] || continue
+  new=$(
+    echo "// Written by projects-stignore (dotfiles) — change the script, not this file."
+    echo "(?d)node_modules"
+    echo "(?d)target"
+    echo "(?d).venv"
+    echo "(?d)__pycache__"
+    echo "/.git/worktrees"
+    echo "/.git/*.lock"
+    echo "/.git/**/*.lock"
+    [[ -f $dir/.gitignore ]] && echo "#include .gitignore"
+    if [[ -d $dir/.git ]]; then
+      echo "// ignored by git right now"
+      git -C "$dir" ls-files -z --others --ignored --exclude-standard --directory 2>/dev/null |
+        tr '\0' '\n' | grep -v '^$' | sed 's|/$||; s|^|/|' | grep -vE '^/\.st(folder|ignore|versions)$' | sort
+    fi
+  )
+  if [[ $new != "$(cat "$dir/.stignore" 2>/dev/null)" ]]; then
+    printf '%s\n' "$new" >"$dir/.stignore"
+    echo "updated ${dir/#$HOME/\~}/.stignore"
+  fi
+done

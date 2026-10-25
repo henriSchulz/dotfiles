@@ -1,0 +1,90 @@
+#!/bin/bash
+# Keep ~/Projects the same on the M1 and the tablet with Syncthing (cable only,
+# see install/47-syncthing.sh). Every project is its own Syncthing folder
+# proj-<name>, working tree and .git together, so work that is not committed yet
+# is on the other machine too.
+#
+# Left out: dotfiles and dotfiles-private (git over the cable,
+# dotfiles-peer-sync), M1-only hardware projects, and git worktrees (a .git
+# file instead of a directory: their HEAD and index live in the main repo's
+# .git/worktrees, which stays on each machine).
+#
+# Runs on both machines from projects-sync.timer:
+#   1. a project here without a folder gets one (shared with the other machine);
+#   2. a project the other machine offers is accepted into ~/Projects/<name>;
+#   3. projects-stignore refreshes the ignore files.
+# A new project's .git gets core.checkStat=minimal and core.trustctime=false:
+# the index then compares only mtime and size, which Syncthing keeps, so a
+# `git status` on one machine does not rewrite an index the other one wrote.
+set -uo pipefail
+
+EXCLUDE=(dotfiles dotfiles-private ave-m1 m1-power btpad hyprshape)
+
+case "$(hostname)" in
+  m1)     peer_name=tablet ;;
+  tablet) peer_name=m1 ;;
+  *) exit 0 ;;
+esac
+
+cfg="${XDG_STATE_HOME:-$HOME/.local/state}/syncthing/config.xml"
+[[ -f $cfg ]] || exit 0
+key=$(grep -oP '(?<=<apikey>)[^<]+' "$cfg")
+api() { curl -sf -H "X-API-Key: $key" "$@"; }
+api http://127.0.0.1:8384/rest/system/ping >/dev/null || exit 0   # Syncthing not running
+
+python3 - "$key" "$peer_name" "$HOME/Projects" "${EXCLUDE[@]}" <<'PY'
+import json, os, subprocess, sys, urllib.request
+
+key, peer_name, root, *exclude = sys.argv[1:]
+def api(path, method="GET", body=None):
+    req = urllib.request.Request("http://127.0.0.1:8384" + path, method=method,
+                                 data=None if body is None else json.dumps(body).encode(),
+                                 headers={"X-API-Key": key, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req) as r:
+        data = r.read()
+        return json.loads(data) if data else None
+
+own = api("/rest/system/status")["myID"]
+peer = next(d["deviceID"] for d in api("/rest/config/devices") if d["name"] == peer_name)
+folders = {f["id"]: f for f in api("/rest/config/folders")}
+
+def add(name):
+    path = os.path.join(root, name)
+    if os.path.isdir(os.path.join(path, ".git")):
+        for k, v in (("core.checkStat", "minimal"), ("core.trustctime", "false")):
+            subprocess.run(["git", "-C", path, "config", k, v], check=False)
+    # ignore file first: Syncthing scans a new folder at once
+    subprocess.run(["projects-stignore", path], check=False)
+    folder = api("/rest/config/defaults/folder")
+    folder.update({"id": "proj-" + name, "label": name, "path": path, "type": "sendreceive",
+                   "devices": [{"deviceID": own}, {"deviceID": peer}],
+                   "rescanIntervalS": 3600, "fsWatcherEnabled": True, "fsWatcherDelayS": 10,
+                   "versioning": {"type": "trashcan", "params": {"cleanoutDays": "30"},
+                                  "cleanupIntervalS": 3600}})
+    api("/rest/config/folders", "POST", folder)
+    print("added", folder["id"])
+
+# 1. projects here
+for name in sorted(os.listdir(root)):
+    path = os.path.join(root, name)
+    if name in exclude or name.startswith(".") or not os.path.isdir(path):
+        continue
+    if os.path.isfile(os.path.join(path, ".git")):   # a git worktree
+        continue
+    if "proj-" + name not in folders:
+        add(name)
+
+# 2. projects the other machine offers
+pending = api("/rest/cluster/pending/folders") or {}
+for fid, info in pending.items():
+    offer = info.get("offeredBy", {}).get(peer)
+    if not fid.startswith("proj-") or not offer or fid in folders:
+        continue
+    name = fid[len("proj-"):]
+    if name in exclude or "/" in name or name.startswith("."):
+        continue
+    os.makedirs(os.path.join(root, name), exist_ok=True)
+    add(name)
+PY
+
+projects-stignore

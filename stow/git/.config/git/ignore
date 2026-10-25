@@ -1,0 +1,4 @@
+# Syncthing's own files in synced projects (~/Projects, see projects-sync)
+.stfolder
+.stignore
+.stversions

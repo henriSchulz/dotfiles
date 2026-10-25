@@ -1,0 +1,10 @@
+[Unit]
+Description=Projects: Syncthing folders, ignore files, rebuilds
+After=syncthing.service
+
+[Service]
+Type=oneshot
+Nice=19
+CPUWeight=20
+ExecStart=%h/.local/bin/projects-sync
+ExecStart=%h/.local/bin/projects-rebuild
