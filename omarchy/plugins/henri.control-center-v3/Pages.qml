@@ -44,12 +44,17 @@ Item {
   }
   function reset() { stack.reset(); names = [] }
 
-  property real maxHeight: 0          // the tallest the island can grow on this screen; taller pages scroll
+  property real maxHeight: 0          // the tallest the island can grow on this screen; taller pages go wide, then scroll
+  property real columnWidth: width    // one column of a detail page (the island's normal content width)
+  // the shown page would run off the screen in one column: the island makes room for two
+  readonly property bool wide: !spaces && !!stack.current && stack.current.wants === true
   VPageStack { id: stack; width: parent.width; maxHeight: cc.maxHeight; initial: mainPage; visible: !cc.spaces }
   // -- every workspace as a miniature; a click switches there
   Spaces { id: spacesView; width: parent.width; visible: cc.spaces; active: cc.spaces && cc.be.opened; onChosen: cc.closeRequested() }
 
   // ---- parts: everything takes the page's width
+  // a detail page: one column, two when one would run off the screen (the island grows wider)
+  component Page: VPageColumns { columnWidth: cc.columnWidth; maxHeight: cc.maxHeight }
   component MRow: VModuleRow { width: parent ? parent.width : implicitWidth }
   component MHead: VPageHead { width: parent ? parent.width : implicitWidth; onBack: cc.back() }
   component MSection: VModuleSection { width: parent ? parent.width : 0 }
@@ -323,7 +328,7 @@ Item {
   // ================================================================ Wi-Fi
   Component {
     id: wifiPage
-    Column {
+    Page {
       spacing: cc.gap
       MHead { title: "Wi-Fi" }
       Hero {
@@ -426,7 +431,7 @@ Item {
   }
   Component {
     id: btPage
-    Column {
+    Page {
       spacing: cc.gap
       MHead { title: "Bluetooth" }
       Hero {
@@ -453,7 +458,7 @@ Item {
   // ================================================================ Sound
   Component {
     id: soundPage
-    Column {
+    Page {
       spacing: cc.gap
       MHead { title: "Sound" }
       Group {
@@ -477,7 +482,7 @@ Item {
   }
   Component {
     id: podsPage
-    Column {
+    Page {
       readonly property var pods: cc.be.podService
       spacing: cc.gap
       MHead { title: cc.be.airpodsName }
@@ -518,7 +523,7 @@ Item {
   // ================================================================ Display
   Component {
     id: displayPage
-    Column {
+    Page {
       spacing: cc.gap
       MHead { title: "Display" }
       Group {
@@ -578,7 +583,7 @@ Item {
   // ================================================================ Focus
   Component {
     id: focusPage
-    Column {
+    Page {
       spacing: cc.gap
       MHead { title: "Focus" }
       VTile {
@@ -602,7 +607,7 @@ Item {
   // ================================================================ Keyboard
   Component {
     id: kbdPage
-    Column {
+    Page {
       spacing: cc.gap
       MHead { title: cc.be.kbdBinary ? "Keyboard Backlight" : "Keyboard Brightness" }
       Group {
@@ -690,10 +695,10 @@ Item {
   }
   Component {
     id: hwPage
-    Column {
+    Page {
       id: hp
       readonly property var hw: cc.be.hw
-      readonly property real third: (width - 2 * cc.gap) / 3
+      readonly property real third: (columnWidth - 2 * cc.gap) / 3
       spacing: cc.gap
       MHead { title: "Hardware" }
 
@@ -775,7 +780,7 @@ Item {
   // ================================================================ Experiments
   Component {
     id: expPage
-    Column {
+    Page {
       spacing: cc.gap
       MHead { title: "Experiments" }
       Group {

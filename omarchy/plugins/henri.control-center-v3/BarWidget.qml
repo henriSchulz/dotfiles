@@ -196,14 +196,17 @@ BarWidget {
     anchorItem: pill
     bar: root.bar
     namespace: "velum-surface"   // Hyprland: blur with ignore_alpha 0.6 (only the material, never the shadow), no layer animation
-    toWidth: Theme.layout.module.island
+    // a detail page too tall for one column takes two side by side (when the screen has the room)
+    readonly property real columnWidth: Theme.layout.module.island - 2 * pad
+    readonly property real wideWidth: 2 * columnWidth + Theme.layout.module.gap + 2 * pad
+    toWidth: pages.wide && wideWidth <= screenW - 2 * margin ? wideWidth : Theme.layout.module.island
     contentHeight: pages.implicitHeight
     face: Component { Face {} }
     onDismissed: root.close()
     onReopenRequested: root.open()
     onEscapePressed: if (!pages.back()) root.close()
     onShownChanged: if (!shown) pages.reset()
-    Pages { id: pages; be: be; velum: velum; width: parent.width; maxHeight: island.maxContentHeight; onCloseRequested: root.close() }
+    Pages { id: pages; be: be; velum: velum; width: parent.width; maxHeight: island.maxContentHeight; columnWidth: island.columnWidth; onCloseRequested: root.close() }
   }
 
   IpcHandler {
@@ -218,7 +221,7 @@ BarWidget {
     function page(name: string): void { root.open(name) }
     function togglePage(name: string): void { if (island.open && pages.current === name) root.close(); else root.open(name) }
     function back(): void { pages.back() }
-    function state(): string { return JSON.stringify({ open: island.open, shown: island.shown, page: pages.current, spaces: pages.spaces, from: island.from, variant: Theme.variant, dark: Theme.dark, sf: Theme.sfAvailable, height: pages.implicitHeight, maxHeight: island.maxContentHeight, screenH: island.screenH }) }
+    function state(): string { return JSON.stringify({ open: island.open, shown: island.shown, page: pages.current, spaces: pages.spaces, from: island.from, variant: Theme.variant, dark: Theme.dark, sf: Theme.sfAvailable, height: pages.implicitHeight, maxHeight: island.maxContentHeight, screenH: island.screenH, wide: pages.wide, width: island.toWidth }) }
     function set(key: string, value: string): void { velum.set(key, value === "true" ? true : value === "false" ? false : value) }
   }
 }
