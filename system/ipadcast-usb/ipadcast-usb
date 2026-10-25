@@ -23,7 +23,7 @@ their time. Needs root (the tunnel makes a network interface).
     ipadcast-usb run       the service
     ipadcast-usb status    what is up now
 """
-import json, os, pwd, subprocess, sys, threading, time
+import json, os, pwd, socket, subprocess, sys, threading, time
 
 USER = os.environ.get("IPADCAST_USER", "henri")
 PW = pwd.getpwnam(USER)
@@ -193,7 +193,7 @@ def run():
         return
     tunnel, iface, addr = up
     url = f"http://[{addr}]:{PORT}/{token()}/"
-    name_url = f"http://omarchy.local:{PORT}/{token()}/"
+    name_url = f"http://{socket.gethostname()}.local:{PORT}/{token()}/"
     note = remember(addr)
     json.dump({"device": dev, "interface": iface, "address": addr, "url": url, "name_url": name_url, "note": note},
               open(STATE, "w"))

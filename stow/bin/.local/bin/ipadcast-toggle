@@ -33,5 +33,5 @@ else
     path="$(cat "$HOME/.config/ipadcast/token" 2>/dev/null)/"
     hint="\nKein Passwort: Steuern ist aus. Setzen mit: ipadcast-passwd"
   fi
-  notify-send -t 8000 "Bildschirm-Spiegel an" "In Safari öffnen:\nhttp://${ip:-omarchy.local}:8770/${path}${hint}"
+  notify-send -t 8000 "Bildschirm-Spiegel an" "In Safari öffnen:\nhttp://${ip:-$(hostname).local}:8770/${path}${hint}"
 fi
