@@ -1,0 +1,14 @@
+// mdview project, synced by mdview over GitHub
+/Notizen
+// written by the Omarchy theme hook on each machine
+/.obsidian/themes/Omarchy
+/.obsidian/workspace.json
+/.obsidian/workspace-mobile.json
+// Build output and caches: architecture-specific, generated per machine
+(?d)node_modules
+(?d)target
+(?d).venv
+(?d)__pycache__
+// Git lock files: never sync a half-finished git operation
+**/.git/index.lock
+**/.git/*.lock
