@@ -64,7 +64,7 @@ hl.config({
     kb_layout = "de",
     kb_options = "",
     -- NumLock schaltet auf der Acer-Tastatur die Buchstaben auf Ziffernblock;
-    -- Fn+F11 ist per hwdb abgeschaltet (dotfiles/system/acer-numlock).
+    -- Fn+F11 ist per hwdb F11 statt Num Lock (dotfiles/system/acer-keys).
     numlock_by_default = false,
   },
 })

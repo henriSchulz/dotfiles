@@ -1,0 +1,36 @@
+# Acer Switch Alpha 12 keyboard cover ("Chicony ACER Hawaii Keyboard", 04f2:1558):
+# the top row works like the M1's Apple keyboard (fnmode=1), so both machines — and the Mac
+# through mac-cast — get the same keys. Measured with ~/Projects/fkeys/bin/fkeys-probe.
+#
+# Alone:  F1 F2 brightness, F3 Mission Control, F4 Launchpad, F5 dictation, F6 Control Center,
+#         F7 F8 F9 previous / play / next, F10 mute, F11 F12 volume.
+# Fn:     the keyboard sends its own codes; where they differ from the plain key they become the
+#         real F-key again (F3 F4 F8 F11 F12). Fn+F1, F2, F9, F10 send the same code as alone,
+#         so real F1, F2, F9, F10 are gone. Fn+F5 stays Super+P, Fn+F7 Ctrl+Super+F24, Fn+F6
+#         sends a code the kernel ignores. Fn+arrows (brightness, volume) are left as they are.
+#
+# Fn+F11 sent Num Lock, which made the firmware turn U I O J K L M into a number pad: as F11
+# Num Lock is never toggled, so that cannot happen any more (was 90-acer-hawaii-no-numlock).
+#
+# Install:
+#   sudo install -m644 90-acer-hawaii-keys.hwdb /etc/udev/hwdb.d/
+#   sudo rm -f /etc/udev/hwdb.d/90-acer-hawaii-no-numlock.hwdb
+#   sudo systemd-hwdb update && sudo udevadm trigger -s input
+evdev:input:b0003v04F2p1558*
+ KEYBOARD_KEY_7003a=brightnessdown
+ KEYBOARD_KEY_7003b=brightnessup
+ KEYBOARD_KEY_7003c=scale
+ KEYBOARD_KEY_7003d=dashboard
+ KEYBOARD_KEY_7003e=micmute
+ KEYBOARD_KEY_7003f=sleep
+ KEYBOARD_KEY_70040=previoussong
+ KEYBOARD_KEY_70041=playpause
+ KEYBOARD_KEY_70042=nextsong
+ KEYBOARD_KEY_70043=mute
+ KEYBOARD_KEY_70044=volumedown
+ KEYBOARD_KEY_70045=volumeup
+ KEYBOARD_KEY_100c6=f3
+ KEYBOARD_KEY_10082=f4
+ KEYBOARD_KEY_c00e2=f8
+ KEYBOARD_KEY_70053=f11
+ KEYBOARD_KEY_70047=f12

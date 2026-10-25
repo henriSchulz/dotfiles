@@ -1,9 +1,0 @@
-# Acer Switch Alpha 12 keyboard cover ("Chicony ACER Hawaii Keyboard", 04f2:1558):
-# Fn+F11 sends NumLock, the host lights the NumLock LED and the keyboard firmware
-# then turns U I O J K L M … into a numpad. Dropping the key in the kernel means
-# NumLock is never toggled, so the numpad mode can't come on.
-# Install:
-#   sudo install -m644 90-acer-hawaii-no-numlock.hwdb /etc/udev/hwdb.d/
-#   sudo systemd-hwdb update && sudo udevadm trigger -s input
-evdev:input:b0003v04F2p1558*
- KEYBOARD_KEY_70053=reserved

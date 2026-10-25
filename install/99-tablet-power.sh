@@ -23,9 +23,14 @@ run sudo install -Dm644 "$src/50-tablet-power.conf" /etc/sysctl.d/50-tablet-powe
 run sudo install -Dm644 "$src/50-tablet-power-aspm.conf" /etc/tmpfiles.d/50-tablet-power-aspm.conf
 # hidraw of the detachable keyboard for the logged-in user: henri-kbdlight-hid switches its backlight
 run sudo install -Dm644 "$src/70-acer-kbd-hidraw.rules" /etc/udev/rules.d/70-acer-kbd-hidraw.rules
+# the keyboard cover's top row as the M1's Apple row (and real F-keys with Fn where it can)
+run sudo install -Dm644 "$DOTFILES_ROOT/system/acer-keys/90-acer-hawaii-keys.hwdb" /etc/udev/hwdb.d/90-acer-hawaii-keys.hwdb
+run sudo rm -f /etc/udev/hwdb.d/90-acer-hawaii-no-numlock.hwdb
+run sudo systemd-hwdb update
 
 # apply now instead of at the next boot
 run sudo udevadm control --reload
 run sudo udevadm trigger --subsystem-match=pci --subsystem-match=usb --subsystem-match=hidraw --action=add
+run sudo udevadm trigger --subsystem-match=input --action=change
 run sudo sysctl -q --load /etc/sysctl.d/50-tablet-power.conf
 run sudo systemd-tmpfiles --create /etc/tmpfiles.d/50-tablet-power-aspm.conf || warn "the BIOS keeps ASPM control — policy stays at default"
