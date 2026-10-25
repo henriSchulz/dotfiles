@@ -157,17 +157,18 @@ BarWidget {
   function close() { island.from = islandRect(); island.open = false }
   function toggle(spaces) { if (island.open) close(); else open("", spaces) }
   // Tablet mode: a finger pulls the island open from the top edge (henri.bar-v3 → VGestures);
-  // the island grows with it and, let go, opens or shrinks back.
+  // the island grows with it and, let go, opens or shrinks back. "spaces" (a cast screen's top
+  // edge, henri.tablet-v3) pulls only the workspace miniatures.
   Connections {
     target: VGestures
     function onPull(surface, screenName, phase, travel, velocity) {
-      if (surface !== "controlCenter") return
+      if (surface !== "controlCenter" && surface !== "spaces") return
       var w = root.QsWindow.window
       if (!w || !w.screen || w.screen.name !== screenName) return
       var dist = Theme.core.surface.tablet.pullTravel
       if (phase === "move") {
         if (island.open) return
-        if (!island.pulling) { island.from = root.islandRect(pw.value); if (!island.shown) pages.spaces = false }
+        if (!island.pulling) { island.from = root.islandRect(pw.value); if (!island.shown) pages.spaces = surface === "spaces" }
         island.pull = Math.max(0, travel) / dist
         return
       }

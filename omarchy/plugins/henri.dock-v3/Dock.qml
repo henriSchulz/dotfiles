@@ -1352,7 +1352,20 @@ Item {
   // Hidden by hand (Super+D / `dock toggle`): slides out, gives the space back
   // and stays out until toggled again — no edge trigger.
   property bool manualHidden: false
-  readonly property bool hiddenNow: manualHidden || (autoHide && dockHidden)
+  readonly property bool hiddenNow: manualHidden || keyboardUp || (autoHide && dockHidden)
+  // The on-screen keyboard (henri.keyboard-v3) is up on this screen: the dock goes, as on an iPad, and
+  // reserves nothing — else Hyprland stacked its background above the keyboard's reserved zone while
+  // the icons stayed at the bottom (Henri saw the background in the middle of the screen).
+  property bool keyboardUp: false
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event.name !== "custom") return
+      var f = String(event.data).split(" ")
+      if (f.length !== 3 || f[0] !== "velum-keyboard" || (f[1] !== "shown" && f[1] !== "hidden")) return
+      if (root.screen && f[2] === root.screen.name) root.keyboardUp = f[1] === "shown"
+    }
+  }
   property real hideOffset: 0
   readonly property real hiddenDistance: bgThickness + Style.space(2)
   readonly property real hideDX: reduceMotion ? 0 : (position === "left" ? -hideOffset * hiddenDistance : position === "right" ? hideOffset * hiddenDistance : 0)
@@ -1856,10 +1869,10 @@ Item {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     // Tablet mode: the home zone reserves the bottom edge, and edgeGap already lifts the sheet
     // over it — a Normal window would be pushed up once more, off the icons (which ignore zones)
-    exclusionMode: root.touchMode ? ExclusionMode.Ignore : ExclusionMode.Normal
+    exclusionMode: root.touchMode || root.keyboardUp ? ExclusionMode.Ignore : ExclusionMode.Normal
     // Nothing is reserved before the settings are read: a zone that is taken
     // back during startup stays behind in Hyprland as dead space under the windows.
-    exclusiveZone: !root.settingsLoaded || root.autoHide || root.manualHidden ? 0 : Math.round(root.bgThickness)
+    exclusiveZone: !root.settingsLoaded || root.autoHide || root.manualHidden || root.keyboardUp ? 0 : Math.round(root.bgThickness)
     anchors {
       bottom: root.position === "bottom" || !root.horizontal
       top: !root.horizontal

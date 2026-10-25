@@ -642,11 +642,37 @@ Item {
   }
 
   // ---- Keyboard backlight (henri.kbdlight service: level + turn-off delay).
-  //      Looked up on every open: the service may load after this panel.
-  //      With a backlight its half tile takes Text Size's place next to
-  //      Layout and Text Size moves into the Display fold-out; without one
-  //      the row stays Text Size | Layout.
-  property var kbd: null
+  //      Since omarchy 4.0.6 a plugin gets no other plugin's service object, so
+  //      `kbd` is a stand-in with the service's interface: it reads the state the
+  //      service writes to $XDG_RUNTIME_DIR/henri-kbdlight-<instance>.json and
+  //      sends changes as the Hyprland events `kbdlight set|timeout …`.
+  //      Without the file (service off, no backlight) `kbd` is null.
+  property var kbd: kbdState.available === true ? kbdProxy : null
+  property var kbdState: ({})
+  FileView {
+    id: kbdFile
+    path: Quickshell.env("XDG_RUNTIME_DIR") + "/henri-kbdlight-" + Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") + ".json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { root.kbdState = JSON.parse(text()) } catch (e) {} }
+    onLoadFailed: root.kbdState = ({})
+  }
+  QtObject {
+    id: kbdProxy
+    readonly property bool available: root.kbdState.available === true
+    readonly property bool binary: root.kbdState.binary === true
+    // set at once on a change (the slider follows the finger), then corrected by the file
+    property real level: typeof root.kbdState.level === "number" ? root.kbdState.level : 0
+    readonly property int timeout: typeof root.kbdState.timeout === "number" ? root.kbdState.timeout : 0
+    readonly property var timeoutChoices: root.kbdState.timeoutChoices || []
+    function setLevel(v) { level = binary ? (v > 0 ? 1 : 0) : Math.max(0, Math.min(1, v)); root.kbdEvent("set " + level) }
+    function setTimeoutSeconds(s) { root.kbdEvent("timeout " + Math.max(0, Math.round(s))) }
+  }
+  Connections { target: root; function onKbdStateChanged() { if (typeof root.kbdState.level === "number") kbdProxy.level = root.kbdState.level } }
+  function kbdEvent(cmd) {
+    Hyprland.dispatch(Hyprland.usingLua ? "hl.dsp.event(\"kbdlight " + cmd + "\")" : "event kbdlight " + cmd)
+  }
   readonly property bool kbdAvailable: kbd !== null && kbd.available === true
   readonly property bool kbdBinary: kbdAvailable && kbd.binary === true
   function kbdTimeoutLabel(s) { return s === 0 ? "Never" : s < 60 ? s + " s" : (s / 60) + " min" }
@@ -710,7 +736,7 @@ Item {
     brightnessProc.running = true
   }
   function refresh() {
-    kbd = service("henri.kbdlight")
+    kbdFile.reload()   // the service may have written its file after this panel loaded
     if (!stateProc.running) stateProc.running = true
     if (!sinkPortProc.running) sinkPortProc.running = true
     if (!localsendProc.running) localsendProc.running = true

@@ -72,6 +72,14 @@ Item {
     }
     onExited: function (code) { if (code !== 0) console.warn("henri.keyboard: velum-osk exited", code) }
   }
+  // the dock gives way while the keyboard is up (as on an iPad): "velum-keyboard shown|hidden SCREEN"
+  function announce() {
+    var e = "velum-keyboard " + (root.shown ? "shown " : "hidden ") + (root.screenName || (Quickshell.screens[0] ? Quickshell.screens[0].name : ""))
+    Hyprland.dispatch(Hyprland.usingLua ? "hl.dsp.event(\"" + e + "\")" : "event " + e)
+  }
+  onShownChanged: announce()
+  onScreenNameChanged: if (root.shown) announce()
+
   function send(line) {
     if (root.inRig) { var l = root.sent.slice(-19); l.push(line); root.sent = l }
     else if (bridge.running) bridge.write(line + "\n")
@@ -123,7 +131,7 @@ Item {
       else if (d.indexOf("velum-keyboard toggle ") === 0) name = d.slice(22).trim()
       else return
       if (/^[A-Za-z0-9_-]+$/.test(name)) root.screenName = name
-      if (d.indexOf("velum-keyboard") === 0) { if (root.shown) root.close(true); else root.open(true) }
+      if (d.indexOf("velum-keyboard toggle ") === 0) { if (root.shown) root.close(true); else root.open(true) }
     }
   }
 
