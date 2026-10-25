@@ -550,7 +550,9 @@ Item {
   property bool hoverSeparator: false
   property bool invertMagnification: false
   readonly property bool layoutActive: hovering || dragging || landing || resizing || activeSprings > 0 || hideAnim.running || swapAnim.running || fx.running || kbMode || externalDrag
-  readonly property bool magnifyNow: (magnificationOn !== invertMagnification) && !touchMode && (hovering || dragging || kbMode) && !resizing && !menuFrozen && !hiddenNow
+  // a finger never magnifies (and gets no labels): only the pointer does, also on a cast screen
+  readonly property bool fingerOn: touchMode || finger.active
+  readonly property bool magnifyNow: (magnificationOn !== invertMagnification) && !fingerOn && (hovering || dragging || kbMode) && !resizing && !menuFrozen && !hiddenNow
 
   function springRunning(on) { activeSprings = Math.max(0, activeSprings + (on ? 1 : -1)) }
   function layoutDirty() { Qt.callLater(relayout) }
@@ -924,17 +926,47 @@ Item {
       }
       return
     }
+    // A finger pushing the dock toward its edge sends it away under the finger (tablet mode or a
+    // cast screen's touch): hideOffset follows, the release decides (touchSwipeEnd). Measured on
+    // the screen, not in the layer that moves with it.
+    if (fingerPress && !dragging && !popupOpen && autoHide && !manualHidden) {
+      var push = pressPoint.c - crossOf(mouseX + hideDX, mouseY + hideDY)
+      if (!touchSwipe && push > root.mo.dragThreshold && push > Math.abs(m - pressPoint.m)) {
+        touchSwipe = true; pressedIndex = -1; swipeSamples = []
+        hideAnim.stop(); hideTimer.stop(); touchHold.stop()
+      }
+      if (touchSwipe) {
+        var now = Date.now(), list = swipeSamples.concat([[now, push]])
+        while (list.length > 2 && now - list[0][0] > Theme.core.surface.tablet.sampleWindow) list.shift()
+        swipeSamples = list
+        hideOffset = Math.max(0, Math.min(1, push / hiddenDistance))
+        return
+      }
+    }
     if (dragging) { updateDrag(); return }
     if (pressedIndex >= 0) {
       var dist = Math.hypot(m - pressPoint.m, c - pressPoint.c)
       if (dist > root.mo.dragThreshold) {
         pressMoved = true
         var it = items[tiles.get(pressedIndex).itemId]
-        if (draggable(it)) { var row = pressedIndex; pressedIndex = -1; beginDrag(row) }
+        // a finger never picks an app up (Henri: it confuses); it only scrolls past or pushes the dock away
+        if (draggable(it) && !fingerPress) { var row = pressedIndex; pressedIndex = -1; beginDrag(row) }
       }
     }
   }
+  property bool fingerPress: false      // the press came from a touchscreen (finger, in zone)
+  property bool touchSwipe: false       // that finger pushes the dock away
+  property var swipeSamples: []         // [ms, push] over the last surface.tablet.sampleWindow
+  function touchSwipeEnd(cancelled) {
+    touchSwipe = false
+    hovering = false
+    var a = swipeSamples[0], b = swipeSamples[swipeSamples.length - 1]
+    var v = a && b && b[0] > a[0] ? (b[1] - a[1]) * 1000 / (b[0] - a[0]) : 0
+    if (!cancelled && b && VGestures.commits(b[1], hiddenDistance, v)) { dockHidden = true; hideAnim.go(1) }
+    else { hideAnim.go(0); armAutoHide() }
+  }
   function releaseAt(mouseX, mouseY, button) {
+    if (touchSwipe) { touchSwipeEnd(false); return }
     if (resizing) { resizing = false; return }
     if (dragging) { endDrag(); return }
     var idx = pressedIndex
@@ -1338,20 +1370,44 @@ Item {
   // ---- the finger (tablet mode): hideOffset follows it 1:1, the release decides
   property bool touchPull: false        // a pull is under way and moves the dock
   property bool touchIgnore: false      // the dock was already out when the pull began
-  Timer { id: touchHold; interval: Theme.core.surface.tablet.dockHold; onTriggered: root.armAutoHide() }
+  Timer { id: touchHold; interval: Theme.core.surface.tablet.dockHold; onTriggered: { if (root.overFullscreen && root.pulledOverFullscreen && !root.hovering) root.fullscreenAway(); else root.armAutoHide() } }
+  // Over a fullscreen window the dock lies under it, out of sight, so a pull (cast screen or tablet
+  // mode) starts from hidden, as on iPadOS: it lifts the dock over the window, and when it goes it
+  // slides away first and only then drops back under the window.
+  property bool pulledOverFullscreen: false
+  property bool droppingUnderFullscreen: false
+  function fullscreenAway() {
+    touchHold.stop(); hideTimer.stop(); hovering = false
+    droppingUnderFullscreen = true
+    hideAnim.go(1)
+  }
+  Connections {
+    target: hideAnim
+    function onFinished() {
+      if (!root.droppingUnderFullscreen) return
+      root.droppingUnderFullscreen = false; root.pulledOverFullscreen = false
+      root.overFullscreen = false
+      root.hideOffset = root.hiddenNow ? 1 : 0
+    }
+  }
   // Out over an app in tablet mode: a tap anywhere else sends it away (and is swallowed, as the
   // click outside a menu). On an empty space it stays, as it does there with a pointer.
-  readonly property bool touchOut: touchMode && !hiddenNow && !manualHidden && !emptySpace && !touchPull
-  function touchDismiss() { touchHold.stop(); hideTimer.stop(); hovering = false; dockHidden = true }
+  readonly property bool touchOut: (touchMode && !hiddenNow && !manualHidden && !emptySpace && !touchPull)
+                                    || (pulledOverFullscreen && !touchPull && !droppingUnderFullscreen)
+  function touchDismiss() { if (pulledOverFullscreen) { fullscreenAway(); return } touchHold.stop(); hideTimer.stop(); hovering = false; dockHidden = true }
   Connections {
     target: VGestures
     function onPull(surface, screenName, phase, travel, velocity) {
-      if (surface !== "dock" || !root.touchMode || !root.screen || screenName !== root.screen.name) return
+      // not only in tablet mode: a cast screen's bottom edge pulls too (henri.tablet-v3, velum-edge)
+      if (surface !== "dock" || !root.screen || screenName !== root.screen.name) return
       if (phase === "move") {
         if (!root.touchPull && !root.touchIgnore) {
-          if (!root.hiddenNow || root.manualHidden) { root.touchIgnore = true; return }
+          var covered = root.fullscreenActive && !root.overFullscreen && !root.manualHidden
+          if (!covered && (!root.hiddenNow || root.manualHidden)) { root.touchIgnore = true; return }
           root.touchPull = true
           hideAnim.stop(); hideTimer.stop(); touchHold.stop()
+          root.droppingUnderFullscreen = false
+          if (covered) { root.hideOffset = 1; root.overFullscreen = true; root.pulledOverFullscreen = true }
           root.dockHidden = false
         }
         if (root.touchPull) root.hideOffset = 1 - Math.max(0, Math.min(1, travel / root.hiddenDistance))
@@ -1362,6 +1418,8 @@ Item {
       if (!was) return
       if (phase === "end" && VGestures.commits(travel, root.hiddenDistance, velocity)) {
         root.dockHidden = false; hideAnim.go(0); touchHold.restart()
+      } else if (root.pulledOverFullscreen) {
+        root.fullscreenAway()
       } else {
         root.dockHidden = true; hideAnim.go(1)
       }
@@ -1381,7 +1439,7 @@ Item {
     return false
   }
   property bool overFullscreen: false
-  onFullscreenActiveChanged: if (!fullscreenActive) overFullscreen = false
+  onFullscreenActiveChanged: if (!fullscreenActive) { overFullscreen = false; pulledOverFullscreen = false; droppingUnderFullscreen = false }
   function toggleDock() {
     if (fullscreenActive && !manualHidden) { overFullscreen = !overFullscreen; return overFullscreen ? "shown over fullscreen" : "under fullscreen" }
     manualHidden = !manualHidden
@@ -1686,12 +1744,14 @@ Item {
             onEntered: { root.hovering = true; hideTimer.stop(); root.kbMode = false }
             onExited: { if (!pressed) { root.hovering = false; root.invertMagnification = false; root.armAutoHide() } }
             onPositionChanged: function (mouse) { root.moveTo(zone.x + mouse.x, zone.y + mouse.y, pressed, mouse.modifiers) }
-            onPressed: function (mouse) { root.pressAt(zone.x + mouse.x, zone.y + mouse.y, mouse.button, mouse.modifiers) }
-            // a finger lifts without an exit: in tablet mode the hover ends with the touch, or the
-            // dock would stay out (and ignore the next pull) with a label up
-            onReleased: function (mouse) { root.releaseAt(zone.x + mouse.x, zone.y + mouse.y, mouse.button); if (!containsMouse || root.touchMode) { root.hovering = false; root.invertMagnification = false; root.armAutoHide() } }
-            onPressAndHold: root.longPress()
-            onCanceled: { root.pressedIndex = -1; if (root.dragging) root.endDrag(); root.resizing = false }
+            onPressed: function (mouse) { root.fingerPress = finger.active; root.pressAt(zone.x + mouse.x, zone.y + mouse.y, mouse.button, mouse.modifiers) }
+            // a finger lifts without an exit: the hover ends with the touch, or the dock would stay
+            // out (and ignore the next pull) with a label up
+            onReleased: function (mouse) { root.releaseAt(zone.x + mouse.x, zone.y + mouse.y, mouse.button); if (!containsMouse || root.touchMode || root.fingerPress) { root.hovering = false; root.invertMagnification = false; root.armAutoHide() } }
+            onPressAndHold: if (!root.touchSwipe) root.longPress()
+            onCanceled: { root.pressedIndex = -1; if (root.touchSwipe) root.touchSwipeEnd(true); if (root.dragging) root.endDrag(); root.resizing = false }
+            // passive: only tells a finger from a pointer, the press still reaches this MouseArea
+            PointHandler { id: finger; acceptedDevices: PointerDevice.TouchScreen }
           }
 
           DropArea {
@@ -1728,7 +1788,7 @@ Item {
             readonly property var focusTile: root.kbMode ? rep.itemAt(root.kbIndex) : null
             readonly property var src: tile || focusTile
             text: root.removeMode ? "Remove" : (src && src.item ? src.item.name : text)
-            shown: (root.removeMode) || ((root.hovering && !root.touchMode || root.kbMode) && src !== null && !root.popupOpen && !root.dragging && !root.resizing)
+            shown: (root.removeMode) || ((root.hovering && !root.fingerOn || root.kbMode) && src !== null && !root.popupOpen && !root.dragging && !root.resizing)
             anchorMain: root.dragging ? root.ghostMain : (src ? src.main : anchorMain)
             anchorCross: root.dragging ? root.ghostCross + root.tileSize + Style.space(Look.dock.labelGap)
                                        : (src ? root.dockBaseline + src.visSize + Style.space(Look.dock.labelGap) : anchorCross)

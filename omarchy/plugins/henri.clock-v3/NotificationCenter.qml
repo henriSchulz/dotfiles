@@ -866,11 +866,20 @@ Panel {
         TapHandler {
           id: press
           acceptedButtons: Qt.LeftButton
-          onTapped: card.activate()
+          onTapped: if (!cardHold.fired) card.activate()
         }
         TapHandler {
           acceptedButtons: Qt.RightButton
           onTapped: function(ev) { var p = face.mapToItem(null, ev.position.x, ev.position.y); card.showMenu(p.x, p.y) }
+        }
+        // A finger held on the card is its right click (the menu); the release then opens nothing.
+        TapHandler {
+          id: cardHold
+          property bool fired: false
+          acceptedDevices: PointerDevice.TouchScreen
+          longPressThreshold: Theme.delay("longPress") / 1000
+          onPressedChanged: if (pressed) fired = false
+          onLongPressed: { fired = true; var p = face.mapToItem(null, point.position.x, point.position.y); card.showMenu(p.x, p.y) }
         }
         WheelHandler {
           acceptedDevices: PointerDevice.TouchPad
@@ -1076,6 +1085,7 @@ Panel {
         acceptedButtons: Qt.LeftButton
         enabled: !root.editing
         onTapped: {
+          if (tileHold.fired) return
           if (tile.widgetId === "calendar") root.hostWidget && root.hostWidget.openCalendar ? root.hostWidget.openCalendar() : root.close()
           else if (tile.widgetId === "photos") root.openPhotos()
           else root.close()
@@ -1084,6 +1094,15 @@ Panel {
       TapHandler {
         acceptedButtons: Qt.RightButton
         onTapped: function(ev) { var p = face.mapToItem(null, ev.position.x, ev.position.y); root.widgetMenuFor(tile.index, p.x, p.y) }
+      }
+      // A finger held on the widget is its right click (the widget menu); the release then opens nothing.
+      TapHandler {
+        id: tileHold
+        property bool fired: false
+        acceptedDevices: PointerDevice.TouchScreen
+        longPressThreshold: Theme.delay("longPress") / 1000
+        onPressedChanged: if (pressed) fired = false
+        onLongPressed: { fired = true; var p = face.mapToItem(null, point.position.x, point.position.y); root.widgetMenuFor(tile.index, p.x, p.y) }
       }
       // Edit mode: press and drag reorders; the ghost follows the pointer.
       DragHandler {

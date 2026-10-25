@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.keyboard-v3",
+  "name": "On-screen keyboard (v3, Velum)",
+  "version": "0.1.0",
+  "author": "Henri Schulz",
+  "license": "MIT",
+  "description": "Velum's on-screen keyboard for the tablet's cast screen: German keys as on an iPad, shown while a text field has the focus after a finger touched the screen (fcitx5's virtual keyboard mode through bridge/velum-osk), gone at the first real key.",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Keyboard.qml"
+  },
+  "tags": [
+    "keyboard",
+    "touch",
+    "tablet",
+    "quickshell",
+    "hyprland"
+  ]
+}

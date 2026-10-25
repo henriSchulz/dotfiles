@@ -835,16 +835,25 @@ BarWidget {
       acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
+      // A held finger (or button) is a right click: the menu opens, the release activates nothing.
+      pressAndHoldInterval: Theme.delay("longPress")
+      property bool held: false
       onEntered: if (root.bar) root.bar.showTooltip(trayItemRoot, root.trayTooltip(modelData))
       onExited: if (root.bar) root.bar.hideTooltip(trayItemRoot)
+      onPressAndHold: function(mouse) {
+        if (mouse.button !== Qt.LeftButton) return
+        held = true
+        trayItemRoot.displayMenu(mouse)
+      }
       onPressed: function(mouse) {
+        held = false
         if (mouse.button === Qt.RightButton) {
           trayItemRoot.displayMenu(mouse)
           mouse.accepted = true
         }
       }
       onClicked: function(mouse) {
-        if (mouse.button === Qt.RightButton) {
+        if (mouse.button === Qt.RightButton || held) {
           mouse.accepted = true
         } else if (mouse.button === Qt.MiddleButton) {
           trayItemRoot.modelData.secondaryActivate()
