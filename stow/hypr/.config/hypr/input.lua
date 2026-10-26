@@ -186,6 +186,19 @@ hl.config({
   },
 })
 
+-- mac-cast: while the tablet works this Mac, its panel (henri.cast-v3) can switch the Mac's own
+-- keyboard and trackpad off. ipadcast writes the flag, removes it when the tablet goes (or connects
+-- again, or the server stops) and reloads; the option is never set at run time.
+local mac_input_off = false
+do
+  local flag = io.open((os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/ipadcast/mac-input-off", "r")
+  if flag then
+    flag:close()
+    mac_input_off = true
+    hl.device({ name = "apple-spi-keyboard", enabled = false })
+  end
+end
+
 -- Ziehen ohne Drücken (eingeführt für die Wippen-Mechanik des XPS-Trackpads,
 -- oben schwer bis gar nicht klickbar; bleibt auf dem M1, wie am Mac).
 --   * 3 Finger auflegen und bewegen = gedrückt halten und ziehen
@@ -208,6 +221,7 @@ for _, name in ipairs({
     drag_3fg = 1,
     tap_and_drag = true,
     drag_lock = 1,
+    enabled = not (mac_input_off and name == "apple-spi-trackpad"),
   })
 end
 
