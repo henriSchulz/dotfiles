@@ -1,0 +1,11 @@
+# Claude sessions and everything they spawn (cargo, rustc, test runners).
+# Weight 10 vs app.slice 100 and session.slice 1000: builds only get the
+# CPU that the desktop and apps leave idle. agent-deprioritize moves each
+# session here at start (Claude SessionStart hook).
+[Unit]
+Description=Agent sessions (low CPU priority)
+Before=slices.target
+
+[Slice]
+CPUWeight=10
+IOWeight=10

@@ -1,0 +1,17 @@
+#!/bin/bash
+# Move the calling Claude session into agents.slice, so its builds and tests
+# yield the CPU to the desktop (session.slice) and apps (app.slice).
+# Runs as a SessionStart hook; children started afterwards inherit the slice.
+pid=$PPID
+while [ "$pid" -gt 1 ]; do
+    [ "$(cat /proc/$pid/comm 2>/dev/null)" = claude ] && break
+    pid=$(awk '{print $4}' /proc/$pid/stat 2>/dev/null) || exit 0
+done
+[ "$pid" -gt 1 ] || exit 0
+grep -q '/agents.slice/' /proc/$pid/cgroup && exit 0
+busctl --user call org.freedesktop.systemd1 /org/freedesktop/systemd1 \
+    org.freedesktop.systemd1.Manager StartTransientUnit 'ssa(sv)a(sa(sv))' \
+    "claude-$pid.scope" fail 2 \
+    Slice s agents.slice \
+    PIDs au 1 "$pid" \
+    0 >/dev/null 2>&1 || true
