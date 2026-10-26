@@ -145,7 +145,7 @@ Item {
       // centred above the home indicator (anchored to the bottom only)
       anchors { bottom: true }
       exclusionMode: ExclusionMode.Ignore
-      margins.bottom: Theme.core.surface.tablet.homeZone + wbar.wb.above - wbar.room
+      margins.bottom: Math.round(Theme.core.surface.tablet.homeZone + wbar.wb.above - wbar.room)
       implicitWidth: card.width + 2 * wbar.room
       implicitHeight: card.height + 2 * wbar.room
       color: "transparent"
