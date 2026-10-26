@@ -5,7 +5,8 @@ st=${XDG_CACHE_HOME:-/tmp}/voxtype-stub; mkdir -p "$st"
 echo "$*" >> "$st/calls"
 case "$1 $2" in
   "record start") echo recording > "$st/state" ;;
-  "record stop"|"record cancel") echo idle > "$st/state" ;;
+  "record stop") echo transcribing > "$st/state"; (sleep 0.4; echo idle > "$st/state") & ;;
+  "record cancel") echo idle > "$st/state" ;;
   "status --follow")
     last=""
     while :; do

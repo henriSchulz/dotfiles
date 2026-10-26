@@ -48,7 +48,17 @@ Item {
   Timer { interval: Theme.delay("hudHold"); repeat: true; running: castFile.missing; onTriggered: castFile.reload() }
 
   // ---- the active window, as Hyprland last reported it
-  readonly property var win: Hyprland.activeToplevel
+  // Quickshell names the active window only after a focus event: until then the focused workspace's
+  // last window stands in (a shell start, the first tap)
+  readonly property var win: Hyprland.activeToplevel || fallbackWin
+  property var fallbackWin: null
+  function findFallback() {
+    var ws = Hyprland.focusedWorkspace, o = ws ? ws.lastIpcObject : null
+    var a = o && o.lastwindow ? String(o.lastwindow).replace(/^0x/, "") : ""
+    var tl = Hyprland.toplevels.values
+    for (var i = 0; a !== "" && i < tl.length; i++)
+      if (String(tl[i].address).replace(/^0x/, "") === a) { fallbackWin = tl[i]; return }
+  }
   readonly property var ipc: win ? win.lastIpcObject : null
   Connections {
     target: Hyprland
@@ -90,7 +100,7 @@ Item {
   function toggle(screenName) {
     if (openOn === screenName) { openOn = ""; return }
     // after a shell start Quickshell names no active window until the focus moves: ask Hyprland, then again
-    if (!ipc) { Hyprland.refreshToplevels(); retry.screenName = screenName; retry.restart(); return }
+    if (!ipc) { Hyprland.refreshToplevels(); Hyprland.refreshWorkspaces(); retry.screenName = screenName; retry.left = 5; retry.restart(); return }
     openFor(screenName)
   }
   function openFor(screenName) {
@@ -99,7 +109,17 @@ Item {
       if (all[i].name === screenName && shownOn(all[i]) && !VOverlays.covered(screenName)) { openOn = screenName; return }
   }
 
-  Timer { id: retry; property string screenName: ""; interval: Theme.delay("settle"); onTriggered: wbar.openFor(screenName) }
+  Timer {
+    id: retry
+    property string screenName: ""
+    property int left: 0
+    interval: Theme.delay("settle")
+    onTriggered: {
+      if (!wbar.ipc) wbar.findFallback()
+      if (!wbar.ipc && --left > 0) { Hyprland.refreshToplevels(); Hyprland.refreshWorkspaces(); restart(); return }
+      wbar.openFor(screenName)
+    }
+  }
   Component.onCompleted: Hyprland.refreshToplevels()
 
   // the app's name as its desktop entry has it, else its class
@@ -126,10 +146,15 @@ Item {
   property string dictateOn: ""             // the screen a dictation runs on ("" = none of ours)
   property string voxState: ""              // voxtype's alt: idle | recording | transcribing
   property bool heard: false                // voxtype said recording since we started it
+  property bool following: false            // watching voxtype until it is idle again (outlives the surface)
   // the rig never touches the real microphone or types into the live session: a stub stands in
   readonly property string voxtype: Quickshell.env("VELUM_SHELL_RIG") ? Qt.resolvedUrl("tests/voxtype-stub").toString().replace(/^[a-z]+:\/\//, "") : "voxtype"
+  // dictated into a terminal: Enter once the text is in, so it goes off at once (Henri 2026-10-26)
+  readonly property var enterClasses: ["foot", "footclient"]
+  property string enterFor: ""              // the terminal window's address, "" = no Enter
   function dictate(screenName) {
-    dictateOn = screenName; heard = false; voxState = ""
+    dictateOn = screenName; heard = false; voxState = ""; following = true
+    enterFor = ipc && enterClasses.indexOf(String(ipc.class)) >= 0 ? String(ipc.address) : ""
     Quickshell.execDetached([voxtype, "record", "start"])
     dictateCheck.restart()
   }
@@ -140,7 +165,7 @@ Item {
   }
   // voxtype's own state: a dictation ended elsewhere (Right Ctrl, its own timeout) lets the surface go
   Process {
-    running: wbar.dictateOn !== ""
+    running: wbar.following
     command: [wbar.voxtype, "status", "--follow", "--format", "json"]
     stdout: SplitParser {
       onRead: function (line) {
@@ -148,12 +173,29 @@ Item {
         try { o = JSON.parse(line) } catch (e) { return }
         wbar.voxState = String(o.alt || "")
         if (wbar.voxState === "recording") wbar.heard = true
-        else if (wbar.heard && wbar.voxState === "idle") wbar.dictateOn = ""
+        else if (wbar.heard && wbar.voxState === "idle") { wbar.dictateOn = ""; wbar.following = false; if (wbar.enterFor !== "") enterLater.restart() }
       }
     }
   }
+  // voxtype says idle once it pasted the text; Enter a moment later, only into that same terminal
+  Timer {
+    id: enterLater
+    interval: Theme.delay("settle")
+    onTriggered: {
+      var to = wbar.enterFor
+      wbar.enterFor = ""
+      Hyprland.refreshToplevels()
+      if (!wbar.dispatch || !wbar.ipc || String(wbar.ipc.address) !== to) return
+      wbar.dispatch("function() hl.dispatch(hl.dsp.send_key_state({ mods = \"\", key = \"Return\", state = \"down\" }))"
+                    + " hl.dispatch(hl.dsp.send_key_state({ mods = \"\", key = \"Return\", state = \"up\" })) end",
+                    "sendshortcut , Return, activewindow")
+      wbar.entered++
+    }
+  }
+  property int entered: 0                   // for tests: how many Enters went out
+
   // voxtype never started recording (no daemon): do not leave a surface that eats taps
-  Timer { id: dictateCheck; interval: Theme.delay("hudHold") * 2; onTriggered: if (!wbar.heard) wbar.dictateOn = "" }
+  Timer { id: dictateCheck; interval: Theme.delay("hudHold") * 2; onTriggered: if (!wbar.heard) { wbar.dictateOn = ""; wbar.following = false; wbar.enterFor = "" } }
 
   function fullscreen() {
     if (dispatch) dispatch("hl.dsp.window.fullscreen({ mode = \"fullscreen\" })", "fullscreen 0")
