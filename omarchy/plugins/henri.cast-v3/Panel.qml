@@ -112,15 +112,6 @@ Panel {
     Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.event(\"ipadcast " + which + "input " + (on ? "on" : "off") + "\")"])
   }
 
-  // 0 both, 1 the Mac's own, 2 the tablet's: the side that stays on goes first (one shell, so in
-  // order), so both are never off
-  function pickInput(i) {
-    const ev = (which, on) => "hl.dsp.event(\"ipadcast " + which + "input " + (on ? "on" : "off") + "\")"
-    const first = i === 2 ? ev("tablet", true) : ev("mac", true)
-    const second = i === 2 ? ev("mac", false) : ev("tablet", i === 0)
-    Quickshell.execDetached(["sh", "-c", "hyprctl dispatch \"$1\" && hyprctl dispatch \"$2\"", "sh", first, second])
-  }
-
   IpcHandler {
     target: "henri.cast"
     function open() { root.open() }
@@ -237,56 +228,40 @@ Panel {
           onMoved: v => root.setBrightness(v) }
       }
 
-      // -- its keyboard's light (on or off only); hidden while no keyboard is attached
-      VModuleRow {
-        width: parent.width; visible: content.i.keyboard === true; clickable: false
-        icon: "keyboard.light"; text: "Keyboard Light"
-        VSwitch { surface: "popover"; checked: content.i.kbdlight === true; onToggled: c => root.setKeyboardLight(c) }
-      }
-
-      // -- which keyboard and trackpad work the Mac — both, the Mac's own or the tablet's cover: switched
-      // only until the connection starts over; just the Mac's switch while the tablet's mac-cast cannot
-      // switch its cover
-      VModuleSection { visible: inputSeg.visible; text: "Keyboard & Trackpad" }
+      // -- three on/off tiles: this Mac's keyboard and trackpad, the tablet's cover, the cover's light.
+      // Input is switched off only until the connection starts over; a tile is dimmed while the
+      // tablet cannot switch it (no cover attached, an old mac-cast)
+      VModuleSection { text: "Keyboard & Trackpad" }
       Row {
-        id: inputSeg
         spacing: content.spacing
-        visible: typeof content.i.tabletInput === "boolean"
-        readonly property int current: content.i.macInput === false ? 2 : content.i.tabletInput === false ? 1 : 0
         Repeater {
-          model: [{ text: "Both", icons: ["laptop", "tablet"] }, { text: "Mac", icons: ["laptop"] }, { text: "Tablet", icons: ["tablet"] }]
+          model: [
+            { text: "Mac", icon: "laptop", on: content.i.macInput !== false, can: true, key: "mac" },
+            { text: "Tablet", icon: "tablet", on: content.i.tabletInput === true, can: typeof content.i.tabletInput === "boolean", key: "tablet" },
+            { text: "Keyboard Light", icon: "keyboard.light", on: content.i.kbdlight === true, can: content.i.keyboard === true, key: "light" }
+          ]
           VTile {
             id: inputTile
-            required property int index
             required property var modelData
             width: content.third; height: Theme.m.control.height * 2
             radius: Theme.m.radius.row + Theme.layout.module.tileInset / 2
             VPressable {
               id: inputPress
               anchors.fill: parent; radius: parent.radius
-              selected: inputSeg.current === inputTile.index
-              onClicked: if (!selected) root.pickInput(inputTile.index)
+              enabled: inputTile.modelData.can
+              selected: inputTile.modelData.on && inputTile.modelData.can
+              onClicked: inputTile.modelData.key === "light" ? root.setKeyboardLight(!inputTile.modelData.on)
+                : root.setInput(inputTile.modelData.key, !inputTile.modelData.on)
               Column {
                 anchors.centerIn: parent
-                Row {
-                  anchors.horizontalCenter: parent.horizontalCenter
-                  Repeater {
-                    model: inputTile.modelData.icons
-                    VIcon { required property string modelData; name: modelData
-                      weight: inputPress.selected ? "fill" : "regular"; color: inputPress.contentColor }
-                  }
-                }
+                VIcon { anchors.horizontalCenter: parent.horizontalCenter; name: inputTile.modelData.icon
+                  weight: inputPress.selected ? "fill" : "regular"; color: inputPress.contentColor }
                 VText { anchors.horizontalCenter: parent.horizontalCenter; text: inputTile.modelData.text
                   font.weight: Font.DemiBold; color: inputPress.contentColor }
               }
             }
           }
         }
-      }
-      VModuleRow {
-        width: parent.width; visible: !inputSeg.visible; clickable: false
-        icon: "laptop"; text: "Mac Keyboard & Trackpad"
-        VSwitch { surface: "popover"; checked: content.i.macInput !== false; onToggled: c => root.setInput("mac", c) }
       }
 
       // -- the sync with this Mac
