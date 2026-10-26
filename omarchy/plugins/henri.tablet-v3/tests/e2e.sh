@@ -191,6 +191,64 @@ if runs T11; then
   want T11d "the open bar folds back by itself" "$(barOpen)" "false"
 fi
 
+view() { c henri.tablet view; }
+floating() { hyprctl activewindow -j | jq .floating; }
+
+if runs T12; then
+  # a second foot on the next workspace: a double tap goes back to where we came from
+  start=$(ws); hyprctl dispatch "hl.dsp.focus({ workspace = '$((start + 1))' })" >/dev/null; sleep 0.4
+  [[ $(hyprctl activewindow -j | jq -r .class) == foot ]] || { hyprctl dispatch "hl.dsp.exec_cmd('foot')" >/dev/null; sleep 1.5; }
+  other=$(ws); c henri.tablet clearLog >/dev/null
+  pt m $((X - 8)) $((B - 2)) s 100 m $X $B s 150 d s 50 u s 120 d s 50 u; sleep 0.6
+  want T12 "a double tap goes back to the previous app" "$(ws),$(log | jq -c 'map(select(. == "doubletap"))')" "$start,[\"doubletap\"]"
+  want T12b "the window bar the first tap opened is folded again" "$(c henri.tablet state | jq .windowBarOpen)" "false"
+fi
+
+if runs T13; then
+  c henri.tablet clearLog >/dev/null
+  pt m $X $B s 100 d s 800 u; sleep 0.6; shot T13
+  want T13 "press and hold opens Spotlight" "$(log | jq -r '.[-1]'),$(layer omarchy-menu || true)" "longpress,$(layer omarchy-menu)"
+  want T13b "it is no tap and no gesture" "$(log | jq -c .)" '["longpress"]'
+  hyprctl dispatch 'hl.dsp.event("menu toggle root")' >/dev/null; sleep 0.5
+fi
+
+if runs T14; then
+  was=$(floating)
+  pt m $X $((B - 4)) s 100 d s 40 g $X $((B + 5)) 4 16 s 40 u; sleep 0.8; shot T14
+  small=$(floating); w=$(hyprctl activewindow -j | jq '.size[0]')
+  pt m $X $((B - 4)) s 100 d s 40 g $X $((B + 5)) 4 16 s 40 u; sleep 0.8
+  want T14 "a push down floats the app in the middle, again tiles it" "$was,$small,$(floating)" "false,true,false"
+  want T14b "the floating window takes floatShare of the width" "$(( w > W * 60 / 100 && w < W * 80 / 100 ))" "1"
+fi
+
+if runs T15; then
+  # the finger stays down: the indicator follows, the neighbour apps show
+  pt m $X $B s 100 d s 40 g $((X - 70)) $B 10 16 s 120
+  during=$(view); shot T15-slide
+  pt u; sleep 0.6
+  want T15 "a sliding finger moves the indicator on this screen" "$(jq -r .slideScreen <<<"$during")" "TB"
+  want T15b "the neighbour app beside it is known" "$(jq -r '(.neighbours.prev + .neighbours.next) | length > 0' <<<"$during")" "true"
+  want T15c "it lets go at the end" "$(view | jq -r .slideScreen)" ""
+fi
+
+if runs T16; then
+  hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "fullscreen" })' >/dev/null; sleep 3.6
+  slept=$(view | jq .asleep); shot T16-asleep
+  c henri.tablet clearLog >/dev/null
+  pt m $X $B s 100 d s 50 u; sleep 0.5
+  want T16 "over a fullscreen app the indicator falls asleep" "$slept" "true"
+  want T16b "the first finger only wakes it" "$(view | jq .asleep),$(log | jq -c .),$(c henri.tablet state | jq .windowBarOpen)" "false,[],false"
+  hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "fullscreen" })' >/dev/null; sleep 0.5
+fi
+
+if runs T17; then
+  # pull the dock out, then on into Mission Control: the dock hands over (fades), no slide back
+  c henri.tablet clearLog >/dev/null
+  pt m $X $B d s 60 g $X $((B - 260)) 8 10 u; sleep 0.9
+  want T17 "Mission Control takes the dock over" "$(log | jq -c 'map(select(startswith("dock:")))[-1]'),$(dockHidden)" '"dock:handover",true'
+  hyprctl dispatch 'hl.dsp.event("mission-control hide")' >/dev/null; sleep 0.6
+fi
+
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"
 [[ ${KEEP:-} ]] || rig/rig.sh stop >/dev/null
 [[ $fail == 0 ]]

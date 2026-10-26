@@ -15,6 +15,12 @@ import "Gesture.js" as Gesture
 //                              or the QML one's "mission-control-gesture:…" events)
 //   slide along the edge       next / previous app (one app per workspace in tablet mode)
 //   tap                        the window bar above the indicator (WindowBar.qml)
+//   double tap                 back to the previous app
+//   press and hold             Spotlight (henri.menu-v3)
+//   push down                  the app shrinks to a floating window in the middle, or grows back
+// While a finger slides along it the indicator follows and stretches, and the neighbour apps'
+// icons show beside it. Over a fullscreen app it fades after indicator.hideAfter; the next finger
+// only wakes it. On the cast screen it steps aside while the dock is out (it would lie on it).
 // The top edge belongs to henri.bar-v3 (Control Center, Notification Center).
 // Beside it, in tablet mode or not: edge fingers from a cast screen (velum-edge, below).
 // The zone reserves its height (exclusive zone), so it covers nothing, like a safe area.
@@ -64,10 +70,91 @@ Item {
         var ws = a.step > 0 ? "m+1" : "m-1"
         dispatch("hl.dsp.focus({ workspace = \"" + ws + "\" })", "workspace " + ws)
       } else if (a.do === "tap") {
-        windowBar.toggle(screenName)
+        var now = Date.now()
+        if (lastTap.screen === screenName && now - lastTap.t < tt.doubleTap) {
+          lastTap = ({}); windowBar.openOn = ""; note("doubletap")
+          dispatch("hl.dsp.focus({ workspace = \"previous\" })", "workspace previous")
+        } else {
+          lastTap = { screen: screenName, t: now }
+          windowBar.toggle(screenName)
+        }
+      } else if (a.do === "longpress") {
+        windowBar.openOn = ""
+        event("menu toggle root")
+      } else if (a.do === "down") {
+        shrink(screenName)
+      } else if (a.do === "slide") {
+        slideScreen = a.phase === "end" ? "" : screenName
+        slideDx = a.phase === "end" ? 0 : a.dx
       }
     }
   }
+
+  property var lastTap: ({})
+
+  // ---- push down: the active app as a floating window in the middle, and back
+  property var shrunk: ({})               // address → true: floated by us, so the next push tiles it again
+  function shrink(screenName) {
+    var w = windowBar.ipc
+    if (!w || !w.address || w.fullscreen > 0) return
+    var sel = "address:" + w.address
+    if (w.floating) {
+      if (!shrunk[w.address]) return      // floating on its own (window mode "macos"): leave it
+      var o = Object.assign({}, shrunk); delete o[w.address]; shrunk = o
+      dispatch("hl.dsp.window.float({ action = \"disable\", window = \"" + sel + "\" })", "settiled " + sel)
+      return
+    }
+    var sc = null, all = Quickshell.screens
+    for (var i = 0; i < all.length; i++) if (all[i].name === screenName) sc = all[i]
+    if (!sc) return
+    var bw = Math.round(sc.width * tt.floatShare), bh = Math.round(sc.height * tt.floatShare)
+    var bx = Math.round(sc.x + (sc.width - bw) / 2), by = Math.round(sc.y + (sc.height - bh) / 2)
+    var n = Object.assign({}, shrunk); n[w.address] = true; shrunk = n
+    dispatch("function() hl.dispatch(hl.dsp.window.float({ action = \"enable\", window = \"" + sel + "\" }))"
+             + " hl.dispatch(hl.dsp.window.resize({ x = " + bw + ", y = " + bh + ", window = \"" + sel + "\" }))"
+             + " hl.dispatch(hl.dsp.window.move({ x = " + bx + ", y = " + by + ", window = \"" + sel + "\" })) end",
+             "setfloating " + sel)
+  }
+
+  // ---- a finger sliding along the indicator
+  property string slideScreen: ""
+  property real slideDx: 0
+  property var neighbours: ({ prev: "", next: "" })   // icon paths of the apps before / after
+  onSlideScreenChanged: if (slideScreen !== "") neighbours = neighboursOn(slideScreen)
+  function appIcon(cls) {
+    if (!cls) return ""
+    var e = null
+    try { e = DesktopEntries.byId(cls) || DesktopEntries.heuristicLookup(cls) } catch (err) {}
+    return Quickshell.iconPath(e && e.icon ? e.icon : cls, true)
+  }
+  function neighboursOn(screenName) {
+    var m = null, mons = Hyprland.monitors.values
+    for (var i = 0; i < mons.length; i++) if (mons[i].name === screenName) m = mons[i]
+    if (!m || !m.activeWorkspace) return { prev: "", next: "" }
+    var list = Hyprland.workspaces.values.filter(w => w.id > 0 && w.monitor && w.monitor.id === m.id).sort((a, b) => a.id - b.id)
+    var at = list.findIndex(w => w.id === m.activeWorkspace.id)
+    function app(ws) {
+      if (!ws) return ""
+      var tl = Hyprland.toplevels.values
+      for (var j = 0; j < tl.length; j++) { var o = tl[j].lastIpcObject; if (o && o.workspace && o.workspace.id === ws.id) return root.appIcon(o.class) }
+      return ""
+    }
+    return { prev: at > 0 ? app(list[at - 1]) : "", next: at >= 0 ? app(list[at + 1]) : "" }
+  }
+
+  // ---- asleep over a fullscreen app (a video): the indicator fades, the next finger only wakes it
+  readonly property string fullscreenOn: {
+    var w = windowBar.ipc
+    if (!w || w.fullscreen !== 2) return ""
+    var mons = Hyprland.monitors.values
+    for (var i = 0; i < mons.length; i++) if (mons[i].id === w.monitor) return mons[i].name
+    return ""
+  }
+  property bool asleep: false
+  onFullscreenOnChanged: wake()
+  function wake() { asleep = false; if (fullscreenOn !== "") sleepTimer.restart(); else sleepTimer.stop() }
+  Timer { id: sleepTimer; interval: root.tt.indicator.hideAfter; onTriggered: root.asleep = root.fullscreenOn !== "" }
+  function sleepingOn(screenName) { return asleep && fullscreenOn === screenName }
 
   Variants {
     model: root.active ? Quickshell.screens : Array.from(Quickshell.screens).filter(s => s.name === windowBar.castScreen)
@@ -80,7 +167,8 @@ Item {
       implicitHeight: root.tt.homeZone
       exclusionMode: root.active ? ExclusionMode.Normal : ExclusionMode.Ignore
       exclusiveZone: root.active ? root.tt.homeZone : 0
-      mask: Region { item: root.active ? zoneArea : indicatorArea }
+      // on the cast screen nothing takes a finger while the dock is out: it lies over the dock's icons
+      mask: Region { item: root.active ? zoneArea : VGestures.isOut("dock", zone.modelData.name) ? noArea : indicatorArea }
       color: "transparent"
       WlrLayershell.namespace: "velum-home-indicator"
       WlrLayershell.layer: WlrLayer.Overlay
@@ -89,13 +177,44 @@ Item {
       property var gesture: Gesture.create(root.tt)
       property bool pressed: false
 
+      property bool swallow: false        // this finger only woke the indicator
+      readonly property bool sliding: root.slideScreen === modelData.name
+      readonly property real slideMax: root.tt.slideMax
+      // asleep over fullscreen, or (cast screen only: no room below the dock) the dock is out
+      readonly property bool away: root.sleepingOn(modelData.name) || (!root.active && VGestures.isOut("dock", modelData.name))
+      Spring { id: shift; preset: Theme.spring(zone.sliding ? "interactive" : "snappy"); reduced: Theme.reduceMotion
+               target: zone.sliding ? Math.max(-zone.slideMax, Math.min(zone.slideMax, root.slideDx * root.tt.slideFollow)) : 0 }
+      Spring { id: stretch; preset: Theme.spring(zone.sliding ? "interactive" : "snappy"); reduced: Theme.reduceMotion
+               target: zone.sliding ? Math.min(zone.slideMax, Math.abs(root.slideDx) * root.tt.slideStretch) : 0 }
+
+      // the neighbour apps beside the indicator while a finger slides (the one it goes to brighter)
+      Repeater {
+        model: ["prev", "next"]
+        Image {
+          required property string modelData
+          readonly property bool toward: modelData === "next" ? root.slideDx < 0 : root.slideDx > 0
+          source: root.neighbours[modelData] || ""
+          visible: source != ""
+          width: root.tt.neighbour.size; height: width
+          sourceSize.width: width * 2; sourceSize.height: height * 2
+          anchors.verticalCenter: parent.verticalCenter
+          // beside the indicator's ends as they move and stretch
+          x: modelData === "next" ? indicator.x + indicator.width + root.tt.neighbour.gap : indicator.x - root.tt.neighbour.gap - width
+          opacity: zone.sliding ? (toward ? Math.min(1, Math.abs(root.slideDx) / root.tt.slideCommit) : root.tt.neighbour.rest) : 0
+          Behavior on opacity { enabled: !zone.sliding; NumberAnimation { duration: Theme.exit(Theme.dur("fast")) } }
+        }
+      }
+
       Rectangle {
         id: indicator
         anchors.horizontalCenter: parent.horizontalCenter
-        width: root.tt.indicator.width
+        anchors.horizontalCenterOffset: shift.value
+        width: root.tt.indicator.width + stretch.value
         height: root.tt.indicator.height
         radius: height / 2
         y: (zone.height - height) / 2 - lift.value
+        opacity: zone.away ? root.tt.indicator.asleep : 1
+        Behavior on opacity { NumberAnimation { duration: zone.away ? Theme.dur("slow") : Theme.dur("fast") } }
         color: Theme.dark ? root.tt.indicator.onDark : root.tt.indicator.onLight
         Rectangle {
           z: -1
@@ -111,14 +230,20 @@ Item {
       // which is how the rig tests it). Coordinates stay in the zone; only differences count.
       // what takes the finger: the whole zone, or (cast screen only) the indicator with room around it
       Item { id: zoneArea; anchors.fill: parent }
+      Item { id: noArea; width: 0; height: 0 }
       Item { id: indicatorArea; anchors.centerIn: parent; width: root.tt.indicator.width + 2 * root.tt.slop; height: parent.height }
       MouseArea {
         anchors.fill: root.active ? zoneArea : indicatorArea
         preventStealing: true
-        onPressed: function (m) { zone.pressed = true; root.run(zone.gesture.down(Date.now(), m.x, m.y), zone.screen.name); ticker.start() }
+        onPressed: function (m) {
+          zone.swallow = root.sleepingOn(zone.screen.name)
+          root.wake()
+          if (zone.swallow) return
+          zone.pressed = true; root.run(zone.gesture.down(Date.now(), m.x, m.y), zone.screen.name); ticker.start()
+        }
         onPositionChanged: function (m) { if (zone.pressed) root.run(zone.gesture.move(Date.now(), m.x, m.y), zone.screen.name) }
-        onReleased: function (m) { ticker.stop(); zone.pressed = false; root.run(zone.gesture.up(Date.now(), m.x, m.y), zone.screen.name) }
-        onCanceled: { ticker.stop(); zone.pressed = false; root.run(zone.gesture.cancel(), zone.screen.name) }
+        onReleased: function (m) { if (zone.swallow) { zone.swallow = false; return } ticker.stop(); zone.pressed = false; root.run(zone.gesture.up(Date.now(), m.x, m.y), zone.screen.name) }
+        onCanceled: { if (zone.swallow) { zone.swallow = false; return } ticker.stop(); zone.pressed = false; root.run(zone.gesture.cancel(), zone.screen.name) }
       }
       // a resting finger sends no events: the pause that opens the App Switcher is seen here
       Timer {
@@ -166,6 +291,9 @@ Item {
       VGestures.pull(p.surface, p.screen, "end", travel, b[0] > a[0] ? (b[1] - a[1]) * 1000 / (b[0] - a[0]) : 0)
     } else if (edge === "bottom") {
       if (phase === "down") {
+        var sleeping = root.sleepingOn(screenName)
+        root.wake()
+        if (sleeping) return               // this finger only wakes the indicator
         root.castBottom = { gesture: Gesture.create(root.tt), screen: screenName }
         root.run(root.castBottom.gesture.down(t, x, y), screenName)
         castTicker.start()
@@ -207,5 +335,6 @@ Item {
     function state(): string { return JSON.stringify({ active: root.active, screens: root.active ? Quickshell.screens.length : 0, log: root.log, castScreen: windowBar.castScreen, window: windowBar.ipc ? windowBar.ipc.class : "", windowBarOpen: windowBar.open }) }
     function clearLog(): string { root.log = []; return "ok" }
     function tap(screen: string): string { windowBar.toggle(screen); return windowBar.openOn }
+    function view(): string { return JSON.stringify({ asleep: root.asleep, fullscreenOn: root.fullscreenOn, slideScreen: root.slideScreen, neighbours: root.neighbours, dockOut: VGestures.out, shrunk: Object.keys(root.shrunk).length }) }
   }
 }

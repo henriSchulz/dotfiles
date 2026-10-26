@@ -1369,7 +1369,18 @@ Item {
   readonly property real hiddenDistance: bgThickness + Style.space(2)
   readonly property real hideDX: reduceMotion ? 0 : (position === "left" ? -hideOffset * hiddenDistance : position === "right" ? hideOffset * hiddenDistance : 0)
   readonly property real hideDY: reduceMotion ? 0 : (position === "bottom" ? hideOffset * hiddenDistance : 0)
-  readonly property real hideOpacity: reduceMotion ? 1 - hideOffset : 1
+  readonly property real hideOpacity: (reduceMotion ? 1 - hideOffset : 1) * handFade
+  // Mission Control took the finger (VGestures "handover"): the dock fades where it is instead of
+  // sliding back while Mission Control opens, so only one surface moves at a time (Henri 2026-10-26)
+  property real handFade: 1
+  SequentialAnimation {
+    id: handover
+    NumberAnimation { target: root; property: "handFade"; to: 0; duration: Theme.exit(Theme.dur("fast")); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("exit") }
+    ScriptAction { script: { root.hideOffset = 1; root.handFade = 1 } }
+  }
+  // out on its screen (any part of it showing): the tablet's home indicator steps aside meanwhile
+  readonly property bool showingOut: hideOffset < 1 && handFade > 0 && !manualHidden
+  onShowingOutChanged: if (root.screen) VGestures.setOut("dock", root.screen.name, showingOut)
 
   onAutoHideChanged: { if (autoHide) armAutoHide(); else dockHidden = false }
   // A space without windows has nothing the dock could be in the way of: it
@@ -1428,6 +1439,12 @@ Item {
       var was = root.touchPull
       root.touchPull = false; root.touchIgnore = false
       if (!was) return
+      if (phase === "handover") {
+        hideAnim.stop(); touchHold.stop()
+        if (root.pulledOverFullscreen) { root.fullscreenAway(); return }
+        root.dockHidden = true; handover.restart()
+        return
+      }
       if (phase === "end" && VGestures.commits(travel, root.hiddenDistance, velocity)) {
         root.dockHidden = false; hideAnim.go(0); touchHold.restart()
       } else if (root.pulledOverFullscreen) {
@@ -1638,7 +1655,7 @@ Item {
     onTriggered: { var la = root.settings.loginApps || []; for (var i = 0; i < la.length; i++) { var e = root.lookupEntry(la[i]); if (e) try { e.execute() } catch (err) {} } }
   }
   Timer { id: startup; interval: 400; onTriggered: { Hyprland.refreshToplevels(); root.rebuild(); trashProc.running = true; trashWatch.running = true; loginCheck.running = true } }
-  Component.onCompleted: { if (autoHide && !emptySpace) { hideOffset = 1; dockHidden = true }; startup.start() }
+  Component.onCompleted: { if (autoHide && !emptySpace) { hideOffset = 1; dockHidden = true }; startup.start(); if (screen) VGestures.setOut("dock", screen.name, showingOut) }
   onSettingsLoadedChanged: if (settingsLoaded) { position = String(settings.position || "bottom"); if (autoHide && !emptySpace) { hideOffset = 1; dockHidden = true } }
 
   // ======================================================== windows
