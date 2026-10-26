@@ -182,7 +182,8 @@ Item {
       screen: modelData
       // not over an open Control Center, Notification Center or bar menu: same layer, and the later mapped wins
       readonly property bool on: wbar.openOn === modelData.name && wbar.shownOn(modelData) && !VOverlays.covered(modelData.name)
-      onOnChanged: if (!on && wbar.openOn === modelData.name) wbar.openOn = ""
+      // a surface covered the screen: fold, after this binding has settled (else a binding loop on "on")
+      onOnChanged: if (!on) Qt.callLater(function () { if (!pw.on && wbar.openOn === pw.modelData.name) wbar.openOn = "" })
       visible: on || cardFade.running
       // centred above the home indicator (anchored to the bottom only)
       anchors { bottom: true }
