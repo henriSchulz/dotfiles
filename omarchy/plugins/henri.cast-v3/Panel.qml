@@ -248,19 +248,40 @@ Panel {
       // only until the connection starts over; just the Mac's switch while the tablet's mac-cast cannot
       // switch its cover
       VModuleSection { visible: inputSeg.visible; text: "Keyboard & Trackpad" }
-      Item {
+      Row {
         id: inputSeg
-        width: parent.width; height: Theme.m.control.height + Theme.layout.list.gap
+        spacing: content.spacing
         visible: typeof content.i.tabletInput === "boolean"
         readonly property int current: content.i.macInput === false ? 2 : content.i.tabletInput === false ? 1 : 0
-        VSegment {
-          id: inputCtl
-          x: Theme.layout.module.pad; anchors.verticalCenter: parent.verticalCenter
-          model: ["Both", "Mac", "Tablet"]
-          onActivated: i => root.pickInput(i)
+        Repeater {
+          model: [{ text: "Both", icons: ["laptop", "tablet"] }, { text: "Mac", icons: ["laptop"] }, { text: "Tablet", icons: ["tablet"] }]
+          VTile {
+            id: inputTile
+            required property int index
+            required property var modelData
+            width: content.third; height: Theme.m.control.height * 2
+            radius: Theme.m.radius.row + Theme.layout.module.tileInset / 2
+            VPressable {
+              id: inputPress
+              anchors.fill: parent; radius: parent.radius
+              selected: inputSeg.current === inputTile.index
+              onClicked: if (!selected) root.pickInput(inputTile.index)
+              Column {
+                anchors.centerIn: parent
+                Row {
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  Repeater {
+                    model: inputTile.modelData.icons
+                    VIcon { required property string modelData; name: modelData
+                      weight: inputPress.selected ? "fill" : "regular"; color: inputPress.contentColor }
+                  }
+                }
+                VText { anchors.horizontalCenter: parent.horizontalCenter; text: inputTile.modelData.text
+                  font.weight: Font.DemiBold; color: inputPress.contentColor }
+              }
+            }
+          }
         }
-        // re-applied on every change (a click inside VSegment would cut a plain binding)
-        Binding { target: inputCtl; property: "currentIndex"; value: inputSeg.current }
       }
       VModuleRow {
         width: parent.width; visible: !inputSeg.visible; clickable: false
