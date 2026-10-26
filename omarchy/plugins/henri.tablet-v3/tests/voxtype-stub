@@ -1,0 +1,16 @@
+#!/bin/bash
+# voxtype for the rig: the window bar's dictation must never record the real microphone or type into
+# the live session. State in $XDG_CACHE_HOME (the rig's fake HOME); every call is logged for e2e.sh.
+st=${XDG_CACHE_HOME:-/tmp}/voxtype-stub; mkdir -p "$st"
+echo "$*" >> "$st/calls"
+case "$1 $2" in
+  "record start") echo recording > "$st/state" ;;
+  "record stop"|"record cancel") echo idle > "$st/state" ;;
+  "status --follow")
+    last=""
+    while :; do
+      s=$(cat "$st/state" 2>/dev/null || echo idle)
+      [[ $s != "$last" ]] && { printf '{"text": "", "alt": "%s", "class": "%s"}\n' "$s" "$s"; last=$s; }
+      sleep 0.1
+    done ;;
+esac

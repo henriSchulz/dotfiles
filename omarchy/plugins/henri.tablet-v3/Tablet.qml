@@ -335,6 +335,6 @@ Item {
     function state(): string { return JSON.stringify({ active: root.active, screens: root.active ? Quickshell.screens.length : 0, log: root.log, castScreen: windowBar.castScreen, window: windowBar.ipc ? windowBar.ipc.class : "", windowBarOpen: windowBar.open }) }
     function clearLog(): string { root.log = []; return "ok" }
     function tap(screen: string): string { windowBar.toggle(screen); return windowBar.openOn }
-    function view(): string { return JSON.stringify({ asleep: root.asleep, fullscreenOn: root.fullscreenOn, slideScreen: root.slideScreen, neighbours: root.neighbours, dockOut: VGestures.out, shrunk: Object.keys(root.shrunk).length }) }
+    function view(): string { return JSON.stringify({ asleep: root.asleep, fullscreenOn: root.fullscreenOn, slideScreen: root.slideScreen, neighbours: root.neighbours, dockOut: VGestures.out, shrunk: Object.keys(root.shrunk).length, dictateOn: windowBar.dictateOn, voxState: windowBar.voxState }) }
   }
 }

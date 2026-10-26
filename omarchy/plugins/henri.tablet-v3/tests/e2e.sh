@@ -13,7 +13,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 shell=$(cd "$here/../.." && pwd)
 cd "$shell"
 export VELUM_RIG_ID=tablet VELUM_TOUCH=1
-export VELUM_RIG_PLUGINS="henri.bar-v3 henri.control-center-v3 henri.clock-v3 henri.power-v3 henri.system-menu-v3 henri.dock-v3 henri.tablet-v3 henri.launchpad-v3 henri.missioncontrol-v3"
+export VELUM_RIG_PLUGINS="henri.bar-v3 henri.control-center-v3 henri.clock-v3 henri.power-v3 henri.system-menu-v3 henri.dock-v3 henri.tablet-v3 henri.launchpad-v3 henri.missioncontrol-v3 henri.keyboard-v3 henri.menu-v3"
 R=rig/state/tablet
 FILTER=${1:-}
 W=1440 H=960                                  # the tablet's logical size (2160 × 1440 at scale 1.5)
@@ -247,6 +247,32 @@ if runs T17; then
   pt m $X $B d s 60 g $X $((B - 260)) 8 10 u; sleep 0.9
   want T17 "Mission Control takes the dock over" "$(log | jq -c 'map(select(startswith("dock:")))[-1]'),$(dockHidden)" '"dock:handover",true'
   hyprctl dispatch 'hl.dsp.event("mission-control hide")' >/dev/null; sleep 0.6
+fi
+
+# the open window bar's buttons, from the right: close, fullscreen, keyboard, mic, search
+barButton() {                                  # barButton N → "x y" (N = 1 for close …)
+  read -r lx ly lw lh <<<"$(hyprctl layers -j | jq -r '[.TB.levels[][] | select(.namespace == "velum-surface" and .w < 600)][0] | "\(.x - 2000) \(.y) \(.w) \(.h)"')"
+  local room=$(( (lh - 30) / 2 ))
+  echo "$(( lx + lw - room - 3 - 36 * $1 + 18 )) $(( ly + lh / 2 ))"
+}
+openBar() { pt m $((X - 8)) $((B - 2)) s 100 m $X $B s 150 d s 50 u; sleep 0.7; }
+calls() { cat "$R/home/.cache/voxtype-stub/calls" 2>/dev/null | tr '\n' ';'; }
+
+if runs T18; then
+  openBar; read -r sx sy <<<"$(barButton 5)"
+  pt m $((sx - 6)) $sy s 80 m $sx $sy s 120 d s 50 u; sleep 0.8; shot T18
+  want T18 "the search button opens Spotlight and the keyboard" "$(layer omarchy-menu),$(c omarchy.keyboard state | jq .shown)" "true,true"
+  hyprctl dispatch 'hl.dsp.event("menu close")' >/dev/null; c omarchy.keyboard close >/dev/null; sleep 0.5
+fi
+
+if runs T19; then
+  rm -rf "$R/home/.cache/voxtype-stub"
+  openBar; read -r mx my <<<"$(barButton 4)"
+  pt m $((mx - 6)) $my s 80 m $mx $my s 120 d s 50 u; sleep 1
+  rec="$(view | jq -r .dictateOn),$(layer velum-dictation-stop)"; shot T19-recording
+  pt m $X $((H / 3)) s 100 d s 50 u; sleep 0.8
+  want T19 "the mic starts a dictation, a surface waits for the next tap" "$rec" "TB,true"
+  want T19b "a tap anywhere ends it (voxtype record stop) and the surface goes" "$(view | jq -r .dictateOn),$(layer velum-dictation-stop),$(calls | tr ';' '\n' | grep '^record' | tr '\n' ';')" ",false,record start;record stop;"
 fi
 
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"

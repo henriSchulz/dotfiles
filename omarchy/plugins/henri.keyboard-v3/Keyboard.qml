@@ -122,6 +122,7 @@ Item {
     target: Hyprland
     // "velum-touch SCREEN" from ipadcast: a finger was lifted there — the screen the keyboard goes to.
     // "velum-keyboard toggle SCREEN": the window bar's keyboard button.
+    // "velum-keyboard open SCREEN": open only (the window bar's search button, beside Spotlight).
     function onRawEvent(event) {
       if (event.name !== "custom") return
       var d = String(event.data)
@@ -129,9 +130,11 @@ Item {
       var name = ""
       if (d.indexOf("velum-touch ") === 0) name = d.slice(12).trim()
       else if (d.indexOf("velum-keyboard toggle ") === 0) name = d.slice(22).trim()
+      else if (d.indexOf("velum-keyboard open ") === 0) name = d.slice(20).trim()
       else return
       if (/^[A-Za-z0-9_-]+$/.test(name)) root.screenName = name
       if (d.indexOf("velum-keyboard toggle ") === 0) { if (root.shown) root.close(true); else root.open(true) }
+      else if (d.indexOf("velum-keyboard open ") === 0 && !root.shown) root.open(true)
     }
   }
 

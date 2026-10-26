@@ -5,8 +5,10 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import "file:///home/henri/.local/share/velum/qml/Velum"
 
-// The small bar above the home indicator where fingers work: the active app's name, the on-screen
-// keyboard, fullscreen and close, on the popover material. A tap on the indicator opens it
+// The small bar above the home indicator where fingers work: the active app's name, Spotlight (with
+// the on-screen keyboard), dictation, the on-screen keyboard, fullscreen and close, on the popover
+// material. Dictation (voxtype) ends with the next tap anywhere on that screen: a clear surface
+// over it takes that tap while recording (Henri 2026-10-26). A tap on the indicator opens it
 // (Gesture.js "tap"); nothing sits on the window itself (Henri 2026-10-26: a handle in the window's
 // corner lay over apps' own buttons; design 7 of lab/web/window-bar.html). It folds back after
 // surface.tablet.windowBar.hold, a button used, another tap on the indicator or another window.
@@ -113,6 +115,46 @@ Item {
   function keyboard(screenName) {
     if (dispatch) dispatch("hl.dsp.event(\"velum-keyboard toggle " + screenName + "\")", "event velum-keyboard toggle " + screenName)
   }
+  // Spotlight, with the keyboard to type into it (henri.menu-v3, henri.keyboard-v3)
+  function search(screenName) {
+    if (!dispatch) return
+    dispatch("hl.dsp.event(\"menu summon root\")", "event menu summon root")
+    dispatch("hl.dsp.event(\"velum-keyboard open " + screenName + "\")", "event velum-keyboard open " + screenName)
+  }
+
+  // ---- dictation: voxtype records until the next tap on this screen, then types what it heard
+  property string dictateOn: ""             // the screen a dictation runs on ("" = none of ours)
+  property string voxState: ""              // voxtype's alt: idle | recording | transcribing
+  property bool heard: false                // voxtype said recording since we started it
+  // the rig never touches the real microphone or types into the live session: a stub stands in
+  readonly property string voxtype: Quickshell.env("VELUM_SHELL_RIG") ? Qt.resolvedUrl("tests/voxtype-stub").toString().replace(/^[a-z]+:\/\//, "") : "voxtype"
+  function dictate(screenName) {
+    dictateOn = screenName; heard = false; voxState = ""
+    Quickshell.execDetached([voxtype, "record", "start"])
+    dictateCheck.restart()
+  }
+  function stopDictation() {
+    if (dictateOn === "") return
+    dictateOn = ""
+    Quickshell.execDetached([voxtype, "record", "stop"])
+  }
+  // voxtype's own state: a dictation ended elsewhere (Right Ctrl, its own timeout) lets the surface go
+  Process {
+    running: wbar.dictateOn !== ""
+    command: [wbar.voxtype, "status", "--follow", "--format", "json"]
+    stdout: SplitParser {
+      onRead: function (line) {
+        var o = null
+        try { o = JSON.parse(line) } catch (e) { return }
+        wbar.voxState = String(o.alt || "")
+        if (wbar.voxState === "recording") wbar.heard = true
+        else if (wbar.heard && wbar.voxState === "idle") wbar.dictateOn = ""
+      }
+    }
+  }
+  // voxtype never started recording (no daemon): do not leave a surface that eats taps
+  Timer { id: dictateCheck; interval: Theme.delay("hudHold") * 2; onTriggered: if (!wbar.heard) wbar.dictateOn = "" }
+
   function fullscreen() {
     if (dispatch) dispatch("hl.dsp.window.fullscreen({ mode = \"fullscreen\" })", "fullscreen 0")
   }
@@ -192,6 +234,20 @@ Item {
             color: Theme.r.popover.line
           }
           VPressable {
+            id: searchButton
+            width: wbar.wb.button
+            height: wbar.wb.height - 2 * wbar.wb.pad
+            onClicked: if (wbar.armed) { wbar.search(pw.modelData.name); wbar.openOn = "" }
+            VIcon { anchors.centerIn: parent; name: "search"; weight: "bold"; size: wbar.wb.icon; color: searchButton.contentColor }
+          }
+          VPressable {
+            id: micButton
+            width: wbar.wb.button
+            height: wbar.wb.height - 2 * wbar.wb.pad
+            onClicked: if (wbar.armed) { wbar.dictate(pw.modelData.name); wbar.openOn = "" }
+            VIcon { anchors.centerIn: parent; name: "mic"; weight: "bold"; size: wbar.wb.icon; color: micButton.contentColor }
+          }
+          VPressable {
             id: keyButton
             width: wbar.wb.button
             height: wbar.wb.height - 2 * wbar.wb.pad
@@ -218,6 +274,23 @@ Item {
           }
         }
       }
+    }
+  }
+
+  // while a dictation of ours records: a clear surface over its screen, the next tap ends it
+  Variants {
+    model: Quickshell.screens
+    PanelWindow {
+      required property var modelData
+      screen: modelData
+      visible: wbar.dictateOn === modelData.name
+      anchors { top: true; bottom: true; left: true; right: true }
+      exclusionMode: ExclusionMode.Ignore
+      color: "transparent"
+      WlrLayershell.namespace: "velum-dictation-stop"
+      WlrLayershell.layer: WlrLayer.Overlay
+      WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+      MouseArea { anchors.fill: parent; onPressed: wbar.stopDictation() }
     }
   }
 }
