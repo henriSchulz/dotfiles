@@ -10,7 +10,9 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 // what it reports — battery, draw, latency, connection — and what the stream does, with a
 // brightness slider for its panel (the tablet follows this Mac's backlight while casting).
 // ipadcast writes it all to $XDG_RUNTIME_DIR/ipadcast/cast.json every 2 s and removes the
-// file when the tablet goes.
+// file when the tablet goes. Below that, how the sync between this Mac and the tablet stands
+// (Syncthing over the cable, dotfiles, settings), from $XDG_RUNTIME_DIR/henri/sync.json, which
+// sync-status (dotfiles) writes every 30 s.
 Panel {
   id: root
   moduleName: "henri.cast"
@@ -38,7 +40,52 @@ Panel {
   // now and then; the clock ends a connection whose reports stopped
   Timer {
     interval: 2000; repeat: true; running: true
-    onTriggered: { root.now = Date.now() / 1000; if (infoFile.missing || !root.connected) infoFile.reload() }
+    onTriggered: {
+      root.now = Date.now() / 1000
+      if (infoFile.missing || !root.connected) infoFile.reload()
+      if (syncFile.missing || !root.syncFresh) syncFile.reload()
+    }
+  }
+
+  // ---- the sync with the tablet
+  property var sync: null
+  readonly property bool syncFresh: !!sync && now - sync.time < 90
+  FileView {
+    id: syncFile
+    property bool missing: true
+    path: Quickshell.env("XDG_RUNTIME_DIR") + "/henri/sync.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      try { root.sync = JSON.parse(text() || "null") } catch (e) { root.sync = null }
+      missing = false
+    }
+    onLoadFailed: { root.sync = null; missing = true }
+  }
+  function filesText() {
+    if (!syncFresh) return "—"
+    const f = sync.files
+    if (!sync.peer) return "Not Connected"
+    if (f.errors > 0) return f.errors + (f.errors === 1 ? " Error" : " Errors")
+    if (f.peerPercent !== null && f.peerPercent < 100) return "Syncing · " + Math.floor(f.peerPercent) + " %"
+    if (f.syncing > 0) return "Syncing"
+    return "Up to Date"
+  }
+  function dotfilesText() {
+    if (!syncFresh) return "—"
+    if (sync.dotfiles.length === 0) return "Up to Date"
+    return sync.dotfiles.some(l => l.indexOf("by hand") >= 0) ? "Merge by Hand" : "Needs Attention"
+  }
+  function settingsText() {
+    if (!syncFresh) return "—"
+    return sync.settings.length === 0 ? "Up to Date" : sync.settings.length + " Differ"
+  }
+  // the newest conflict copy, selected in Finder
+  function showConflict() {
+    if (!syncFresh || sync.conflicts.count === 0) return
+    Quickshell.execDetached(["finder", "--select", sync.conflicts.newest[0]])
+    root.close()
   }
 
   readonly property real batteryFraction: connected && info.battery !== null ? Math.max(0, Math.min(1, info.battery / 100)) : 0
@@ -59,13 +106,27 @@ Panel {
   function setKeyboardLight(on) {
     Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.event(\"ipadcast kbdlight " + (on ? "on" : "off") + "\")"])
   }
+  // this Mac's own keyboard and trackpad ("mac") or the tablet's cover ("tablet"); ipadcast turns
+  // both on again when the tablet connects anew
+  function setInput(which, on) {
+    Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.event(\"ipadcast " + which + "input " + (on ? "on" : "off") + "\")"])
+  }
+
+  // 0 both, 1 the Mac's own, 2 the tablet's: the side that stays on goes first (one shell, so in
+  // order), so both are never off
+  function pickInput(i) {
+    const ev = (which, on) => "hl.dsp.event(\"ipadcast " + which + "input " + (on ? "on" : "off") + "\")"
+    const first = i === 2 ? ev("tablet", true) : ev("mac", true)
+    const second = i === 2 ? ev("mac", false) : ev("tablet", i === 0)
+    Quickshell.execDetached(["sh", "-c", "hyprctl dispatch \"$1\" && hyprctl dispatch \"$2\"", "sh", first, second])
+  }
 
   IpcHandler {
     target: "henri.cast"
     function open() { root.open() }
     function close() { root.close() }
     function toggle() { root.toggle() }
-    function state(): string { return JSON.stringify({ connected: root.connected, opened: root.opened, info: root.info }) }
+    function state(): string { return JSON.stringify({ connected: root.connected, opened: root.opened, info: root.info, sync: root.sync }) }
   }
 
   onConnectedChanged: if (!connected) close()
@@ -182,6 +243,47 @@ Panel {
         icon: "keyboard.light"; text: "Keyboard Light"
         VSwitch { surface: "popover"; checked: content.i.kbdlight === true; onToggled: c => root.setKeyboardLight(c) }
       }
+
+      // -- which keyboard and trackpad work the Mac — both, the Mac's own or the tablet's cover: switched
+      // only until the connection starts over; just the Mac's switch while the tablet's mac-cast cannot
+      // switch its cover
+      VModuleSection { visible: inputSeg.visible; text: "Keyboard & Trackpad" }
+      Item {
+        id: inputSeg
+        width: parent.width; height: Theme.m.control.height + Theme.layout.list.gap
+        visible: typeof content.i.tabletInput === "boolean"
+        readonly property int current: content.i.macInput === false ? 2 : content.i.tabletInput === false ? 1 : 0
+        VSegment {
+          id: inputCtl
+          x: Theme.layout.module.pad; anchors.verticalCenter: parent.verticalCenter
+          model: ["Both", "Mac", "Tablet"]
+          onActivated: i => root.pickInput(i)
+        }
+        // re-applied on every change (a click inside VSegment would cut a plain binding)
+        Binding { target: inputCtl; property: "currentIndex"; value: inputSeg.current }
+      }
+      VModuleRow {
+        width: parent.width; visible: !inputSeg.visible; clickable: false
+        icon: "laptop"; text: "Mac Keyboard & Trackpad"
+        VSwitch { surface: "popover"; checked: content.i.macInput !== false; onToggled: c => root.setInput("mac", c) }
+      }
+
+      // -- the sync with this Mac
+      VModuleSection { text: "Sync" }
+      VModuleRow {
+        width: parent.width; clickable: false; icon: "folder"; text: "Files"
+        busy: root.syncFresh && root.sync.peer && root.sync.files.errors === 0
+          && (root.sync.files.syncing > 0 || (root.sync.files.peerPercent !== null && root.sync.files.peerPercent < 100))
+        detail: root.filesText()
+      }
+      VModuleRow {
+        width: parent.width; visible: root.syncFresh && root.sync.conflicts.count > 0
+        icon: "duplicate"; text: "Conflicts"
+        detail: root.syncFresh ? root.sync.conflicts.count + (root.sync.conflicts.count === 1 ? " File" : " Files") : ""
+        onClicked: root.showConflict()
+      }
+      VModuleRow { width: parent.width; clickable: false; icon: "settings"; text: "Settings"; detail: root.settingsText() }
+      VModuleRow { width: parent.width; clickable: false; icon: "code"; text: "Dotfiles"; detail: root.dotfilesText() }
 
       VText {
         x: Theme.layout.module.pad; width: parent.width - 2 * x
