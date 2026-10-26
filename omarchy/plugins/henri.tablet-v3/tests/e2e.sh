@@ -272,7 +272,7 @@ if runs T19; then
   rec="$(view | jq -r .dictateOn),$(layer velum-dictation-stop)"; shot T19-recording
   pt m $X $((H / 3)) s 100 d s 50 u; sleep 0.8
   want T19 "the mic starts a dictation, a surface waits for the next tap" "$rec" "TB,true"
-  sleep 0.8
+  sleep 0.8; shot T19-enter
   want T19c "dictated into foot: Enter goes after the text" "$(view | jq .entered)" "1"
   want T19b "a tap anywhere ends it (voxtype record stop) and the surface goes" "$(view | jq -r .dictateOn),$(layer velum-dictation-stop),$(calls | tr ';' '\n' | grep '^record' | tr '\n' ';')" ",false,record start;record stop;"
 fi

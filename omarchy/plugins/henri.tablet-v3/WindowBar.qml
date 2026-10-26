@@ -185,10 +185,10 @@ Item {
       var to = wbar.enterFor
       wbar.enterFor = ""
       Hyprland.refreshToplevels()
-      if (!wbar.dispatch || !wbar.ipc || String(wbar.ipc.address) !== to) return
-      wbar.dispatch("function() hl.dispatch(hl.dsp.send_key_state({ mods = \"\", key = \"Return\", state = \"down\" }))"
-                    + " hl.dispatch(hl.dsp.send_key_state({ mods = \"\", key = \"Return\", state = \"up\" })) end",
-                    "sendshortcut , Return, activewindow")
+      if (!wbar.ipc || String(wbar.ipc.address) !== to) return
+      // the way voxtype pasted it (wtype, a virtual keyboard to the focused window); Hyprland's
+      // send_key_state never reached foot (Henri's test 2026-10-26)
+      Quickshell.execDetached(["wtype", "-k", "Return"])
       wbar.entered++
     }
   }
