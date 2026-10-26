@@ -5,11 +5,15 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import "file:///home/henri/.local/share/velum/qml/Velum"
 
-// The small bar on the active window where fingers work: the on-screen keyboard, fullscreen and close,
-// floating in the window's top right corner on the popover material (Henri: not at the top centre). It shows on every screen
-// in tablet mode, and on the cast screen (the tablet showing the Mac, $XDG_RUNTIME_DIR/ipadcast/
-// touch-output) otherwise. Over a fullscreen window too (overlay layer); the bar only takes input on
-// its own card. Geometry: surface.tablet.windowBar.
+// The small bar above the home indicator where fingers work: the active app's name, the on-screen
+// keyboard, fullscreen and close, on the popover material. A tap on the indicator opens it
+// (Gesture.js "tap"); nothing sits on the window itself (Henri 2026-10-26: a handle in the window's
+// corner lay over apps' own buttons; design 7 of lab/web/window-bar.html). It folds back after
+// surface.tablet.windowBar.hold, a button used, another tap on the indicator or another window.
+// In tablet mode on every screen, otherwise on the cast screen (the tablet showing the Mac,
+// $XDG_RUNTIME_DIR/ipadcast/touch-output), where Tablet.qml shows the indicator for it.
+// Over a fullscreen window too (overlay layer); the bar only takes input on its own card.
+// Geometry: surface.tablet.windowBar.
 Item {
   id: wbar
 
@@ -69,6 +73,41 @@ Item {
     return !m.activeWorkspace || !ipc.workspace || ipc.workspace.id === m.activeWorkspace.id
   }
 
+  // the screen whose bar is open ("" = none); only the active window has one
+  property string openOn: ""
+  readonly property bool open: openOn !== ""
+  onWinChanged: openOn = ""
+  onOpenChanged: { armed = false; if (open) { hold.restart(); arm.restart() } else hold.stop() }
+  Timer { id: hold; interval: wbar.wb.hold; onTriggered: wbar.openOn = "" }
+  // the bar opens right above the finger that tapped the indicator: a second tap of a double tap
+  // must not close the app, so the bar's buttons wait a moment before they act
+  property bool armed: false
+  Timer { id: arm; interval: Theme.delay("repeat"); onTriggered: wbar.armed = true }
+
+  // a tap on the home indicator of that screen (Tablet.qml)
+  function toggle(screenName) {
+    if (openOn === screenName) { openOn = ""; return }
+    // after a shell start Quickshell names no active window until the focus moves: ask Hyprland, then again
+    if (!ipc) { Hyprland.refreshToplevels(); retry.screenName = screenName; retry.restart(); return }
+    openFor(screenName)
+  }
+  function openFor(screenName) {
+    var all = Quickshell.screens
+    for (var i = 0; i < all.length; i++)
+      if (all[i].name === screenName && shownOn(all[i]) && !VOverlays.covered(screenName)) { openOn = screenName; return }
+  }
+
+  Timer { id: retry; property string screenName: ""; interval: Theme.delay("settle"); onTriggered: wbar.openFor(screenName) }
+  Component.onCompleted: Hyprland.refreshToplevels()
+
+  // the app's name as its desktop entry has it, else its class
+  readonly property string appName: {
+    if (!ipc) return ""
+    var c = String(ipc.class || ""), e = null
+    try { e = DesktopEntries.byId(c) || DesktopEntries.heuristicLookup(c) } catch (err) {}
+    return e && e.name ? e.name : c
+  }
+
   function close() { if (win && win.wayland) win.wayland.close() }
   // henri.keyboard-v3 opens / closes on this event, on that screen
   function keyboard(screenName) {
@@ -76,6 +115,20 @@ Item {
   }
   function fullscreen() {
     if (dispatch) dispatch("hl.dsp.window.fullscreen({ mode = \"fullscreen\" })", "fullscreen 0")
+  }
+
+  // the popover material the bar stands on
+  component Plate: Item {
+    property string velumSurface: "popover"
+    height: wbar.wb.height
+    VShadow { layers: wbar.shadow; radius: Theme.m.radius.control + wbar.wb.pad }
+    Rectangle {
+      anchors.fill: parent
+      radius: Theme.m.radius.control + wbar.wb.pad
+      color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+      border.width: 1 / Screen.devicePixelRatio
+      border.color: Theme.r.line.rim
+    }
   }
 
   Variants {
@@ -86,60 +139,70 @@ Item {
       required property var modelData
       screen: modelData
       // not over an open Control Center, Notification Center or bar menu: same layer, and the later mapped wins
-      readonly property bool on: wbar.shownOn(modelData) && !VOverlays.covered(modelData.name)
-      visible: on || fade.running
-      anchors { top: true; left: true }
+      readonly property bool on: wbar.openOn === modelData.name && wbar.shownOn(modelData) && !VOverlays.covered(modelData.name)
+      onOnChanged: if (!on && wbar.openOn === modelData.name) wbar.openOn = ""
+      visible: on || cardFade.running
+      // centred above the home indicator (anchored to the bottom only)
+      anchors { bottom: true }
       exclusionMode: ExclusionMode.Ignore
+      margins.bottom: Theme.core.surface.tablet.homeZone + wbar.wb.above - wbar.room
       implicitWidth: card.width + 2 * wbar.room
       implicitHeight: card.height + 2 * wbar.room
-      // the card in the window's top right corner, just inside its edges
-      // (the last place stays while it fades out)
-      readonly property real wantLeft: on ? Math.round(wbar.ipc.at[0] - modelData.x + wbar.ipc.size[0] - wbar.wb.right - card.width - wbar.room) : NaN
-      readonly property real wantTop: on ? Math.round(wbar.ipc.at[1] - modelData.y + wbar.wb.top - wbar.room) : NaN
-      property real lastLeft: 0
-      property real lastTop: 0
-      onWantLeftChanged: if (!isNaN(wantLeft)) lastLeft = wantLeft
-      onWantTopChanged: if (!isNaN(wantTop)) lastTop = wantTop
-      margins.left: isNaN(wantLeft) ? lastLeft : wantLeft
-      margins.top: isNaN(wantTop) ? lastTop : wantTop
       color: "transparent"
       WlrLayershell.namespace: "velum-surface"
       WlrLayershell.layer: WlrLayer.Overlay
       WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
       mask: Region { item: card }
 
-      Item {
+      // grows out of the indicator below it (motion.barPopup: fade, scale from the bottom centre)
+      Plate {
         id: card
         x: wbar.room
         y: wbar.room
-        width: 3 * wbar.wb.button + 2 * wbar.wb.pad
-        height: wbar.wb.height
+        width: row.width + 2 * wbar.wb.pad
         opacity: pw.on ? 1 : 0
-        Behavior on opacity { NumberAnimation { id: fade; duration: pw.on ? Theme.dur("fast") : Theme.exit(Theme.dur("fast")) } }
-
-        VShadow { layers: wbar.shadow; radius: Theme.m.radius.control + wbar.wb.pad }
-        Rectangle {
-          anchors.fill: parent
-          radius: Theme.m.radius.control + wbar.wb.pad
-          color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
-          border.width: 1 / Screen.devicePixelRatio
-          border.color: Theme.r.line.rim
+        scale: pw.on || Theme.reduceMotion ? 1 : Theme.motion("barPopup.fromScale")
+        transformOrigin: Item.Bottom
+        Behavior on opacity { NumberAnimation { id: cardFade; duration: pw.on ? Theme.transitionMs("barPopup.in") : Theme.exit(Theme.transitionMs("barPopup.in")) } }
+        Behavior on scale {
+          NumberAnimation {
+            duration: pw.on ? Theme.transitionMs("barPopup.in") : Theme.exit(Theme.transitionMs("barPopup.in"))
+            easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.motion("barPopup.in").curve
+          }
         }
         Row {
+          id: row
           x: wbar.wb.pad
           y: wbar.wb.pad
+          VText {
+            id: label
+            text: wbar.appName
+            visible: text !== ""
+            font.weight: Font.DemiBold
+            width: Math.min(implicitWidth, wbar.wb.label + 2 * Theme.layout.control.padX)
+            leftPadding: Theme.layout.control.padX
+            rightPadding: Theme.layout.control.padX
+            height: wbar.wb.height - 2 * wbar.wb.pad
+          }
+          Rectangle {
+            visible: label.visible
+            width: 1 / Screen.devicePixelRatio
+            height: wbar.wb.icon
+            anchors.verticalCenter: parent.verticalCenter
+            color: Theme.r.popover.line
+          }
           VPressable {
             id: keyButton
             width: wbar.wb.button
             height: wbar.wb.height - 2 * wbar.wb.pad
-            onClicked: wbar.keyboard(pw.modelData.name)
+            onClicked: if (wbar.armed) { wbar.keyboard(pw.modelData.name); wbar.openOn = "" }
             VIcon { anchors.centerIn: parent; name: "keyboard"; size: wbar.wb.icon; color: keyButton.contentColor }
           }
           VPressable {
             id: fullButton
             width: wbar.wb.button
             height: wbar.wb.height - 2 * wbar.wb.pad
-            onClicked: wbar.fullscreen()
+            onClicked: if (wbar.armed) { wbar.fullscreen(); wbar.openOn = "" }
             VIcon {
               anchors.centerIn: parent
               name: wbar.ipc && wbar.ipc.fullscreen === 2 ? "fullscreen.exit" : "fullscreen"
@@ -150,7 +213,7 @@ Item {
             id: closeButton
             width: wbar.wb.button
             height: wbar.wb.height - 2 * wbar.wb.pad
-            onClicked: wbar.close()
+            onClicked: if (wbar.armed) { wbar.close(); wbar.openOn = "" }
             VIcon { anchors.centerIn: parent; name: "close"; weight: "bold"; size: wbar.wb.icon; color: closeButton.contentColor }
           }
         }

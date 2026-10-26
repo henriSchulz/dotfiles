@@ -41,11 +41,14 @@ const last = acts => kinds(acts).slice(-1)[0];
 let n = 0;
 function test(name, fn) { fn(); n++; console.log("ok   " + name); }
 
-test("a tap on the home zone does nothing", () => {
-  assert.deepStrictEqual(play([[0, X, H - 8], [60, X + 2, H - 9]]), []);
+test("a tap on the home zone is a tap (the window bar)", () => {
+  assert.deepStrictEqual(play([[0, X, H - 8], [60, X + 2, H - 9]]), [{ do: "tap" }]);
 });
-test("a small jitter below the slop does nothing", () => {
-  assert.deepStrictEqual(play(stroke(X, H - 8, 4, -cfg.slop + 1, 120)), []);
+test("a small jitter below the slop is still a tap", () => {
+  assert.deepStrictEqual(play(stroke(X, H - 8, 4, -cfg.slop + 1, 120)), [{ do: "tap" }]);
+});
+test("a cancelled touch is no tap", () => {
+  assert.deepStrictEqual(play([[0, X, H - 8], [60, X, H - 8]], { cancel: true }), []);
 });
 test("a short slow pull up moves the dock and ends there (the dock decides)", () => {
   const a = play(stroke(X, H - 8, 0, -60, 400));

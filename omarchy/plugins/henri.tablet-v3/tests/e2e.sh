@@ -161,13 +161,34 @@ fi
 
 if runs T10; then
   # the window bar shares the overlay layer with the Control Center and was mapped later, so it stood
-  # on top of the open Control Center (Henri, 2026-10-25): it hides while a surface covers the screen
+  # on top of the open Control Center (Henri, 2026-10-25): an open bar folds when a surface covers the screen
   barUp() { hyprctl layers -j | jq '[.TB.levels[][] | select(.namespace == "velum-surface" and .w < 400)] | length > 0'; }
+  c henri.tablet tap TB >/dev/null; sleep 0.5
   before=$(barUp)
   c henri.control-center-v3 open; sleep 0.8; shot T10
   during=$(barUp)
   c henri.control-center-v3 close; sleep 0.9
-  want T10 "the window bar hides under an open Control Center and comes back" "$before,$during,$(barUp)" "true,false,true"
+  want T10 "an open window bar folds under an open Control Center and stays folded" "$before,$during,$(barUp)" "true,false,false"
+  c henri.tablet tap TB >/dev/null
+  want T10b "it does not open while a surface covers the screen" "$(c henri.control-center-v3 open >/dev/null; sleep 0.8; c henri.tablet tap TB)" ""
+  c henri.control-center-v3 close; sleep 0.9
+fi
+
+if runs T11; then
+  # nothing on the window (Henri, 2026-10-26: a handle in its corner lay over apps' own buttons): a tap
+  # on the home indicator opens the window bar above it, it folds back after surface.tablet.windowBar.hold
+  barOpen() { c henri.tablet state | jq .windowBarOpen; }
+  apps=$(hyprctl clients -j | jq 'length')
+  folded=$(barOpen); c henri.tablet clearLog >/dev/null
+  pt m $((X - 8)) $((B - 2)) s 100 m $X $B s 150 d s 60 u; sleep 0.4
+  opened=$(barOpen); shot T11-open
+  want T11 "a tap on the indicator opens the window bar" "$folded,$opened" "false,true"
+  want T11a "the tap is no gesture" "$(log)" '["tap"]'
+  want T11b "the app is still there" "$(hyprctl clients -j | jq 'length')" "$apps"
+  pt d s 60 u; sleep 0.4
+  want T11c "a second tap folds it" "$(barOpen)" "false"
+  pt d s 60 u; sleep 4.4
+  want T11d "the open bar folds back by itself" "$(barOpen)" "false"
 fi
 
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"

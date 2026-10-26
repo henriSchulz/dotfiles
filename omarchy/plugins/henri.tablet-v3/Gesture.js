@@ -18,6 +18,7 @@
 //          { do: "home" }
 //          { do: "switcher", phase: "start"|"update"|"end", delta, cancelled }
 //          { do: "app", step: +1|-1 }
+//          { do: "tap" }   released before the slop (the window bar above the indicator)
 
 function create(cfg) {
   var mode = "idle"
@@ -100,6 +101,8 @@ function create(cfg) {
       } else if (was === "slide") {
         var flick = Math.abs(v.x) >= cfg.slideFlick && (v.x > 0) === (dx > 0)
         if (Math.abs(dx) >= cfg.slideCommit || flick) out.push({ do: "app", step: dx > 0 ? -1 : 1 })
+      } else if (was === "pending") {
+        out.push({ do: "tap" })   // never past the slop: the window bar above the indicator (WindowBar.qml)
       }
       return out
     },

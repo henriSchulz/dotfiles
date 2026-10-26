@@ -14,9 +14,13 @@ import "Gesture.js" as Gesture
 //   pull up and pause          App Switcher: Mission Control under the finger (hyprmc.gesture,
 //                              or the QML one's "mission-control-gesture:…" events)
 //   slide along the edge       next / previous app (one app per workspace in tablet mode)
+//   tap                        the window bar above the indicator (WindowBar.qml)
 // The top edge belongs to henri.bar-v3 (Control Center, Notification Center).
 // Beside it, in tablet mode or not: edge fingers from a cast screen (velum-edge, below).
 // The zone reserves its height (exclusive zone), so it covers nothing, like a safe area.
+// On the cast screen outside tablet mode the indicator is there only for the window bar: no
+// reserved zone, input only on the indicator (ipadcast hands a tap on the edge through as a touch;
+// pulls arrive as velum-edge, below).
 Item {
   id: root
 
@@ -59,12 +63,14 @@ Item {
       } else if (a.do === "app") {
         var ws = a.step > 0 ? "m+1" : "m-1"
         dispatch("hl.dsp.focus({ workspace = \"" + ws + "\" })", "workspace " + ws)
+      } else if (a.do === "tap") {
+        windowBar.toggle(screenName)
       }
     }
   }
 
   Variants {
-    model: root.active ? Quickshell.screens : []
+    model: root.active ? Quickshell.screens : Array.from(Quickshell.screens).filter(s => s.name === windowBar.castScreen)
 
     PanelWindow {
       id: zone
@@ -72,8 +78,9 @@ Item {
       screen: modelData
       anchors { bottom: true; left: true; right: true }
       implicitHeight: root.tt.homeZone
-      exclusionMode: ExclusionMode.Normal
-      exclusiveZone: root.tt.homeZone
+      exclusionMode: root.active ? ExclusionMode.Normal : ExclusionMode.Ignore
+      exclusiveZone: root.active ? root.tt.homeZone : 0
+      mask: Region { item: root.active ? zoneArea : indicatorArea }
       color: "transparent"
       WlrLayershell.namespace: "velum-home-indicator"
       WlrLayershell.layer: WlrLayer.Overlay
@@ -102,8 +109,11 @@ Item {
 
       // One finger (touch reaches a MouseArea as a synthesized mouse; a pointer works the same,
       // which is how the rig tests it). Coordinates stay in the zone; only differences count.
+      // what takes the finger: the whole zone, or (cast screen only) the indicator with room around it
+      Item { id: zoneArea; anchors.fill: parent }
+      Item { id: indicatorArea; anchors.centerIn: parent; width: root.tt.indicator.width + 2 * root.tt.slop; height: parent.height }
       MouseArea {
-        anchors.fill: parent
+        anchors.fill: root.active ? zoneArea : indicatorArea
         preventStealing: true
         onPressed: function (m) { zone.pressed = true; root.run(zone.gesture.down(Date.now(), m.x, m.y), zone.screen.name); ticker.start() }
         onPositionChanged: function (m) { if (zone.pressed) root.run(zone.gesture.move(Date.now(), m.x, m.y), zone.screen.name) }
@@ -189,12 +199,13 @@ Item {
     }
   }
 
-  // close and fullscreen on the active window, where fingers work (tablet mode, the cast screen)
+  // keyboard, fullscreen and close for the active window, above the indicator (tablet mode, the cast screen)
   WindowBar { id: windowBar; tabletMode: root.active; dispatch: root.dispatch }
 
   IpcHandler {
     target: "henri.tablet"
-    function state(): string { return JSON.stringify({ active: root.active, screens: root.active ? Quickshell.screens.length : 0, log: root.log, castScreen: windowBar.castScreen, window: windowBar.ipc ? windowBar.ipc.class : "" }) }
+    function state(): string { return JSON.stringify({ active: root.active, screens: root.active ? Quickshell.screens.length : 0, log: root.log, castScreen: windowBar.castScreen, window: windowBar.ipc ? windowBar.ipc.class : "", windowBarOpen: windowBar.open }) }
     function clearLog(): string { root.log = []; return "ok" }
+    function tap(screen: string): string { windowBar.toggle(screen); return windowBar.openOn }
   }
 }
