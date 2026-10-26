@@ -1200,7 +1200,9 @@ Item {
       onActiveChanged: {
         var name = barWindow.screen ? barWindow.screen.name : ""
         if (active) {
-          surface = centroid.pressPosition.x > barWindow.width * (1 - Theme.core.surface.tablet.controlCenterShare) ? "controlCenter" : "notifications"
+          // the item above the finger (VPullZone), else the right share Control Center, the rest Notification Center
+          surface = VGestures.zoneAt(name, centroid.pressPosition.x)
+          if (surface === "") surface = centroid.pressPosition.x > barWindow.width * (1 - Theme.core.surface.tablet.controlCenterShare) ? "controlCenter" : "notifications"
           cancelled = false; samples = []
         } else if (!cancelled) {
           VGestures.pull(surface, name, "end", travel(), speed())

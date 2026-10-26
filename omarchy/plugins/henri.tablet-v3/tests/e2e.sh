@@ -125,10 +125,10 @@ if runs T05; then
 fi
 
 if runs T06; then
-  # top edge, right third: Control Center follows the finger
-  pt m $((W - 200)) 12 d s 60 g $((W - 200)) 140 20 16 s 60
+  # top edge, right of every item (the battery has its own pull now): Control Center follows the finger
+  pt m $((W - 50)) 12 d s 60 g $((W - 50)) 140 20 16 s 60
   mid=$(c henri.control-center-v3 state | jq -c '[.open, .shown]'); shot T06-mid
-  pt g $((W - 200)) 260 8 16 s 30 u
+  pt g $((W - 50)) 260 8 16 s 30 u
   sleep 0.7; shot T06
   want T06 "pulling the right of the bar grows the island before release" "$mid" "[false,true]"
   want T06b "released far enough, Control Center is open" "$(c henri.control-center-v3 state | jq .open)" "true"
@@ -275,6 +275,20 @@ if runs T19; then
   sleep 0.8; shot T19-enter
   want T19c "dictated into foot: Enter goes after the text" "$(view | jq .entered)" "1"
   want T19b "a tap anywhere ends it (voxtype record stop) and the surface goes" "$(view | jq -r .dictateOn),$(layer velum-dictation-stop),$(calls | tr ';' '\n' | grep '^record' | tr '\n' ';')" ",false,record start;record stop;"
+fi
+
+if runs T20; then
+  # a pull from the top edge (as ipadcast hands it in) opens the menu-bar item above the finger
+  edge() { hyprctl dispatch "hl.dsp.event(\"velum-edge TB top $1 $2 $3\")" >/dev/null; }
+  pullAt() { c henri.tablet clearLog >/dev/null; edge down "$1" 2; sleep 0.1; edge move "$1" 120; sleep 0.1; edge move "$1" 260; sleep 0.1; edge up "$1" 260; sleep 1; }
+  zx() { view | jq -r --arg s "$1" '.zones.TB[$s] | (.[0] + .[1]) / 2 | floor'; }
+  for s in controlCenter spaces battery; do
+    x=$(zx $s)
+    pullAt "$x"; shot "T20-$s"
+    island=$(hyprctl layers -j | jq '[.TB.levels[][] | select(.namespace == "velum-surface" and .w >= 300)] | length > 0')
+    want "T20-$s" "a pull above the $s item (x $x) opens it" "$(log | jq -r '.[0]'),$island" "cast:top:$s,true"
+    hyprctl dispatch 'hl.dsp.event("menu close")' >/dev/null; c henri.control-center-v3 close >/dev/null; c henri.power close >/dev/null; sleep 0.8
+  done
 fi
 
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"

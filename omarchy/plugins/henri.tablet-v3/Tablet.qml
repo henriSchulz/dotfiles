@@ -268,6 +268,8 @@ Item {
   function castSurface(screenName, x) {
     var w = 0, all = Quickshell.screens
     for (var i = 0; i < all.length; i++) if (all[i].name === screenName) w = all[i].width
+    var z = VGestures.zoneAt(screenName, x)   // the menu-bar item above the finger (VPullZone)
+    if (z !== "") return z
     var c = root.tt.cast, u = w > 0 ? x / w : c.spacesFrom
     return u < c.notificationsShare ? "notifications" : u >= c.spacesFrom && u < c.spacesTo ? "spaces" : "controlCenter"
   }
@@ -335,6 +337,6 @@ Item {
     function state(): string { return JSON.stringify({ active: root.active, screens: root.active ? Quickshell.screens.length : 0, log: root.log, castScreen: windowBar.castScreen, window: windowBar.ipc ? windowBar.ipc.class : "", windowBarOpen: windowBar.open }) }
     function clearLog(): string { root.log = []; return "ok" }
     function tap(screen: string): string { windowBar.toggle(screen); return windowBar.openOn }
-    function view(): string { return JSON.stringify({ asleep: root.asleep, fullscreenOn: root.fullscreenOn, slideScreen: root.slideScreen, neighbours: root.neighbours, dockOut: VGestures.out, shrunk: Object.keys(root.shrunk).length, dictateOn: windowBar.dictateOn, voxState: windowBar.voxState, entered: windowBar.entered }) }
+    function view(): string { return JSON.stringify({ asleep: root.asleep, fullscreenOn: root.fullscreenOn, slideScreen: root.slideScreen, neighbours: root.neighbours, dockOut: VGestures.out, shrunk: Object.keys(root.shrunk).length, dictateOn: windowBar.dictateOn, voxState: windowBar.voxState, entered: windowBar.entered, zones: VGestures.zones }) }
   }
 }

@@ -146,6 +146,9 @@ Panel {
     }
   }
 
+  // a finger pulls the battery menu down from the top edge above this item (tablet mode, cast screen)
+  VPullZone { surface: "battery"; item: button; island: panel; opened: root.opened; onCommit: root.open() }
+
   // ================================================================= popup
   // A Dynamic Island: the right island of the bar grows into the battery menu (keeps its
   // right and top edge), as the Control Center grows out of the centre one.

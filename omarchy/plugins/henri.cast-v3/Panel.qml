@@ -163,6 +163,9 @@ Panel {
     onPressed: function (b) { if (root.connected) root.toggle() }
   }
 
+  // a finger pulls this panel down from the top edge above its item (tablet mode, cast screen)
+  VPullZone { surface: "cast"; item: button; island: panel; opened: root.opened; onCommit: root.open() }
+
   // ================================================================= island
   VIslandWindow {
     id: panel

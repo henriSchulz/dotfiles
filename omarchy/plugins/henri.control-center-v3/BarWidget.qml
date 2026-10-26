@@ -185,7 +185,14 @@ BarWidget {
     var r = islandRect(), all = Object.assign({}, Theme.centreIslands)
     all[win.screen.name] = { x: r.x, y: r.y, width: r.width, height: r.height }
     Theme.centreIslands = all
+    // a pull from the top edge: above the symbol the pages, above the dots only the miniatures,
+    // split where a click splits them (VGestures.zoneAt; tablet mode and a cast screen)
+    var p = win.itemPosition(root)
+    VGestures.setZone("controlCenter", win.screen.name, p.x, p.x + root.splitX)
+    VGestures.setZone("spaces", win.screen.name, p.x + root.splitX, p.x + root.width)
   }
+  // the bar moves the widget without telling it (a neighbour grows): look again now and then
+  Timer { interval: Theme.delay("hudHold"); running: true; repeat: true; onTriggered: root.publishIsland() }
   Component.onCompleted: Qt.callLater(root.publishIsland)
   onWidthChanged: Qt.callLater(root.publishIsland)
   onXChanged: Qt.callLater(root.publishIsland)
