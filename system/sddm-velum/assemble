@@ -1,0 +1,29 @@
+#!/bin/bash
+# Build the SDDM theme "velum" into a directory (no root needed):
+#   assemble <outdir>
+# It takes the QML from here and adds what the greeter cannot read from ~ at login time:
+#   Velum/  the part of the Velum QML module the face uses (from ~/.local/share/velum, a link to
+#           ~/Projects/velum), with a qmldir of its own. Re-run the install after Velum changes.
+# The SF fonts are not part of the theme: the install script puts them into the sddm user's font dir.
+# install/52-sddm-velum.sh calls this, then copies the result to /usr/share/sddm/themes/velum.
+set -euo pipefail
+src="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+out="${1:?usage: assemble <outdir>}"
+user_home="${USER_HOME:-$HOME}"
+velum="${VELUM_QML:-$user_home/.local/share/velum/qml/Velum}"
+
+[[ -f $velum/Theme.qml ]] || { echo "Velum QML module not found at $velum" >&2; exit 1; }
+
+rm -rf "$out"; mkdir -p "$out/Velum"
+install -m644 "$src/Main.qml" "$src/Face.qml" "$src/metadata.desktop" "$src/theme.conf" "$out/"
+
+# what Face.qml uses, and what those use in turn (Theme → Tokens/Icons/fonts, VKeyboard → layout, VText)
+files=(Theme.qml Tokens.js Icons.js Spring.qml VShadow.qml VIcon.qml VSpinner.qml VText.qml VKeyboard.qml KeyboardLayout.js)
+for f in "${files[@]}"; do install -m644 "$velum/$f" "$out/Velum/$f"; done
+cp -r "$velum/fonts" "$out/Velum/fonts"; chmod -R a+rX "$out/Velum/fonts"
+{
+  echo "module Velum"
+  echo "singleton Theme 1.0 Theme.qml"
+  for f in Spring VShadow VIcon VSpinner VText VKeyboard; do echo "$f 1.0 $f.qml"; done
+} > "$out/Velum/qmldir"
+

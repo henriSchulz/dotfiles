@@ -1,0 +1,9 @@
+[SddmGreeterTheme]
+Name=Velum
+Description=Login screen with the look of the Velum lock screen (henri.lock-v3)
+Author=henri
+Type=sddm-theme
+Version=1.0
+MainScript=Main.qml
+ConfigFile=theme.conf
+QtVersion=6

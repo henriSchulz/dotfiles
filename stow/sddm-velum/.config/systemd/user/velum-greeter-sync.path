@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep the login screen's wallpaper and appearance in step with the session
+
+[Path]
+# the wallpaper link (re-pointed on every wallpaper change) and Velum's settings
+PathChanged=%h/.local/state/omarchy/current/background
+PathChanged=%h/.local/state/velum/settings.json
+PathChanged=%h/.config/omarchy/shell.json
+
+[Install]
+WantedBy=default.target

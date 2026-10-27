@@ -1,0 +1,6 @@
+[Unit]
+Description=Copy the wallpaper and Velum appearance for the login screen
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/velum-greeter-sync

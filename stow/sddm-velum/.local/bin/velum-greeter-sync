@@ -1,0 +1,69 @@
+#!/bin/bash
+# Hand the login screen (SDDM theme "velum", system/sddm-velum in ~/Projects/dotfiles) what it
+# shows from this session: the current wallpaper and the Velum settings the lock screen follows
+# (variant, appearance, reduce motion/transparency) plus the lock screen message. The greeter runs
+# as the sddm user and cannot read ~, so both go to /var/lib/velum-greeter (made writable for this
+# user by install/52-sddm-velum.sh). Only data goes there — the theme's code stays root-owned.
+# Runs from velum-greeter-sync.path whenever the wallpaper or the Velum settings change.
+#   VELUM_GREETER_DIR=<dir> velum-greeter-sync   write somewhere else (tests)
+set -euo pipefail
+dir="${VELUM_GREETER_DIR:-/var/lib/velum-greeter}"
+state="${XDG_STATE_HOME:-$HOME/.local/state}"
+[[ -d $dir && -w $dir ]] || { echo "velum-greeter-sync: $dir missing or not writable — run install/52-sddm-velum.sh" >&2; exit 0; }
+
+bg="$(readlink -f "$state/omarchy/current/background" 2>/dev/null || true)"
+if [[ -f $bg ]]; then
+  cp -f "$bg" "$dir/.background.tmp" && chmod 644 "$dir/.background.tmp" && mv -f "$dir/.background.tmp" "$dir/background"
+fi
+
+python3 - "$dir" "$state/velum/settings.json" "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/shell.json" "${SUDO_USER:-$USER}" <<'PY'
+import json, os, subprocess, sys
+out, settings_path, shell_path, user = sys.argv[1:5]
+
+def load(p):
+    try:
+        with open(p) as f: return json.load(f)
+    except Exception:
+        return {}
+
+s = load(settings_path)
+lock = load(shell_path).get("lock") or {}
+appearance = s.get("appearance", "auto")
+if appearance in ("dark", "light"):
+    dark = appearance == "dark"
+else:
+    # auto: the session follows the wallpaper's brightness under the menu bar (VBackdrop);
+    # here the mean of the image's top strip stands in for it
+    dark = True
+    bg = os.path.join(out, "background")
+    try:
+        mean = subprocess.run(["magick", bg, "-gravity", "north", "-crop", "100%x6%+0+0", "+repage",
+                               "-colorspace", "gray", "-format", "%[fx:mean]", "info:"],
+                              capture_output=True, text=True, timeout=20).stdout.strip()
+        dark = float(mean) < 0.5
+    except Exception:
+        pass
+message = str(lock.get("message") or "").strip()[:120] if lock.get("showMessage") is True else ""
+
+def q(v):  # a QSettings string value
+    return '"' + str(v).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+def b(v):
+    return "true" if v else "false"
+
+text = "\n".join([
+    "[General]",
+    "background=" + q(os.path.join(out, "background")),
+    "user=" + q(user),
+    "variant=" + q(s.get("variant", "pearl")),
+    "dark=" + b(dark),
+    "reduceMotion=" + b(s.get("reduceMotion") is True),
+    "reduceTransparency=" + b(s.get("reduceTransparency") is True),
+    "message=" + q(message),
+    "",
+])
+tmp = os.path.join(out, ".theme.conf.user.tmp")
+with open(tmp, "w") as f: f.write(text)
+os.chmod(tmp, 0o644)
+os.replace(tmp, os.path.join(out, "theme.conf.user"))
+PY
