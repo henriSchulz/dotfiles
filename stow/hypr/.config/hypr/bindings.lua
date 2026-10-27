@@ -207,25 +207,27 @@ o.bind("SUPER + A", "Select all", function()
   end, { timeout = 50, type = "oneshot" })
 end)
 
--- App-Switcher wie ⌘+Tab am Mac (Plugin henri.app-switcher): Alt halten und Tab
--- zeigt eine Reihe von App-Symbolen, zuletzt benutzte zuerst; jedes weitere Tab
--- wählt die nächste App, Loslassen von Alt wechselt, Esc bricht ab. Kurzes
--- Antippen springt direkt zur vorherigen App, ohne dass die Reihe aufblitzt.
+-- Fenster-Switcher (Plugin henri.app-switcher-v3, ID von früher behalten): Alt
+-- halten und Tab zeigt Miniaturen aller Fenster des aktuellen Workspaces,
+-- zuletzt benutzte zuerst; jedes weitere Tab wählt das nächste, Loslassen von
+-- Alt wechselt, Esc bricht ab. Gedacht für mehrere Vollbild-Fenster
+-- übereinander: das gewählte übernimmt das Vollbild
+-- (misc:on_focus_under_fullscreen = 1). Andere Workspaces = Super+Tab.
+-- Früher ein App-Switcher wie ⌘+Tab (Apps über alle Workspaces).
 --
 -- Warum Alt und nicht Fn: Fn wird auf dem XPS im Tastatur-Controller selbst
 -- verarbeitet und erreicht den Kernel nie als eigene Taste (nachgemessen: Fn+Tab
 -- sendet exakt denselben Code wie Tab allein), ist für Hyprland also nicht
 -- bindbar. Alt liegt dafür genau dort, wo am Mac ⌘ liegt — links neben der
--- Leertaste. Ersetzt Omarchys "Focus on next window"/"Reveal active window on
--- top", die beide auf ALT+TAB lagen und Fenster statt Apps durchschalteten.
+-- Leertaste.
 --
 -- Die Tasten gehen als Hyprland-Ereignis (custom>>app-switcher …) direkt an das
 -- Plugin: kein Prozess pro Taste, also keine Latenz und immer in Reihenfolge.
 hl.unbind("ALT + TAB")
 hl.unbind("ALT + SHIFT + TAB")
-o.bind("ALT + TAB", "App switcher", hl.dsp.event("app-switcher next"))
-o.bind("ALT + SHIFT + TAB", "App switcher (previous)", hl.dsp.event("app-switcher prev"))
-o.bind("ALT + ESCAPE", "App switcher (cancel)", hl.dsp.event("app-switcher cancel"))
+o.bind("ALT + TAB", "Window switcher", hl.dsp.event("app-switcher next"))
+o.bind("ALT + SHIFT + TAB", "Window switcher (previous)", hl.dsp.event("app-switcher prev"))
+o.bind("ALT + ESCAPE", "Window switcher (cancel)", hl.dsp.event("app-switcher cancel"))
 -- transparent: Nach Alt+Tab sperrt ("shadowt") Hyprland alle Bindings auf der
 -- noch gedrückten Alt-Taste — ohne das Flag feuert das Loslassen nie.
 o.bind("ALT + Alt_L", nil, hl.dsp.event("app-switcher commit"), { release = true, transparent = true })
