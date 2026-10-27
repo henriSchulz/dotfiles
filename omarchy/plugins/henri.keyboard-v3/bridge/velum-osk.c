@@ -20,6 +20,8 @@
  *     touch                a finger was lifted on the cast screen (ignored)
  *     text UTF8            type these characters
  *     key NAME             press a key by its keysym name (BackSpace, Return, Tab, Left, …)
+ *     combo MODS KEY       a key combo: MODS ctrl+alt+shift+super or "-", KEY a keysym name or one
+ *                          character ("combo ctrl+shift c"); always through wtype, see press_combo
  *     open | close         the keyboard opened or closed by hand (open enters the mode)
  * Lines out (stdout):
  *     show | hide          the keyboard should appear / go
@@ -56,6 +58,10 @@ extern char **environ;
 static sd_bus *bus;
 static struct xkb_keymap *keymap;
 static bool osk_mode, shown, by_hand;
+/* a combo went through wtype until then: fcitx5 takes it for a real key and leaves on-screen-keyboard
+ * mode, which must not close the keyboard — the mode is entered again instead (rearm) */
+static uint64_t combo_grace;
+static bool rearm;
 
 static uint64_t now_ms(void)
 {
@@ -121,6 +127,10 @@ static void set_mode(bool on)
 		return;
 	osk_mode = on;
 	out(on ? "mode osk" : "mode physical");
+	if (!on && now_ms() < combo_grace) { /* our own combo, not a real key */
+		rearm = true;
+		return;
+	}
 	if (!on) { /* a real key was pressed */
 		by_hand = false;
 		set_shown(false);
@@ -267,6 +277,52 @@ static void press_key(const char *name)
 		wtype("-k", name);
 }
 
+/* A combo always goes through wtype: fcitx5 forwards a virtual key with its own idea of the modifiers
+ * (those of the real keyboard), so Control or Super sent with ProcessKeyEvent never reach the app. wtype
+ * is a virtual keyboard of the compositor, so fcitx5 sees a real key, forwards it with its modifiers —
+ * and leaves on-screen-keyboard mode, which set_mode() then enters again. */
+static void press_combo(char *spec)
+{
+	char *key = strchr(spec, ' ');
+	if (!key)
+		return;
+	*key++ = 0;
+	char name[64];
+	const unsigned char *u = (const unsigned char *)key;
+	int n = *u < 0x80 ? 1 : (*u >> 5) == 6 ? 2 : (*u >> 4) == 14 ? 3 : (*u >> 3) == 30 ? 4 : 0;
+	xkb_keysym_t sym = XKB_KEY_NoSymbol;
+	if (n && (int)strlen(key) == n) { /* one character: its keysym */
+		uint32_t cp = n == 1 ? *u : *u & (0x7f >> n);
+		for (int i = 1; i < n; i++)
+			cp = cp << 6 | (u[i] & 0x3f);
+		sym = xkb_utf32_to_keysym(cp);
+	} else
+		sym = xkb_keysym_from_name(key, XKB_KEYSYM_NO_FLAGS);
+	if (sym == XKB_KEY_NoSymbol || xkb_keysym_get_name(sym, name, sizeof name) < 0)
+		return;
+
+	static const char *known[][2] = { { "ctrl", "ctrl" }, { "alt", "alt" }, { "shift", "shift" }, { "super", "logo" } };
+	const char *mods[4];
+	int nm = 0;
+	for (char *m = strtok(spec, "+"); m && nm < 4; m = strtok(NULL, "+"))
+		for (int i = 0; i < 4; i++)
+			if (!strcmp(m, known[i][0]))
+				mods[nm++] = known[i][1];
+	char *argv[2 + 4 * 4 + 1] = { "wtype" };
+	int a = 1;
+	for (int i = 0; i < nm; i++)
+		argv[a++] = "-M", argv[a++] = (char *)mods[i];
+	argv[a++] = "-k", argv[a++] = name;
+	for (int i = nm - 1; i >= 0; i--)
+		argv[a++] = "-m", argv[a++] = (char *)mods[i];
+	argv[a] = NULL;
+	if (osk_mode)
+		combo_grace = now_ms() + 1000;
+	pid_t pid;
+	if (posix_spawnp(&pid, "wtype", NULL, NULL, argv, environ) == 0)
+		waitpid(pid, NULL, 0);
+}
+
 /* ---- input from the plugin ------------------------------------------------------------------ */
 
 static void line(char *l)
@@ -283,6 +339,8 @@ static void line(char *l)
 		type_text(l + 5);
 	else if (!strncmp(l, "key ", 4))
 		press_key(l + 4);
+	else if (!strncmp(l, "combo ", 6))
+		press_combo(l + 6);
 	else if (!strcmp(l, "open")) {
 		by_hand = true;
 		set_shown(true);
@@ -334,6 +392,12 @@ int main(int argc, char **argv)
 	for (;;) {
 		while (sd_bus_process(bus, NULL) > 0)
 			;
+		if (rearm) { /* back into on-screen-keyboard mode after our own combo */
+			rearm = false;
+			fcitx_vk("ShowVirtualKeyboard");
+			fcitx_vk("HideVirtualKeyboard");
+			continue;
+		}
 		int wait = -1;
 		struct pollfd p[2] = { { .fd = 0, .events = POLLIN }, { .fd = sd_bus_get_fd(bus), .events = sd_bus_get_events(bus) } };
 		uint64_t usec;

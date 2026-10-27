@@ -18,7 +18,10 @@ import "file:///home/henri/.local/share/velum/qml/Velum/KeyboardLayout.js" as Ke
 // ~/.local/lib/velum/velum-osk), which puts fcitx5 into on-screen-keyboard mode on open. Keys go to
 // the text field through fcitx5 (wtype where no field of an input method has the focus).
 //
-// It reserves its height while it is up (exclusive zone), so the app moves its text above it.
+// It floats as an island above the bottom edge (design 2 of lab/web/keyboard.html) and reserves its
+// height while it is up (exclusive zone), so the app moves its text above it. Its command key opens
+// the shortcuts page; combos go to velum-osk as "combo MODS KEY" (wtype, the only path that keeps
+// the modifiers).
 // IPC: omarchy.keyboard toggle | open | close | state
 Item {
   id: root
@@ -26,7 +29,14 @@ Item {
   property var shell: null
   property var manifest: null
 
-  readonly property real kbHeight: KeyboardLayout.height(Theme.core.surface.keyboard)
+  readonly property var ks: Theme.core.surface.keyboard
+  // the window: the island, the margin under it and room above for its shadow; it reserves less
+  readonly property real kbHeight: ks.shadowRoom + KeyboardLayout.height(ks) + ks.islandMargin
+  readonly property real kbReserve: KeyboardLayout.height(ks) + ks.islandMargin
+
+  // a terminal copies and pastes with Shift added; the shortcuts page follows the focused app
+  readonly property string appId: ToplevelManager.activeToplevel ? String(ToplevelManager.activeToplevel.appId || "") : ""
+  readonly property bool terminal: /^(foot|footclient|kitty|Alacritty|com\.mitchellh\.ghostty|org\.wezfurlong\.wezterm)$/.test(appId)
 
   property bool shown: false
   property string screenName: ""      // where the last finger was; else the first screen
@@ -85,10 +95,11 @@ Item {
     if (root.board) root.board.reset()
     root.shown = true
   }
+  // the board is reset on the next open, not here: the island slides away from where it is (also
+  // from where the grabber pulled it)
   function close(byHand) {
     if (byHand) send("close")
     root.shown = false
-    if (root.board) root.board.reset()
   }
 
   Connections {
@@ -118,7 +129,7 @@ Item {
     function close(): void { root.close(true) }
     // rig: press the key that types `label` (or names `act`) as a finger would
     function tap(label: string): void { if (root.board) root.board.tap(label) }
-    function state(): string { var b = root.board || {}; return JSON.stringify({ shown: root.shown, page: b.page, shift: b.shift, caps: b.caps, screen: root.screenName, bridge: bridge.running, sent: root.sent }) }
+    function state(): string { var b = root.board || {}; return JSON.stringify({ shown: root.shown, page: b.page, shift: b.shift, caps: b.caps, mods: b.mods, terminal: root.terminal, screen: root.screenName, bridge: bridge.running, sent: root.sent }) }
   }
 
   // ---- the surface ------------------------------------------------------------------------------
@@ -133,7 +144,11 @@ Item {
       implicitHeight: root.kbHeight
       visible: root.shown || slide.running || slideY.value < root.kbHeight
       exclusionMode: ExclusionMode.Normal
-      exclusiveZone: root.shown ? root.kbHeight : 0
+      exclusiveZone: root.shown ? root.kbReserve : 0
+      // only the island takes fingers; beside it and in its shadow room they reach the app
+      // (by numbers, not `item`: the item's region is taken with the slide's transform at that moment
+      // and was not taken again when it ended, so the first taps missed every key)
+      mask: Region { x: keys.card.x; y: keys.card.y; width: keys.card.width; height: keys.card.height }
       color: "transparent"
       WlrLayershell.namespace: "velum-surface"
       WlrLayershell.layer: WlrLayer.Overlay
@@ -168,6 +183,9 @@ Item {
           Component.onDestruction: if (root.board === keys) root.board = null
           onTyped: function (text) { root.send("text " + text) }
           onKeyPressed: function (key) { root.send("key " + key) }
+          onComboPressed: function (line) { root.send(line) }
+          shortcuts: true
+          terminal: root.terminal
           onHideRequested: root.close(true)
         }
       }

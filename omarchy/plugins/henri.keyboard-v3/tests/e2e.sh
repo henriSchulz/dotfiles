@@ -40,10 +40,12 @@ want() { if [[ $3 == "$4" ]]; then pass=$((pass + 1)); printf '  ok    %-4s %s\n
          else fail=$((fail + 1)); printf '  FAIL  %-4s %s\n        got: %s  want: %s\n' "$1" "$2" "$3" "$4"; shot "FAIL-$1"; fi; }
 sent() { st | jq -r '.sent | join("|")'; }
 
-# geometry as Layout.js places it on a 1080 px wide screen (tokens: pad 6/8, gap 7, keys 50 high)
-KB=$((8 + 4 * 50 + 3 * 7 + 10))                # keyboard height
-top=$((H - KB))
-row() { echo $((top + 8 + $1 * 57 + 25)); }    # centre of row N
+# geometry as Layout.js places it on the island (tokens: 860 wide, 14 above the edge, 28 shadow room,
+# pad 10/16/10, gap 7, keys 46 high)
+CARD=$((16 + 4 * 46 + 3 * 7 + 10))             # the island's height
+KX=$(((W - 860) / 2))                          # its left edge
+top=$((H - 14 - CARD))
+row() { echo $((top + 16 + $1 * 53 + 23)); }   # centre of row N
 
 want K01 "starts hidden, no surface" "$(st | jq .shown),$(layer)" "false,false"
 hyprctl dispatch 'hl.dsp.event("velum-touch TB")' >/dev/null; sleep 0.4
@@ -54,28 +56,49 @@ hyprctl dispatch 'hl.dsp.event("velum-keyboard toggle TB")' >/dev/null; sleep 0.
 want K04 "the window bar's keyboard button opens it" "$(st | jq .shown),$(layer),$(sent)" "true,true,open"
 shot K04-letters
 # q is the first key of row 0; letter width = (1080 - 12 - 10*7) / 12.5 units … take its centre
-unit=$(python3 -c "print((1080 - 12 - 11 * 7) / 12.5)")
-qx=$(python3 -c "print(int(6 + $unit / 2))")
+unit=$(python3 -c "print((860 - 20 - 11 * 7) / 12.5)")
+qx=$(python3 -c "print(int($KX + 10 + $unit / 2))")
 pt m "$qx" "$(row 0)" d s 40 u
 want K05 "a tap on q types q" "$(sent | awk -F'|' '{print $NF}')" "text q"
 # shift (row 2, first key, 1.4 units of row 2) then q: capital, shift drops again
-unit2=$(python3 -c "print((1080 - 12 - 10 * 7) / 11.8)")
-sx=$(python3 -c "print(int(6 + 1.4 * $unit2 / 2))")
+unit2=$(python3 -c "print((860 - 20 - 10 * 7) / 11.8)")
+sx=$(python3 -c "print(int($KX + 10 + 1.4 * $unit2 / 2))")
 pt m "$sx" "$(row 2)" d s 40 u
 want K06 "shift lights" "$(st | jq .shift)" "true"
 pt m "$qx" "$(row 0)" d s 40 u
 want K07 "shifted q is Q, then shift is off" "$(sent | awk -F'|' '{print $NF}'),$(st | jq .shift)" "text Q,false"
 # delete: last key of row 0
-pt m $((W - 30)) "$(row 0)" d s 40 u
+pt m $((KX + 860 - 30)) "$(row 0)" d s 40 u
 want K08 "delete presses BackSpace" "$(sent | awk -F'|' '{print $NF}')" "key BackSpace"
 # 123: first key of the bottom row
-pt m 40 "$(row 3)" d s 40 u
+pt m $((KX + 30)) "$(row 3)" d s 40 u
 want K09 "123 turns the page" "$(st | jq -r .page)" "numbers"
 shot K09-numbers
 pt m "$qx" "$(row 0)" d s 40 u
 want K10 "the first key there types 1" "$(sent | awk -F'|' '{print $NF}')" "text 1"
+# the command key (second of the bottom row, 1.1 of 12.6 units) opens the shortcuts page
+unit3=$(python3 -c "print((860 - 20 - 6 * 7) / 12.6)")
+cx=$(python3 -c "print(int($KX + 10 + 1.4 * $unit3 + 7 + 1.1 * $unit3 / 2))")
+pt m "$cx" "$(row 3)" d s 40 u
+want K14 "the command key opens the shortcuts page" "$(st | jq -r .page)" "shortcuts"
+shot K14-shortcuts
+c omarchy.keyboard tap Copy >/dev/null
+want K15 "Copy sends Control-C and turns back" "$(sent | awk -F'|' '{print $NF}'),$(st | jq -r .page)" "combo ctrl c,letters"
+pt m "$cx" "$(row 3)" d s 40 u
+c omarchy.keyboard tap mod:ctrl >/dev/null
+want K16 "a latched modifier goes back to the letters" "$(st | jq -r .page),$(st | jq -c .mods)" 'letters,{"ctrl":"once"}'
+shot K16-latched
+pt m "$qx" "$(row 0)" d s 40 u
+want K17 "the next key makes the combo, the latch lets go" "$(sent | awk -F'|' '{print $NF}'),$(st | jq -c .mods)" "combo ctrl q,{}"
+pt m 30 "$(row 0)" d s 40 u
+want K18 "a tap beside the island types nothing" "$(sent | awk -F'|' '{print $NF}')" "combo ctrl q"
+# the grabber pulled down far enough closes it
+pt m $((W / 2)) $((top + 6)) d s 40 g $((W / 2)) $((top + 90)) 12 16 s 40 u
+sleep 0.5
+want K19 "the grabber pulled down closes it" "$(st | jq .shown),$(sent | awk -F'|' '{print $NF}')" "false,close"
+hyprctl dispatch 'hl.dsp.event("velum-keyboard toggle TB")' >/dev/null; sleep 0.5
 # hide: last key of the bottom row
-pt m $((W - 30)) "$(row 3)" d s 40 u
+pt m $((KX + 860 - 30)) "$(row 3)" d s 40 u
 sleep 0.5
 want K11 "the hide key closes it and tells the bridge" "$(st | jq .shown),$(sent | awk -F'|' '{print $NF}'),$(layer)" "false,close,false"
 hyprctl dispatch 'hl.dsp.event("velum-touch TB")' >/dev/null; sleep 0.5
