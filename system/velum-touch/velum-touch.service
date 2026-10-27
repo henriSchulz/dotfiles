@@ -1,0 +1,31 @@
+# The cast screen's edge gestures on the tablet's own touchscreen (velum-touchd).
+# Installed by install/98-velum-touch.sh; @UID@ = the desktop user whose Hyprland gets the events.
+[Unit]
+Description=Velum edge gestures on the touchscreen
+After=systemd-udevd.service
+
+[Service]
+ExecStart=/usr/local/lib/velum/velum-touchd
+Environment=VELUM_TOUCH_UID=@UID@
+Restart=always
+RestartSec=1
+# root only for /dev/uinput and the grab: nothing else is reachable
+DevicePolicy=closed
+DeviceAllow=/dev/uinput rw
+DeviceAllow=char-input rw
+ProtectSystem=strict
+InaccessiblePaths=/home /root
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+# the user's Hyprland socket sits in /run/user/UID (0700)
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

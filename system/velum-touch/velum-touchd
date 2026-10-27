@@ -1,0 +1,416 @@
+#!/usr/bin/env python3
+"""velum-touchd — the cast screen's edge gestures on the tablet's own touchscreen.
+
+While the tablet casts, the Mac's ipadcast server (m1-power/ipadcast/server.py, touch_edge) sits
+between the fingers and Hyprland: a lone finger that lands in a strip along an edge is held back
+until it shows where it goes. This daemon does the same for the tablet's own desktop, so Velum's
+surfaces follow a finger there too, without tablet mode:
+
+  - down from the top / up or along the bottom: custom event "velum-edge SCREEN top|bottom
+    down|move|up|cancel X Y" (logical px) to henri.tablet-v3, as from the cast;
+  - in from the left / right: back / forward (alt+Left / alt+Right);
+  - anything else (a tap on the bar, a drag that starts there) goes on as it was, landing point first;
+  - the last finger up: "velum-touch SCREEN" for the on-screen keyboard (henri.keyboard-v3).
+
+How: the touchscreen is grabbed (EVIOCGRAB) and its fingers go on through a uinput copy, "velum
+touch"; Hyprland only sees that copy. A dead daemon releases the grab with its file, so the plain
+touchscreen comes back by itself. While another VT has the panel (mac-cast-kms on tty2) the grab
+is let go and nothing is copied: the cast reads the touchscreen itself.
+
+Runs as root (uinput, the grab): system/velum-touch/velum-touch.service, installed by
+install/98-velum-touch.sh. Talks to the desktop user's Hyprland over its socket.
+"""
+
+import fcntl, glob, json, math, os, queue, select, socket, struct, sys, threading, time
+
+UID = int(os.environ.get("VELUM_TOUCH_UID", "1000"))
+VT = os.environ.get("VELUM_TOUCH_VT", "tty1")            # the VT Hyprland runs on
+NAME = b"velum touch"
+
+# Same strips and thresholds as the cast (server.py): logical px, px/s.
+EDGE_ZONE, EDGE_SIDE_ZONE, EDGE_DECIDE, EDGE_BACK, EDGE_FLICK = 28, 20, 8, 100, 600
+
+# ---------------------------------------------------------------- evdev / uinput
+
+EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
+SYN_REPORT, SYN_DROPPED = 0, 3
+BTN_TOUCH, BTN_TOOL_PEN = 330, 320
+ABS_X, ABS_Y = 0, 1
+ABS_MT_SLOT, ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_TRACKING_ID = 0x2F, 0x35, 0x36, 0x39
+KEY_LEFTALT, KEY_LEFT, KEY_RIGHT = 56, 105, 106
+INPUT_PROP_DIRECT = 1
+
+EVENT = struct.Struct("llHHi")                            # struct input_event on 64-bit
+ABSINFO = struct.Struct("6i")
+
+
+def _ioc(d, t, nr, size):
+    return (d << 30) | (size << 16) | (ord(t) << 8) | nr
+
+
+EVIOCGRAB = _ioc(1, "E", 0x90, 4)
+EVIOCGNAME = lambda n: _ioc(2, "E", 0x06, n)
+EVIOCGPROP = lambda n: _ioc(2, "E", 0x09, n)
+EVIOCGBIT = lambda ev, n: _ioc(2, "E", 0x20 + ev, n)
+EVIOCGABS = lambda a: _ioc(2, "E", 0x40 + a, ABSINFO.size)
+UI_SET_EVBIT, UI_SET_KEYBIT, UI_SET_ABSBIT, UI_SET_PROPBIT = (_ioc(1, "U", n, 4) for n in (100, 101, 103, 110))
+UI_DEV_SETUP = _ioc(1, "U", 3, 92)                       # struct uinput_setup
+UI_ABS_SETUP = _ioc(1, "U", 4, 28)                       # struct uinput_abs_setup
+UI_DEV_CREATE, UI_DEV_DESTROY = _ioc(0, "U", 1, 0), _ioc(0, "U", 2, 0)
+
+
+def bits(fd, req, n):
+    buf = bytearray(n)
+    fcntl.ioctl(fd, req, buf)
+    return lambda b: bool(buf[b // 8] >> (b % 8) & 1)
+
+
+def find_touchscreen():
+    """The panel's touchscreen: direct, multitouch, no pen, not our own copy."""
+    for path in sorted(glob.glob("/dev/input/event*"), key=lambda p: int(p[16:])):
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+        except OSError:
+            continue
+        try:
+            name = bytearray(256)
+            fcntl.ioctl(fd, EVIOCGNAME(256), name)
+            name = bytes(name).split(b"\0")[0]
+            prop, absb, key = bits(fd, EVIOCGPROP(8), 8), bits(fd, EVIOCGBIT(EV_ABS, 8), 8), bits(fd, EVIOCGBIT(EV_KEY, 96), 96)
+            if (name != NAME and prop(INPUT_PROP_DIRECT) and absb(ABS_MT_POSITION_X)
+                    and absb(ABS_MT_TRACKING_ID) and not key(BTN_TOOL_PEN)):
+                return fd, name
+        except OSError:
+            pass
+        os.close(fd)
+    return None, None
+
+
+def absinfo(fd, axis):
+    buf = bytearray(ABSINFO.size)
+    fcntl.ioctl(fd, EVIOCGABS(axis), buf)
+    return ABSINFO.unpack(buf)                            # value, min, max, fuzz, flat, resolution
+
+
+def uinput_dev(name, keys=(), axes=None, direct=False):
+    fd = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK)
+    fcntl.ioctl(fd, UI_SET_EVBIT, EV_SYN)
+    if keys:
+        fcntl.ioctl(fd, UI_SET_EVBIT, EV_KEY)
+        for k in keys:
+            fcntl.ioctl(fd, UI_SET_KEYBIT, k)
+    if axes:
+        fcntl.ioctl(fd, UI_SET_EVBIT, EV_ABS)
+        for axis, info in axes.items():
+            fcntl.ioctl(fd, UI_SET_ABSBIT, axis)
+            fcntl.ioctl(fd, UI_ABS_SETUP, struct.pack("HH", axis, 0) + ABSINFO.pack(*info))
+    if direct:
+        fcntl.ioctl(fd, UI_SET_PROPBIT, INPUT_PROP_DIRECT)
+    fcntl.ioctl(fd, UI_DEV_SETUP, struct.pack("HHHH80sI", 0x06, 0x1D6B, 0x0104, 1, name, 0))   # BUS_VIRTUAL
+    fcntl.ioctl(fd, UI_DEV_CREATE)
+    return fd
+
+
+def write(fd, events):
+    os.write(fd, b"".join(EVENT.pack(0, 0, t, c, v) for t, c, v in events))
+
+
+# ---------------------------------------------------------------- Hyprland
+
+class Hypr:
+    """Events to the desktop user's Hyprland, in order, from a thread of their own (a slow socket never
+    stalls the fingers); of moves in a row only the newest place goes, as in the cast."""
+
+    def __init__(self):
+        self.q, self.lock, self.pending = queue.Queue(), threading.Lock(), []
+        self.screen = None                                # (name, width px, height px, scale)
+        threading.Thread(target=self.run, daemon=True).start()
+
+    def sock(self):
+        socks = glob.glob(f"/run/user/{UID}/hypr/*/.socket.sock")
+        return max(socks, key=os.path.getmtime) if socks else None
+
+    def request(self, msg):
+        path = self.sock()
+        if not path:
+            return None
+        with socket.socket(socket.AF_UNIX) as s:
+            s.settimeout(1)
+            s.connect(path)
+            s.sendall(msg.encode())
+            out = b""
+            while chunk := s.recv(65536):
+                out += chunk
+            return out
+
+    def refresh(self):
+        """The built-in panel: its name, pixel size and scale (eDP-*, else the first real output)."""
+        try:
+            mons = [m for m in json.loads(self.request("j/monitors") or b"[]") if not m["name"].startswith("HEADLESS")]
+        except (OSError, ValueError):
+            return
+        mons.sort(key=lambda m: not m["name"].startswith("eDP"))
+        if mons:
+            m = mons[0]
+            w, h = (m["width"], m["height"]) if m.get("transform", 0) % 2 == 0 else (m["height"], m["width"])
+            self.screen = (m["name"], w, h, m["scale"] or 1)
+
+    def event(self, line):
+        with self.lock:
+            if " move " in line and self.pending and " move " in self.pending[-1]:
+                self.pending[-1] = line
+            else:
+                self.pending.append(line)
+        self.q.put(None)
+
+    def run(self):
+        self.refresh()
+        last = time.monotonic()
+        while True:
+            try:
+                self.q.get(timeout=3)
+            except queue.Empty:
+                pass
+            if time.monotonic() - last > 3:
+                self.refresh()
+                last = time.monotonic()
+            while True:
+                with self.lock:
+                    if not self.pending:
+                        break
+                    line = self.pending.pop(0)
+                try:
+                    self.request('/dispatch hl.dsp.event("%s")' % line)
+                except OSError:
+                    pass
+
+
+# ---------------------------------------------------------------- the fingers
+
+class Touch:
+    def __init__(self, fd, hypr):
+        self.fd, self.hypr = fd, hypr
+        ax = {a: absinfo(fd, a) for a in (ABS_MT_POSITION_X, ABS_MT_POSITION_Y)}
+        self.rx, self.ry = ax[ABS_MT_POSITION_X][1:3], ax[ABS_MT_POSITION_Y][1:3]
+        slots = absinfo(fd, ABS_MT_SLOT)
+        axes = {ABS_X: ax[ABS_MT_POSITION_X], ABS_Y: ax[ABS_MT_POSITION_Y], ABS_MT_SLOT: slots,
+                ABS_MT_POSITION_X: ax[ABS_MT_POSITION_X], ABS_MT_POSITION_Y: ax[ABS_MT_POSITION_Y],
+                ABS_MT_TRACKING_ID: (0, 0, 65535, 0, 0, 0)}
+        self.out = uinput_dev(NAME, keys=(BTN_TOUCH,), axes=axes, direct=True)
+        self.keys = uinput_dev(b"velum touch keys", keys=(KEY_LEFTALT, KEY_LEFT, KEY_RIGHT))
+        self.grabbed = False
+        self.reset()
+
+    def reset(self):
+        self.slot, self.cur, self.changed = 0, {}, set()   # input: slot → [tracking id, x, y]
+        self.fingers, self.edge = set(), None             # passed on; held back at an edge
+        self.passed = {}                                   # output: slot → tracking id
+        self.next_id = 0
+
+    def grab(self, on):
+        if on == self.grabbed:
+            return
+        if not on:                                        # every finger we passed on goes up first
+            for slot in list(self.passed):
+                self.emit(("u", slot, 0, 0))
+            self.reset()
+        try:
+            fcntl.ioctl(self.fd, EVIOCGRAB, 1 if on else 0)
+            self.grabbed = on
+        except OSError as e:
+            print(f"velum-touchd: grab {on}: {e}", file=sys.stderr, flush=True)
+
+    # -- input: type B slots, one finger change per command, at the end of each frame
+    def read(self):
+        data = os.read(self.fd, EVENT.size * 64)
+        for i in range(0, len(data) - EVENT.size + 1, EVENT.size):
+            _, _, t, c, v = EVENT.unpack_from(data, i)
+            if not self.grabbed:
+                continue
+            if t == EV_ABS:
+                if c == ABS_MT_SLOT:
+                    self.slot = v
+                elif c in (ABS_MT_TRACKING_ID, ABS_MT_POSITION_X, ABS_MT_POSITION_Y):
+                    f = self.cur.setdefault(self.slot, [-1, None, None, False])
+                    if c == ABS_MT_TRACKING_ID:
+                        if v >= 0 and f[0] < 0:
+                            f[3] = True                   # a new finger: "d" once it has a place
+                        f[0] = v
+                    else:
+                        f[1 if c == ABS_MT_POSITION_X else 2] = v
+                    self.changed.add(self.slot)
+            elif t == EV_SYN and c == SYN_REPORT:
+                self.frame()
+
+    def frame(self):
+        for slot in sorted(self.changed):
+            f = self.cur.get(slot)
+            if not f or not 0 <= slot < 10:
+                continue
+            if f[0] < 0:
+                del self.cur[slot]
+                if f[3]:
+                    continue                              # down and up in one frame, never placed
+                self.finger(("u", slot, 0, 0))
+            elif f[1] is not None and f[2] is not None:
+                if f[3]:
+                    f[3] = False
+                    self.finger(("d", slot, f[1], f[2]))
+                elif slot in self.fingers or (self.edge and self.edge["slot"] == slot):
+                    self.finger(("m", slot, f[1], f[2]))
+        self.changed.clear()
+
+    def finger(self, cmd):
+        kind, slot = cmd[0], cmd[1]
+        if self.touch_edge(cmd):
+            return
+        if kind != "d" and slot not in self.fingers:
+            return                                        # a finger from before the grab
+        self.fingers.discard(slot) if kind == "u" else self.fingers.add(slot)
+        self.emit(cmd)
+        if kind == "u" and not self.fingers:
+            screen = self.hypr.screen
+            if screen:
+                self.hypr.event("velum-touch %s" % screen[0])
+
+    # -- output: the copy Hyprland sees
+    def emit(self, cmd):
+        kind, slot, x, y = cmd
+        ev = [(EV_ABS, ABS_MT_SLOT, slot)]
+        if kind == "d":
+            self.next_id = (self.next_id + 1) % 65536
+            self.passed[slot] = self.next_id
+            ev += [(EV_ABS, ABS_MT_TRACKING_ID, self.next_id)]
+        if kind == "u":
+            self.passed.pop(slot, None)
+            ev += [(EV_ABS, ABS_MT_TRACKING_ID, -1)]
+        else:
+            ev += [(EV_ABS, ABS_MT_POSITION_X, x), (EV_ABS, ABS_MT_POSITION_Y, y), (EV_ABS, ABS_X, x), (EV_ABS, ABS_Y, y)]
+        if kind != "m":
+            ev += [(EV_KEY, BTN_TOUCH, 1 if self.passed else 0)]
+        write(self.out, ev + [(EV_SYN, SYN_REPORT, 0)])
+
+    # -- the edge, as touch_edge in server.py: x, y in pixels of the panel, sc its scale
+    def place(self, cmd):
+        _, w, h, sc = self.hypr.screen
+        x = (cmd[2] - self.rx[0]) / max(1, self.rx[1] - self.rx[0]) * w
+        y = (cmd[3] - self.ry[0]) / max(1, self.ry[1] - self.ry[0]) * h
+        return x, y, sc
+
+    def edge_event(self, zone, phase, x, y, sc):
+        self.hypr.event("velum-edge %s %s %s %.1f %.1f" % (self.hypr.screen[0], zone, phase, x / sc, y / sc))
+
+    def touch_edge(self, cmd):
+        """True: the edge has this finger (held back or used up), nothing goes on now."""
+        kind, slot = cmd[0], cmd[1]
+        e = self.edge
+        if not self.hypr.screen:
+            return False
+        if e and slot != e["slot"]:                       # a second finger
+            if not e["on"]:
+                self.edge_release()                       # the held one was an ordinary touch
+            elif e["zone"] in ("top", "bottom") and kind == "d":
+                self.edge_event(e["zone"], "cancel", 0, 0, 1)
+                e["zone"] = "gone"                        # the rest of the first finger goes nowhere
+            return False
+        if kind == "u" and not e:
+            return False
+        x, y, sc = self.place(cmd) if kind != "u" else (0, 0, self.hypr.screen[3])
+        lx, ly, t = x / sc, y / sc, time.monotonic()
+        if not e:
+            if kind != "d" or self.fingers:
+                return False
+            w, h = self.hypr.screen[1] / sc, self.hypr.screen[2] / sc
+            zone = ("top" if ly < EDGE_ZONE else "bottom" if ly > h - EDGE_ZONE else
+                    "left" if lx < EDGE_SIDE_ZONE else "right" if lx > w - EDGE_SIDE_ZONE else "")
+            if not zone:
+                return False
+            self.edge = {"slot": slot, "zone": zone, "x0": x, "y0": y, "on": False, "held": [cmd], "samples": [(t, lx)]}
+            return True
+        dx, dy = (x - e["x0"]) / sc, (y - e["y0"]) / sc
+        if not e["on"]:
+            if kind == "u":                               # a tap in the strip: it reaches the bar as a tap
+                self.edge_release()
+                return False
+            e["held"].append(cmd)
+            if math.hypot(dx, dy) < EDGE_DECIDE:
+                return True
+            z = e["zone"]
+            ok = (dy > abs(dx) if z == "top" else -dy > abs(dx) * 0.7 or abs(dx) > abs(dy) * 1.5 if z == "bottom" else
+                  abs(dx) > abs(dy) * 1.5 and (dx > 0) == (z == "left"))
+            if not ok:
+                self.edge_release()
+                return True
+            e["on"] = True
+            if z in ("top", "bottom"):
+                self.edge_event(z, "down", e["x0"], e["y0"], sc)
+        z = e["zone"]
+        if z in ("top", "bottom"):
+            if kind == "u":
+                self.edge = None
+                self.edge_event(z, "up", e.get("x1", e["x0"]), e.get("y1", e["y0"]), sc)
+            else:
+                e["x1"], e["y1"] = x, y
+                self.edge_event(z, "move", x, y, sc)
+        elif z in ("left", "right"):
+            if kind != "u":
+                e["samples"] = [p for p in e["samples"] if t - p[0] < 0.08] + [(t, lx)]
+                e["dx"] = dx
+                return True
+            self.edge = None
+            a, b = e["samples"][0], e["samples"][-1]
+            v = (b[1] - a[1]) / (b[0] - a[0]) if b[0] > a[0] else 0
+            inward = e.get("dx", 0) if z == "left" else -e.get("dx", 0)
+            if inward >= EDGE_BACK or (v if z == "left" else -v) >= EDGE_FLICK:
+                self.key(KEY_LEFT if z == "left" else KEY_RIGHT)
+        elif kind == "u":                                 # "gone": cancelled by a second finger
+            self.edge = None
+        return True
+
+    def edge_release(self):
+        """The held finger was no edge gesture: on as it went, from where it landed."""
+        e, self.edge = self.edge, None
+        self.fingers.add(e["slot"])
+        self.emit(e["held"][0])
+        if len(e["held"]) > 1:
+            self.emit(e["held"][-1])
+
+    def key(self, k):
+        syn = (EV_SYN, SYN_REPORT, 0)
+        write(self.keys, [(EV_KEY, KEY_LEFTALT, 1), syn, (EV_KEY, k, 1), syn, (EV_KEY, k, 0), syn, (EV_KEY, KEY_LEFTALT, 0), syn])
+
+
+def vt_active():
+    try:
+        with open("/sys/class/tty/tty0/active") as f:
+            return f.read().strip() == VT
+    except OSError:
+        return True
+
+
+def main():
+    fd, name = find_touchscreen()
+    if fd is None:
+        print("velum-touchd: no touchscreen", file=sys.stderr)
+        return 1
+    print(f"velum-touchd: {name.decode(errors='replace')}", flush=True)
+    touch = Touch(fd, Hypr())
+    try:
+        while True:
+            touch.grab(vt_active())
+            r, _, _ = select.select([fd], [], [], 0.5)
+            if r:
+                touch.read()
+    except OSError as e:                                   # the device went away: systemd starts us again
+        print(f"velum-touchd: {e}", file=sys.stderr)
+        return 1
+    finally:
+        for dev in (touch.out, touch.keys):
+            try:
+                fcntl.ioctl(dev, UI_DEV_DESTROY)
+            except OSError:
+                pass
+
+
+if __name__ == "__main__":
+    sys.exit(main())
