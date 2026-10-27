@@ -12,3 +12,5 @@ Restart=on-failure
 RestartSec=2
 # a crash must not leave the Mac's keyboard and trackpad switched off (hypr/input.lua reads the flag)
 ExecStopPost=/bin/sh -c 'f="%t/ipadcast/mac-input-off"; [ -e "$f" ] && rm -f "$f" && hyprctl reload >/dev/null; true'
+# Power Mode's Mac side back to saving (ipadcast-perf.path, root); the file exists only once installed
+ExecStopPost=/bin/sh -c '[ -w /run/ipadcast-perf/state ] && echo off > /run/ipadcast-perf/state; true'
