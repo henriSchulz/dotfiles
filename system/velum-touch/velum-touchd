@@ -123,7 +123,7 @@ class Hypr:
 
     def __init__(self):
         self.q, self.lock, self.pending = queue.Queue(), threading.Lock(), []
-        self.screen = None                                # (name, width px, height px, scale)
+        self.screen = None                                # (name, width px, height px, scale, transform)
         threading.Thread(target=self.run, daemon=True).start()
 
     def sock(self):
@@ -153,7 +153,7 @@ class Hypr:
         if mons:
             m = mons[0]
             w, h = (m["width"], m["height"]) if m.get("transform", 0) % 2 == 0 else (m["height"], m["width"])
-            self.screen = (m["name"], w, h, m["scale"] or 1)
+            self.screen = (m["name"], w, h, m["scale"] or 1, m.get("transform", 0) % 4)
 
     def event(self, line):
         with self.lock:
@@ -291,11 +291,14 @@ class Touch:
         write(self.out, ev + [(EV_SYN, SYN_REPORT, 0)])
 
     # -- the edge, as touch_edge in server.py: x, y in pixels of the panel, sc its scale
+    # The panel may be turned (hypr-autorotate): the raw point goes through the same matrix
+    # Hyprland puts on the touchscreen for that transform (input:touchdevice:transform).
     def place(self, cmd):
-        _, w, h, sc = self.hypr.screen
-        x = (cmd[2] - self.rx[0]) / max(1, self.rx[1] - self.rx[0]) * w
-        y = (cmd[3] - self.ry[0]) / max(1, self.ry[1] - self.ry[0]) * h
-        return x, y, sc
+        _, w, h, sc, tr = self.hypr.screen
+        u = (cmd[2] - self.rx[0]) / max(1, self.rx[1] - self.rx[0])
+        v = (cmd[3] - self.ry[0]) / max(1, self.ry[1] - self.ry[0])
+        u, v = ((u, v), (1 - v, u), (1 - u, 1 - v), (v, 1 - u))[tr]
+        return u * w, v * h, sc
 
     def edge_event(self, zone, phase, x, y, sc):
         self.hypr.event("velum-edge %s %s %s %.1f %.1f" % (self.hypr.screen[0], zone, phase, x / sc, y / sc))

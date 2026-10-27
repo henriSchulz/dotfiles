@@ -1,0 +1,70 @@
+#!/bin/bash
+# Turns the Acer's built-in panel with the device, like a phone: reads the accelerometer
+# (HID sensor hub, accel_3d in sysfs, readable without root) twice a second and, once a new
+# orientation holds for a second, asks host.lua to turn the panel, the touchscreen and the pen
+# (henri_rotate.set). Started from host.lua; tablet only.
+#
+#   hypr-autorotate             the watcher (one per session)
+#   hypr-autorotate lock|unlock|toggle|status
+#                               rotation lock: the panel stays as it is while locked
+#
+# State in ~/.local/state/henri: rotation (the transform host.lua applies on load, so a reload
+# keeps it) and rotation-lock (present = locked).
+#
+# Orientation as iio-sensor-proxy reads it: y pointing down = normal (landscape, camera on top),
+# x decides portrait when the device leans more than ~20° that way. Lying flat changes nothing.
+# Transforms are Hyprland's: 0 normal, 1 = 90°, 2 = 180°, 3 = 270°. If left and right come out
+# swapped, swap LEFT_UP and RIGHT_UP below.
+set -u
+
+NORMAL=0 LEFT_UP=1 BOTTOM_UP=2 RIGHT_UP=3
+
+state=${XDG_STATE_HOME:-$HOME/.local/state}/henri
+lock=$state/rotation-lock
+current=$state/rotation
+mkdir -p "$state"
+
+case ${1:-} in
+  lock) touch "$lock"; exit ;;
+  unlock) rm -f "$lock"; exit ;;
+  toggle) if [[ -e $lock ]]; then rm -f "$lock"; else touch "$lock"; fi; exit ;;
+  status) [[ -e $lock ]] && echo locked || echo auto; exit ;;
+  "") ;;
+  *) echo "usage: hypr-autorotate [lock|unlock|toggle|status]" >&2; exit 2 ;;
+esac
+
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/hypr-autorotate.lock"
+flock -n 9 || exit 0
+
+accel=
+for d in /sys/bus/iio/devices/iio:device*; do
+  [[ $(cat "$d/name" 2>/dev/null) == accel_3d ]] && { accel=$d; break; }
+done
+[[ -n $accel ]] || { echo "hypr-autorotate: no accelerometer" >&2; exit 0; }
+
+# In-plane lean beyond ~20°: a² > tan²(20°)·(b² + z²), tan²(20°) ≈ 0.1325.
+leans() { (( 10000 * $1 * $1 > 1325 * ($2 * $2 + $3 * $3) )); }
+
+orientation() {
+  local x y z
+  x=$(<"$accel/in_accel_x_raw") y=$(<"$accel/in_accel_y_raw") z=$(<"$accel/in_accel_z_raw") || return 1
+  if leans "$x" "$y" "$z"; then
+    (( x > 0 )) && echo $LEFT_UP || echo $RIGHT_UP
+  elif leans "$y" "$x" "$z"; then
+    (( y > 0 )) && echo $BOTTOM_UP || echo $NORMAL
+  else
+    return 1
+  fi
+}
+
+applied=$(cat "$current" 2>/dev/null || echo 0)
+seen= count=0
+while sleep 0.5; do
+  # Only while Hyprland has the panel (not during mac-cast-kms on tty2) and not locked.
+  [[ $(cat /sys/class/tty/tty0/active 2>/dev/null) == tty1 && ! -e $lock ]] || { seen= ; sleep 1.5; continue; }
+  o=$(orientation) || { seen= ; continue; }
+  [[ $o == "$seen" ]] && (( count++ )) || { seen=$o count=1; }
+  (( count >= 2 )) && [[ $o != "$applied" ]] || continue
+  echo "$o" >"$current"
+  hyprctl eval "henri_rotate.set($o)" >/dev/null && applied=$o
+done
