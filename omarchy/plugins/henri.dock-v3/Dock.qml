@@ -1006,6 +1006,15 @@ Item {
     scheduleRebuild()
     try { item.entry.execute() } catch (e) { console.warn("henri.dock: launch failed", item.entryId, e) }
   }
+  // the entry's own "new window" action when it has one (browsers, file managers), else launch it again
+  function openNewWindow(item) {
+    if (!item.entry) return
+    var acts = item.entry.actions || []
+    for (var i = 0; i < acts.length; i++) {
+      if (/^new[-_ ]?window$/i.test(acts[i].id || "")) { try { acts[i].execute(); return } catch (e) { console.warn("henri.dock: new window action failed", item.entryId, e) } }
+    }
+    try { item.entry.execute() } catch (e) { console.warn("henri.dock: new window failed", item.entryId, e) }
+  }
   Timer {
     id: launchPrune
     interval: 10000
@@ -1047,6 +1056,7 @@ Item {
         var wins = item.windows || []
         for (var i = 0; i < wins.length; i++) m.push({ text: wins[i].title || item.name, checked: wins[i].activated === true, action: "focus", arg: wins[i].address })
         if (wins.length) m.push({ separator: true })
+        if (item.entry) m.push({ text: "New Window", action: "newWindow" }, { separator: true })
       }
       m.push({ text: "Options", submenu: [
         { text: "Keep in Dock", checked: item.pinned === true && !item.locked, enabled: !item.locked, action: "togglePin" },
@@ -1112,6 +1122,7 @@ Item {
     var a = entry.action
     if (a === "focus") focusWindow(entry.arg)
     else if (a === "open") launchItem(item)
+    else if (a === "newWindow") openNewWindow(item)
     else if (a === "togglePin") togglePin(item)
     else if (a === "removeRecent") { recents = recents.filter(function (r) { return r.key !== item.key }); scheduleRebuild() }
     else if (a === "toggleLogin") { var la = (settings.loginApps || []).slice(); var ix = la.indexOf(item.entryId); if (ix >= 0) la.splice(ix, 1); else la.push(item.entryId); setSetting("loginApps", la) }
@@ -1636,6 +1647,7 @@ Item {
     function probeMove(x: string, y: string): string { root.moveTo(Number(x), Number(y), true, 0); return "ok" }
     function probeRelease(x: string, y: string): string { root.releaseAt(Number(x), Number(y), Qt.LeftButton); return "ok" }
     function probeMenu(index: int): string { root.openMenuFor(index); return "ok" }
+    function probeMenuRun(text: string): string { var m = root.menuModel; for (var i = 0; i < m.length; i++) if (m[i].text === text) { root.menuOpen = false; root.runMenuAction(m[i]); return "ok" } return "none" }
     function probeStack(index: int): string { root.toggleStack(tiles.get(index).itemId); return "ok" }
     function probeLaunching(index: int): string { var it = root.items[tiles.get(index).itemId]; var lp = DockModel.copyMap(root.launchPending); lp[it.key] = Date.now(); root.launchPending = lp; root.rebuild(); return "ok" }
     function probeClose(): string { root.menuOpen = false; root.stackOpen = false; root.settingsOpen = false; root.kbMode = false; return "ok" }
