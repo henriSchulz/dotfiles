@@ -38,7 +38,7 @@
     },
     "lockLayout": true,
     "position": "top",
-    "transparent": true
+    "transparent": false
   },
   "cloneSourceRestores": [
     "henri.menu",
