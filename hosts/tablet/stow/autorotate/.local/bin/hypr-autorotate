@@ -11,6 +11,10 @@
 # State in ~/.local/state/henri: rotation (the transform host.lua applies on load, so a reload
 # keeps it) and rotation-lock (present = locked).
 #
+# While mac-cast-kms has the panel (tty2) Hyprland is left alone: the orientation goes to
+# $XDG_RUNTIME_DIR/mac-cast/orientation instead, which mac-cast-kms sends to the Mac, and the Mac
+# turns its desktop. Back on tty1 Hyprland catches up with the orientation of then.
+#
 # Orientation as iio-sensor-proxy reads it: y pointing down = normal (landscape, camera on top),
 # x decides portrait when the device leans more than ~20° that way. Lying flat changes nothing.
 # Transforms are Hyprland's: 0 normal, 1 = 90°, 2 = 180°, 3 = 270°. If left and right come out
@@ -22,6 +26,7 @@ NORMAL=0 LEFT_UP=1 BOTTOM_UP=2 RIGHT_UP=3
 state=${XDG_STATE_HOME:-$HOME/.local/state}/henri
 lock=$state/rotation-lock
 current=$state/rotation
+cast=${XDG_RUNTIME_DIR:-/tmp}/mac-cast/orientation
 mkdir -p "$state"
 
 case ${1:-} in
@@ -58,13 +63,17 @@ orientation() {
 }
 
 applied=$(cat "$current" 2>/dev/null || echo 0)
-seen= count=0
+seen= count=0 told=
 while sleep 0.5; do
-  # Only while Hyprland has the panel (not during mac-cast-kms on tty2) and not locked.
-  [[ $(cat /sys/class/tty/tty0/active 2>/dev/null) == tty1 && ! -e $lock ]] || { seen= ; sleep 1.5; continue; }
+  [[ ! -e $lock ]] || { seen= ; sleep 1.5; continue; }
   o=$(orientation) || { seen= ; continue; }
   [[ $o == "$seen" ]] && (( count++ )) || { seen=$o count=1; }
-  (( count >= 2 )) && [[ $o != "$applied" ]] || continue
-  echo "$o" >"$current"
-  hyprctl eval "henri_rotate.set($o)" >/dev/null && applied=$o
+  (( count >= 2 )) || continue
+  if [[ $(cat /sys/class/tty/tty0/active 2>/dev/null) == tty1 ]]; then
+    [[ $o != "$applied" ]] || continue
+    echo "$o" >"$current"
+    hyprctl eval "henri_rotate.set($o)" >/dev/null && applied=$o
+  elif [[ $o != "$told" || ! -e $cast ]] && [[ -d ${cast%/*} ]]; then
+    echo "$o" >"$cast.new" && mv "$cast.new" "$cast" && told=$o
+  fi
 done
