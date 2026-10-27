@@ -1,10 +1,10 @@
 [Unit]
-Description=Sync status for the menu bar every 30 seconds
+Description=Sync status for the menu bar every 5 minutes (and when the cast panel opens)
 
 [Timer]
 OnBootSec=30s
-OnUnitActiveSec=30s
-AccuracySec=5s
+OnUnitActiveSec=5min
+AccuracySec=30s
 
 [Install]
 WantedBy=timers.target

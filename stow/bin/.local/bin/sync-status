@@ -9,7 +9,7 @@
   settings   settings-sync files that differ from the shared copy
   time       when this was written
 
-Run by sync-status.timer every 30 s (M1 only, hosts/m1).
+Run by sync-status.timer every 5 min (M1 only, hosts/m1) and by the cast panel when it opens.
 """
 import json, os, subprocess, time, urllib.request
 

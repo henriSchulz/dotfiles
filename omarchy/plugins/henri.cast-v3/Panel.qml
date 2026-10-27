@@ -12,7 +12,8 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 // ipadcast writes it all to $XDG_RUNTIME_DIR/ipadcast/cast.json every 2 s and removes the
 // file when the tablet goes. Below that, how the sync between this Mac and the tablet stands
 // (Syncthing over the cable, dotfiles, settings), from $XDG_RUNTIME_DIR/henri/sync.json, which
-// sync-status (dotfiles) writes every 30 s.
+// sync-status (dotfiles) writes every 5 min and at once when the panel opens — one row on the first page, the details on a page
+// of their own (VPageStack).
 Panel {
   id: root
   moduleName: "henri.cast"
@@ -49,7 +50,7 @@ Panel {
 
   // ---- the sync with the tablet
   property var sync: null
-  readonly property bool syncFresh: !!sync && now - sync.time < 90
+  readonly property bool syncFresh: !!sync && now - sync.time < 330
   FileView {
     id: syncFile
     property bool missing: true
@@ -76,6 +77,19 @@ Panel {
     if (!syncFresh) return "—"
     if (sync.dotfiles.length === 0) return "Up to Date"
     return sync.dotfiles.some(l => l.indexOf("by hand") >= 0) ? "Merge by Hand" : "Needs Attention"
+  }
+  function filesBusy() {
+    return syncFresh && sync.peer && sync.files.errors === 0
+      && (sync.files.syncing > 0 || (sync.files.peerPercent !== null && sync.files.peerPercent < 100))
+  }
+  // the one line on the first page: the worst of files, conflicts, settings and dotfiles
+  function syncSummary() {
+    if (!syncFresh) return "—"
+    const files = filesText()
+    if (files !== "Up to Date") return files
+    if (sync.conflicts.count > 0) return sync.conflicts.count + (sync.conflicts.count === 1 ? " Conflict" : " Conflicts")
+    if (sync.dotfiles.length > 0 || sync.settings.length > 0) return "Needs Attention"
+    return "Up to Date"
   }
   function settingsText() {
     if (!syncFresh) return "—"
@@ -117,11 +131,20 @@ Panel {
     function open() { root.open() }
     function close() { root.close() }
     function toggle() { root.toggle() }
-    function state(): string { return JSON.stringify({ connected: root.connected, opened: root.opened, info: root.info, sync: root.sync }) }
+    // straight onto the Sync page
+    function sync() { root.open(); if (stack.depth < 2) stack.push(syncPage) }
+    function state(): string { return JSON.stringify({ connected: root.connected, opened: root.opened, depth: stack.depth,
+                                                       summary: root.syncSummary(), height: content.height, pulling: panel.pulling,
+                                                       from: [panel.from.x, panel.from.y, panel.from.width, panel.from.height], info: root.info, sync: root.sync }) }
   }
 
   onConnectedChanged: if (!connected) close()
-  onOpenedChanged: if (opened && !connected) close()
+  onOpenedChanged: {
+    if (opened && !connected) close()
+    // sync-status runs every 5 min (a find over the home folders, P-cores at full clock each
+    // time): fresh numbers when somebody looks
+    else if (opened) Quickshell.execDetached(["systemctl", "--user", "start", "--no-block", "sync-status.service"])
+  }
   visible: connected
   implicitWidth: connected ? button.implicitWidth : 0
   implicitHeight: connected ? button.implicitHeight : 0
@@ -178,14 +201,28 @@ Panel {
     contentHeight: content.height
     onDismissed: root.close()
     onReopenRequested: root.open()
-    onEscapePressed: root.close()
 
-    Column {
+    onEscapePressed: root.goBack()
+    // every open starts on the first page: back to it once the island has shrunk
+    onShownChanged: if (!shown) stack.reset()
+
+    Item {
       id: content
       width: Theme.layout.module.width - 2 * panel.pad
+      height: stack.implicitHeight
+      VPageStack { id: stack; width: parent.width; initial: mainPage }
+    }
+  }
+
+  readonly property var i: root.info || ({})
+  readonly property real third: (content.width - 2 * Theme.layout.module.gap) / 3
+  function goBack() { if (stack.depth > 1) stack.pop(); else root.close() }
+
+  // ============================================================ first page
+  Component {
+    id: mainPage
+    Column {
       spacing: Theme.layout.module.gap
-      readonly property real third: (width - 2 * spacing) / 3
-      readonly property var i: root.info || ({})
 
       Item {
         width: parent.width; height: Theme.layout.module.head
@@ -213,40 +250,40 @@ Panel {
 
       // -- the stream
       Grid {
-        columns: 3; spacing: content.spacing
-        VStatTile { width: content.third; label: "Latency"; value: root.connected ? Math.round(content.i.latency) + " ms" : "—" }
-        VStatTile { width: content.third; label: "Frame Rate"; value: root.connected ? Math.round(content.i.fps) + " fps" : "—" }
-        VStatTile { width: content.third; label: "Data Rate"; value: root.connected ? root.rate(content.i.kbit) : "—" }
-        VStatTile { width: content.third; label: "Connection"; value: content.i.link === "cable" ? "Cable" : "Wi-Fi" }
-        VStatTile { width: content.third; label: "Draw"; value: root.watts() }
-        VStatTile { width: content.third; label: "Screen"; value: content.i.mode === "own" ? "Own" : "Mirror" }
+        columns: 3; spacing: Theme.layout.module.gap
+        VStatTile { width: root.third; label: "Latency"; value: root.connected ? Math.round(root.i.latency) + " ms" : "—" }
+        VStatTile { width: root.third; label: "Frame Rate"; value: root.connected ? Math.round(root.i.fps) + " fps" : "—" }
+        VStatTile { width: root.third; label: "Data Rate"; value: root.connected ? root.rate(root.i.kbit) : "—" }
+        VStatTile { width: root.third; label: "Connection"; value: root.i.link === "cable" ? "Cable" : "Wi-Fi" }
+        VStatTile { width: root.third; label: "Draw"; value: root.watts() }
+        VStatTile { width: root.third; label: "Screen"; value: root.i.mode === "own" ? "Own" : "Mirror" }
       }
 
       // -- its panel
       Item {
         width: parent.width; height: Theme.layout.meter.slider
         VFillSlider { width: parent.width; icon: "brightness"
-          value: content.i.brightness >= 0 ? content.i.brightness : 0
-          readout: content.i.brightness >= 0 ? Math.round(content.i.brightness * 100) + " %" : ""
+          value: root.i.brightness >= 0 ? root.i.brightness : 0
+          readout: root.i.brightness >= 0 ? Math.round(root.i.brightness * 100) + " %" : ""
           onMoved: v => root.setBrightness(v) }
       }
 
       // -- three on/off tiles: this Mac's keyboard and trackpad, the tablet's cover, the cover's light.
       // Input is switched off only until the connection starts over; a tile is dimmed while the
       // tablet cannot switch it (no cover attached, an old mac-cast)
-      VModuleSection { text: "Keyboard & Trackpad" }
+      VModuleSection { width: parent.width; text: "Keyboard & Trackpad" }
       Row {
-        spacing: content.spacing
+        spacing: Theme.layout.module.gap
         Repeater {
           model: [
-            { text: "Mac", icon: "laptop", on: content.i.macInput !== false, can: true, key: "mac" },
-            { text: "Tablet", icon: "tablet", on: content.i.tabletInput === true, can: typeof content.i.tabletInput === "boolean", key: "tablet" },
-            { text: "Keyboard Light", icon: "keyboard.light", on: content.i.kbdlight === true, can: content.i.keyboard === true, key: "light" }
+            { text: "Mac", icon: "laptop", on: root.i.macInput !== false, can: true, key: "mac" },
+            { text: "Tablet", icon: "tablet", on: root.i.tabletInput === true, can: typeof root.i.tabletInput === "boolean", key: "tablet" },
+            { text: "Keyboard Light", icon: "keyboard.light", on: root.i.kbdlight === true, can: root.i.keyboard === true, key: "light" }
           ]
           VTile {
             id: inputTile
             required property var modelData
-            width: content.third; height: Theme.m.control.height * 2
+            width: root.third; height: Theme.m.control.height * 2
             radius: Theme.m.radius.row + Theme.layout.module.tileInset / 2
             VPressable {
               id: inputPress
@@ -267,13 +304,33 @@ Panel {
         }
       }
 
-      // -- the sync with this Mac
-      VModuleSection { text: "Sync" }
+      // -- the sync with this Mac: one row, its details on their own page
+      VModuleRow {
+        width: parent.width; icon: "sync"; text: "Sync"
+        busy: root.filesBusy(); detail: root.syncSummary()
+        onClicked: stack.push(syncPage)
+        VIcon { name: "chevron.right"; weight: "bold"; size: Theme.layout.icon.small; color: Theme.r.popover.inkSecondary }
+      }
+
+      VText {
+        x: Theme.layout.module.pad; width: parent.width - 2 * x
+        tone: "secondary"; font.pixelSize: Theme.m.type.small; elide: Text.ElideRight
+        bottomPadding: Theme.layout.module.pad - Theme.layout.module.tileInset
+        text: root.i.size ? root.i.size[0] + " × " + root.i.size[1] + " · " + root.i.hz + " Hz · "
+          + (root.i.encoder === "apple-ave" ? "Hardware Encoder" : "Software Encoder") : ""
+      }
+    }
+  }
+
+  // ============================================================ sync page
+  Component {
+    id: syncPage
+    Column {
+      spacing: Theme.layout.module.gap
+      VPageHead { width: parent.width; title: "Sync"; onBack: stack.pop() }
       VModuleRow {
         width: parent.width; clickable: false; icon: "folder"; text: "Files"
-        busy: root.syncFresh && root.sync.peer && root.sync.files.errors === 0
-          && (root.sync.files.syncing > 0 || (root.sync.files.peerPercent !== null && root.sync.files.peerPercent < 100))
-        detail: root.filesText()
+        busy: root.filesBusy(); detail: root.filesText()
       }
       VModuleRow {
         width: parent.width; visible: root.syncFresh && root.sync.conflicts.count > 0
@@ -283,14 +340,7 @@ Panel {
       }
       VModuleRow { width: parent.width; clickable: false; icon: "settings"; text: "Settings"; detail: root.settingsText() }
       VModuleRow { width: parent.width; clickable: false; icon: "code"; text: "Dotfiles"; detail: root.dotfilesText() }
-
-      VText {
-        x: Theme.layout.module.pad; width: parent.width - 2 * x
-        tone: "secondary"; font.pixelSize: Theme.m.type.small; elide: Text.ElideRight
-        bottomPadding: Theme.layout.module.pad - Theme.layout.module.tileInset
-        text: content.i.size ? content.i.size[0] + " × " + content.i.size[1] + " · " + content.i.hz + " Hz · "
-          + (content.i.encoder === "apple-ave" ? "Hardware Encoder" : "Software Encoder") : ""
-      }
+      Item { width: parent.width; height: Theme.layout.module.pad - Theme.layout.module.tileInset }
     }
   }
 }
