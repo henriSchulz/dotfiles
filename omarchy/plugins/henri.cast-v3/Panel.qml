@@ -21,9 +21,15 @@ Panel {
   manageIpc: false
 
   // ---- what the tablet and the stream report
+  // ipadcast rewrites the file every 2 s. A new info object re-renders the shell's layers even
+  // when nothing visible changed, and every such frame goes to the tablet through zcast's encoder
+  // (m1-power, 2026-10-27: a burst of ~5 frames every 2 s on a still screen). So while the island
+  // is closed info only changes with what the bar shows; seen keeps the connection alive.
   property var info: null
+  property var latest: null
+  property real seen: 0
   property real now: Date.now() / 1000
-  readonly property bool connected: !!info && now - info.time < 8
+  readonly property bool connected: !!info && now - seen < 8
   FileView {
     id: infoFile
     property bool missing: true
@@ -32,8 +38,15 @@ Panel {
     printErrors: false
     onFileChanged: reload()
     onLoaded: {
-      try { root.info = JSON.parse(text() || "null") } catch (e) { root.info = null }
+      let j = null
+      try { j = JSON.parse(text() || "null") } catch (e) {}
+      root.latest = j
       missing = false
+      if (!j) { root.info = null; return }
+      root.seen = j.time
+      const was = root.info
+      if (root.opened || !was || Math.round(j.battery) !== Math.round(was.battery) || j.state !== was.state)
+        root.info = j
     }
     onLoadFailed: { root.info = null; missing = true }
   }
@@ -141,6 +154,7 @@ Panel {
   onConnectedChanged: if (!connected) close()
   onOpenedChanged: {
     if (opened && !connected) close()
+    else if (opened && latest) info = latest
     // sync-status runs every 5 min (a find over the home folders, P-cores at full clock each
     // time): fresh numbers when somebody looks
     else if (opened) Quickshell.execDetached(["systemctl", "--user", "start", "--no-block", "sync-status.service"])
