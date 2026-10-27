@@ -21,7 +21,7 @@
  *     text UTF8            type these characters
  *     key NAME             press a key by its keysym name (BackSpace, Return, Tab, Left, …)
  *     combo MODS KEY       a key combo: MODS ctrl+alt+shift+super or "-", KEY a keysym name or one
- *                          character ("combo ctrl+shift c"); always through wtype, see press_combo
+ *                          character ("combo ctrl+shift c"); through our own virtual keyboard, see press_combo
  *     open | close         the keyboard opened or closed by hand (open enters the mode)
  * Lines out (stdout):
  *     show | hide          the keyboard should appear / go
@@ -45,7 +45,10 @@
 #include <systemd/sd-bus.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/mman.h>
+#include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
+#include "virtual-keyboard-unstable-v1-client-protocol.h"
 
 extern char **environ;
 
@@ -268,26 +271,94 @@ static void type_text(const char *s)
 	}
 }
 
+static bool vk_tap(xkb_keycode_t code, uint32_t mods);
+
+/* a named key: through fcitx5 while a text field there has the focus, else our virtual keyboard (wtype's
+ * own keymap made Hyprland's binds read its keys as Escape, see press_combo), wtype only as the last way */
 static void press_key(const char *name)
 {
 	xkb_keysym_t sym = xkb_keysym_from_name(name, XKB_KEYSYM_NO_FLAGS);
 	if (sym == XKB_KEY_NoSymbol)
 		return;
-	if (!(osk_mode && fcitx_state() > 0 && fcitx_key(sym)))
+	if (osk_mode && fcitx_state() > 0 && fcitx_key(sym))
+		return;
+	xkb_keycode_t code;
+	uint32_t state;
+	if (!(find_key(sym, &code, &state) && vk_tap(code, state)))
 		wtype("-k", name);
 }
 
-/* A combo always goes through wtype: fcitx5 forwards a virtual key with its own idea of the modifiers
- * (those of the real keyboard), so Control or Super sent with ProcessKeyEvent never reach the app. wtype
- * is a virtual keyboard of the compositor, so fcitx5 sees a real key, forwards it with its modifiers —
- * and leaves on-screen-keyboard mode, which set_mode() then enters again. */
+/* A combo goes through a virtual keyboard of our own that carries the compositor's keymap (the one this
+ * process compiled from LAYOUT). Not through fcitx5: it forwards a virtual key with the real keyboard's
+ * modifiers, so Control or Super never reach the app. Not through wtype: wtype uploads a keymap of its
+ * own that gives its first key the code 9, and Hyprland matches binds by code against the seat's keymap
+ * — Command+Space became Super+Escape, the system menu (Henri, 2026-10-27). With the same keymap the
+ * codes mean what they say for Hyprland's binds, for fcitx5's grab and for the app. fcitx5 takes it for
+ * a real key and leaves on-screen-keyboard mode, which set_mode() then enters again. */
+static struct wl_display *wl;
+static struct wl_seat *seat;
+static struct zwp_virtual_keyboard_manager_v1 *vk_manager;
+static struct zwp_virtual_keyboard_v1 *vk;
+
+static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char *iface, uint32_t ver)
+{
+	(void)d, (void)ver;
+	if (!strcmp(iface, wl_seat_interface.name) && !seat)
+		seat = wl_registry_bind(r, name, &wl_seat_interface, 1);
+	else if (!strcmp(iface, zwp_virtual_keyboard_manager_v1_interface.name))
+		vk_manager = wl_registry_bind(r, name, &zwp_virtual_keyboard_manager_v1_interface, 1);
+}
+static void reg_remove(void *d, struct wl_registry *r, uint32_t name) { (void)d, (void)r, (void)name; }
+static const struct wl_registry_listener reg_listener = { reg_global, reg_remove };
+
+static bool vk_ready(void)
+{
+	if (vk)
+		return wl_display_get_error(wl) == 0;
+	if (!(wl = wl_display_connect(NULL)))
+		return false;
+	struct wl_registry *reg = wl_display_get_registry(wl);
+	wl_registry_add_listener(reg, &reg_listener, NULL);
+	wl_display_roundtrip(wl);
+	if (!seat || !vk_manager)
+		return false;
+	vk = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(vk_manager, seat);
+	char *map = xkb_keymap_get_as_string(keymap, XKB_KEYMAP_FORMAT_TEXT_V1);
+	size_t size = strlen(map) + 1;
+	int fd = memfd_create("velum-osk-keymap", MFD_CLOEXEC);
+	if (fd < 0 || ftruncate(fd, size) < 0 || write(fd, map, size) != (ssize_t)size) {
+		free(map);
+		return false;
+	}
+	free(map);
+	zwp_virtual_keyboard_v1_keymap(vk, WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1, fd, size);
+	close(fd);
+	wl_display_roundtrip(wl);
+	return wl_display_get_error(wl) == 0;
+}
+
+/* press and release the key `code` (xkb) with the modifier mask `mods` held */
+static bool vk_tap(xkb_keycode_t code, uint32_t mods)
+{
+	if (!vk_ready())
+		return false;
+	uint32_t t = (uint32_t)now_ms(), evdev = code - 8;
+	zwp_virtual_keyboard_v1_modifiers(vk, mods, 0, 0, 0);
+	zwp_virtual_keyboard_v1_key(vk, t, evdev, WL_KEYBOARD_KEY_STATE_PRESSED);
+	wl_display_roundtrip(wl);
+	usleep(SPACING_MS * 1000);
+	zwp_virtual_keyboard_v1_key(vk, t + SPACING_MS, evdev, WL_KEYBOARD_KEY_STATE_RELEASED);
+	zwp_virtual_keyboard_v1_modifiers(vk, 0, 0, 0, 0);
+	wl_display_roundtrip(wl);
+	return true;
+}
+
 static void press_combo(char *spec)
 {
 	char *key = strchr(spec, ' ');
 	if (!key)
 		return;
 	*key++ = 0;
-	char name[64];
 	const unsigned char *u = (const unsigned char *)key;
 	int n = *u < 0x80 ? 1 : (*u >> 5) == 6 ? 2 : (*u >> 4) == 14 ? 3 : (*u >> 3) == 30 ? 4 : 0;
 	xkb_keysym_t sym = XKB_KEY_NoSymbol;
@@ -298,29 +369,26 @@ static void press_combo(char *spec)
 		sym = xkb_utf32_to_keysym(cp);
 	} else
 		sym = xkb_keysym_from_name(key, XKB_KEYSYM_NO_FLAGS);
-	if (sym == XKB_KEY_NoSymbol || xkb_keysym_get_name(sym, name, sizeof name) < 0)
+	xkb_keycode_t code;
+	uint32_t level_state;
+	if (sym == XKB_KEY_NoSymbol || !find_key(sym, &code, &level_state))
 		return;
 
-	static const char *known[][2] = { { "ctrl", "ctrl" }, { "alt", "alt" }, { "shift", "shift" }, { "super", "logo" } };
-	const char *mods[4];
-	int nm = 0;
-	for (char *m = strtok(spec, "+"); m && nm < 4; m = strtok(NULL, "+"))
+	/* the modifiers as this keymap numbers them, plus whatever level the key's symbol needs (AltGr) */
+	static const char *known[][2] = { { "ctrl", XKB_MOD_NAME_CTRL }, { "alt", XKB_MOD_NAME_ALT },
+					  { "shift", XKB_MOD_NAME_SHIFT }, { "super", XKB_MOD_NAME_LOGO } };
+	uint32_t mods = level_state;
+	for (char *m = strtok(spec, "+"); m; m = strtok(NULL, "+"))
 		for (int i = 0; i < 4; i++)
-			if (!strcmp(m, known[i][0]))
-				mods[nm++] = known[i][1];
-	char *argv[2 + 4 * 4 + 1] = { "wtype" };
-	int a = 1;
-	for (int i = 0; i < nm; i++)
-		argv[a++] = "-M", argv[a++] = (char *)mods[i];
-	argv[a++] = "-k", argv[a++] = name;
-	for (int i = nm - 1; i >= 0; i--)
-		argv[a++] = "-m", argv[a++] = (char *)mods[i];
-	argv[a] = NULL;
+			if (!strcmp(m, known[i][0])) {
+				xkb_mod_index_t ix = xkb_keymap_mod_get_index(keymap, known[i][1]);
+				if (ix != XKB_MOD_INVALID)
+					mods |= 1u << ix;
+			}
 	if (osk_mode)
 		combo_grace = now_ms() + 1000;
-	pid_t pid;
-	if (posix_spawnp(&pid, "wtype", NULL, NULL, argv, environ) == 0)
-		waitpid(pid, NULL, 0);
+	if (!vk_tap(code, mods))
+		fprintf(stderr, "velum-osk: no virtual keyboard for a combo\n");
 }
 
 /* ---- input from the plugin ------------------------------------------------------------------ */
