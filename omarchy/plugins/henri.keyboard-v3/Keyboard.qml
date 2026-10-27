@@ -82,7 +82,27 @@ Item {
     var e = "velum-keyboard " + (root.shown ? "shown " : "hidden ") + (root.screenName || (Quickshell.screens[0] ? Quickshell.screens[0].name : ""))
     Hyprland.dispatch(Hyprland.usingLua ? "hl.dsp.event(\"" + e + "\")" : "event " + e)
   }
-  onShownChanged: announce()
+  onShownChanged: { announce(); fitFullscreen() }
+
+  // a fullscreen window ignores the exclusive zone, so the island would cover its last lines: while
+  // the keyboard is up such a window on its screen is maximized (which keeps clear of the zone), and
+  // made fullscreen again when the keyboard goes, if it is still that window and still maximized.
+  // Hyprland.dispatch wraps the string in hl.dispatch(...), hence the function that returns a dispatcher.
+  function fitFullscreen() {
+    if (!Hyprland.usingLua || root.inRig) return
+    var mon = root.screenName || (Quickshell.screens[0] ? Quickshell.screens[0].name : "")
+    if (root.shown)
+      Hyprland.dispatch("(function() local w = hl.get_active_window(); "
+        + "if w and w.fullscreen == 2 and w.monitor and w.monitor.name == \"" + mon + "\" then "
+        + "_G.velum_kb_demoted = w.address; "
+        + "return hl.dsp.window.fullscreen({ mode = \"maximized\", window = \"address:\" .. w.address }) end; "
+        + "return hl.dsp.event(\"velum-keyboard fit\") end)()")
+    else
+      Hyprland.dispatch("(function() local a = _G.velum_kb_demoted; _G.velum_kb_demoted = nil; "
+        + "for _, w in ipairs(hl.get_windows()) do if a and w.address == a and w.fullscreen == 1 then "
+        + "return hl.dsp.window.fullscreen({ mode = \"fullscreen\", window = \"address:\" .. a }) end end; "
+        + "return hl.dsp.event(\"velum-keyboard fit\") end)()")
+  }
   onScreenNameChanged: if (root.shown) announce()
 
   function send(line) {
