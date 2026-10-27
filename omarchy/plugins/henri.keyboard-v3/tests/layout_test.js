@@ -1,6 +1,6 @@
 // node tests/layout_test.js — the keyboard's layout (Layout.js) without a shell
 const fs = require("fs"), path = require("path"), assert = require("assert")
-const src = fs.readFileSync(path.join(__dirname, "..", "Layout.js"), "utf8").replace(".pragma library", "")
+const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "qml", "Velum", "KeyboardLayout.js"), "utf8").replace(".pragma library", "")
 const L = new Function(src + "; return { place, keyAt, text, height, rows }")()
 const s = { padX: 6, padTop: 8, padBottom: 10, gap: 7, keyHeight: 50 }
 let n = 0

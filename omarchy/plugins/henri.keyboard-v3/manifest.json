@@ -5,13 +5,15 @@
   "version": "0.1.0",
   "author": "Henri Schulz",
   "license": "MIT",
-  "description": "Velum's on-screen keyboard for the tablet's cast screen: German keys as on an iPad, shown while a text field has the focus after a finger touched the screen (fcitx5's virtual keyboard mode through bridge/velum-osk), gone at the first real key.",
+  "description": "Velum's on-screen keyboard for the tablet's cast screen: German keys as on an iPad, opened from the window bar (cast screen, tablet mode) or the menu-bar keyboard on a machine with a touchscreen; keys go through fcitx5's virtual keyboard mode (bridge/velum-osk), a real key closes it.",
   "kinds": [
-    "overlay"
+    "overlay",
+    "bar-widget"
   ],
   "keepLoaded": true,
   "entryPoints": {
-    "overlay": "Keyboard.qml"
+    "overlay": "Keyboard.qml",
+    "barWidget": "BarGlyph.qml"
   },
   "tags": [
     "keyboard",
@@ -19,5 +21,13 @@
     "tablet",
     "quickshell",
     "hyprland"
-  ]
+  ],
+  "barWidget": {
+    "displayName": "On-screen keyboard",
+    "description": "Keyboard glyph that toggles the on-screen keyboard; only where a hardware touchscreen exists",
+    "category": "System",
+    "allowMultiple": false,
+    "defaults": {},
+    "schema": []
+  }
 }

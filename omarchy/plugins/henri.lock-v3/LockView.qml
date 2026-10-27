@@ -12,6 +12,11 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 // field on the popover material, a shake on a failed attempt and a gentle
 // spring when the screen comes up. Service.qml (session lock, PAM, fingerprint)
 // is the original, untouched.
+//
+// On a touch screen (the tablet, a cast screen) a round keyboard button under the field slides
+// Velum's on-screen keyboard (VKeyboard) up from the bottom edge: its keys type straight into the
+// password field, return unlocks. henri.keyboard-v3 cannot help here — a session lock covers every
+// layer surface.
 Item {
   id: root
 
@@ -47,6 +52,12 @@ Item {
   // white text straight over the photo (clock, date, message)
   readonly property color photoInk: Theme.r.ink.onAccent
 
+  // the on-screen keyboard (the button under the field opens it, its hide key closes it)
+  property bool keyboardShown: false
+  readonly property real keyboardHeight: keys.boardHeight
+  // the field moves up as far as the keyboard would cover it (and the hint under it)
+  readonly property real keyboardLift: Math.max(0, fieldBox.baseBottom + Theme.layout.window.pad + (hint.visible ? hint.height + Theme.layout.module.pad : 0) - (height - keyboardHeight))
+
   signal submitPassword(string password)
   signal passwordTextEdited(string password)
   signal clearFailureRequested()
@@ -76,9 +87,34 @@ Item {
     syncingPasswordText = false
   }
 
+  // keys of the on-screen keyboard, as the hardware keys would reach the field
+  function oskType(text) {
+    if (!passwordInput.enabled || passwordInput.readOnly) return
+    passwordInput.forceActiveFocus()
+    passwordInput.insert(passwordInput.cursorPosition, text)
+  }
+  function oskKey(key) {
+    root.wakeRequested()
+    if (!passwordInput.enabled || passwordInput.readOnly) return
+    passwordInput.forceActiveFocus()
+    var c = passwordInput.cursorPosition
+    if (key === "BackSpace") { if (c > 0) passwordInput.remove(c - 1, c) }
+    else if (key === "Return") passwordInput.accepted()
+    else if (key === "Left") passwordInput.cursorPosition = Math.max(0, c - 1)
+    else if (key === "Right") passwordInput.cursorPosition = Math.min(passwordInput.text.length, c + 1)
+  }
+  function setKeyboard(on) {
+    if (on && !root.inputEnabled) return
+    if (on) keys.reset()
+    root.keyboardShown = on
+    root.wakeRequested()
+    root.forcePasswordFocus()
+  }
+
   onPasswordTextChanged: syncPasswordText()
   onInputEnabledChanged: {
     if (inputEnabled) Qt.callLater(forcePasswordFocus)
+    else keyboardShown = false
   }
   Component.onCompleted: {
     syncPasswordText()
@@ -99,6 +135,18 @@ Item {
     NumberAnimation { target: root; property: "shakeX"; to: -shake.amp / 2; duration: shake.step * 2; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut") }
     NumberAnimation { target: root; property: "shakeX"; to: 0; duration: shake.step; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") }
   }
+
+  // the keyboard comes up from the bottom edge, going away is quicker; the field lifts with it
+  property real keyboardOut: keyboardShown ? 1 : 0
+  Behavior on keyboardOut {
+    NumberAnimation {
+      duration: root.keyboardShown ? Theme.dur("base") : Theme.exit(Theme.dur("base"))
+      easing.type: Easing.BezierSpline
+      easing.bezierCurve: root.keyboardShown ? Theme.curve("out") : Theme.curve("exit")
+    }
+  }
+
+  readonly property real fieldLift: keyboardLift * (Theme.reduceMotion ? (keyboardShown ? 1 : 0) : keyboardOut)
 
   // the clock runs only while the face is shown
   property date now: new Date()
@@ -186,9 +234,11 @@ Item {
       height: root.fieldHeight
       anchors.centerIn: parent
       anchors.verticalCenterOffset: Math.round(parent.height * 0.08)
+      // where the field's bottom sits with no keyboard (the lift is measured from here)
+      readonly property real baseBottom: (parent.height + height) / 2 + Math.round(parent.height * 0.08)
       opacity: appear.value
       scale: Theme.scale("popoverFrom") + (1 - Theme.scale("popoverFrom")) * appear.value
-      transform: Translate { x: root.shakeX }
+      transform: Translate { x: root.shakeX; y: -root.fieldLift }
 
       VShadow { layers: Theme.r.popover.shadow; radius: inputField.radius }
       Rectangle {
@@ -299,9 +349,11 @@ Item {
 
     // with a fingerprint enrolled, a hint under the field says both ways in (macOS)
     Text {
+      id: hint
       anchors.horizontalCenter: fieldBox.horizontalCenter
       anchors.top: fieldBox.bottom
       anchors.topMargin: Theme.layout.module.pad
+      transform: Translate { y: -root.fieldLift }
       visible: root.fingerprintConfigured
       opacity: appear.value * (root.inputEnabled ? 0.85 : 0)
       text: "Use fingerprint or enter password"
@@ -309,6 +361,32 @@ Item {
       font.family: Theme.font
       font.pixelSize: Theme.m.type.small
       font.weight: Font.Medium
+    }
+
+    // the keyboard button under the field (and the hint): a finger's way in on a touch screen
+    Item {
+      id: keyButton
+      readonly property real size: Theme.core.surface.keyboard.lockButton
+      width: size
+      height: size
+      anchors.horizontalCenter: fieldBox.horizontalCenter
+      anchors.top: hint.visible ? hint.bottom : fieldBox.bottom
+      anchors.topMargin: Theme.layout.window.pad
+      transform: Translate { y: -root.fieldLift }
+      visible: root.inputEnabled
+      opacity: appear.value * (1 - root.keyboardOut)
+      scale: tapKey.pressed ? Theme.scale("press") : 1
+      Behavior on scale { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
+      VShadow { layers: Theme.r.popover.shadow; radius: keyButton.size / 2 }
+      Rectangle {
+        anchors.fill: parent
+        radius: height / 2
+        color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+        border.width: Theme.layout.separator
+        border.color: Theme.r.line.rim
+      }
+      VIcon { anchors.centerIn: parent; name: "keyboard"; size: Theme.core.surface.keyboard.lockIcon; color: Theme.r.popover.ink }
+      TapHandler { id: tapKey; enabled: !root.keyboardShown; onTapped: root.setKeyboard(true) }
     }
 
     // Lock screen message, centred near the bottom edge as on macOS. Kept
@@ -342,6 +420,18 @@ Item {
           easing.bezierCurve: root.message.length > 0 ? Theme.curve("out") : Theme.curve("exit")
         }
       }
+    }
+
+    VKeyboard {
+      id: keys
+      anchors { left: parent.left; right: parent.right }
+      height: boardHeight
+      y: parent.height - (Theme.reduceMotion ? boardHeight : boardHeight * root.keyboardOut)
+      opacity: Theme.reduceMotion ? root.keyboardOut : 1
+      visible: root.keyboardOut > 0
+      onTyped: function (text) { root.oskType(text) }
+      onKeyPressed: function (key) { root.oskKey(key) }
+      onHideRequested: root.setKeyboard(false)
     }
   }
 }
