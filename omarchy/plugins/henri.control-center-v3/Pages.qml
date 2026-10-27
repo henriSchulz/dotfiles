@@ -172,14 +172,19 @@ Item {
           VTile {
             id: quick
             width: parent.width; height: conn.height - Theme.layout.module.toggle - 2 * Theme.layout.module.tileInset - cc.gap
-            readonly property real b: Theme.layout.module.quick
+            // the rotation lock is a fifth badge where it exists; the badges shrink rather than touch
+            readonly property int count: cc.be.rotationAvailable ? 5 : 4
+            readonly property real b: Math.min(Theme.layout.module.quick,
+              (width - 2 * Theme.layout.module.pad - (count - 1) * Theme.layout.list.gap) / count)
             Row {
               anchors.centerIn: parent
-              spacing: (quick.width - 2 * Theme.layout.module.pad - 4 * quick.b) / 3
+              spacing: (quick.width - 2 * Theme.layout.module.pad - quick.count * quick.b) / (quick.count - 1)
               VBadge { size: quick.b; icon: "moon"; on: Theme.dark; onTapped: cc.velum.set("appearance", Theme.dark ? "light" : "dark") }
               VBadge { size: quick.b; icon: "night-shift"; on: cc.be.nightShift; onTapped: cc.be.setNightShift(!cc.be.nightShift) }
               VBadge { size: quick.b; icon: cc.be.tilingLayout === "scrolling" ? "layout.columns" : "layout.tiles"; on: cc.be.tilingLayout === "scrolling"
                 onTapped: cc.be.setTilingLayout(cc.be.tilingLayout === "scrolling" ? "dwindle" : "scrolling") }
+              VBadge { visible: cc.be.rotationAvailable; size: quick.b; icon: "rotation.lock"; on: cc.be.rotationLocked
+                onTapped: cc.be.setRotationLocked(!cc.be.rotationLocked) }
               VBadge { size: quick.b; icon: cc.be.kbdAvailable ? "keyboard.light" : "display"; on: cc.be.kbdAvailable && cc.be.kbd.level > 0
                 onTapped: cc.push(cc.be.kbdAvailable ? "keyboard" : "display") }
             }

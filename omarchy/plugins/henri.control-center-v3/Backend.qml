@@ -721,6 +721,29 @@ Item {
     if (!actionProc.running) actionProc.running = true
   }
 
+  // ---- Rotation lock (hypr-autorotate, the tablet): offered only where the panel
+  //      has an accelerometer and the watcher is installed. Locked = the panel
+  //      keeps the orientation it has now (the watcher skips while the lock file exists).
+  property bool rotationAvailable: false
+  property bool rotationLocked: false
+  function setRotationLocked(on) {
+    rotationLocked = on
+    run("hypr-autorotate " + (on ? "lock" : "unlock"))
+  }
+  Process {
+    id: rotationProc
+    command: ["bash", "-c", 'command -v hypr-autorotate >/dev/null || exit 0; '
+      + 'for d in /sys/bus/iio/devices/iio:device*; do [[ $(cat "$d/name" 2>/dev/null) == accel_3d ]] && { hypr-autorotate status; exit; }; done']
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var st = String(text || "").trim()
+        root.rotationAvailable = st !== ""
+        root.rotationLocked = st === "locked"
+      }
+    }
+  }
+
   // ---- AirDrop stand-in: LocalSend
   property bool localsendRunning: false
   function run(cmd) { Quickshell.execDetached(["bash", "-c", cmd]) }
@@ -741,6 +764,7 @@ Item {
     if (!sinkPortProc.running) sinkPortProc.running = true
     if (!localsendProc.running) localsendProc.running = true
     if (!tilingProc.running) tilingProc.running = true
+    if (!rotationProc.running) rotationProc.running = true
   }
   function setScale(scale) {
     monitorScale = Display.cleanScale(scale, focusedDisplay.width, focusedDisplay.height)
