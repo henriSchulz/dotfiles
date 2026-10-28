@@ -162,14 +162,14 @@ Item {
     visible: opacity > 0.01
   }
 
-  // ---- the name above the card (App Switcher), kept at its size on screen
+  // ---- the icon and name under the card (App Switcher, as iPadOS 26), kept at their size on screen
   Row {
-    anchors.bottom: parent.top
+    anchors.top: parent.bottom
     anchors.horizontalCenter: parent.horizontalCenter
-    anchors.bottomMargin: card.cfg.labelAbove / Math.max(card.ps, 0.05)
+    anchors.topMargin: card.cfg.labelAbove / Math.max(card.ps, 0.05)
     spacing: card.cfg.labelGap
     scale: 1 / Math.max(card.ps, 0.05)
-    transformOrigin: Item.Bottom
+    transformOrigin: Item.Top
     opacity: card.labelOn * (1 - Math.max(0, Math.min(1, card.pm)))
     visible: opacity > 0.01
     Image {

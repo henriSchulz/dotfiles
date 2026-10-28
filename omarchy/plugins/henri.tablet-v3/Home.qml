@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -205,7 +206,16 @@ Item {
   property string settleTo: "idle"
   readonly property bool covering: mode === "drag" || mode === "switcher" || mode === "settle"
 
+  // The backdrop, as SpringBoard layers it: the home screen's icons (homeV) only appear when the
+  // card goes home; behind a dragged card and in the switcher lies the blurred wallpaper (blurV);
+  // the dock slides up when a gesture starts and stays through the switcher (dockV).
   Spring { id: homeV; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion }
+  Spring { id: blurV; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion }
+  Spring { id: dockV; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion }
+  function backdrop(grid, blur, dock, now) {
+    if (now) { homeV.snap(grid); blurV.snap(blur); dockV.snap(dock) }
+    else { homeV.target = grid; blurV.target = blur; dockV.target = dock }
+  }
   Spring { id: dimV; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion }
   Spring { id: labelV; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion }
   Spring { id: pageV; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion }
@@ -249,7 +259,7 @@ Item {
     if (at < 0) return
     cards = list
     cur = at
-    homeV.snap(0); dimV.snap(0); labelV.snap(0)
+    backdrop(0, 0, 0, true); dimV.snap(0); labelV.snap(0)
     for (var j = 0; j < list.length; j++) {
       var o = cardItems[list[j].key]
       if (!o) continue
@@ -283,7 +293,7 @@ Item {
       var o = card(i)
       if (o) { o.to("x", HM.besideX(i, cur, f.s, f.x, areaW, cfg), fp); o.to("y", f.y, fp); o.to("s", f.s, fp); o.set("o", 1) }
     }
-    homeV.snap(f.home)
+    if (blurV.target !== 1) backdrop(0, 1, 1, false)
   }
   // on the home screen the switcher's cards come up under the finger (as on an iPad), and sink back
   // if it lets go low
@@ -292,7 +302,8 @@ Item {
     if (!cards.length) cards = scanWindows(screenName)
     if (!cards.length) return
     var p = Math.max(0, Math.min(1, up / (2 * tt.holdTravel)))
-    if (mode === "home") { mode = "homeDrag"; homeV.snap(1); dimV.snap(0) }
+    if (mode === "home") { mode = "homeDrag"; backdrop(1, 0, 1, true); dimV.snap(0) }
+    homeV.snap(1 - p); blurV.snap(p)
     labelV.snap(p)
     var g = HM.switcherGeo(cards.length, areaW, areaH, cfg)
     swX = g.lo
@@ -310,6 +321,7 @@ Item {
     note("sink back")
     for (var i = 0; i < cards.length; i++) { var o = card(i); if (o) { o.to("o", 0, "snappy"); o.to("y", o.value("y") + areaH * cfg.enterFrom, "snappy") } }
     labelV.target = 0
+    backdrop(1, 0, 1, false)
     sinkDone.restart()
   }
   Timer { id: sinkDone; interval: Theme.dur("normal"); onTriggered: if (home.mode === "homeDrag") home.mode = "home" }
@@ -353,12 +365,23 @@ Item {
   // took, how many finger events came and the largest gap between them
   property var stat: ({})
   property var stats: []
-  function startStat() { stat = { t0: Date.now(), shot: -1, lifts: 0, last: 0, maxGap: 0, sumGap: 0, release: "", travel: 0, fromHome: fromHome } }
+  function startStat() { stat = { t0: Date.now(), shot: -1, lifts: 0, last: 0, maxGap: 0, sumGap: 0, release: "", travel: 0, fromHome: fromHome, frames: 0, sumFrame: 0, maxFrame: 0, slow: 0 } }
+  // the overlay's own frames while it moves (QML frame clock): is the drawing smooth?
+  FrameAnimation {
+    running: home.mode === "drag" || home.mode === "settle" || home.mode === "switcher" || home.mode === "homeDrag"
+    onTriggered: {
+      if (!home.stat.t0 || frameTime <= 0) return
+      var ms = frameTime * 1000
+      home.stat.frames++; home.stat.sumFrame += ms; home.stat.maxFrame = Math.max(home.stat.maxFrame, ms)
+      if (ms > 25) home.stat.slow++
+    }
+  }
   function endStat(to) {
     if (!stat.t0) return
     var l = stats.slice(-29)
     l.push({ ms: Date.now() - stat.t0, shotMs: stat.shot, lifts: stat.lifts, maxGap: stat.maxGap,
              avgGap: stat.lifts > 1 ? Math.round(stat.sumGap / (stat.lifts - 1)) : 0,
+             frames: stat.frames, avgFrame: stat.frames ? +(stat.sumFrame / stat.frames).toFixed(1) : 0, maxFrame: Math.round(stat.maxFrame), slowFrames: stat.slow,
              release: stat.release, decided: stat.decided || "", travel: stat.travel, fromHome: stat.fromHome, to: to })
     stats = l
     stat = {}
@@ -376,7 +399,7 @@ Item {
       o.to("m", 0, "snappy"); o.to("l", 0, "snappy"); if (here) o.to("o", 1, "snappy")
       o.z = here ? 2 : 1
     }
-    homeV.target = 0; dimV.target = 0; labelV.target = 0
+    backdrop(0, 0, 0, false); dimV.target = 0; labelV.target = 0
   }
   function back(hand) {
     note("back")
@@ -394,7 +417,7 @@ Item {
     c.to("x", tx, fly, hand.x); c.to("y", ty, fly, hand.y * cfg.flyVelocity); c.to("s", size / areaH, fly, hand.s)
     c.to("m", 1, fly); c.z = 2
     for (var i = 0; i < cards.length; i++) if (i !== cur && card(i)) card(i).to("o", 0, "snappy")
-    homeV.target = 1; dimV.target = 0; labelV.target = 0
+    backdrop(1, 0, 1, false); dimV.target = 0; labelV.target = 0
     settleWhen(function () { return c.settled(["x", "y", "s"]) }, "home", true)
   }
   // the first empty workspace on the gesture's screen (not just any empty one: another monitor's
@@ -420,7 +443,7 @@ Item {
       o.to("m", 0, "snappy"); o.to("o", 1, "snappy"); o.to("l", 0, "snappy")
       o.z = 1
     }
-    homeV.target = 1; dimV.target = 1; labelV.target = 1
+    backdrop(0, 1, 1, false); dimV.target = 1; labelV.target = 1
   }
   function enterSwitcherFromHome() {
     if (mode === "switcher") return
@@ -436,6 +459,7 @@ Item {
         var p = HM.switcherPos(i, cards.length, g.lo, g, cfg)
         o.to("x", p.x, "snappy"); o.to("y", p.y, "snappy"); o.to("s", g.s, "snappy"); o.to("o", 1, "snappy")
       }
+      backdrop(0, 1, 1, false)
       labelV.target = 1
       return
     }
@@ -444,7 +468,7 @@ Item {
     note("switcher from home")
     cards = list
     cur = list.length - 1
-    homeV.snap(1); dimV.snap(0); labelV.snap(0)
+    backdrop(1, 0, 1, true); dimV.snap(0); labelV.snap(0)
     mode = "switcher"
     // the cards come up from below once they exist (Repeater): placeAndEnter runs on the next frame
     enterLater.restart()
@@ -463,7 +487,7 @@ Item {
         o.set("x", p.x); o.set("y", p.y + home.areaH * home.cfg.enterFrom); o.set("s", g.s * home.cfg.dockIcon); o.set("m", 0); o.set("o", 0); o.set("l", 0)
         o.to("y", p.y, "snappy"); o.to("s", g.s, "snappy"); o.to("o", 1, "snappy")
       }
-      homeV.target = 1; dimV.target = 1; labelV.target = 1
+      backdrop(0, 1, 1, false); dimV.target = 1; labelV.target = 1
     }
   }
   // an app from the switcher, or the neighbour a sideways finger brought: full size, then its workspace
@@ -481,7 +505,7 @@ Item {
   function switcherHome() {
     note("switcher home")
     for (var i = 0; i < cards.length; i++) { var o = card(i); if (o) { o.to("o", 0, "snappy"); o.to("s", o.value("s") * cfg.dockIcon, "snappy") } }
-    homeV.target = 1; dimV.target = 0; labelV.target = 0
+    backdrop(1, 0, 1, false); dimV.target = 0; labelV.target = 0
     settleWhen(function () { return true }, "home", true)
   }
   function closeCard(i) {
@@ -541,7 +565,7 @@ Item {
       launchOpened = false
       launchStart = Date.now()
     }
-    homeV.snap(1); dimV.snap(0); labelV.snap(0)
+    backdrop(1, 0, 1, true); dimV.snap(0); labelV.snap(0)
     mode = "settle"
     openFrom = r
     openLater.restart()
@@ -562,7 +586,7 @@ Item {
       c.set("s", (r ? r.w : home.areaH * home.cfg.splashIcon) / home.areaH); c.set("m", 1); c.set("o", 1); c.set("l", 0)
       c.z = 2
       c.to("x", 0, "smooth"); c.to("y", 0, "smooth"); c.to("s", 1, "smooth"); c.to("m", 0, "smooth")
-      homeV.target = 0
+      backdrop(0, 0, 0, false)
       if (e.address) home.dispatch("hl.dsp.focus({ window = \"address:" + e.address + "\" })", "focuswindow address:" + e.address)
       home.settleWhen(function () {
         if (!c.settled(["x", "y", "s"])) return false
@@ -725,6 +749,31 @@ Item {
             cache: true
           }
           // the same home screen as the bottom layer's, on the same spot (below the bar, above the home zone)
+          // the blurred wallpaper: a small copy blurred once into a cached layer, so it costs nothing per frame
+          Item {
+            anchors.fill: parent
+            opacity: Math.max(0, Math.min(1, blurV.value))
+            visible: opacity > 0.002
+            layer.enabled: true
+            Image {
+              id: wallSmall
+              anchors.fill: parent
+              source: "file://" + home.wallpaperLink + (home.wallpaperTarget ? "?v=" + encodeURIComponent(home.wallpaperTarget) : "")
+              fillMode: Image.PreserveAspectCrop
+              sourceSize.width: per.modelData.width / home.cfg.blurDownscale
+              sourceSize.height: per.modelData.height / home.cfg.blurDownscale
+              visible: false
+              cache: true
+            }
+            MultiEffect {
+              anchors.fill: parent
+              source: wallSmall
+              blurEnabled: true
+              blur: 1
+              blurMax: home.cfg.blurMax
+              saturation: home.cfg.blurSaturation
+            }
+          }
           HomeScreen {
             id: shadowHome
             x: 0
@@ -736,9 +785,9 @@ Item {
             recentApps: home.recentApps
             page: home.page
             pageX: pageV.value
-            opacity: Math.max(0, Math.min(1, homeV.value))
-            scale: home.cfg.homeZoom - (home.cfg.homeZoom - 1) * Math.max(0, Math.min(1, homeV.value))
-            visible: opacity > 0.002
+            gridOpacity: Math.max(0, Math.min(1, homeV.value))
+            gridScale: home.cfg.homeZoom - (home.cfg.homeZoom - 1) * Math.max(0, Math.min(1, homeV.value))
+            dockShift: (1 - Math.max(0, Math.min(1, dockV.value))) * (g.dockH + 2 * g.dockGap)
           }
           Rectangle {
             anchors.fill: parent

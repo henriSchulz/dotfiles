@@ -247,21 +247,37 @@ Item {
       Item { id: zoneArea; anchors.fill: parent }
       Item { id: noArea; width: 0; height: 0 }
       Item { id: indicatorArea; anchors.centerIn: parent; width: root.tt.indicator.width + 2 * root.tt.slop; height: parent.height }
+      // A finger: real touch through a MultiPointTouchArea (Qt's mouse stand-in for touch delivered
+      // only a couple of moves once the finger left the 20 px zone, measured 2026-10-28); a pointer
+      // (the rig's virtual one) through the MouseArea. Both feed the same gesture.
+      function fingerDown(x, y) {
+        zone.swallow = root.sleepingOn(zone.screen.name)
+        root.wake()
+        if (zone.swallow) return
+        zone.pressed = true
+        homeCtl.zoneFinger = true
+        if (root.active) homeCtl.prepare(zone.screen.name)
+        root.run(zone.gesture.down(Date.now(), x, y), zone.screen.name); ticker.start()
+      }
+      function fingerMove(x, y) { if (zone.pressed) root.run(zone.gesture.move(Date.now(), x, y), zone.screen.name) }
+      function fingerUp(x, y) { homeCtl.zoneFinger = false; if (zone.swallow) { zone.swallow = false; return } ticker.stop(); zone.pressed = false; root.run(zone.gesture.up(Date.now(), x, y), zone.screen.name) }
+      function fingerCancel() { homeCtl.zoneFinger = false; if (zone.swallow) { zone.swallow = false; return } ticker.stop(); zone.pressed = false; root.run(zone.gesture.cancel(), zone.screen.name) }
+      MultiPointTouchArea {
+        anchors.fill: root.active ? zoneArea : indicatorArea
+        maximumTouchPoints: 1
+        mouseEnabled: false
+        onPressed: function (pts) { zone.fingerDown(pts[0].x, pts[0].y) }
+        onUpdated: function (pts) { zone.fingerMove(pts[0].x, pts[0].y) }
+        onReleased: function (pts) { zone.fingerUp(pts[0].x, pts[0].y) }
+        onCanceled: zone.fingerCancel()
+      }
       MouseArea {
         anchors.fill: root.active ? zoneArea : indicatorArea
         preventStealing: true
-        onPressed: function (m) {
-          zone.swallow = root.sleepingOn(zone.screen.name)
-          root.wake()
-          if (zone.swallow) return
-          zone.pressed = true
-          homeCtl.zoneFinger = true
-          if (root.active) homeCtl.prepare(zone.screen.name)
-          root.run(zone.gesture.down(Date.now(), m.x, m.y), zone.screen.name); ticker.start()
-        }
-        onPositionChanged: function (m) { if (zone.pressed) root.run(zone.gesture.move(Date.now(), m.x, m.y), zone.screen.name) }
-        onReleased: function (m) { homeCtl.zoneFinger = false; if (zone.swallow) { zone.swallow = false; return } ticker.stop(); zone.pressed = false; root.run(zone.gesture.up(Date.now(), m.x, m.y), zone.screen.name) }
-        onCanceled: { homeCtl.zoneFinger = false; if (zone.swallow) { zone.swallow = false; return } ticker.stop(); zone.pressed = false; root.run(zone.gesture.cancel(), zone.screen.name) }
+        onPressed: function (m) { zone.fingerDown(m.x, m.y) }
+        onPositionChanged: function (m) { zone.fingerMove(m.x, m.y) }
+        onReleased: function (m) { zone.fingerUp(m.x, m.y) }
+        onCanceled: zone.fingerCancel()
       }
       // a resting finger sends no events: the pause that opens the App Switcher is seen here
       Timer {

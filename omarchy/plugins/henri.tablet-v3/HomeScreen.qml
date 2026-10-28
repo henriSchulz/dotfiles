@@ -18,6 +18,9 @@ Item {
   property int page: 0
   property bool interactive: false
   property string pressedId: ""
+  property real gridOpacity: 1     // the pages and dots (the home gesture shows only the dock at first)
+  property real gridScale: 1
+  property real dockShift: 0       // the dock below its place by this much
 
   signal tapped(string id)
   signal pageMoved(real x, real t)
@@ -46,6 +49,10 @@ Item {
   Item {
     id: track
     x: hs.pageX
+    opacity: hs.gridOpacity
+    visible: opacity > 0.002
+    scale: hs.gridScale
+    transformOrigin: Item.Center
     width: hs.width * hs.pages
     height: hs.height
     Repeater {
@@ -100,7 +107,8 @@ Item {
     anchors.bottom: dock.top
     anchors.bottomMargin: hs.cfg.dotsAbove
     spacing: hs.cfg.dot + hs.cfg.labelGap
-    visible: hs.pages > 1
+    visible: hs.pages > 1 && hs.gridOpacity > 0.002
+    opacity: hs.gridOpacity
     Repeater {
       model: hs.pages
       Rectangle {
@@ -118,7 +126,7 @@ Item {
     id: dock
     anchors.horizontalCenter: parent.horizontalCenter
     anchors.bottom: parent.bottom
-    anchors.bottomMargin: hs.g.dockGap
+    anchors.bottomMargin: hs.g.dockGap - hs.dockShift
     width: dockRow.width + 2 * hs.g.dockPad
     height: hs.g.dockH
     readonly property real radius: hs.g.dockIcon * hs.cfg.iconRadius + hs.g.dockPad
