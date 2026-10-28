@@ -94,10 +94,10 @@ function create(cfg) {
       }
       if (mode === "slide") out.push({ do: "slide", phase: "move", dx: dx })
       if (mode === "lift") {
-        out.push({ do: "lift", phase: "move", travel: Math.max(0, up), up: up, dx: dx })
+        out.push({ do: "lift", phase: "move", travel: Math.max(0, up), up: up, dx: dx, vy: velocity().up })
         out = out.concat(checkHold(t))
       } else if (mode === "switcher") {
-        out.push({ do: "switcher", phase: "update", delta: y - lastY, up: up, dx: dx })
+        out.push({ do: "switcher", phase: "update", delta: y - lastY, up: up, dx: dx, vy: velocity().up })
       }
       lastY = y
       return out
@@ -117,10 +117,10 @@ function create(cfg) {
       var v = velocity(), dx = x - x0, was = mode
       mode = "done"
       if (was === "lift") {
-        if (travelUp() >= cfg.homeTravel || v.up >= cfg.homeFlick) out.push({ do: "home", velocity: v.up, vx: v.x, dx: dx })
+        if (travelUp() >= cfg.homeTravel || v.up >= cfg.homeFlick) out.push({ do: "home", velocity: v.up, vx: v.x, dx: dx, travel: Math.max(0, travelUp()) })
         else out.push({ do: "lift", phase: "end", travel: Math.max(0, travelUp()), velocity: v.up, vx: v.x, dx: dx })
       } else if (was === "switcher") {
-        out.push({ do: "switcher", phase: "end", cancelled: false, dx: dx, travel: travelUp(), velocity: v.up })
+        out.push({ do: "switcher", phase: "end", cancelled: false, dx: dx, travel: travelUp(), velocity: v.up, vx: v.x })
       } else if (was === "slide") {
         out.push({ do: "slide", phase: "end", dx: dx })
         var flick = Math.abs(v.x) >= cfg.slideFlick && (v.x > 0) === (dx > 0)

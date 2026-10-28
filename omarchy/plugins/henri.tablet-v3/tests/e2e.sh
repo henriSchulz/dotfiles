@@ -72,7 +72,9 @@ if runs T01; then
   mid=$(dockHidden); shot T01-mid
   pt u
   want T01 "a short pull leaves the dock hidden (no dock pull since 2026-10-28)" "$mid" "true"
-  want T01b "it ends as a lift, nothing else fired" "$(log | jq -r 'map(select(startswith("lift")|not)) | length'),$(dockHidden)" "0,true"
+  want T01b "a short pull that rests ends as a lift, no dock" "$(log | jq -r 'map(select(startswith("lift")|not)) | length'),$(dockHidden)" "0,true"
+  # past minTravel and resting, SpringBoard shows the App Switcher: go back to the app
+  [[ $(c henri.tablet home | jq -r .mode) == switcher ]] && { pt m $((W / 2)) $((H / 2)) d s 60 u; sleep 1.2; }
 fi
 
 if runs T02; then

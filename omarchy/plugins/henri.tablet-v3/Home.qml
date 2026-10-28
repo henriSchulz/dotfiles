@@ -264,7 +264,7 @@ Item {
   }
 
   // ---- the finger moves up (lift) — or keeps moving while the switcher is armed
-  function lift(up, dx) {
+  function lift(up, dx, vy) {
     if (fromHome) { liftFromHome(up); return }
     if (mode !== "ready" && mode !== "drag") return
     var c = card(cur)
@@ -274,7 +274,7 @@ Item {
     if (!c || !c.hasShot) return               // the overlay stays clear until the snapshot is there
     if (stat.shot < 0) stat.shot = now - stat.t0
     mode = "drag"
-    var f = HM.follow(up, dx, areaW, areaH, cfg, { left: cur <= 0, right: cur >= cards.length - 1 })
+    var f = HM.follow(up, dx, areaW, areaH, cfg, { left: cur <= 0, right: cur >= cards.length - 1 }, vy || 0)
     // a very fast spring instead of a jump: finger events from a cast come unevenly, the card glides
     var fp = followPreset
     c.to("x", f.x, fp); c.to("y", f.y, fp); c.to("s", f.s, fp)
@@ -338,18 +338,15 @@ Item {
     var c = card(cur)
     var hand = { x: c.velocity("x"), y: c.velocity("y"), s: c.velocity("s") }
     if (kind === "cancel") { back(hand); return }
-    if (armed || kind === "switcher") {
-      // pulled back down to the edge: the app again; flicked up hard: home (iPad)
-      if ((info.travel || 0) < tt.holdTravel / 2) { back(hand); return }
-      if ((info.velocity || 0) > tt.homeFlick * cfg.flickPastSwitcher) { toHome(hand); return }
-      toSwitcher(hand); return
-    }
-    if (kind === "home") { toHome(hand); return }
-    var dx = info.dx || 0, vx = info.vx || 0
-    var sideways = Math.abs(dx) > cfg.slideCommit * areaW || (Math.abs(vx) > tt.slideFlick && (vx > 0) === (dx > 0) && Math.abs(dx) > tt.slop)
-    var next = cur + (dx < 0 ? 1 : -1)
-    if (sideways && next >= 0 && next < cards.length) { openCard(next, hand); return }
-    back(hand)
+    // where it goes is read from the finger's last speed, as SpringBoard does (a pause shown while
+    // dragging only previewed the switcher)
+    var to = HM.destination(info.travel || 0, info.dx || 0, info.velocity || 0, info.vx || 0,
+                            cards.length, cur, areaW, areaH, cfg, tt)
+    stat.decided = to
+    if (to === "home") toHome(hand)
+    else if (to === "switcher") toSwitcher(hand)
+    else if (to === "next" || to === "prev") openCard(cur + (to === "next" ? 1 : -1), hand)
+    else back(hand)
   }
 
   // ---- what each gesture did, for tuning on the device (IPC homeStats): how long the snapshot
@@ -362,7 +359,7 @@ Item {
     var l = stats.slice(-29)
     l.push({ ms: Date.now() - stat.t0, shotMs: stat.shot, lifts: stat.lifts, maxGap: stat.maxGap,
              avgGap: stat.lifts > 1 ? Math.round(stat.sumGap / (stat.lifts - 1)) : 0,
-             release: stat.release, travel: stat.travel, fromHome: stat.fromHome, to: to })
+             release: stat.release, decided: stat.decided || "", travel: stat.travel, fromHome: stat.fromHome, to: to })
     stats = l
     stat = {}
   }
@@ -392,8 +389,10 @@ Item {
     var r = homeScreenItem ? homeScreenItem.iconRect(e.appId, coverItem || homeScreenItem) : null
     var tx = r ? r.x + r.w / 2 - areaW / 2 : 0, ty = r ? r.y + r.w / 2 - areaH / 2 : areaH * cfg.enterFrom
     var size = r ? r.w : HM.grid(areaW, areaH, cfg).icon
-    c.to("x", tx, "smooth", hand.x); c.to("y", ty, "smooth", hand.y); c.to("s", size / areaH, "smooth", hand.s)
-    c.to("m", 1, "smooth"); c.z = 2
+    // SpringBoard's flight into the icon: its own spring, half the finger's vertical speed
+    var fly = { response: cfg.flyResponse / 1000, dampingRatio: cfg.flyDamping }
+    c.to("x", tx, fly, hand.x); c.to("y", ty, fly, hand.y * cfg.flyVelocity); c.to("s", size / areaH, fly, hand.s)
+    c.to("m", 1, fly); c.z = 2
     for (var i = 0; i < cards.length; i++) if (i !== cur && card(i)) card(i).to("o", 0, "snappy")
     homeV.target = 1; dimV.target = 0; labelV.target = 0
     settleWhen(function () { return c.settled(["x", "y", "s"]) }, "home", true)

@@ -7,16 +7,36 @@
 // how far past a limit a finger gets: less and less, never more than `limit`
 function rubber(x, limit) { return limit * (1 - 1 / (x / limit + 1)) }
 
-// The card under a finger that went down `fromBottom` px above the area's bottom edge, has come
-// `up` px up (negative: pushed down) and `dx` px sideways. Its bottom edge stays under the finger,
-// it shrinks with the travel, x follows 1:1 (rubber-banded where `blocked` says there is no app).
-function follow(up, dx, W, H, cfg, blocked) {
+// The card under a finger that has come `up` px up (negative: pushed down) and `dx` px sideways,
+// moving up at `vy` px/s. As SpringBoard does it: the scale falls linearly with the travel
+// (1 − up / (shrinkTravel × H)) down to minScale, then only resists; the bottom edge stays under the
+// finger; sideways it follows, damped by up to sideDamp the faster it goes up; rubber-banded where
+// `blocked` says there is no app.
+function follow(up, dx, W, H, cfg, blocked, vy) {
   var p = Math.max(0, up) / (H * cfg.shrinkTravel)
-  var s = p <= 1 ? 1 - (1 - cfg.minScale) * (1 - Math.pow(1 - p, 2)) : cfg.minScale - rubber(p - 1, 0.08)
+  var lin = 1 - p
+  var s = lin >= cfg.minScale ? lin : cfg.minScale - rubber(cfg.minScale - lin, 0.08)
   var y = H / 2 - Math.max(0, up) - s * H / 2 + (up < 0 ? rubber(-up, cfg.pushDown) : 0)
-  var x = dx
+  var damp = 1 - cfg.sideDamp * Math.max(0, Math.min(1, (vy || 0) / cfg.sideDampSpeed))
+  var x = dx * damp
   if (blocked && ((dx > 0 && blocked.left) || (dx < 0 && blocked.right))) x = (dx > 0 ? 1 : -1) * rubber(Math.abs(dx), cfg.sideResist)
   return { s: s, x: x, y: y, progress: p, home: Math.min(1, p * cfg.homeReveal) }
+}
+
+// Where a released card goes, as SpringBoard decides it from the finger's last speed (re-read on
+// release, so a pause shown earlier does not lock it): "back" | "home" | "switcher" | "next" | "prev".
+//   travel up px, dx sideways px, vUp / vx px/s, n apps, cur the card's index, W × H the area
+function destination(travel, dx, vUp, vx, n, cur, W, H, cfg, tcfg) {
+  var side = Math.abs(dx) > cfg.slideCommit * W
+          || (Math.abs(vx) > tcfg.slideFlick && Math.abs(vUp) < cfg.homeSteep * Math.abs(vx) && (vx > 0) === (dx > 0) && Math.abs(dx) > tcfg.slop)
+  var step = dx < 0 ? 1 : -1
+  if (side && travel < H * cfg.homeDistance / 2 && cur + step >= 0 && cur + step < n) return step > 0 ? "next" : "prev"
+  if (travel < cfg.minTravel) return "back"
+  if (vUp > cfg.homeVelocity) return "home"
+  if (vUp > cfg.homeMinVelocity && vUp > cfg.homeSteep * Math.abs(vx)) return "home"
+  if (Math.abs(vUp) < cfg.homeMinVelocity && Math.abs(vx) < cfg.homeMinVelocity) return "switcher"
+  if (vUp < -cfg.homeMinVelocity) return "back"
+  return travel > cfg.homeDistance * H ? "home" : "back"
 }
 
 // the cards beside the one under the finger, at its scale: i - cur places to its right

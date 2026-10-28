@@ -63,11 +63,11 @@ Item {
       if (root.active && (a.do === "lift" || a.do === "home" || a.do === "switcher")) {
         // tablet mode: the home screen and App Switcher of Home.qml follow the finger
         if (a.do === "lift") {
-          if (a.phase === "move") homeCtl.lift(a.up, a.dx)
+          if (a.phase === "move") homeCtl.lift(a.up, a.dx, a.vy)
           else homeCtl.release(a.phase === "cancel" ? "cancel" : "end", a)
         } else if (a.do === "home") homeCtl.release("home", a)
         else if (a.phase === "start") homeCtl.arm()
-        else if (a.phase === "update") { if (a.up !== undefined) homeCtl.lift(a.up, a.dx) }
+        else if (a.phase === "update") { if (a.up !== undefined) homeCtl.lift(a.up, a.dx, a.vy) }
         else homeCtl.release(a.cancelled ? "cancel" : "switcher", a)
       } else if (a.do === "home") {
         mc("toggle()", "mission-control toggle mission")
