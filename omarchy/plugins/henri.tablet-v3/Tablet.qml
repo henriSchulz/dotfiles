@@ -9,7 +9,7 @@ import "Gesture.js" as Gesture
 // Tablet mode (Theme.touch, settings key "tablet", switched by `tablet-mode`): the home zone
 // along the bottom edge of every screen, with the home indicator, and what a finger does there
 // (Gesture.js decides):
-//   pull up a little          the dock follows (VGestures "dock"; henri.dock-v3)
+//   pull up a little          nothing (the dock is no longer pulled from here, 2026-10-28)
 //   pull up far / flick        home: Mission Control (hyprmc, or the QML one without it: mc())
 //   pull up and pause          App Switcher: Mission Control under the finger (hyprmc.gesture,
 //                              or the QML one's "mission-control-gesture:…" events)
@@ -57,9 +57,7 @@ Item {
     for (var i = 0; i < actions.length; i++) {
       var a = actions[i]
       note(a.do + (a.phase ? ":" + a.phase : "") + (a.step ? ":" + a.step : ""))
-      if (a.do === "dock") {
-        VGestures.pull("dock", screenName, a.phase, a.travel || 0, a.velocity || 0)
-      } else if (a.do === "home") {
+      if (a.do === "home") {
         mc("toggle()", "mission-control toggle mission")
       } else if (a.do === "switcher") {
         var t = Date.now()

@@ -50,41 +50,41 @@ test("a small jitter below the slop is still a tap", () => {
 test("a cancelled touch is no tap", () => {
   assert.deepStrictEqual(play([[0, X, H - 8], [60, X, H - 8]], { cancel: true }), []);
 });
-test("a short slow pull up moves the dock and ends there (the dock decides)", () => {
+test("a short slow pull up lifts and ends there, no dock", () => {
   const a = play(stroke(X, H - 8, 0, -60, 400));
-  assert.ok(kinds(a).includes("dock:move"));
-  assert.strictEqual(last(a), "dock:end");
+  assert.ok(kinds(a).includes("lift:move"));
+  assert.strictEqual(last(a), "lift:end");
   const end = a[a.length - 1];
   assert.ok(Math.abs(end.travel - 60) < 1, "travel " + end.travel);
   assert.ok(end.velocity < cfg.homeFlick);
 });
-test("dock travel follows the finger", () => {
-  const a = play(stroke(X, H - 8, 0, -50, 200)).filter(x => x.do === "dock" && x.phase === "move");
+test("lift travel follows the finger", () => {
+  const a = play(stroke(X, H - 8, 0, -50, 200)).filter(x => x.do === "lift" && x.phase === "move");
   for (let i = 1; i < a.length; i++) assert.ok(a[i].travel >= a[i - 1].travel);
   assert.ok(Math.abs(a[a.length - 1].travel - 50) < 1);
 });
 test("a long slow pull past homeTravel goes home", () => {
   const a = play(stroke(X, H - 8, 0, -(cfg.homeTravel + 20), 900));
-  assert.deepStrictEqual(kinds(a).slice(-2), ["dock:handover", "home"]);
+  assert.deepStrictEqual(kinds(a).slice(-2), ["lift:move", "home"]);
 });
 test("a short fast flick goes home", () => {
   const a = play(stroke(X, H - 8, 0, -120, 80));
-  assert.deepStrictEqual(kinds(a).slice(-2), ["dock:handover", "home"]);
+  assert.deepStrictEqual(kinds(a).slice(-2), ["lift:move", "home"]);
 });
 test("a pause high enough opens the App Switcher", () => {
   const a = play(strokeThenRest(X, H - 8, 0, -(cfg.holdTravel + 40), 250, 400), { tick: true });
   const k = kinds(a);
-  assert.ok(k.includes("dock:handover") && k.includes("switcher:start"), k.join(" "));
-  assert.ok(k.indexOf("dock:handover") < k.indexOf("switcher:start"));
+  assert.ok(k.includes("lift:move") && k.includes("switcher:start"), k.join(" "));
+  assert.ok(k.indexOf("lift:move") < k.indexOf("switcher:start"));
   assert.strictEqual(last(a), "switcher:end");
   assert.ok(!k.includes("home"));
   const start = a.find(x => x.do === "switcher" && x.phase === "start");
   assert.ok(start.delta < 0, "start delta is upward");
 });
-test("a pause too low only keeps the dock", () => {
+test("a pause too low only lifts", () => {
   const a = play(strokeThenRest(X, H - 8, 0, -(cfg.holdTravel - 30), 250, 400), { tick: true });
   assert.ok(!kinds(a).includes("switcher:start"));
-  assert.strictEqual(last(a), "dock:end");
+  assert.strictEqual(last(a), "lift:end");
 });
 test("a pause shorter than holdTime does not open the switcher", () => {
   const pts = strokeThenRest(X, H - 8, 0, -(cfg.holdTravel + 40), 250, 0);
@@ -109,8 +109,8 @@ test("a short sideways flick switches too, a short slow one does not", () => {
   assert.strictEqual(last(play(stroke(X, H - 8, -60, 0, 50))), "app:1");
   assert.deepStrictEqual(kinds(play(stroke(X, H - 8, -60, 0, 600))).filter(k => k !== "slide:move"), ["slide:end"]);
 });
-test("a diagonal stroke that is more up than sideways is the dock", () => {
-  assert.ok(kinds(play(stroke(X, H - 8, 20, -60, 400))).includes("dock:move"));
+test("a diagonal stroke that is more up than sideways is a lift", () => {
+  assert.ok(kinds(play(stroke(X, H - 8, 20, -60, 400))).includes("lift:move"));
 });
 test("the indicator follows a sideways finger and lets go at the end", () => {
   const a = play(stroke(X, H - 8, -50, 0, 400)), m = a.filter(x => x.do === "slide" && x.phase === "move");
@@ -128,12 +128,12 @@ test("a finger resting on the indicator is a long press, once, and nothing when 
 test("pushed down on the indicator is the down action, once", () => {
   assert.deepStrictEqual(kinds(play(stroke(X, H - 10, 1, cfg.downSlop + 3, 120))), ["down"]);
 });
-test("Mission Control takes the dock over: it hands over, it is not pulled back", () => {
-  const k = kinds(play(stroke(X, H - 8, 0, -(cfg.homeTravel + 20), 300)));
-  assert.ok(!k.includes("dock:cancel") && k.includes("dock:handover"), k.join(" "));
+test("no gesture pulls the dock any more", () => {
+  const k = kinds(play(strokeThenRest(X, H - 8, 0, -(cfg.homeTravel + 20), 300, 300), { tick: true }));
+  assert.ok(!k.some(x => x.startsWith("dock")), k.join(" "));
 });
-test("cancel takes the dock back and cancels the switcher", () => {
-  assert.deepStrictEqual(kinds(play(stroke(X, H - 8, 0, -60, 400), { cancel: true })).slice(-1), ["dock:cancel"]);
+test("cancel ends the lift and cancels the switcher", () => {
+  assert.deepStrictEqual(kinds(play(stroke(X, H - 8, 0, -60, 400), { cancel: true })).slice(-1), ["lift:cancel"]);
   const a = play(strokeThenRest(X, H - 8, 0, -(cfg.holdTravel + 40), 250, 400), { tick: true, cancel: true });
   const end = a[a.length - 1];
   assert.deepStrictEqual([end.do, end.phase, end.cancelled], ["switcher", "end", true]);

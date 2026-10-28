@@ -71,17 +71,14 @@ if runs T01; then
   pt m $X $B d s 80 g $X $((B - 60)) 30 16 s 60
   mid=$(dockHidden); shot T01-mid
   pt u
-  want T01 "a short pull moves the dock under the finger" "$mid" "false"
-  want T01b "let go past half its height, the dock stays out" "$(dockHidden)" "false"
-  want T01c "no other gesture fired" "$(log | jq -r 'map(select(startswith("dock")|not)) | length')" "0"
-  sleep 4.8
-  want T01d "after dockHold the dock hides again" "$(dockHidden)" "true"
+  want T01 "a short pull leaves the dock hidden (no dock pull since 2026-10-28)" "$mid" "true"
+  want T01b "it ends as a lift, nothing else fired" "$(log | jq -r 'map(select(startswith("lift")|not)) | length'),$(dockHidden)" "0,true"
 fi
 
 if runs T02; then
   pt m $X $B d s 80 g $X $((B - 18)) 6 16 s 40 u
   sleep 0.5
-  want T02 "a pull that stays low lets the dock go back" "$(dockHidden)" "true"
+  want T02 "a pull that stays low keeps the dock hidden" "$(dockHidden)" "true"
 fi
 
 if runs T03; then
