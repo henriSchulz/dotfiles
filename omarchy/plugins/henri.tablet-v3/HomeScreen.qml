@@ -1,4 +1,6 @@
 import QtQuick
+import QtQuick.Effects
+import QtQuick.Window
 import Quickshell
 import "file:///home/henri/.local/share/velum/qml/Velum"
 import "HomeModel.js" as HM
@@ -21,6 +23,11 @@ Item {
   property real gridOpacity: 1     // the pages and dots (the home gesture shows only the dock at first)
   property real gridScale: 1
   property real dockShift: 0       // the dock below its place by this much
+  // the wallpaper as the compositor draws it, in this item's coordinates (the dock's glass blurs it)
+  property string wallSource: ""
+  property rect wallRect: Qt.rect(0, 0, width, height)
+  property var running: ({})       // app id → true: a dot under its dock icon
+  readonly property var dk: cfg.dock
 
   signal tapped(string id)
   signal pageMoved(real x, real t)
@@ -135,11 +142,53 @@ Item {
     width: dockRow.width + 2 * hs.g.dockPad
     height: hs.g.dockH
     readonly property real radius: hs.g.dockIcon * hs.cfg.iconRadius + hs.g.dockPad
-    VShadow { layers: Theme.r.popover.shadow; radius: dock.radius }
+    // design 3 "Smoke" (lab/web/dock.html): dark tinted glass over the blurred wallpaper, a light
+    // hairline. The blur is a small copy of the wallpaper blurred into a cached layer: free per frame
+    VShadow { layers: hs.dk.shadow; radius: dock.radius }
+    Item {
+      anchors.fill: parent
+      layer.enabled: true
+      layer.effect: MultiEffect { maskEnabled: true; maskSource: dockMask; maskThresholdMin: 0.5; maskSpreadAtMin: 1 }
+      Image {
+        id: dockWall
+        x: hs.wallRect.x - dock.x
+        y: hs.wallRect.y - dock.y
+        width: hs.wallRect.width
+        height: hs.wallRect.height
+        source: hs.wallSource
+        fillMode: Image.PreserveAspectCrop
+        sourceSize.width: hs.wallRect.width / hs.cfg.blurDownscale
+        sourceSize.height: hs.wallRect.height / hs.cfg.blurDownscale
+        visible: false
+        cache: true
+      }
+      MultiEffect {
+        x: dockWall.x; y: dockWall.y; width: dockWall.width; height: dockWall.height
+        source: dockWall
+        visible: !Theme.reduceTransparency && hs.wallSource !== ""
+        blurEnabled: true
+        blur: 1
+        blurMax: hs.dk.blurMax
+        saturation: hs.dk.saturation
+      }
+      Rectangle {
+        anchors.fill: parent
+        color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : hs.dk.tint
+      }
+    }
+    Item {
+      id: dockMask
+      anchors.fill: parent
+      layer.enabled: true
+      visible: false
+      Rectangle { anchors.fill: parent; radius: dock.radius; color: Theme.core.surface.tablet.indicator.onLight }
+    }
     Rectangle {
       anchors.fill: parent
       radius: dock.radius
-      color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+      color: "transparent"   // lint-ok: the rim only
+      border.width: 1 / Screen.devicePixelRatio
+      border.color: hs.dk.rim
     }
     Row {
       id: dockRow
@@ -157,7 +206,7 @@ Item {
             anchors.centerIn: parent
             width: Theme.layout.separator
             height: parent.height * hs.cfg.dividerShare
-            color: Theme.r.line.strong
+            color: hs.dk.divider
           }
           Image {
             visible: !parent.modelData.sep
@@ -168,6 +217,16 @@ Item {
             asynchronous: true
             scale: hs.pressedId !== "" && hs.pressedId === parent.appId ? hs.cfg.pressScale : 1
             opacity: hs.pressedId !== "" && hs.pressedId === parent.appId ? hs.lp.press : 1
+          }
+          // running: a dot under the icon
+          Rectangle {
+            visible: !parent.modelData.sep && hs.running[parent.appId] === true
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: parent.height + hs.dk.dotGap
+            width: hs.dk.dotSize
+            height: width
+            radius: width / 2
+            color: hs.dk.dot
           }
         }
       }

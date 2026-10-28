@@ -111,6 +111,14 @@ Item {
     return out
   }
 
+  // apps with a window: a dot under their dock icon
+  readonly property var runningApps: {
+    var o = {}
+    for (var i = 0; i < windows.length; i++) if (windows[i].appId) o[windows[i].appId] = true
+    return o
+  }
+  readonly property string wallpaperSource: "file://" + wallpaperLink + (wallpaperTarget ? "?v=" + encodeURIComponent(wallpaperTarget) : "")
+
   // the desktop entry of a window class (only a real match; heuristicLookup guesses wide)
   function appIdOf(cls) {
     if (!cls) return ""
@@ -740,6 +748,9 @@ Item {
           page: home.page
           pageX: pageV.value
           interactive: true
+          running: home.runningApps
+          wallSource: home.wallpaperSource
+          wallRect: Qt.rect(0, -per.reserved[1], per.modelData.width, per.modelData.height)
           onTapped: function (id) { home.screenName = per.name; home.guard("openApp", function () { home.openApp(id) }) }
           onPageMoved: function (dx, t) { home.pageMoved(dx, t) }
           onPageReleased: function (v) { home.pageReleased(v, pages) }
@@ -820,6 +831,9 @@ Item {
           }
           HomeScreen {
             id: shadowHome
+            running: home.runningApps
+            wallSource: home.wallpaperSource
+            wallRect: Qt.rect(0, -per.reserved[1], per.modelData.width, per.modelData.height)
             x: 0
             y: per.reserved[1]
             width: overlay.width
