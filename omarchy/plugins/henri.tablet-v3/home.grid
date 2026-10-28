@@ -1,0 +1,6 @@
+# Apps that stay on the home screen grid while they are also in the dock (desktop ids, one per
+# line). Without this, like on iPadOS, a docked app is only in the dock.
+# Henri, 2026-10-28: foot, mdview and Things on the home screen.
+foot
+mdview
+things-clone

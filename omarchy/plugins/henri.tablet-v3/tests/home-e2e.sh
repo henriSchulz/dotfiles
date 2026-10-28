@@ -207,7 +207,9 @@ if runs H12; then
   pt m 1100 450 d s 30 g 500 450 6 12 u; sleep 1
   p1=$(hm | jq -r .page)
   pt m 400 450 d s 30 g 1000 450 6 12 u; sleep 1
-  want H12 "a flick turns the home screen's page and back" "$p1,$(hm | jq -r .page)" "1,0"
+  # one page only (all apps fit): a flick only rubber-bands and the page stays
+  if [[ $(hm | jq -r .pages) -gt 1 ]]; then want H12 "a flick turns the home screen's page and back" "$p1,$(hm | jq -r .page)" "1,0"
+  else want H12 "one page: a flick leaves the page where it is" "$p1,$(hm | jq -r .page)" "0,0"; fi
 fi
 
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"

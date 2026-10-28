@@ -99,3 +99,129 @@ function cardRadius(s, m, H, cfg) {
   var r = cfg.cardRadius / Math.max(s, 0.05) * Math.min(1, (1 - s) * 6)
   return (1 - m) * r + m * H * cfg.iconRadius
 }
+
+// ---- edit mode: the grid's order
+// the saved order first (only apps still there), apps the order does not know yet after it in
+// their own order — iPadOS puts a new app at the end
+function arrange(ids, saved) {
+  var have = {}, out = []
+  for (var i = 0; i < ids.length; i++) have[ids[i]] = true
+  var placed = {}
+  for (var j = 0; saved && j < saved.length; j++) {
+    var s = saved[j]
+    if (have[s] && !placed[s]) { out.push(s); placed[s] = true }
+  }
+  for (var k = 0; k < ids.length; k++) if (!placed[ids[k]]) { out.push(ids[k]); placed[ids[k]] = true }
+  return out
+}
+// `list` with `id` taken out and put in at index i (clamped)
+function moveTo(list, id, i) {
+  var out = list.filter(function (x) { return x !== id })
+  if (out.length === list.length) return list.slice()
+  i = Math.max(0, Math.min(out.length, i))
+  out.splice(i, 0, id)
+  return out
+}
+// the slot under (x, y) — screen coordinates — on page p of a grid of n apps
+function slotAt(x, y, p, n, g, cellW, cellH) {
+  var c = Math.max(0, Math.min(g.cols - 1, Math.floor((x - g.side) / cellW)))
+  var r = Math.max(0, Math.min(g.rows - 1, Math.floor((y - g.top) / cellH)))
+  return Math.max(0, Math.min(n - 1, p * g.perPage + r * g.cols + c))
+}
+// a held icon near a side turns the page that way: -1 left, 1 right, 0 none
+function edgeOf(x, W, cfg) {
+  var z = W * cfg.edit.edgeZone
+  return x < z ? -1 : x > W - z ? 1 : 0
+}
+
+// ---- folders (iPadOS): an entry "folder:<key>" of the order stands for folders[key] =
+// { name, items: [app ids] }; every app is in one place only — the grid or one folder
+function isFolder(id) { return typeof id === "string" && id.indexOf("folder:") === 0 && id.length > 7 }
+function folderKey(id) { return id.slice(7) }
+// The grid from the home screen's apps (`ids`, in their own order) and what was saved: the saved
+// order first, a folder keeps the apps still there (the first place an app is named wins) and
+// goes when none is left, apps nobody placed yet come last. → { order, folders }
+function arrangeLayout(ids, savedOrder, savedFolders) {
+  var have = {}, taken = {}, order = [], folders = {}
+  for (var i = 0; i < ids.length; i++) have[ids[i]] = true
+  var src = savedFolders || {}
+  for (var j = 0; savedOrder && j < savedOrder.length; j++) {
+    var s = savedOrder[j]
+    if (isFolder(s)) {
+      var k = folderKey(s), f = src[k]
+      if (!f || folders[k] || !Array.isArray(f.items)) continue
+      var items = []
+      for (var m = 0; m < f.items.length; m++) {
+        var a = f.items[m]
+        if (have[a] && !taken[a]) { taken[a] = true; items.push(a) }
+      }
+      if (!items.length) continue
+      folders[k] = { name: typeof f.name === "string" && f.name ? f.name : "Folder", items: items }
+      order.push(s)
+    } else if (have[s] && !taken[s]) { taken[s] = true; order.push(s) }
+  }
+  for (var n = 0; n < ids.length; n++) if (!taken[ids[n]]) { taken[ids[n]] = true; order.push(ids[n]) }
+  return { order: order, folders: folders }
+}
+// the folder holding app `id`, or ""
+function folderOf(folders, id) {
+  for (var k in folders) if (folders[k].items.indexOf(id) >= 0) return "folder:" + k
+  return ""
+}
+function copyFolders(folders) {
+  var out = {}
+  for (var k in folders) out[k] = { name: folders[k].name, items: folders[k].items.slice() }
+  return out
+}
+// app `id` dropped onto `target` (an app: both become a new folder in the target's place, named
+// `name`; a folder: it joins at the end) → a new { order, folders }
+function fold(layout, id, target, name) {
+  if (!id || id === target || isFolder(id)) return layout
+  var folders = copyFolders(layout.folders), order = layout.order.filter(function (x) { return x !== id })
+  var at = order.indexOf(target)
+  if (at < 0) return layout
+  if (isFolder(target)) {
+    var f = folders[folderKey(target)]
+    if (!f) return layout
+    if (f.items.indexOf(id) < 0) f.items.push(id)
+  } else {
+    var n = 1
+    while (folders["f" + n]) n++
+    folders["f" + n] = { name: name || "Folder", items: [target, id] }
+    order[at] = "folder:f" + n
+  }
+  return { order: order, folders: folders }
+}
+// app `id` taken out of its folder and put on the grid at index `at` (clamped; -1: right after the
+// folder); a folder left empty goes → a new { order, folders }
+function unfold(layout, id, at) {
+  var fid = folderOf(layout.folders, id)
+  if (!fid) return layout
+  var folders = copyFolders(layout.folders), k = folderKey(fid), order = layout.order.slice()
+  folders[k].items = folders[k].items.filter(function (x) { return x !== id })
+  var fi = order.indexOf(fid)
+  if (at < 0) at = fi + 1
+  if (!folders[k].items.length) { delete folders[k]; order.splice(fi, 1); if (at > fi) at-- }
+  at = Math.max(0, Math.min(order.length, at))
+  order.splice(at, 0, id)
+  return { order: order, folders: folders }
+}
+// an item moved inside a folder: its apps with `id` at index i
+function moveInFolder(layout, key, id, i) {
+  var folders = copyFolders(layout.folders)
+  if (!folders[key]) return layout
+  folders[key].items = moveTo(folders[key].items, id, i)
+  return { order: layout.order.slice(), folders: folders }
+}
+// A new folder's name from its apps' desktop categories, as iPadOS names it by the App Store's:
+// the first of `names` (category → name, in order of preference) that all of them share
+function folderName(catLists, names, fallback) {
+  for (var i = 0; i < names.length; i++) {
+    var c = names[i][0], all = catLists.length > 0
+    for (var j = 0; j < catLists.length; j++) if ((catLists[j] || []).indexOf(c) < 0) { all = false; break }
+    if (all) return names[i][1]
+  }
+  return fallback
+}
+// the folder's mini grid on its tile: the first `cols × cols` apps
+function miniApps(items, cols) { return items.slice(0, cols * cols) }

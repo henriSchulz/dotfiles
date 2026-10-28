@@ -385,11 +385,15 @@ Item {
     target: "henri.tablet"
     function state(): string { return JSON.stringify({ active: root.active, screens: root.active ? Quickshell.screens.length : 0, log: root.log, castScreen: windowBar.castScreen, window: windowBar.ipc ? windowBar.ipc.class : "", windowBarOpen: windowBar.open }) }
     function clearLog(): string { root.log = []; homeCtl.log = []; return "ok" }
-    function home(): string { return JSON.stringify({ empty: homeCtl.emptyOn(homeCtl.screenName), mode: homeCtl.mode, screen: homeCtl.screenName, cards: homeCtl.cards.map(c => c.appId), at: homeCtl.cards.map((c, i) => { var k = homeCtl.card(i); return k ? [Math.round(k.px), Math.round(k.py), +k.ps.toFixed(2), +k.po.toFixed(2)] : null }), zoneFinger: homeCtl.zoneFinger,  cur: homeCtl.cur, armed: homeCtl.armed, fromHome: homeCtl.fromHome, area: [homeCtl.areaW, homeCtl.areaH], apps: homeCtl.gridApps.length, dock: homeCtl.dockApps.map(a => a.id), recent: homeCtl.recentApps.map(a => a.id), page: homeCtl.page, log: homeCtl.log }) }
+    function home(): string { return JSON.stringify({ empty: homeCtl.emptyOn(homeCtl.screenName), mode: homeCtl.mode, screen: homeCtl.screenName, cards: homeCtl.cards.map(c => c.appId), at: homeCtl.cards.map((c, i) => { var k = homeCtl.card(i); return k ? [Math.round(k.px), Math.round(k.py), +k.ps.toFixed(2), +k.po.toFixed(2)] : null }), zoneFinger: homeCtl.zoneFinger,  cur: homeCtl.cur, armed: homeCtl.armed, fromHome: homeCtl.fromHome, area: [homeCtl.areaW, homeCtl.areaH], apps: homeCtl.gridApps.length, pages: Math.max(1, Math.ceil(homeCtl.gridOrder.length / (homeCtl.cfg.cols * homeCtl.cfg.rows))), editing: homeCtl.editing, dock: homeCtl.dockApps.map(a => a.id), recent: homeCtl.recentApps.map(a => a.id), page: homeCtl.page, log: homeCtl.log }) }
     function homeStats(): string { return JSON.stringify(homeCtl.stats) }
     // the way out from anywhere (ssh): the overlay lets go of the screen
     function homeAbort(): string { homeCtl.abort(); return homeCtl.mode }
     function homeOpen(id: string): string { homeCtl.openApp(id); return homeCtl.mode }
+    // folders: the saved layout, the tiles on the grid, the open folder; homeFolder opens one ("" closes)
+    function homeLayout(): string { return JSON.stringify({ order: homeCtl.layout.order, folders: homeCtl.layout.folders, tiles: homeCtl.gridTiles.map(t => t.id), open: homeCtl.openFolder }) }
+    function homeFolder(id: string): string { homeCtl.openFolder = id; return homeCtl.openFolder }
+    function homeFold(id: string, target: string): string { homeCtl.foldApps(id, target); return JSON.stringify(homeCtl.layout.folders) }
     function pauseHome(on: string): string { root.homePaused = on === "toggle" ? !root.homePaused : on === "on" || on === "true"; return String(root.homePaused) }
     function tap(screen: string): string { windowBar.toggle(screen); return windowBar.openOn }
     function view(): string { return JSON.stringify({ asleep: root.asleep, fullscreenOn: root.fullscreenOn, slideScreen: root.slideScreen, neighbours: root.neighbours, dockOut: VGestures.out, shrunk: Object.keys(root.shrunk).length, dictateOn: windowBar.dictateOn, voxState: windowBar.voxState, entered: windowBar.entered, zones: VGestures.zones }) }

@@ -64,6 +64,40 @@ Item {
     stdout: StdioCollector { onStreamFinished: home.applyHides(text) }
     onExited: function (code) { if (code !== 0) home.applyHides("") }
   }
+  // the home screen's own list (home.hides) and categories: developer and system tools stay in
+  // the launcher, not on the home screen
+  readonly property var hiddenCategories: ["Development", "Debugger", "IDE", "ConsoleOnly"]
+  property var homeHidden: ({})
+  property var gridAlso: ({})      // home.grid: in the dock and on the grid
+  function idSet(text) {
+    var next = {}, lines = String(text || "").split("\n")
+    for (var i = 0; i < lines.length; i++) {
+      var id = lines[i].trim().replace(/\.desktop$/, "")
+      if (id && id.charAt(0) !== "#") next[id] = true
+    }
+    return next
+  }
+  FileView {
+    path: Qt.resolvedUrl("home.hides").toString().replace(/^file:\/\//, "")
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { home.homeHidden = home.idSet(text()); home.scanApps() }
+  }
+  FileView {
+    path: Qt.resolvedUrl("home.grid").toString().replace(/^file:\/\//, "")
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: home.gridAlso = home.idSet(text())
+  }
+  function homeHides(e, id) {
+    if (home.homeHidden[id]) return true
+    var cats = []
+    try { cats = e.categories || [] } catch (err) {}
+    for (var i = 0; i < cats.length; i++) if (home.hiddenCategories.indexOf(String(cats[i])) >= 0) return true
+    return false
+  }
   function applyHides(scanned) {
     var next = {}, lines = (home.configuredHides + "\n" + scanned).split("\n")
     for (var i = 0; i < lines.length; i++) {
@@ -88,8 +122,10 @@ Item {
       if (!e || e.noDisplay) continue
       var id = String(e.id || "").replace(/\.desktop$/, "")
       if (!id || map[id] || home.systemHidden[id]) continue
-      map[id] = { id: id, name: String(e.name || id), icon: home.iconOf(e.icon) }
-      list.push(id)
+      var cats = []
+      try { cats = (e.categories || []).map(String) } catch (err) {}
+      map[id] = { id: id, name: String(e.name || id), icon: home.iconOf(e.icon), cats: cats }
+      if (!home.homeHides(e, id)) list.push(id)
     }
     list.sort(function (a, b) { return map[a].name.localeCompare(map[b].name) })
     home.entries = map
@@ -98,7 +134,66 @@ Item {
   Connections { target: DesktopEntries.applications; function onValuesChanged() { appsDebounce.restart() } }
   Timer { id: appsDebounce; interval: Theme.delay("settle"); onTriggered: home.scanApps() }
   readonly property var dockApps: pinnedIds.map(function (id) { return entries[id] }).filter(Boolean)
-  readonly property var gridApps: appIds.filter(function (id) { return pinnedIds.indexOf(id) < 0 }).map(function (id) { return entries[id] })
+  readonly property var gridApps: appIds.filter(function (id) { return pinnedIds.indexOf(id) < 0 || gridAlso[id] }).map(function (id) { return entries[id] })
+  // the grid: what edit mode saved (order + folders), new apps after it (HM.arrangeLayout)
+  property var savedOrder: []
+  property var savedFolders: ({})
+  readonly property var layout: HM.arrangeLayout(gridApps.map(function (a) { return a.id }), savedOrder, savedFolders)
+  readonly property var gridOrder: layout.order
+  property bool editing: false
+  property string openFolder: ""   // "folder:…" open on the home screen
+  // the home screen's tiles: apps and folders (with their apps). A new list only when tiles come,
+  // go or a folder changes — a new order only moves them (HomeScreen never rebuilds them for that)
+  property var gridTiles: []
+  property string tilesKey: ""
+  function syncTiles() {
+    var l = home.layout, tiles = []
+    for (var i = 0; i < gridApps.length; i++) if (!HM.folderOf(l.folders, gridApps[i].id)) tiles.push(gridApps[i])
+    for (var k in l.folders) {
+      var f = l.folders[k]
+      tiles.push({ id: "folder:" + k, name: f.name, folder: true, items: f.items.map(function (id) { return home.entries[id] }).filter(Boolean) })
+    }
+    var key = JSON.stringify(tiles.map(function (t) { return t.folder ? [t.id, t.name, t.items.map(function (a) { return a.id + a.icon })] : t.id + t.name + t.icon }))
+    if (key === tilesKey) return
+    tilesKey = key
+    gridTiles = tiles
+  }
+  onLayoutChanged: syncTiles()
+  onOpenFolderChanged: if (openFolder && !layout.folders[HM.folderKey(openFolder)]) openFolder = ""
+  FileView {
+    id: layoutFile
+    path: (Quickshell.env("XDG_STATE_HOME") || (home.homeDir + "/.local/state")) + "/velum/home-layout.json"
+    printErrors: false
+    onLoaded: {
+      var d = {}
+      try { d = JSON.parse(text()) } catch (e) {}
+      home.savedFolders = d.folders && typeof d.folders === "object" ? d.folders : {}
+      home.savedOrder = Array.isArray(d.order) ? d.order : []
+    }
+  }
+  function saveLayout(l) {
+    home.savedFolders = l.folders
+    home.savedOrder = l.order.slice()
+    layoutFile.setText(JSON.stringify({ order: home.savedOrder, folders: home.savedFolders }, null, 1) + "\n")
+  }
+  function saveOrder(ids) { saveLayout({ order: ids, folders: home.layout.folders }) }
+  // a new folder's name, from the categories its apps share (iPadOS names it by the App Store's)
+  readonly property var folderNames: [["Office", "Office"], ["Graphics", "Creativity"], ["AudioVideo", "Entertainment"],
+    ["Game", "Games"], ["Education", "Education"], ["Network", "Social"], ["Utility", "Utilities"], ["System", "Utilities"]]
+  function foldApps(id, target) {
+    var ids = HM.isFolder(target) ? [id] : [id, target]
+    var name = HM.folderName(ids.map(function (a) { return (home.entries[a] || {}).cats || [] }), home.folderNames, "Folder")
+    saveLayout(HM.fold(home.layout, id, target, name))
+  }
+  // a held icon resting at a side: the next page, as a release with no speed would settle
+  function turnPage(dir) {
+    var to = Math.max(0, Math.min(pageCount - 1, page + dir))
+    if (to === page) return
+    page = to
+    pageV.velocity = 0
+    pageV.target = -page * areaW
+  }
+
   // running apps not in the dock, newest first
   readonly property var recentApps: {
     var out = [], seen = {}, ws = windows
@@ -308,7 +403,7 @@ Item {
     if (mode !== "ready" && mode !== "drag") return
     var c = card(cur)
     var now = Date.now()
-    if (stat.last) { var gap = now - stat.last; stat.maxGap = Math.max(stat.maxGap, gap); stat.sumGap += gap }
+    if (stat.last) { var gap = now - stat.last; stat.maxGap = Math.max(stat.maxGap, gap); stat.sumGap += gap; if (gap > 50) mark("gap " + gap) }
     stat.last = now; stat.lifts++
     if (!c || !c.hasShot) return               // the overlay stays clear until the snapshot is there
     if (stat.shot < 0) stat.shot = now - stat.t0
@@ -384,7 +479,10 @@ Item {
   // took, how many finger events came and the largest gap between them
   property var stat: ({})
   property var stats: []
-  function startStat() { stat = { t0: Date.now(), shot: -1, lifts: 0, last: 0, maxGap: 0, sumGap: 0, release: "", travel: 0, fromHome: fromHome, frames: 0, sumFrame: 0, maxFrame: 0, slow: 0 } }
+  function startStat() { stat = { t0: Date.now(), shot: -1, lifts: 0, last: 0, maxGap: 0, sumGap: 0, release: "", travel: 0, fromHome: fromHome, frames: 0, sumFrame: 0, maxFrame: 0, slow: 0, tl: [] } }
+  // the gesture's timeline: [ms since its start, what happened] — mode changes, the home screen's
+  // window showing, slow frames (with their length) and long pauses between finger events
+  function mark(what) { if (stat.t0 && stat.tl.length < 60) stat.tl.push([Date.now() - stat.t0, what]) }
   // the overlay's own frames while it moves (QML frame clock): is the drawing smooth?
   FrameAnimation {
     running: home.mode === "drag" || home.mode === "settle" || home.mode === "switcher" || home.mode === "homeDrag"
@@ -392,7 +490,7 @@ Item {
       if (!home.stat.t0 || frameTime <= 0) return
       var ms = frameTime * 1000
       home.stat.frames++; home.stat.sumFrame += ms; home.stat.maxFrame = Math.max(home.stat.maxFrame, ms)
-      if (ms > 25) home.stat.slow++
+      if (ms > 25) { home.stat.slow++; home.mark("slow " + Math.round(ms) + " " + home.mode) }
     }
   }
   function endStat(to) {
@@ -401,7 +499,7 @@ Item {
     l.push({ ms: Date.now() - stat.t0, shotMs: stat.shot, lifts: stat.lifts, maxGap: stat.maxGap,
              avgGap: stat.lifts > 1 ? Math.round(stat.sumGap / (stat.lifts - 1)) : 0,
              frames: stat.frames, avgFrame: stat.frames ? +(stat.sumFrame / stat.frames).toFixed(1) : 0, maxFrame: Math.round(stat.maxFrame), slowFrames: stat.slow,
-             release: stat.release, decided: stat.decided || "", travel: stat.travel, fromHome: stat.fromHome, to: to })
+             release: stat.release, decided: stat.decided || "", travel: stat.travel, fromHome: stat.fromHome, to: to, tl: stat.tl })
     stats = l
     stat = {}
   }
@@ -693,7 +791,7 @@ Item {
     pageV.velocity = v
     pageV.target = t
   }
-  onActiveChanged: { if (!active) { mode = "idle"; cards = [] } else rescan.restart() }
+  onActiveChanged: { if (!active) { mode = "idle"; cards = []; editing = false } else rescan.restart() }
 
   // ================================================================ surfaces
   property var homeScreenItem: null      // the overlay's copy on the gesture's screen (for icon rects)
@@ -706,7 +804,11 @@ Item {
     stdout: StdioCollector { onStreamFinished: home.wallpaperTarget = String(text || "").trim().slice(0, 512) }
   }
   Component.onCompleted: { wallpaperProbe.running = true; scanApps(); Hyprland.refreshMonitors(); rescan.restart() }
-  onModeChanged: if (mode === "ready") wallpaperProbe.running = true
+  onModeChanged: {
+    mark("mode " + mode)
+    if (mode === "ready") wallpaperProbe.running = true
+    if (mode !== "idle") editing = false   // edit mode ends whenever the home screen is left
+  }
 
   Variants {
     model: home.active ? Quickshell.screens : []
@@ -722,32 +824,72 @@ Item {
         var m = home.monitorOf(per.name), r = m && m.lastIpcObject ? m.lastIpcObject.reserved : null
         return r && r.length === 4 ? r : [0, 0, 0, home.tt.homeZone]
       }
+      // behind an open folder: the wallpaper blurred over the whole screen, on the background layer
+      // (under the home screen's window, over the wallpaper) — the home screen's own window stops
+      // at the bar and the home zone. No input; the home screen fades its icons out meanwhile.
+      PanelWindow {
+        id: folderWin
+        screen: per.modelData
+        anchors { top: true; bottom: true; left: true; right: true }
+        exclusionMode: ExclusionMode.Ignore
+        color: "transparent"
+        visible: homeWin.shown && homeItem.folderShown > 0.002
+        WlrLayershell.namespace: "velum-home-folder"
+        WlrLayershell.layer: WlrLayer.Background
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+        mask: Region { item: folderNone }
+        Item { id: folderNone; width: 0; height: 0 }
+        FolderBackdrop {
+          anchors.fill: parent
+          opacity: Math.min(1, homeItem.folderShown)
+          wallSource: home.wallpaperSource
+          wallRect: Qt.rect(0, 0, per.modelData.width, per.modelData.height)
+        }
+      }
       // the home screen itself, under the windows of an empty workspace
       PanelWindow {
+        id: homeWin
         screen: per.modelData
         onHeightChanged: if (height > 0) per.homeH = height
         anchors { top: true; bottom: true; left: true; right: true }
         exclusionMode: ExclusionMode.Normal
         exclusiveZone: 0
         color: "transparent"
-        // also while the overlay is about to hand over to it: mapped before the overlay goes (no flicker)
-        visible: home.emptyOn(per.name) || (home.screenName === per.name && (home.mode === "home" || home.homeSwitchAt > 0))
+        // Mapped for the whole of tablet mode, its icons loaded: mapping it when a gesture landed
+        // cost the frame after it 75–97 ms on the M1 and 366–727 ms on the tablet (homeStats,
+        // 2026-10-28). Hidden it is see-through and takes no input — only its opacity changes.
+        // Shown also while the overlay is about to hand over to it (no flicker).
+        readonly property bool shown: home.emptyOn(per.name) || (home.screenName === per.name && (home.mode === "home" || home.homeSwitchAt > 0))
+        onShownChanged: home.mark("homeWindow " + (shown ? "shown" : "hidden") + " " + per.name)
+        visible: true
         WlrLayershell.namespace: "velum-home-screen"
         WlrLayershell.layer: WlrLayer.Bottom
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
         // no input while a home-zone finger is down: a pointer standing in for it would otherwise
         // move its focus here halfway up
-        mask: Region { item: home.zoneFinger ? homeNone : homeAll }
+        mask: Region { item: home.zoneFinger || !homeWin.shown ? homeNone : homeAll }
         Item { id: homeAll; anchors.fill: parent }
         Item { id: homeNone; width: 0; height: 0 }
         HomeScreen {
+          id: homeItem
           anchors.fill: parent
-          apps: home.gridApps
+          folderBackdrop: false      // folderWin draws it, under the bar and the home zone too
+          opacity: homeWin.shown ? 1 : home.cfg.warmOpacity
+          apps: home.gridTiles
+          openFolder: home.openFolder
+          order: home.gridOrder
+          editing: home.editing
           dockApps: home.dockApps
           recentApps: home.recentApps
           page: home.page
           pageX: pageV.value
-          interactive: true
+          interactive: homeWin.shown
+          onEditRequested: function (on) { home.editing = on }
+          onReordered: function (ids) { home.saveOrder(ids) }
+          onFolded: function (id, target) { home.foldApps(id, target) }
+          onUnfolded: function (id) { home.saveLayout(HM.unfold(home.layout, id, -1)) }
+          onFolderRequested: function (id) { home.openFolder = id }
+          onTurnPage: function (dir) { home.pageCount = pages; home.turnPage(dir) }
           running: home.runningApps
           wallSource: home.wallpaperSource
           wallRect: Qt.rect(0, -per.reserved[1], per.modelData.width, per.modelData.height)
@@ -853,7 +995,9 @@ Item {
             y: per.reserved[1]
             width: overlay.width
             height: overlay.height - per.reserved[1] - per.reserved[3]
-            apps: home.gridApps
+            apps: home.gridTiles
+            openFolder: home.openFolder
+            order: home.gridOrder
             dockApps: home.dockApps
             recentApps: home.recentApps
             page: home.page

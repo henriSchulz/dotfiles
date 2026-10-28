@@ -1,0 +1,25 @@
+# Apps the tablet home screen leaves out (desktop ids, one per line). The launcher and Spotlight
+# still find them. Besides this list, every app in the categories of `hiddenCategories`
+# (Home.qml: developer tools, console-only programs) stays off the home screen.
+# Henri, 2026-10-28: "unnötige System- und Developer-Apps sollen weg".
+
+# developer tools without the Development category
+vim
+xdvi
+gtkwave
+Docker
+
+# system tools and settings panels (System Settings stays: it is the Settings app)
+org.gnome.DiskUtility
+Disk Usage
+system-config-printer
+voxtype-configure
+com.github.wwmm.easyeffects
+aether
+
+# file handlers — opened from files, never on their own
+imv
+mpv
+
+# second entry of an app that is already there (Markdown Notes)
+mdview-quick
