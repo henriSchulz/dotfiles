@@ -150,6 +150,9 @@ Item {
   function emptyOn(screenName) {
     var m = monitorOf(screenName)
     if (!m || !m.activeWorkspace) return false
+    // the workspace's own count first (refreshed with the workspaces), then the toplevels
+    var ipc = m.activeWorkspace.lastIpcObject
+    if (ipc && typeof ipc.windows === "number" && ipc.windows === 0) return true
     var id = m.activeWorkspace.id, tl = Hyprland.toplevels.values
     for (var i = 0; i < tl.length; i++) {
       var o = tl[i].lastIpcObject
@@ -172,7 +175,8 @@ Item {
     interval: Theme.dur("fast")
     onTriggered: {
       if (home.mode !== "idle" && home.mode !== "home") return
-      home.scanWindows(home.screenName || (Quickshell.screens[0] ? Quickshell.screens[0].name : ""))
+      if (!home.screenName && Quickshell.screens[0]) home.screenName = Quickshell.screens[0].name
+      home.cards = home.scanWindows(home.screenName)
       // left the home screen another way (a sideways swipe, a launched app): it is no longer ours
       if (home.mode === "home" && !home.emptyOn(home.screenName)) home.mode = "idle"
     }
@@ -212,42 +216,63 @@ Item {
   function register(key, item) { var o = Object.assign({}, cardItems); if (item) o[key] = item; else delete o[key]; cardItems = o }
 
   // ---- a finger landed in the home zone
+  // the finger did something else (a tap, a long press, a slide): nothing to draw
+  function other(kind) {
+    if (mode === "ready") { mode = "idle"; endStat(kind) }
+    else if (fromHome && stat.t0) endStat(kind)
+  }
   // drop whatever the overlay is doing (a new finger always wins over a stuck animation)
   function abort() {
     settleTick.stop(); letGo.stop(); enterLater.stop(); openLater.stop(); closeLater.stop()
-    settleCheck = null; launchedId = ""; armed = false; cards = []
+    settleCheck = null; launchedId = ""; armed = false
     mode = emptyOn(screenName) ? "home" : "idle"
     note("abort")
+    endStat("abort")
   }
   function prepare(screenName) {
     if (!active) return
-    if (mode === "settle" || mode === "ready" || mode === "drag") abort()
+    if (mode === "settle" || mode === "ready" || mode === "drag" || mode === "homeDrag") abort()
     if (mode !== "idle" && mode !== "home") return
     home.screenName = screenName
     // the monitor's active workspace can lag behind a change the overlay made (Quickshell updates
     // it on the next refresh); our own "home" counts as well
     Hyprland.refreshMonitors()
+    Hyprland.refreshWorkspaces()
     fromHome = mode === "home" || emptyOn(screenName)
     armed = false
     Hyprland.refreshToplevels()
     var list = scanWindows(screenName)
     var m = monitorOf(screenName), at = -1
     for (var i = 0; i < list.length; i++) if (m && m.activeWorkspace && list[i].workspace === m.activeWorkspace.id) at = i
-    if (fromHome) { cur = list.length - 1; return }
+    if (fromHome) { cur = list.length - 1; cards = list; mode = "home"; return }
+    startStat()
     if (at < 0) return
     cards = list
     cur = at
     homeV.snap(0); dimV.snap(0); labelV.snap(0)
+    for (var j = 0; j < list.length; j++) {
+      var o = cardItems[list[j].key]
+      if (!o) continue
+      o.set("x", HM.besideX(j, at, 1, 0, areaW, cfg)); o.set("y", 0); o.set("s", 1); o.set("m", 0); o.set("l", 0); o.set("o", 1)
+      o.z = j === at ? 2 : 1
+    }
+    var c = cardItems[list[at].key]
+    if (c) c.refresh()
+    stat.shot = c && c.hasShot ? 0 : -1
     mode = "ready"
     note("ready " + list[at].appId)
   }
 
   // ---- the finger moves up (lift) — or keeps moving while the switcher is armed
   function lift(up, dx) {
-    if (fromHome) return
+    if (fromHome) { liftFromHome(up); return }
     if (mode !== "ready" && mode !== "drag") return
     var c = card(cur)
+    var now = Date.now()
+    if (stat.last) { var gap = now - stat.last; stat.maxGap = Math.max(stat.maxGap, gap); stat.sumGap += gap }
+    stat.last = now; stat.lifts++
     if (!c || !c.hasShot) return               // the overlay stays clear until the snapshot is there
+    if (stat.shot < 0) stat.shot = now - stat.t0
     mode = "drag"
     var f = HM.follow(up, dx, areaW, areaH, cfg, { left: cur <= 0, right: cur >= cards.length - 1 })
     // a very fast spring instead of a jump: finger events from a cast come unevenly, the card glides
@@ -260,6 +285,34 @@ Item {
     }
     homeV.snap(f.home)
   }
+  // on the home screen the switcher's cards come up under the finger (as on an iPad), and sink back
+  // if it lets go low
+  function liftFromHome(up) {
+    if (mode !== "home" && mode !== "homeDrag") return
+    if (!cards.length) cards = scanWindows(screenName)
+    if (!cards.length) return
+    var p = Math.max(0, Math.min(1, up / (2 * tt.holdTravel)))
+    if (mode === "home") { mode = "homeDrag"; homeV.snap(1); dimV.snap(0) }
+    labelV.snap(p)
+    var g = HM.switcherGeo(cards.length, areaW, areaH, cfg)
+    swX = g.lo
+    for (var i = 0; i < cards.length; i++) {
+      var o = card(i)
+      if (!o) continue
+      var pos = HM.switcherPos(i, cards.length, g.lo, g, cfg)
+      o.set("x", pos.x); o.set("m", 0); o.set("l", 0); o.set("o", p)
+      o.to("y", pos.y + (1 - p) * areaH * cfg.enterFrom, followPreset)
+      o.to("s", g.s * (cfg.dockIcon + (1 - cfg.dockIcon) * p), followPreset)
+      o.capture = true
+    }
+  }
+  function sinkBack() {
+    note("sink back")
+    for (var i = 0; i < cards.length; i++) { var o = card(i); if (o) { o.to("o", 0, "snappy"); o.to("y", o.value("y") + areaH * cfg.enterFrom, "snappy") } }
+    labelV.target = 0
+    sinkDone.restart()
+  }
+  Timer { id: sinkDone; interval: Theme.dur("normal"); onTriggered: if (home.mode === "homeDrag") home.mode = "home" }
   function arm() {
     if (armed) return
     armed = true
@@ -272,22 +325,46 @@ Item {
   // ---- the finger let go: "home" (far / fast), "switcher" (after a pause), "end" (short), "cancel"
   function release(kind, info) {
     info = info || {}
+    stat.release = kind
+    stat.travel = Math.round(info.travel || 0)
     if (fromHome) {
-      if (armed || kind === "home" || kind === "switcher" || (info.travel || 0) > tt.holdTravel) enterSwitcherFromHome()
+      if (kind !== "cancel" && (armed || kind === "home" || kind === "switcher" || (info.travel || 0) > tt.holdTravel)) enterSwitcherFromHome()
+      else if (mode === "homeDrag") sinkBack()
+      endStat(mode)
       return
     }
-    if (mode === "ready") { mode = "idle"; if (kind === "home") goHomeNow(); return }   // no snapshot yet: no card to animate
-    if (mode !== "drag") return
+    if (mode === "ready") { mode = "idle"; if (kind === "home") goHomeNow(); endStat("no snapshot"); return }   // no snapshot yet: no card to animate
+    if (mode !== "drag") { endStat("not dragging: " + mode); return }
     var c = card(cur)
     var hand = { x: c.velocity("x"), y: c.velocity("y"), s: c.velocity("s") }
     if (kind === "cancel") { back(hand); return }
-    if (armed || kind === "switcher") { toSwitcher(hand); return }
+    if (armed || kind === "switcher") {
+      // pulled back down to the edge: the app again; flicked up hard: home (iPad)
+      if ((info.travel || 0) < tt.holdTravel / 2) { back(hand); return }
+      if ((info.velocity || 0) > tt.homeFlick * cfg.flickPastSwitcher) { toHome(hand); return }
+      toSwitcher(hand); return
+    }
     if (kind === "home") { toHome(hand); return }
     var dx = info.dx || 0, vx = info.vx || 0
     var sideways = Math.abs(dx) > cfg.slideCommit * areaW || (Math.abs(vx) > tt.slideFlick && (vx > 0) === (dx > 0) && Math.abs(dx) > tt.slop)
     var next = cur + (dx < 0 ? 1 : -1)
     if (sideways && next >= 0 && next < cards.length) { openCard(next, hand); return }
     back(hand)
+  }
+
+  // ---- what each gesture did, for tuning on the device (IPC homeStats): how long the snapshot
+  // took, how many finger events came and the largest gap between them
+  property var stat: ({})
+  property var stats: []
+  function startStat() { stat = { t0: Date.now(), shot: -1, lifts: 0, last: 0, maxGap: 0, sumGap: 0, release: "", travel: 0, fromHome: fromHome } }
+  function endStat(to) {
+    if (!stat.t0) return
+    var l = stats.slice(-29)
+    l.push({ ms: Date.now() - stat.t0, shotMs: stat.shot, lifts: stat.lifts, maxGap: stat.maxGap,
+             avgGap: stat.lifts > 1 ? Math.round(stat.sumGap / (stat.lifts - 1)) : 0,
+             release: stat.release, travel: stat.travel, fromHome: stat.fromHome, to: to })
+    stats = l
+    stat = {}
   }
 
   // ---- outcomes
@@ -348,6 +425,21 @@ Item {
   }
   function enterSwitcherFromHome() {
     if (mode === "switcher") return
+    if (mode === "homeDrag") {
+      note("switcher from home")
+      sinkDone.stop()
+      mode = "switcher"
+      var g = HM.switcherGeo(cards.length, areaW, areaH, cfg)
+      swX = g.lo
+      for (var i = 0; i < cards.length; i++) {
+        var o = card(i)
+        if (!o) continue
+        var p = HM.switcherPos(i, cards.length, g.lo, g, cfg)
+        o.to("x", p.x, "snappy"); o.to("y", p.y, "snappy"); o.to("s", g.s, "snappy"); o.to("o", 1, "snappy")
+      }
+      labelV.target = 1
+      return
+    }
     var list = scanWindows(screenName)      // fresh: the refresh prepare() asked for has arrived by now
     if (!list.length) return
     note("switcher from home")
@@ -519,8 +611,9 @@ Item {
       home.mode = to
       home.launchedId = ""
       home.armed = false
-      home.cards = []
+      home.cards = home.scanWindows(home.screenName)
       home.note("→ " + to)
+      home.endStat(to)
     }
   }
 
@@ -534,7 +627,7 @@ Item {
     pageV.target = -page * areaW
     if (pageV.value !== pageV.target) pageV.from(pageV.value)
   }
-  onActiveChanged: if (!active) { mode = "idle"; cards = [] }
+  onActiveChanged: { if (!active) { mode = "idle"; cards = [] } else rescan.restart() }
 
   // ================================================================ surfaces
   property var homeScreenItem: null      // the overlay's copy on the gesture's screen (for icon rects)
@@ -654,15 +747,17 @@ Item {
             opacity: home.cfg.dim * Math.max(0, dimV.value)   // 0 since 2026-10-28 (Henri: no grey veil)
             visible: opacity > 0.002
           }
+          // the cards stay between gestures (kept by window), and so do their snapshots: a gesture
+          // starts on the last one at once and only asks for a fresh one
           Repeater {
-            model: overlay.mine ? home.cards : []
+            model: ScriptModel { values: overlay.mine ? home.cards : []; objectProp: "key" }
             Card {
               required property var modelData
               entry: modelData
               areaW: overlay.width
               areaH: overlay.height
               labelOn: Math.max(0, labelV.value)
-              capture: modelData.key === (home.cards[home.cur] ? home.cards[home.cur].key : "")
+              capture: true
               Component.onCompleted: home.register(modelData.key, this)
               Component.onDestruction: home.register(modelData.key, null)
             }

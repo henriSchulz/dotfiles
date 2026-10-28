@@ -59,6 +59,7 @@ Item {
     for (var i = 0; i < actions.length; i++) {
       var a = actions[i]
       note(a.do + (a.phase ? ":" + a.phase : "") + (a.step ? ":" + a.step : ""))
+      if (root.active && (a.do === "tap" || a.do === "longpress" || a.do === "down" || (a.do === "slide" && a.phase === "end"))) homeCtl.other(a.do)
       if (root.active && (a.do === "lift" || a.do === "home" || a.do === "switcher")) {
         // tablet mode: the home screen and App Switcher of Home.qml follow the finger
         if (a.do === "lift") {
@@ -359,6 +360,7 @@ Item {
     function state(): string { return JSON.stringify({ active: root.active, screens: root.active ? Quickshell.screens.length : 0, log: root.log, castScreen: windowBar.castScreen, window: windowBar.ipc ? windowBar.ipc.class : "", windowBarOpen: windowBar.open }) }
     function clearLog(): string { root.log = []; homeCtl.log = []; return "ok" }
     function home(): string { return JSON.stringify({ empty: homeCtl.emptyOn(homeCtl.screenName), mode: homeCtl.mode, screen: homeCtl.screenName, cards: homeCtl.cards.map(c => c.appId), at: homeCtl.cards.map((c, i) => { var k = homeCtl.card(i); return k ? [Math.round(k.px), Math.round(k.py), +k.ps.toFixed(2), +k.po.toFixed(2)] : null }), zoneFinger: homeCtl.zoneFinger,  cur: homeCtl.cur, armed: homeCtl.armed, fromHome: homeCtl.fromHome, area: [homeCtl.areaW, homeCtl.areaH], apps: homeCtl.gridApps.length, dock: homeCtl.dockApps.map(a => a.id), recent: homeCtl.recentApps.map(a => a.id), page: homeCtl.page, log: homeCtl.log }) }
+    function homeStats(): string { return JSON.stringify(homeCtl.stats) }
     function homeOpen(id: string): string { homeCtl.openApp(id); return homeCtl.mode }
     function pauseHome(on: string): string { root.homePaused = on === "toggle" ? !root.homePaused : on === "on" || on === "true"; return String(root.homePaused) }
     function tap(screen: string): string { windowBar.toggle(screen); return windowBar.openOn }

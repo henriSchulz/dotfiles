@@ -50,15 +50,25 @@ function create(cfg) {
   function travelUp() { return samples.length ? y0 - samples[samples.length - 1][2] : 0 }
 
   // lift → switcher once the finger rests high enough for holdTime
+  // A pause is seen in the finger's own events: slow over a span of real samples. Silence alone is
+  // no pause until restGap — events from a cast arrive in bursts with gaps of 200–300 ms in the
+  // middle of a swipe (measured 2026-10-28), and counting those as rests opened the switcher
+  // instead of going home.
   function checkHold(t) {
     if (mode !== "lift") return []
+    if (travelUp() < cfg.holdTravel) { slowSince = -1; return [] }
+    var last = samples.length ? samples[samples.length - 1][0] : t
+    var silent = t - last
+    if (silent >= cfg.restGap) return arm()
+    var span = samples.length > 1 ? last - samples[0][0] : 0
+    if (span < cfg.sampleWindow / 2) return []          // too few events to tell: wait for more
     var v = velocity()
-    var speed = Math.sqrt(v.x * v.x + v.up * v.up)
-    // a finger that has not moved for a while has a stale window: count it as resting
-    var resting = samples.length && t - samples[samples.length - 1][0] >= cfg.sampleWindow
-    if (travelUp() < cfg.holdTravel || (speed >= cfg.holdSpeed && !resting)) { slowSince = -1; return [] }
-    if (slowSince < 0) { slowSince = t; return [] }
-    if (t - slowSince < cfg.holdTime) return []
+    if (Math.sqrt(v.x * v.x + v.up * v.up) >= cfg.holdSpeed) { slowSince = -1; return [] }
+    if (slowSince < 0) { slowSince = last; return [] }
+    if (last - slowSince < cfg.holdTime && silent < cfg.holdTime) return []
+    return arm()
+  }
+  function arm() {
     mode = "switcher"
     return [{ do: "switcher", phase: "start", delta: -travelUp() }]
   }
@@ -110,7 +120,7 @@ function create(cfg) {
         if (travelUp() >= cfg.homeTravel || v.up >= cfg.homeFlick) out.push({ do: "home", velocity: v.up, vx: v.x, dx: dx })
         else out.push({ do: "lift", phase: "end", travel: Math.max(0, travelUp()), velocity: v.up, vx: v.x, dx: dx })
       } else if (was === "switcher") {
-        out.push({ do: "switcher", phase: "end", cancelled: false, dx: dx, travel: travelUp() })
+        out.push({ do: "switcher", phase: "end", cancelled: false, dx: dx, travel: travelUp(), velocity: v.up })
       } else if (was === "slide") {
         out.push({ do: "slide", phase: "end", dx: dx })
         var flick = Math.abs(v.x) >= cfg.slideFlick && (v.x > 0) === (dx > 0)

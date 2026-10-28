@@ -92,6 +92,22 @@ test("a pause shorter than holdTime does not open the switcher", () => {
   pts.push([t + cfg.sampleWindow / 2, x, y - 1], [t + cfg.sampleWindow, x, y - 60]);
   assert.ok(!kinds(play(pts, { tick: true })).includes("switcher:start"));
 });
+test("a gap in the events mid-swipe (a cast's burst) is no pause", () => {
+  const pts = stroke(X, H - 8, 0, -(cfg.holdTravel + 40), 200);
+  const [t, x, y] = pts[pts.length - 1];
+  pts.push(...stroke(x, y, 0, -150, 150, t + cfg.restGap - 40).slice(0));
+  const k = kinds(play(pts, { tick: true }));
+  assert.ok(!k.includes("switcher:start"), k.join(" "));
+  assert.strictEqual(last(play(pts, { tick: true })), "home");
+});
+test("silence past restGap high enough is a pause", () => {
+  const pts = stroke(X, H - 8, 0, -(cfg.holdTravel + 40), 200);
+  const [t, x, y] = pts[pts.length - 1];
+  const g = G.create(cfg); g.down(pts[0][0], pts[0][1], pts[0][2]);
+  for (const p of pts.slice(1)) g.move(...p);
+  const a = JSON.parse(JSON.stringify(g.tick(t + cfg.restGap + 5)));
+  assert.deepStrictEqual(a.map(x => x.do + ":" + x.phase), ["switcher:start"]);
+});
 test("in the switcher, moves become deltas (up negative) and the watchdog is fed at rest", () => {
   const pts = strokeThenRest(X, H - 8, 0, -(cfg.holdTravel + 40), 250, 300);
   const [t, x, y] = pts[pts.length - 1];

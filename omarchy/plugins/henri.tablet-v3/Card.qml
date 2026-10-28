@@ -70,6 +70,8 @@ Item {
     _lastJump = 0
     if (!anim.running) anim.start()
   }
+  // a fresh snapshot (the old one stays on screen until it arrives)
+  function refresh() { if (shot.captureSource) shot.captureFrame() }
   function settled(keys) {
     for (var i = 0; i < keys.length; i++) if (_live[keys[i]]) return false
     return true

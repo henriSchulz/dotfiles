@@ -137,6 +137,29 @@ if runs H7; then
   [[ $a ]] && hyprctl dispatch "hl.dsp.window.close({ window = 'address:$a' })" >/dev/null
 fi
 
+if runs H8; then
+  # on the home screen the cards follow a slow pull and sink back when it lets go low
+  pt m 60 $((H / 2)) d s 40 u; sleep 1.4          # (H5 left the home screen up)
+  y=$((H - 6)); edge down $X $y
+  for i in $(seq 1 6); do edge move $X $((y - 10 * i)); sleep 0.016; done
+  sleep 0.1; mid=$(hm | jq -r .mode); shot H8-follow
+  edge up $X $((y - 60)); sleep 0.8
+  want H8 "a short pull on the home screen: the cards come under the finger, then sink back" "$mid,$(hm | jq -r .mode)" "homeDrag,home"
+fi
+
+if runs H9; then
+  # from an app: arm the switcher, then pull back to the edge: the app again
+  a=$(hyprctl clients -j | jq -r '[.[] | select(.monitor == ('"$(hyprctl monitors -j | jq '.[] | select(.name=="TB") | .id')"'))][0].address')
+  hyprctl dispatch "hl.dsp.focus({ window = 'address:$a' })" >/dev/null; sleep 1.2
+  c henri.tablet clearLog >/dev/null
+  y=$((H - 6)); edge down $X $y
+  for i in $(seq 1 14); do edge move $X $((y - 14 * i)); sleep 0.016; done
+  sleep 0.45
+  for i in $(seq 13 -1 1); do edge move $X $((y - 14 * i)); sleep 0.016; done
+  edge up $X $((y - 10)); sleep 1
+  want H9 "armed, then pulled back down: back to the app" "$(hm | jq -r '(.log | index("armed") != null | tostring) + "," + .mode')" "true,idle"
+fi
+
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"
 [[ ${KEEP:-} ]] || rig/rig.sh stop >/dev/null 2>&1
 [[ $fail == 0 ]]
