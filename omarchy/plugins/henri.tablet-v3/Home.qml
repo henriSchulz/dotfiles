@@ -488,7 +488,7 @@ Item {
     backdrop(0, 1, 1, false)
     enterLater.restart()                     // the cards exist (Repeater) on the next turn
   }
-  // the cards fly in from the lower left, the leftmost first (the iPad, Henri 2026-10-28)
+  // the cards slide in from the left, beside the screen, the leftmost first (the iPad, Henri 2026-10-28)
   Timer {
     id: enterLater
     interval: 0
@@ -503,8 +503,8 @@ Item {
         var order = cols - 1 - col                                    // 0 = the leftmost column
         var fly = home.preset(home.cfg.flyInResponse + order * home.cfg.flyInStagger, home.cfg.flyInDamping)
         o.capture = true
-        o.set("x", p.x - home.areaW * home.cfg.enterFromLeft); o.set("y", p.y + home.areaH * home.cfg.enterFrom)
-        o.set("s", g.s * home.cfg.dockIcon); o.set("m", 0); o.set("o", 0); o.set("l", 0)
+        o.set("x", p.x - home.areaW * home.cfg.enterFromLeft); o.set("y", p.y)
+        o.set("s", g.s); o.set("m", 0); o.set("o", 0); o.set("l", 0)
         o.to("x", p.x, fly); o.to("y", p.y, fly); o.to("s", g.s, fly); o.to("o", 1, fly)
       }
       dimV.target = 1; labelV.target = 1
