@@ -36,6 +36,7 @@ Item {
   property var manifest: null
 
   readonly property var tt: Theme.core.surface.tablet
+  readonly property bool inRig: Quickshell.env("VELUM_SHELL_RIG") !== ""
   readonly property bool active: Theme.touch
   // Mission Control counts touchpad units: gestureDistance (150) for a full open
   readonly property real mcUnits: 150 / tt.switcherTravel
@@ -63,11 +64,11 @@ Item {
       if (root.active && (a.do === "lift" || a.do === "home" || a.do === "switcher")) {
         // tablet mode: the home screen and App Switcher of Home.qml follow the finger
         if (a.do === "lift") {
-          if (a.phase === "move") homeCtl.lift(a.up, a.dx, a.vy)
+          if (a.phase === "move") homeCtl.lift(a.up, a.dx, a.vy, a.x0)
           else homeCtl.release(a.phase === "cancel" ? "cancel" : "end", a)
         } else if (a.do === "home") homeCtl.release("home", a)
         else if (a.phase === "start") homeCtl.arm()
-        else if (a.phase === "update") { if (a.up !== undefined) homeCtl.lift(a.up, a.dx, a.vy) }
+        else if (a.phase === "update") { if (a.up !== undefined) homeCtl.lift(a.up, a.dx, a.vy, a.x0) }
         else homeCtl.release(a.cancelled ? "cancel" : "switcher", a)
       } else if (a.do === "home") {
         mc("toggle()", "mission-control toggle mission")
@@ -352,16 +353,25 @@ Item {
     repeat: true
     onTriggered: if (root.castBottom) root.run(root.castBottom.gesture.tick(Date.now()), root.castBottom.screen)
   }
+  function edgeLine(d) {
+    d = String(d)
+    if (d.indexOf("velum-edge ") !== 0 || d.length > 96) return
+    var f = d.split(" "), x = Number(f[4]), y = Number(f[5])
+    if (f.length !== 6 || !isFinite(x) || !isFinite(y)) return
+    if ((f[2] !== "top" && f[2] !== "bottom") || ["down", "move", "up", "cancel"].indexOf(f[3]) < 0) return
+    root.castEdge(f[1], f[2], f[3], x, y)
+  }
   Connections {
     target: Hyprland
-    function onRawEvent(event) {
-      if (event.name !== "custom") return
-      var d = String(event.data)
-      if (d.indexOf("velum-edge ") !== 0 || d.length > 96) return
-      var f = d.split(" "), x = Number(f[4]), y = Number(f[5])
-      if (f.length !== 6 || !isFinite(x) || !isFinite(y)) return
-      if ((f[2] !== "top" && f[2] !== "bottom") || ["down", "move", "up", "cancel"].indexOf(f[3]) < 0) return
-      root.castEdge(f[1], f[2], f[3], x, y)
+    function onRawEvent(event) { if (event.name === "custom") root.edgeLine(event.data) }
+  }
+  // the fast way in: ipadcast keeps a connection to this socket and writes one line per event
+  // (through Hyprland's socket every event was its own connection and came in 200-300 ms bursts)
+  SocketServer {
+    active: !root.inRig || Quickshell.env("VELUM_EDGE_SOCKET") !== ""
+    path: Quickshell.env("VELUM_EDGE_SOCKET") || (Quickshell.env("XDG_RUNTIME_DIR") + "/velum-edge.sock")
+    handler: Socket {
+      parser: SplitParser { onRead: function (line) { root.edgeLine(line) } }
     }
   }
 

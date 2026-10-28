@@ -94,10 +94,10 @@ function create(cfg) {
       }
       if (mode === "slide") out.push({ do: "slide", phase: "move", dx: dx })
       if (mode === "lift") {
-        out.push({ do: "lift", phase: "move", travel: Math.max(0, up), up: up, dx: dx, vy: velocity().up })
+        out.push({ do: "lift", phase: "move", travel: Math.max(0, up), up: up, dx: dx, vy: velocity().up, x0: x0 })
         out = out.concat(checkHold(t))
       } else if (mode === "switcher") {
-        out.push({ do: "switcher", phase: "update", delta: y - lastY, up: up, dx: dx, vy: velocity().up })
+        out.push({ do: "switcher", phase: "update", delta: y - lastY, up: up, dx: dx, vy: velocity().up, x0: x0 })
       }
       lastY = y
       return out

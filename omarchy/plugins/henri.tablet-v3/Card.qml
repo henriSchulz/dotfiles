@@ -145,7 +145,8 @@ Item {
     property real inset: card.inset
     property real radius: card.radius
     property real aa: 1 / Math.max(card.ps, 0.05)
-    property real fade: 1 - smooth(0.25, 0.85, card.pm)
+    // SpringBoard crossfades on the shape morph: the icon from fadeFrom over fadeSpan
+    property real fade: 1 - smooth(card.cfg.fadeFrom, card.cfg.fadeFrom + card.cfg.fadeSpan, card.pm)
     function smooth(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t) }
     fragmentShader: Qt.resolvedUrl("shaders/card.frag.qsb")
   }
@@ -158,7 +159,7 @@ Item {
     sourceSize.width: card.cfg.iconTexture
     sourceSize.height: card.cfg.iconTexture
     asynchronous: true
-    opacity: { var t = Math.max(0, Math.min(1, (card.pm - 0.1) / 0.5)); return t * t * (3 - 2 * t) }
+    opacity: { var t = Math.max(0, Math.min(1, (card.pm - card.cfg.fadeFrom) / card.cfg.fadeSpan)); return t * t * (3 - 2 * t) }
     visible: opacity > 0.01
   }
 

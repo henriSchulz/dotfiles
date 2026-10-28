@@ -8,6 +8,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 shell=$(cd "$here/../.." && pwd)
 cd "$shell"
 export VELUM_RIG_ID=tablet VELUM_TOUCH=1 VELUM_TABLET_LAUNCH=1
+export VELUM_EDGE_SOCKET=$PWD/rig/state/tablet/edge.sock
 export VELUM_RIG_PLUGINS="henri.bar-v3 henri.control-center-v3 henri.clock-v3 henri.power-v3 henri.dock-v3 henri.tablet-v3 henri.menu-v3"
 R=rig/state/tablet
 FILTER=${1:-}
@@ -156,8 +157,24 @@ if runs H9; then
   for i in $(seq 1 14); do edge move $X $((y - 14 * i)); sleep 0.016; done
   sleep 0.45
   for i in $(seq 13 -1 1); do edge move $X $((y - 14 * i)); sleep 0.016; done
-  edge up $X $((y - 10)); sleep 1
+  edge up $X $((y - 10)); sleep 1.8
   want H9 "armed, then pulled back down: back to the app" "$(hm | jq -r '(.log | index("armed") != null | tostring) + "," + .mode')" "true,idle"
+fi
+
+if runs H10; then
+  # the fast way in: a whole swipe written to the shell's own socket, as ipadcast sends it
+  a=$(hyprctl clients -j | jq -r '[.[] | select(.monitor == ('"$(hyprctl monitors -j | jq '.[] | select(.name=="TB") | .id')"'))][0].address')
+  hyprctl dispatch "hl.dsp.focus({ window = 'address:$a' })" >/dev/null; sleep 1.2
+  python3 - "$VELUM_EDGE_SOCKET" $X $((H - 6)) <<'PY'
+import socket, sys, time
+s = socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); x, y = int(sys.argv[2]), int(sys.argv[3])
+send = lambda p, yy: s.sendall(f"velum-edge TB bottom {p} {x} {yy}\n".encode())
+send("down", y)
+for i in range(1, 21): send("move", y - 18 * i); time.sleep(0.008)
+send("up", y - 360); s.close()
+PY
+  sleep 1.4
+  want H10 "a fast swipe through the edge socket goes home" "$(hm | jq -r .mode),$(c henri.tablet homeStats | jq -r '.[-1].lifts > 10')" "home,true"
 fi
 
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"

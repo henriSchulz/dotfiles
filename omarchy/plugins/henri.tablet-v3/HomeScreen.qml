@@ -32,15 +32,20 @@ Item {
   readonly property real cellH: (height - g.top - g.bottom) / g.rows
   readonly property var lp: Theme.core.surface.launchpad
 
-  // where an app's icon sits, in `item`'s coordinates (the dock first, then the page on screen)
+  // where an app's icon sits once the home screen has settled, in `item`'s coordinates (the dock
+  // first, then the page on screen) — not where it is mid-animation: the grid may still be zoomed
+  // and the dock still sliding in
   function iconRect(id, item) {
     for (var i = 0; i < dockRow.children.length; i++) {
       var d = dockRow.children[i]
-      if (d.appId === id) { var p = d.mapToItem(item, 0, 0); return { x: p.x, y: p.y, w: d.width } }
+      if (d.appId === id) { var p = d.mapToItem(item, 0, 0); return { x: p.x, y: p.y - hs.dockShift, w: d.width } }
     }
     for (var j = 0; j < grid.count; j++) {
       var t = grid.itemAt(j)
-      if (t && t.appId === id && t.pageOf === hs.page) { var q = t.icon.mapToItem(item, 0, 0); return { x: q.x, y: q.y, w: t.icon.width } }
+      if (t && t.appId === id && t.pageOf === hs.page) {
+        var q = hs.mapToItem(item, -hs.page * hs.width + t.x + t.icon.x, t.y + t.icon.y)
+        return { x: q.x, y: q.y, w: t.icon.width }
+      }
     }
     return null
   }

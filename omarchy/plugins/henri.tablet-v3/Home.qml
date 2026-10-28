@@ -191,6 +191,10 @@ Item {
   // settle    the overlay covers a change underneath, then lets go
   // home      the home screen (an empty workspace), nothing drawn over it
   property string mode: "idle"
+  function preset(r, d) { return { response: r / 1000 * (Theme.reduceMotion ? 0 : 1), dampingRatio: d } }
+  readonly property var backPreset: preset(cfg.backResponse, cfg.backDamping)
+  readonly property var switcherPreset: preset(cfg.switcherResponse, cfg.switcherDamping)
+  readonly property var flyInPreset: preset(cfg.flyInResponse, cfg.flyInDamping)
   readonly property var followPreset: ({ response: cfg.followResponse / 1000 * (Theme.reduceMotion ? 0 : 1), dampingRatio: cfg.followDamping })
   property string screenName: ""
   property var cards: []            // the entries shown as cards, oldest first
@@ -209,11 +213,14 @@ Item {
   // The backdrop, as SpringBoard layers it: the home screen's icons (homeV) only appear when the
   // card goes home; behind a dragged card and in the switcher lies the blurred wallpaper (blurV);
   // the dock slides up when a gesture starts and stays through the switcher (dockV).
-  Spring { id: homeV; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion }
-  Spring { id: blurV; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion }
+  Spring { id: homeV; preset: home.preset(home.cfg.homeScreenResponse, home.cfg.homeScreenDamping); reduced: Theme.reduceMotion }
+  Spring { id: blurV; preset: home.preset(home.cfg.blurResponse, home.cfg.blurDamping); reduced: Theme.reduceMotion }
   Spring { id: dockV; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion }
+  // a spring sits at v and stays there: Spring.snap() keeps the old target, so the next same
+  // target would not move it (the dock stayed down after a gesture that had snapped it)
+  function jumpTo(sp, v) { sp.target = v; sp.snap(v) }
   function backdrop(grid, blur, dock, now) {
-    if (now) { homeV.snap(grid); blurV.snap(blur); dockV.snap(dock) }
+    if (now) { jumpTo(homeV, grid); jumpTo(blurV, blur); jumpTo(dockV, dock) }
     else { homeV.target = grid; blurV.target = blur; dockV.target = dock }
   }
   Spring { id: dimV; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion }
@@ -259,7 +266,7 @@ Item {
     if (at < 0) return
     cards = list
     cur = at
-    backdrop(0, 0, 0, true); dimV.snap(0); labelV.snap(0)
+    backdrop(0, 0, 0, true); jumpTo(dimV, 0); jumpTo(labelV, 0)
     for (var j = 0; j < list.length; j++) {
       var o = cardItems[list[j].key]
       if (!o) continue
@@ -274,7 +281,7 @@ Item {
   }
 
   // ---- the finger moves up (lift) — or keeps moving while the switcher is armed
-  function lift(up, dx, vy) {
+  function lift(up, dx, vy, x0) {
     if (fromHome) { liftFromHome(up); return }
     if (mode !== "ready" && mode !== "drag") return
     var c = card(cur)
@@ -285,6 +292,8 @@ Item {
     if (stat.shot < 0) stat.shot = now - stat.t0
     mode = "drag"
     var f = HM.follow(up, dx, areaW, areaH, cfg, { left: cur <= 0, right: cur >= cards.length - 1 }, vy || 0)
+    // SpringBoard scales the card about the finger's x, not the screen's centre
+    if (x0 !== undefined) f.x += (1 - f.s) * (x0 - areaW / 2)
     // a very fast spring instead of a jump: finger events from a cast come unevenly, the card glides
     var fp = followPreset
     c.to("x", f.x, fp); c.to("y", f.y, fp); c.to("s", f.s, fp)
@@ -302,9 +311,9 @@ Item {
     if (!cards.length) cards = scanWindows(screenName)
     if (!cards.length) return
     var p = Math.max(0, Math.min(1, up / (2 * tt.holdTravel)))
-    if (mode === "home") { mode = "homeDrag"; backdrop(1, 0, 1, true); dimV.snap(0) }
-    homeV.snap(1 - p); blurV.snap(p)
-    labelV.snap(p)
+    if (mode === "home") { mode = "homeDrag"; backdrop(1, 0, 1, true); jumpTo(dimV, 0) }
+    jumpTo(homeV, 1 - p); jumpTo(blurV, p)
+    jumpTo(labelV, p)
     var g = HM.switcherGeo(cards.length, areaW, areaH, cfg)
     swX = g.lo
     for (var i = 0; i < cards.length; i++) {
@@ -355,7 +364,7 @@ Item {
     var to = HM.destination(info.travel || 0, info.dx || 0, info.velocity || 0, info.vx || 0,
                             cards.length, cur, areaW, areaH, cfg, tt)
     stat.decided = to
-    if (to === "home") toHome(hand)
+    if (to === "home") toHome(hand, info.velocity || 0)
     else if (to === "switcher") toSwitcher(hand)
     else if (to === "next" || to === "prev") openCard(cur + (to === "next" ? 1 : -1), hand)
     else back(hand)
@@ -393,10 +402,11 @@ Item {
       var o = card(i)
       if (!o) continue
       var here = i === at
-      o.to("x", HM.besideX(i, at, 1, 0, areaW, cfg), "snappy", here && hand ? hand.x : undefined)
-      o.to("y", 0, "snappy", here && hand ? hand.y : undefined)
-      o.to("s", 1, "snappy", here && hand ? hand.s : undefined)
-      o.to("m", 0, "snappy"); o.to("l", 0, "snappy"); if (here) o.to("o", 1, "snappy")
+      var bp = home.backPreset
+      o.to("x", HM.besideX(i, at, 1, 0, areaW, cfg), bp, here && hand ? hand.x : undefined)
+      o.to("y", 0, bp, here && hand ? hand.y : undefined)
+      o.to("s", 1, bp, here && hand ? hand.s : undefined)
+      o.to("m", 0, bp); o.to("l", 0, bp); if (here) o.to("o", 1, bp)
       o.z = here ? 2 : 1
     }
     backdrop(0, 0, 0, false); dimV.target = 0; labelV.target = 0
@@ -406,16 +416,24 @@ Item {
     layoutApp(cur, hand)
     settleWhen(function () { var c = card(cur); return !c || c.settled(["x", "y", "s"]) }, "idle", false)
   }
-  function toHome(hand) {
+  function toHome(hand, vUp) {
     note("home")
     var c = card(cur), e = cards[cur]
     var r = homeScreenItem ? homeScreenItem.iconRect(e.appId, coverItem || homeScreenItem) : null
-    var tx = r ? r.x + r.w / 2 - areaW / 2 : 0, ty = r ? r.y + r.w / 2 - areaH / 2 : areaH * cfg.enterFrom
+    // no icon on screen (another page): it shrinks in the middle and fades
+    var tx = r ? r.x + r.w / 2 - areaW / 2 : 0, ty = r ? r.y + r.w / 2 - areaH / 2 : 0
     var size = r ? r.w : HM.grid(areaW, areaH, cfg).icon
-    // SpringBoard's flight into the icon: its own spring, half the finger's vertical speed
-    var fly = { response: cfg.flyResponse / 1000, dampingRatio: cfg.flyDamping }
-    c.to("x", tx, fly, hand.x); c.to("y", ty, fly, hand.y * cfg.flyVelocity); c.to("s", size / areaH, fly, hand.s)
-    c.to("m", 1, fly); c.z = 2
+    // SpringBoard's flight into the icon: the position on its own spring with half the finger's
+    // vertical speed (it carries on up, then arcs to the icon); the window turns into the icon
+    // quickly on faster springs (the iPad video: an icon after ~0.12 s, landed after ~0.35 s)
+    var fly = preset(cfg.flyResponse, cfg.flyDamping)
+    var shrink = preset(cfg.scaleResponse, cfg.scaleDamping)
+    var morph = preset(cfg.morphResponse, cfg.morphDamping)
+    // the scale is handed the finger's speed (SpringBoard: 1.5 × vy / H, capped)
+    var sv = -Math.min(cfg.scaleVelocityCap, cfg.scaleVelocity * Math.max(0, vUp || 0) / areaH)
+    c.to("x", tx, fly, hand.x); c.to("y", ty, fly, hand.y * cfg.flyVelocity); c.to("s", size / areaH, shrink, sv)
+    c.to("m", 1, morph); c.z = 2
+    if (!r) c.to("o", 0, shrink)
     for (var i = 0; i < cards.length; i++) if (i !== cur && card(i)) card(i).to("o", 0, "snappy")
     backdrop(1, 0, 1, false); dimV.target = 0; labelV.target = 0
     settleWhen(function () { return c.settled(["x", "y", "s"]) }, "home", true)
@@ -437,10 +455,12 @@ Item {
       if (!o) continue
       var p = HM.switcherPos(i, cards.length, swX, g, cfg), here = i === cur
       o.capture = true
-      o.to("x", p.x, "snappy", here && hand ? hand.x : undefined)
-      o.to("y", p.y, "snappy", here && hand ? hand.y : undefined)
-      o.to("s", g.s, "snappy", here && hand ? hand.s : undefined)
-      o.to("m", 0, "snappy"); o.to("o", 1, "snappy"); o.to("l", 0, "snappy")
+      // the dragged card on SpringBoard's app-to-switcher spring, the others fly in
+      var sp = here ? switcherPreset : flyInPreset
+      o.to("x", p.x, sp, here && hand ? hand.x : undefined)
+      o.to("y", p.y, sp, here && hand ? hand.y : undefined)
+      o.to("s", g.s, sp, here && hand ? hand.s : undefined)
+      o.to("m", 0, sp); o.to("o", 1, sp); o.to("l", 0, sp)
       o.z = 1
     }
     backdrop(0, 1, 1, false); dimV.target = 1; labelV.target = 1
@@ -468,7 +488,7 @@ Item {
     note("switcher from home")
     cards = list
     cur = list.length - 1
-    backdrop(1, 0, 1, true); dimV.snap(0); labelV.snap(0)
+    backdrop(1, 0, 1, true); jumpTo(dimV, 0); jumpTo(labelV, 0)
     mode = "switcher"
     // the cards come up from below once they exist (Repeater): placeAndEnter runs on the next frame
     enterLater.restart()
@@ -565,7 +585,7 @@ Item {
       launchOpened = false
       launchStart = Date.now()
     }
-    backdrop(1, 0, 1, true); dimV.snap(0); labelV.snap(0)
+    backdrop(1, 0, 1, true); jumpTo(dimV, 0); jumpTo(labelV, 0)
     mode = "settle"
     openFrom = r
     openLater.restart()
@@ -662,7 +682,7 @@ Item {
     command: ["readlink", "-f", home.wallpaperLink]
     stdout: StdioCollector { onStreamFinished: home.wallpaperTarget = String(text || "").trim().slice(0, 512) }
   }
-  Component.onCompleted: { wallpaperProbe.running = true; scanApps() }
+  Component.onCompleted: { wallpaperProbe.running = true; scanApps(); Hyprland.refreshMonitors(); rescan.restart() }
   onModeChanged: if (mode === "ready") wallpaperProbe.running = true
 
   Variants {
@@ -674,6 +694,11 @@ Item {
       readonly property string name: modelData.name
 
       property real homeH: 0
+      // the bar's and the home zone's reserved strips (Hyprland): where the home screen's own window sits
+      readonly property var reserved: {
+        var m = home.monitorOf(per.name), r = m && m.lastIpcObject ? m.lastIpcObject.reserved : null
+        return r && r.length === 4 ? r : [0, 0, 0, home.tt.homeZone]
+      }
       // the home screen itself, under the windows of an empty workspace
       PanelWindow {
         screen: per.modelData
@@ -715,7 +740,10 @@ Item {
         exclusiveZone: 0
         color: "transparent"
         readonly property bool mine: home.screenName === per.name
-        visible: mine && home.mode !== "idle" && home.mode !== "home"
+        // mapped for as long as tablet mode is on: unmapping dropped every texture (wallpaper, blur,
+        // snapshots), and building them again stalled the first frames of each gesture ~200 ms
+        visible: mine
+        readonly property bool shown: home.mode !== "idle" && home.mode !== "home" && home.mode !== "ready"
         WlrLayershell.namespace: "velum-home-overlay"
         // overlay layer: the top layer is hidden under a fullscreen app
         WlrLayershell.layer: WlrLayer.Overlay
@@ -734,7 +762,7 @@ Item {
         Item {
           id: cover
           anchors.fill: parent
-          opacity: home.mode === "ready" ? 0 : 1      // clear until the snapshot is there
+          opacity: overlay.shown ? 1 : 0              // clear at rest and until the snapshot is there
           clip: true
 
           // the wallpaper, as the compositor draws it under the whole screen
@@ -777,9 +805,9 @@ Item {
           HomeScreen {
             id: shadowHome
             x: 0
-            y: Math.max(0, overlay.height - per.homeH - home.tt.homeZone)
+            y: per.reserved[1]
             width: overlay.width
-            height: per.homeH > 0 ? per.homeH : overlay.height
+            height: overlay.height - per.reserved[1] - per.reserved[3]
             apps: home.gridApps
             dockApps: home.dockApps
             recentApps: home.recentApps
