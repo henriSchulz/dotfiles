@@ -72,6 +72,14 @@ Item {
   }
   // a fresh snapshot (the old one stays on screen until it arrives)
   function refresh() { if (shot.captureSource) shot.captureFrame() }
+  // close enough to the target to hand over: within a pixel, a hair of scale
+  function near(keys) {
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i], tol = k === "s" || k === "m" || k === "o" ? cfg.nearScale : cfg.nearPx
+      if (Math.abs(value(k) - _t[k]) > tol || Math.abs(_v[k]) > tol * cfg.nearSpeed) return false
+    }
+    return true
+  }
   function settled(keys) {
     for (var i = 0; i < keys.length; i++) if (_live[keys[i]]) return false
     return true

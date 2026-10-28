@@ -263,7 +263,7 @@ Item {
   // drop whatever the overlay is doing (a new finger always wins over a stuck animation)
   function abort() {
     settleTick.stop(); letGo.stop(); enterLater.stop(); openLater.stop(); closeLater.stop(); relayoutLater.stop()
-    settleCheck = null; launchedId = ""; armed = false
+    settleCheck = null; launchedId = ""; armed = false; homeSwitchAt = 0
     mode = emptyOn(screenName) ? "home" : "idle"
     note("abort")
     endStat("abort")
@@ -446,11 +446,16 @@ Item {
     if (!r) c.to("o", 0, shrink)
     for (var i = 0; i < cards.length; i++) if (i !== cur && card(i)) card(i).to("o", 0, "snappy")
     backdrop(1, 0, 1, false); dimV.target = 0; labelV.target = 0
-    settleWhen(function () { return c.settled(["x", "y", "s"]) }, "home", true)
+    // the workspace changes now, unseen under the card, so the bar comes down during the flight and
+    // the home screen's own surface is there when the overlay lets go
+    goHomeNow()
+    settleWhen(function () { return c.near(["x", "y", "s"]) }, "home", true)
   }
   // the first empty workspace on the gesture's screen (not just any empty one: another monitor's
   // would leave this screen on its app)
+  property real homeSwitchAt: 0       // when the last switch to an empty workspace went out
   function goHomeNow() {
+    homeSwitchAt = Date.now()
     var mon = String(screenName).replace(/[^A-Za-z0-9_-]/g, "")
     dispatch("function() hl.dispatch(hl.dsp.focus({ monitor = \"" + mon + "\" })) hl.dispatch(hl.dsp.focus({ workspace = \"emptynm\" })) end",
              "workspace emptynm")
@@ -526,6 +531,7 @@ Item {
     note("switcher home")
     for (var i = 0; i < cards.length; i++) { var o = card(i); if (o) { o.to("o", 0, "snappy"); o.to("s", o.value("s") * cfg.dockIcon, "snappy") } }
     backdrop(1, 0, 1, false); dimV.target = 0; labelV.target = 0
+    goHomeNow()
     settleWhen(function () { return true }, "home", true)
   }
   function closeCard(i) {
@@ -642,10 +648,13 @@ Item {
       stop()
       home.settleCheck = null
       if (home.settleTo === "home") {
-        home.goHomeNow()
+        if (!home.homeSwitchAt) home.goHomeNow()
         letGo.to = "home"
       } else letGo.to = "idle"
-      letGo.interval = home.settleWait || home.settleTo === "home" ? home.cfg.settle : (home.launchedId ? home.cfg.settle : Theme.dur("fast"))
+      // the workspace's slide may still run underneath: only what is left of it
+      var since = home.homeSwitchAt ? Date.now() - home.homeSwitchAt : 0
+      letGo.interval = home.settleTo === "home" ? Math.max(Theme.dur("fast"), home.cfg.settle - since)
+                     : home.settleWait || home.launchedId ? home.cfg.settle : Theme.dur("fast")
       letGo.restart()
     }
   }
@@ -654,6 +663,7 @@ Item {
     property string to: "idle"
     onTriggered: {
       home.mode = to
+      home.homeSwitchAt = 0
       home.launchedId = ""
       home.armed = false
       home.cards = home.scanWindows(home.screenName)
@@ -720,7 +730,8 @@ Item {
         exclusionMode: ExclusionMode.Normal
         exclusiveZone: 0
         color: "transparent"
-        visible: home.emptyOn(per.name) || (home.mode === "home" && home.screenName === per.name)
+        // also while the overlay is about to hand over to it: mapped before the overlay goes (no flicker)
+        visible: home.emptyOn(per.name) || (home.screenName === per.name && (home.mode === "home" || home.homeSwitchAt > 0))
         WlrLayershell.namespace: "velum-home-screen"
         WlrLayershell.layer: WlrLayer.Bottom
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
@@ -781,41 +792,56 @@ Item {
           opacity: overlay.shown ? 1 : 0              // clear at rest and until the snapshot is there
           clip: true
 
-          // the wallpaper, as the compositor draws it under the whole screen
-          Image {
-            width: per.modelData.width
-            height: per.modelData.height
-            source: "file://" + home.wallpaperLink + (home.wallpaperTarget ? "?v=" + encodeURIComponent(home.wallpaperTarget) : "")
-            fillMode: Image.PreserveAspectCrop
-            sourceSize.width: per.modelData.width
-            sourceSize.height: per.modelData.height
-            asynchronous: false
-            cache: true
-          }
-          // the same home screen as the bottom layer's, on the same spot (below the bar, above the home zone)
-          // the blurred wallpaper: a small copy blurred once into a cached layer, so it costs nothing per frame
+          // wallpaper and blur; once the home workspace is on its way the bar's strip stays clear, so
+          // the real bar (back over an empty workspace) comes down during the flight
           Item {
-            anchors.fill: parent
-            opacity: Math.max(0, Math.min(1, blurV.value))
-            visible: opacity > 0.002
-            layer.enabled: true
-            Image {
-              id: wallSmall
-              anchors.fill: parent
-              source: "file://" + home.wallpaperLink + (home.wallpaperTarget ? "?v=" + encodeURIComponent(home.wallpaperTarget) : "")
-              fillMode: Image.PreserveAspectCrop
-              sourceSize.width: per.modelData.width / home.cfg.blurDownscale
-              sourceSize.height: per.modelData.height / home.cfg.blurDownscale
-              visible: false
-              cache: true
-            }
-            MultiEffect {
-              anchors.fill: parent
-              source: wallSmall
-              blurEnabled: true
-              blur: 1
-              blurMax: home.cfg.blurMax
-              saturation: home.cfg.blurSaturation
+            id: backdropBox
+            readonly property real stripTop: home.homeSwitchAt > 0 ? per.reserved[1] : 0
+            y: stripTop
+            width: parent.width
+            height: parent.height - stripTop
+            clip: true
+            Item {
+              y: -backdropBox.stripTop
+              width: per.modelData.width
+              height: per.modelData.height
+              // the wallpaper, as the compositor draws it under the whole screen
+              Image {
+                width: per.modelData.width
+                height: per.modelData.height
+                source: "file://" + home.wallpaperLink + (home.wallpaperTarget ? "?v=" + encodeURIComponent(home.wallpaperTarget) : "")
+                fillMode: Image.PreserveAspectCrop
+                sourceSize.width: per.modelData.width
+                sourceSize.height: per.modelData.height
+                asynchronous: false
+                cache: true
+              }
+              // the same home screen as the bottom layer's, on the same spot (below the bar, above the home zone)
+              // the blurred wallpaper: a small copy blurred once into a cached layer, so it costs nothing per frame
+              Item {
+                anchors.fill: parent
+                opacity: Math.max(0, Math.min(1, blurV.value))
+                visible: opacity > 0.002
+                layer.enabled: true
+                Image {
+                  id: wallSmall
+                  anchors.fill: parent
+                  source: "file://" + home.wallpaperLink + (home.wallpaperTarget ? "?v=" + encodeURIComponent(home.wallpaperTarget) : "")
+                  fillMode: Image.PreserveAspectCrop
+                  sourceSize.width: per.modelData.width / home.cfg.blurDownscale
+                  sourceSize.height: per.modelData.height / home.cfg.blurDownscale
+                  visible: false
+                  cache: true
+                }
+                MultiEffect {
+                  anchors.fill: parent
+                  source: wallSmall
+                  blurEnabled: true
+                  blur: 1
+                  blurMax: home.cfg.blurMax
+                  saturation: home.cfg.blurSaturation
+                }
+              }
             }
           }
           HomeScreen {
