@@ -95,7 +95,21 @@ if hyprmc_fh then
   local ok, mod = pcall(dofile, hyprmc_lua)
   if ok then hyprmc = mod() end
 end
+-- Im Tablet-Modus (tablet.lua) wie ein iPad mit Magic Keyboard: der Wisch hoch
+-- ist die Home-Geste von henri.tablet-v3 – die App folgt den Fingern als Karte,
+-- weit/schnell geht's zum Home-Bildschirm, Hoch + Halten öffnet den App Switcher.
+-- Die Bewegung geht als "velum-pad <phase> <dx> <dy>" an die Shell, die damit
+-- denselben Gestenpfad fährt wie ein Finger am unteren Rand.
+local pad_phase = { start = "start", update = "move", ["end"] = "end" }
+local pad_on = false
 local function mc_gesture(phase, e)
+  if phase == "start" then pad_on = henri_tablet ~= nil and henri_tablet.on end
+  if pad_on then
+    local d = (phase == "update" and e.delta) or { x = 0, y = 0 }
+    local p = (phase == "end" and e.cancelled) and "cancel" or pad_phase[phase]
+    hl.dispatch(hl.dsp.event(string.format("velum-pad %s %.3f %.3f", p, d.x or 0, d.y or 0)))
+    return
+  end
   if hyprmc and hyprmc.available() then
     hyprmc.gesture(phase, e)
   else
