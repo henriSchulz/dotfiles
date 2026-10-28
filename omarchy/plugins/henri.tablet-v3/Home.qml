@@ -124,7 +124,9 @@ Item {
       if (!id || map[id] || home.systemHidden[id]) continue
       var cats = []
       try { cats = (e.categories || []).map(String) } catch (err) {}
-      map[id] = { id: id, name: String(e.name || id), icon: home.iconOf(e.icon), cats: cats }
+      var cmd = []
+      try { cmd = (e.command || []).map(String) } catch (err) {}
+      map[id] = { id: id, name: String(e.name || id), icon: home.iconOf(e.icon), cats: cats, command: cmd }
       if (!home.homeHides(e, id)) list.push(id)
     }
     list.sort(function (a, b) { return map[a].name.localeCompare(map[b].name) })
@@ -140,7 +142,13 @@ Item {
   property var savedFolders: ({})
   // widgets: an order entry each, the app a tap opens; one the saved order does not know yet
   // starts at the top left of the first page (iPadOS puts a new widget there)
-  readonly property var widgets: ({ "widget:photos": { name: "Photos", app: "de.henri.IcloudPhotos" } })
+  // `open`: the app's arguments that show the widget's item (the photo on it)
+  readonly property var widgets: ({ "widget:photos": { name: "Photos", app: "de.henri.IcloudPhotos", open: ["--open"] } })
+  function openWidget(id, item) {
+    var w = widgets[id]
+    if (!w || !entries[w.app]) return
+    guard("openApp", function () { home.openApp(w.app, item && w.open ? w.open.concat([item]) : [], id) })
+  }
   readonly property var layout: {
     var ids = Object.keys(widgets).concat(gridApps.map(function (a) { return a.id }))
     var saved = savedOrder.slice()
@@ -679,7 +687,9 @@ Item {
   }
 
   // ---- from the home screen: an app's icon
-  function openApp(id) {
+  // args: started with them (also when it runs: a running app takes them over D-Bus and shows
+  // the item); from: the tile the card grows out of when it is not the app's icon (a widget)
+  function openApp(id, args, from) {
     if (!active) return
     var e = entries[id]
     if (!e) return
@@ -687,14 +697,16 @@ Item {
     var at = -1
     for (var i = list.length - 1; i >= 0; i--) if (list[i].appId === id) { at = i; break }
     note("tap " + id + (at >= 0 ? " (running)" : ""))
-    var r = homeScreenItem ? homeScreenItem.iconRect(id, coverItem || homeScreenItem) : null
+    var r = homeScreenItem ? homeScreenItem.iconRect(from || id, coverItem || homeScreenItem) : null
+    var cmd = args && args.length && e.command && e.command.length ? ["uwsm-app", "--"].concat(e.command, args) : null
+    if (cmd && (!inRig || Quickshell.env("VELUM_TABLET_LAUNCH") !== "")) Quickshell.execDetached(cmd)
     if (at >= 0) {
       cards = list
       cur = at
     } else {
       cards = [{ key: "launch:" + id, address: "", toplevel: null, workspace: 0, appId: id, icon: e.icon, name: e.name, focus: 0 }]
       cur = 0
-      if (!inRig || Quickshell.env("VELUM_TABLET_LAUNCH") !== "") Quickshell.execDetached(["uwsm-app", "--", "gtk-launch", id + ".desktop"])
+      if (!cmd && (!inRig || Quickshell.env("VELUM_TABLET_LAUNCH") !== "")) Quickshell.execDetached(["uwsm-app", "--", "gtk-launch", id + ".desktop"])
       launchedId = id
       launchOpened = false
       launchStart = Date.now()
@@ -907,10 +919,8 @@ Item {
           running: home.runningApps
           wallSource: home.wallpaperSource
           wallRect: Qt.rect(0, -per.reserved[1], per.modelData.width, per.modelData.height)
-          onTapped: function (id) {
-            if (HM.isWidget(id)) { id = home.widgets[id] ? home.widgets[id].app : ""; if (!id || !home.entries[id]) return }
-            home.screenName = per.name; home.guard("openApp", function () { home.openApp(id) })
-          }
+          onTapped: function (id) { home.screenName = per.name; home.guard("openApp", function () { home.openApp(id) }) }
+          onWidgetTapped: function (id, item) { home.screenName = per.name; home.openWidget(id, item) }
           onPageMoved: function (dx, t) { home.pageCount = pages; home.pageMoved(dx, t) }
           onPageReleased: function (v) { home.pageReleased(v, pages) }
         }

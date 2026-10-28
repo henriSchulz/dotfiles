@@ -54,6 +54,7 @@ Item {
   signal folded(string id, string target)   // a held icon dropped on an armed icon or folder
   signal unfolded(string id)         // an app dragged out of the open folder (edit mode)
   signal folderRequested(string id)  // open ("folder:…") or close ("") a folder
+  signal widgetTapped(string id, string item)   // a widget and what it shows (the photo's id)
 
   function slotOf(id) { var i = hs.shown.indexOf(id); return i < 0 ? 0 : i }
   // cells: a widget spans several, icons flow around it (HM.place)
@@ -91,6 +92,11 @@ Item {
     }
     for (var j = 0; j < grid.count; j++) {
       var t = grid.itemAt(j)
+      // a widget: its whole square (a card grows out of it)
+      if (t && t.isWidget && t.appId === id && t.pageOf === hs.page) {
+        var wq = hs.mapToItem(item, -hs.page * hs.width + t.x + t.icon.x, t.y + t.icon.y)
+        return { x: wq.x, y: wq.y, w: t.icon.width }
+      }
       // an app in a closed folder: the folder's tile (iPadOS flies back into the folder)
       if (t && (t.appId === id || t.holds(id)) && t.pageOf === hs.page) {
         var q = hs.mapToItem(item, -hs.page * hs.width + t.x + t.icon.x, t.y + t.icon.y)
@@ -123,6 +129,7 @@ Item {
         readonly property int pageOf: hs.cells[slot] ? hs.cells[slot].page : 0
         readonly property bool isWidget: !!modelData.widget
         readonly property var span: hs.spanOf(appId)
+        readonly property string widgetItem: isWidget && photo.current ? String(photo.current.id || "") : ""
         readonly property bool held: hs.dragId === appId
         readonly property bool isFolder: !!modelData.folder
         function holds(id) { return isFolder && modelData.items.some(function (a) { return a.id === id }) }
@@ -166,6 +173,7 @@ Item {
           // armed as a folder target: a plate grows behind the icon (or the folder's own grows)
           Spring { id: aim; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: hs.mergeId === tile.appId ? 1 : 0 }
           PhotoWidget {
+            id: photo
             anchors.fill: parent
             visible: tile.isWidget
             cfg: hs.wc
@@ -490,6 +498,10 @@ Item {
     }
     return ""
   }
+  function tileOf(id) {
+    for (var j = 0; j < grid.count; j++) { var t = grid.itemAt(j); if (t && t.appId === id) return t }
+    return null
+  }
   function gridTileAt(x, y) {
     for (var j = 0; j < grid.count; j++) {
       var t = grid.itemAt(j)
@@ -648,6 +660,7 @@ Item {
         // a folder opens with a tap, also in edit mode
         if (HM.isFolder(id) || (hs.editing && HM.isFolder(hs.appAt(x0, y0)))) { hs.folderRequested(id || hs.appAt(x0, y0)); return }
         if (hs.editing) { if (!hs.appAt(x0, y0)) hs.editRequested(false); return }
+        if (HM.isWidget(id)) { var wt = hs.tileOf(id); hs.widgetTapped(id, wt ? wt.widgetItem : ""); return }
         if (id) hs.tapped(id)
         return
       }
