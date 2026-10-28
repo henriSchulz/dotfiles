@@ -124,9 +124,11 @@ Item {
   // Velum: the islands carry the material, so the ink is always the popover ink
   // of the variant (Pearl by default); dark/light follows the wallpaper under
   // the bar (same measurement as Control Center v3, so both always agree).
-  property color themeForeground: Theme.r.popover.ink
+  // Smoke (surface.menubar, the dock's design 3): light ink on dark tinted glass
+  readonly property var smoke: Theme.core.surface.menubar
+  property color themeForeground: Theme.reduceTransparency ? Theme.r.popover.ink : smoke.ink
   property color themeContrastForeground: Theme.r.popover.bgOpaque
-  property color transparentForeground: Theme.r.popover.ink
+  property color transparentForeground: themeForeground
   property color foreground: themeForeground
   // The transparent bar's text colour is picked for the wallpaper. A bar over
   // a fullscreen window has no wallpaper behind it: it turns solid there and
@@ -136,7 +138,7 @@ Item {
   property bool foregroundAnimationEnabled: true
   // macOS-style menu bar: translucent so the Hyprland blur shows through.
   property real backgroundOpacity: 1
-  property color background: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+  property color background: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : smoke.tint
   property color urgent: Theme.r.accent.base
   VBackdrop { id: velumBackdrop; region: "40%x30%+0+0"; gravity: "North" }
   VelumSettings { id: velumSettings; priority: 2; prefersDark: velumBackdrop.dark }
@@ -1430,7 +1432,7 @@ Item {
     radius: height / 2
     color: root.background
     border.width: Theme.layout.separator
-    border.color: Theme.r.line.rim
+    border.color: Theme.reduceTransparency ? Theme.r.line.rim : root.smoke.rim
   }
 
   Component { id: emptyModuleComponent; Item { implicitWidth: 0; implicitHeight: 0; visible: false } }

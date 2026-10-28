@@ -67,6 +67,10 @@ BarWidget {
   readonly property real restW: faceW + Theme.layout.list.gap + iconSize + 2 * Theme.layout.capsule.padX
   // clicks left of this (widget x) are on the symbol, right of it on the dots
   readonly property real splitX: width / 2 + (iconSize - faceW) / 2
+  readonly property var smoke: Theme.core.surface.menubar
+  readonly property color ink: Theme.reduceTransparency ? Theme.r.popover.ink : smoke.ink
+  readonly property color inkSecondary: Theme.reduceTransparency ? Theme.r.popover.inkSecondary : smoke.inkSecondary
+  readonly property color inkTertiary: Theme.reduceTransparency ? Theme.r.ink.tertiary : smoke.inkTertiary
   readonly property real pillW: restW + (hover ? Theme.layout.module.pad : 0)
   implicitWidth: restW + 2 * Theme.layout.module.pad
   implicitHeight: barSize
@@ -77,8 +81,10 @@ BarWidget {
     // whole pixels, the same as islandRect(): the surface takes over exactly where the pill is
     x: Math.round((root.width - width) / 2); y: Math.round((root.height - height) / 2)
     width: pw.value; height: root.pillH; radius: height / 2
-    color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
-    border.width: Theme.layout.separator; border.color: Theme.r.line.rim
+    // at rest the island wears the menu bar's Smoke (surface.menubar); opened it grows into the
+    // Control Center's own material
+    color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : root.smoke.tint
+    border.width: Theme.layout.separator; border.color: Theme.reduceTransparency ? Theme.r.line.rim : root.smoke.rim
     opacity: island.shown ? 0 : 1
     Face { anchors.fill: parent }
   }
@@ -99,7 +105,7 @@ BarWidget {
     Row {
       anchors.centerIn: parent
       spacing: Theme.layout.list.gap
-      VIcon { anchors.verticalCenter: parent.verticalCenter; name: "control-center"; size: root.iconSize; surface: "popover" }
+      VIcon { anchors.verticalCenter: parent.verticalCenter; name: "control-center"; size: root.iconSize; surface: "popover"; color: root.ink }
       Item {
         width: root.faceW; height: root.pillH
         Row {
@@ -117,7 +123,7 @@ BarWidget {
               height: Theme.layout.list.gap - Theme.layout.separator
               radius: height / 2
               anchors.verticalCenter: parent.verticalCenter
-              color: current ? Theme.r.accent.base : root.wsUsed(modelData) ? Theme.r.popover.inkSecondary : Theme.r.ink.tertiary
+              color: current ? Theme.r.accent.base : root.wsUsed(modelData) ? root.inkSecondary : root.inkTertiary
               Behavior on width { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
             }
           }
@@ -127,8 +133,8 @@ BarWidget {
           spacing: Theme.layout.list.gap
           opacity: root.activity ? 1 : 0
           Behavior on opacity { NumberAnimation { duration: Theme.dur("fast") } }
-          VSpinner { anchors.verticalCenter: parent.verticalCenter; visible: root.activity !== ""; color: Theme.r.popover.inkSecondary }
-          VText { anchors.verticalCenter: parent.verticalCenter; text: root.activity; color: Theme.r.popover.ink; font.weight: Font.Medium; font.pixelSize: Theme.m.type.small }
+          VSpinner { anchors.verticalCenter: parent.verticalCenter; visible: root.activity !== ""; color: root.inkSecondary }
+          VText { anchors.verticalCenter: parent.verticalCenter; text: root.activity; color: root.ink; font.weight: Font.Medium; font.pixelSize: Theme.m.type.small }
         }
       }
     }
