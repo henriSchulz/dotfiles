@@ -231,12 +231,15 @@ if runs T15; then
 fi
 
 if runs T16; then
+  # tablet mode makes every app fullscreen: the indicator stays awake there (it sleeps only over a
+  # fullscreen app outside tablet mode)
   hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "fullscreen" })' >/dev/null; sleep 3.6
-  slept=$(view | jq .asleep); shot T16-asleep
+  slept=$(view | jq .asleep); shot T16-awake
   c henri.tablet clearLog >/dev/null
   pt m $X $B s 100 d s 50 u; sleep 0.5
-  want T16 "over a fullscreen app the indicator falls asleep" "$slept" "true"
-  want T16b "the first finger only wakes it" "$(view | jq .asleep),$(log | jq -c .),$(c henri.tablet state | jq .windowBarOpen)" "false,[],false"
+  want T16 "in tablet mode the indicator stays awake over a fullscreen app" "$slept" "false"
+  want T16b "the first finger is a real tap (the window bar)" "$(log | jq -c .),$(c henri.tablet state | jq .windowBarOpen)" '["tap"],true'
+  c henri.tablet tap TB >/dev/null; sleep 0.4
   hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "fullscreen" })' >/dev/null; sleep 0.5
 fi
 

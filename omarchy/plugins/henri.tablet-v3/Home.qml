@@ -186,6 +186,7 @@ Item {
   // settle    the overlay covers a change underneath, then lets go
   // home      the home screen (an empty workspace), nothing drawn over it
   property string mode: "idle"
+  readonly property var followPreset: ({ response: cfg.followResponse / 1000 * (Theme.reduceMotion ? 0 : 1), dampingRatio: cfg.followDamping })
   property string screenName: ""
   property var cards: []            // the entries shown as cards, oldest first
   property int cur: -1              // the card that was on screen
@@ -248,13 +249,14 @@ Item {
     var c = card(cur)
     if (!c || !c.hasShot) return               // the overlay stays clear until the snapshot is there
     mode = "drag"
-    var t = Date.now()
     var f = HM.follow(up, dx, areaW, areaH, cfg, { left: cur <= 0, right: cur >= cards.length - 1 })
-    c.jump(f.x, f.y, f.s, 0, t)
+    // a very fast spring instead of a jump: finger events from a cast come unevenly, the card glides
+    var fp = followPreset
+    c.to("x", f.x, fp); c.to("y", f.y, fp); c.to("s", f.s, fp)
     for (var i = 0; i < cards.length; i++) {
       if (i === cur) continue
       var o = card(i)
-      if (o) { o.jump(HM.besideX(i, cur, f.s, f.x, areaW, cfg), f.y, f.s, 0, t); o.set("o", 1) }
+      if (o) { o.to("x", HM.besideX(i, cur, f.s, f.x, areaW, cfg), fp); o.to("y", f.y, fp); o.to("s", f.s, fp); o.set("o", 1) }
     }
     homeV.snap(f.home)
   }
@@ -310,7 +312,7 @@ Item {
   function toHome(hand) {
     note("home")
     var c = card(cur), e = cards[cur]
-    var r = homeScreenItem ? homeScreenItem.iconRect(e.appId, homeScreenItem) : null
+    var r = homeScreenItem ? homeScreenItem.iconRect(e.appId, coverItem || homeScreenItem) : null
     var tx = r ? r.x + r.w / 2 - areaW / 2 : 0, ty = r ? r.y + r.w / 2 - areaH / 2 : areaH * cfg.enterFrom
     var size = r ? r.w : HM.grid(areaW, areaH, cfg).icon
     c.to("x", tx, "smooth", hand.x); c.to("y", ty, "smooth", hand.y); c.to("s", size / areaH, "smooth", hand.s)
@@ -436,7 +438,7 @@ Item {
     var at = -1
     for (var i = list.length - 1; i >= 0; i--) if (list[i].appId === id) { at = i; break }
     note("tap " + id + (at >= 0 ? " (running)" : ""))
-    var r = homeScreenItem ? homeScreenItem.iconRect(id, homeScreenItem) : null
+    var r = homeScreenItem ? homeScreenItem.iconRect(id, coverItem || homeScreenItem) : null
     if (at >= 0) {
       cards = list
       cur = at
@@ -536,6 +538,7 @@ Item {
 
   // ================================================================ surfaces
   property var homeScreenItem: null      // the overlay's copy on the gesture's screen (for icon rects)
+  property var coverItem: null           // the overlay's content: card coordinates are its own
   property string wallpaperTarget: ""
   readonly property string wallpaperLink: homeDir + "/.local/state/omarchy/current/background"
   Process {
@@ -554,9 +557,11 @@ Item {
       required property var modelData
       readonly property string name: modelData.name
 
+      property real homeH: 0
       // the home screen itself, under the windows of an empty workspace
       PanelWindow {
         screen: per.modelData
+        onHeightChanged: if (height > 0) per.homeH = height
         anchors { top: true; bottom: true; left: true; right: true }
         exclusionMode: ExclusionMode.Normal
         exclusiveZone: 0
@@ -589,35 +594,35 @@ Item {
         id: overlay
         screen: per.modelData
         anchors { top: true; bottom: true; left: true; right: true }
-        exclusionMode: ExclusionMode.Normal
+        // the whole screen: in tablet mode every app is fullscreen, its card is the screen's size
+        exclusionMode: ExclusionMode.Ignore
         exclusiveZone: 0
         color: "transparent"
         readonly property bool mine: home.screenName === per.name
         visible: mine && home.mode !== "idle" && home.mode !== "home"
         WlrLayershell.namespace: "velum-home-overlay"
-        // above the windows, below Control Center, Notification Center and banners (overlay layer)
-        WlrLayershell.layer: WlrLayer.Top
+        // overlay layer: the top layer is hidden under a fullscreen app
+        WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
         mask: Region { item: home.mode === "switcher" ? all : none }
         // the app area's size (a surface being mapped reports 0 for a moment: keep the last real one)
         function measure() { if (width > 0 && height > 0) { home.areaW = width; home.areaH = height } }
         onWidthChanged: if (mine || home.areaW === 0) measure()
         onHeightChanged: if (mine || home.areaH === 0) measure()
-        onMineChanged: if (mine) { measure(); home.homeScreenItem = shadowHome }
-        Component.onCompleted: if (mine || !home.homeScreenItem) { measure(); home.homeScreenItem = shadowHome }
+        onMineChanged: if (mine) { measure(); home.homeScreenItem = shadowHome; home.coverItem = cover }
+        Component.onCompleted: if (mine || !home.homeScreenItem) { measure(); home.homeScreenItem = shadowHome; home.coverItem = cover }
 
         Item { id: all; anchors.fill: parent }
         Item { id: none; width: 0; height: 0 }
 
         Item {
+          id: cover
           anchors.fill: parent
           opacity: home.mode === "ready" ? 0 : 1      // clear until the snapshot is there
           clip: true
 
-          // the wallpaper where the compositor draws it (the area sits below the bar)
+          // the wallpaper, as the compositor draws it under the whole screen
           Image {
-            x: -(per.modelData.width - overlay.width) / 2
-            y: -(per.modelData.height - overlay.height - home.tt.homeZone)
             width: per.modelData.width
             height: per.modelData.height
             source: "file://" + home.wallpaperLink + (home.wallpaperTarget ? "?v=" + encodeURIComponent(home.wallpaperTarget) : "")
@@ -627,9 +632,13 @@ Item {
             asynchronous: false
             cache: true
           }
+          // the same home screen as the bottom layer's, on the same spot (below the bar, above the home zone)
           HomeScreen {
             id: shadowHome
-            anchors.fill: parent
+            x: 0
+            y: Math.max(0, overlay.height - per.homeH - home.tt.homeZone)
+            width: overlay.width
+            height: per.homeH > 0 ? per.homeH : overlay.height
             apps: home.gridApps
             dockApps: home.dockApps
             recentApps: home.recentApps
@@ -642,7 +651,7 @@ Item {
           Rectangle {
             anchors.fill: parent
             color: home.cfg.dimColor
-            opacity: home.cfg.dim * Math.max(0, dimV.value)
+            opacity: home.cfg.dim * Math.max(0, dimV.value)   // 0 since 2026-10-28 (Henri: no grey veil)
             visible: opacity > 0.002
           }
           Repeater {

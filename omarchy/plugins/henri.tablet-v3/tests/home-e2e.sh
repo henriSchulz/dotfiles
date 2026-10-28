@@ -62,6 +62,11 @@ for a in $(hyprctl clients -j | jq -r 'sort_by(.address) | .[].address'); do
   i=$((i + 1)); hyprctl dispatch "hl.dsp.window.move({ workspace = '1$i', follow = false, window = 'address:$a' })" >/dev/null
 done
 sleep 0.5
+# and fullscreen, as tablet.lua makes every app
+for a in $(hyprctl clients -j | jq -r '.[] | select(.fullscreen == 0) | .address'); do
+  hyprctl dispatch "hl.dsp.window.fullscreen({ mode = 'fullscreen', window = 'address:$a' })" >/dev/null
+done
+sleep 0.5
 # start on an app, not on the home screen a previous run left
 a=$(hyprctl clients -j | jq -r '.[0].address')
 hyprctl dispatch "hl.dsp.focus({ window = 'address:$a' })" >/dev/null; sleep 1.2

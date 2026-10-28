@@ -34,6 +34,35 @@ M.on = (read_file(SETTINGS) or ""):match('"tablet"%s*:%s*true') ~= nil
 
 local function selector(w) return "address:" .. w.address end
 
+-- Every app in fullscreen, as on an iPad; the ones made so carry TAG, so switching off only
+-- brings those back.
+local TAG = "tablet-fs"
+
+local function has_tag(w)
+  if type(w.tags) ~= "table" then return false end
+  for _, tag in ipairs(w.tags) do
+    if tag == TAG or tag == TAG .. "*" then return true end
+  end
+  return false
+end
+
+local function fill(w)
+  if not w.mapped or w.floating or w.fullscreen ~= 0 or not w.workspace or w.workspace.special then return end
+  hl.dispatch(hl.dsp.window.tag({ tag = "+" .. TAG, window = "address:" .. w.address }))
+  hl.dispatch(hl.dsp.window.fullscreen({ mode = "fullscreen", window = "address:" .. w.address }))
+end
+
+function M.fill_all() for _, w in ipairs(hl.get_windows()) do fill(w) end end
+
+local function unfill_all()
+  for _, w in ipairs(hl.get_windows()) do
+    if has_tag(w) then
+      if w.fullscreen ~= 0 then hl.dispatch(hl.dsp.window.fullscreen({ mode = "fullscreen", window = selector(w) })) end
+      hl.dispatch(hl.dsp.window.tag({ tag = "-" .. TAG, window = selector(w) }))
+    end
+  end
+end
+
 local function tiled(w)
   return w.mapped and not w.floating and w.workspace ~= nil and not w.workspace.special
 end
@@ -84,11 +113,13 @@ hl.on("window.open", function(w)
   for _, o in ipairs(tiled_on(w.workspace)) do
     if o.address ~= w.address then others = others + 1 end
   end
-  if others == 0 then return end
-  local id = free_workspace({})
-  if id then
-    hl.dispatch(hl.dsp.window.move({ workspace = tostring(id), follow = true, window = selector(w) }))
+  if others > 0 then
+    local id = free_workspace({})
+    if id then
+      hl.dispatch(hl.dsp.window.move({ workspace = tostring(id), follow = true, window = selector(w) }))
+    end
   end
+  fill(hl.get_window(selector(w)) or w)
 end)
 
 -- ---------------------------------------------------------------- config
@@ -152,7 +183,9 @@ function M.set(on)
   if on then
     wm_tile()
     spread()
+    for _, w in ipairs(hl.get_windows()) do fill(w) end
   else
+    unfill_all()
     wm_restore()
   end
 end
@@ -165,7 +198,11 @@ local fresh = true
 local function apply_fresh()
   if not fresh then return end
   fresh = false
-  if M.on then saved = nil; apply_config() end
+  if M.on then
+    saved = nil
+    apply_config()
+    M.fill_all()
+  end
 end
 hl.on("config.reloaded", apply_fresh)
 hl.on("hyprland.start", apply_fresh)

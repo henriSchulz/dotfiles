@@ -11,6 +11,7 @@ import "HomeModel.js" as HM
 // (shaders/card.frag), so nothing is re-rendered while it moves.
 //   jump(x, y, s, m, t)   follow a finger: sit there, measure the speed for the hand-off
 //   to(k, target, kind)   spring k ("x" "y" "s" "m" "o" "l") to target, kind = Theme.spring name
+//                         or a preset { response, dampingRatio }
 Item {
   id: card
 
@@ -63,7 +64,7 @@ Item {
   function to(k, target, kind, vel) {
     _t[k] = target
     if (vel !== undefined) _v[k] = vel
-    _p[k] = Theme.spring(kind || "smooth")
+    _p[k] = typeof kind === "object" ? kind : Theme.spring(kind || "smooth")
     if (Theme.reduceMotion) { set(k, target); return }
     _live[k] = true
     _lastJump = 0

@@ -164,9 +164,11 @@ Item {
   // lab/web/home.html on the cast screen); the top edge stays. Not kept across a shell restart.
   property bool homePaused: false
   onFullscreenOnChanged: wake()
-  function wake() { asleep = false; if (fullscreenOn !== "") sleepTimer.restart(); else sleepTimer.stop() }
+  // in tablet mode every app is fullscreen: the indicator stays awake there (only a video's
+  // fullscreen outside tablet mode lets it sleep)
+  function wake() { asleep = false; if (fullscreenOn !== "" && !active) sleepTimer.restart(); else sleepTimer.stop() }
   Timer { id: sleepTimer; interval: root.tt.indicator.hideAfter; onTriggered: root.asleep = root.fullscreenOn !== "" }
-  function sleepingOn(screenName) { return asleep && fullscreenOn === screenName }
+  function sleepingOn(screenName) { return !active && asleep && fullscreenOn === screenName }
 
   Variants {
     model: root.homePaused ? [] : root.active ? Quickshell.screens : Array.from(Quickshell.screens).filter(s => s.name === windowBar.castScreen)
