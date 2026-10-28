@@ -116,12 +116,42 @@ local function apply_config()
   end
 end
 
+-- The window mode "macos" (window-mode.lua) floats every window; on an iPad every app fills the
+-- screen. It steps aside to "tiling" while tablet mode is on and comes back when it goes off; which
+-- one it was is kept in a file, so a restart in tablet mode still knows.
+local WM_WAS = (os.getenv("XDG_STATE_HOME") or (os.getenv("HOME") .. "/.local/state")) .. "/henri/tablet-window-mode"
+
+local function write_file(path, content)
+  local file = io.open(path, "w")
+  if not file then return end
+  file:write(content)
+  file:close()
+end
+
+local function wm_tile()
+  if henri_wm and henri_wm.mode == "macos" then
+    write_file(WM_WAS, "macos\n")
+    henri_wm.set("tiling")
+  end
+end
+
+local function wm_restore()
+  local was = (read_file(WM_WAS) or ""):match("macos")
+  os.remove(WM_WAS)
+  if was and henri_wm then henri_wm.set("macos") end
+end
+
 function M.set(on)
   on = on == true or on == "on" or on == "true"
   if on == M.on then return end
   M.on = on
   apply_config()
-  if on then spread() end
+  if on then
+    wm_tile()
+    spread()
+  else
+    wm_restore()
+  end
 end
 
 function M.toggle() M.set(not M.on) end

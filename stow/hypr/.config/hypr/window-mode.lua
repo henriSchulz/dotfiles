@@ -322,6 +322,8 @@ end
 -- ---------------------------------------------------------------- events
 
 hl.on("window.open", function(w)
+  -- tablet mode (tablet.lua): every app fills its workspace, nothing floats
+  if henri_tablet and henri_tablet.on then return end
   if M.mode ~= "macos" or not eligible(w) or not w.monitor then return end
   local box = initial_box(w, work_area(w.monitor))
   float(w)
