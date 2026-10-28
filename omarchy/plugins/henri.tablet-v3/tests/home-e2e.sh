@@ -7,7 +7,7 @@ set -u
 here=$(cd "$(dirname "$0")" && pwd)
 shell=$(cd "$here/../.." && pwd)
 cd "$shell"
-export VELUM_RIG_ID=tablet VELUM_TOUCH=1
+export VELUM_RIG_ID=tablet VELUM_TOUCH=1 VELUM_TABLET_LAUNCH=1
 export VELUM_RIG_PLUGINS="henri.bar-v3 henri.control-center-v3 henri.clock-v3 henri.power-v3 henri.dock-v3 henri.tablet-v3 henri.menu-v3"
 R=rig/state/tablet
 FILTER=${1:-}
@@ -108,6 +108,28 @@ if runs H5; then
   # tap the background: home
   pt m 60 $((H / 2)) d s 40 u; sleep 1.4
   want H5 "a tap beside the cards goes home" "$(hm | jq -r .mode),$(wsEmpty)" "home,true"
+fi
+
+if runs H6; then
+  # on the home screen: an app that is not running starts from its icon; the overlay lets go
+  before=$(hyprctl clients -j | jq 'length')
+  c henri.tablet homeOpen org.gnome.Papers >/dev/null
+  sleep 0.4; mid=$(hm | jq -r .mode)
+  sleep 3.5; shot H6-launched
+  want H6 "launching: the card grows, then the overlay lets go" "$mid,$(hm | jq -r .mode)" "settle,idle"
+  want H6b "the app's window is there" "$(( $(hyprctl clients -j | jq 'length') > before ))" "1"
+  a=$(hyprctl clients -j | jq -r '.[] | select(.class | test("Papers"; "i")) | .address' | head -1)
+  [[ $a ]] && hyprctl dispatch "hl.dsp.window.close({ window = 'address:$a' })" >/dev/null
+fi
+
+if runs H7; then
+  # a stuck overlay never blocks the next finger: prepare() aborts it
+  c henri.tablet homeOpen org.gnome.Papers >/dev/null; sleep 0.2
+  pt m $X $B d s 40 u; sleep 0.4
+  want H7 "a new finger on the indicator ends a running launch animation" "$(hm | jq -r '.log | index("abort") != null')" "true"
+  sleep 3
+  a=$(hyprctl clients -j | jq -r '.[] | select(.class | test("Papers"; "i")) | .address' | head -1)
+  [[ $a ]] && hyprctl dispatch "hl.dsp.window.close({ window = 'address:$a' })" >/dev/null
 fi
 
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"

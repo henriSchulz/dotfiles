@@ -161,6 +161,7 @@ Item {
     target: Hyprland
     function onRawEvent(event) {
       var n = event.name
+      if (n === "openwindow" && home.launchedId) home.launchOpened = true
       if (n === "openwindow" || n === "closewindow" || n === "movewindow" || n === "movewindowv2" || n === "workspacev2") refreshSoon.restart()
     }
   }
@@ -210,8 +211,17 @@ Item {
   function register(key, item) { var o = Object.assign({}, cardItems); if (item) o[key] = item; else delete o[key]; cardItems = o }
 
   // ---- a finger landed in the home zone
+  // drop whatever the overlay is doing (a new finger always wins over a stuck animation)
+  function abort() {
+    settleTick.stop(); letGo.stop(); enterLater.stop(); openLater.stop(); closeLater.stop()
+    settleCheck = null; launchedId = ""; armed = false; cards = []
+    mode = emptyOn(screenName) ? "home" : "idle"
+    note("abort")
+  }
   function prepare(screenName) {
-    if (!active || (mode !== "idle" && mode !== "home")) return
+    if (!active) return
+    if (mode === "settle" || mode === "ready" || mode === "drag") abort()
+    if (mode !== "idle" && mode !== "home") return
     home.screenName = screenName
     // the monitor's active workspace can lag behind a change the overlay made (Quickshell updates
     // it on the next refresh); our own "home" counts as well
@@ -360,7 +370,7 @@ Item {
         o.set("x", p.x); o.set("y", p.y + home.areaH * home.cfg.enterFrom); o.set("s", g.s * home.cfg.dockIcon); o.set("m", 0); o.set("o", 0); o.set("l", 0)
         o.to("y", p.y, "snappy"); o.to("s", g.s, "snappy"); o.to("o", 1, "snappy")
       }
-      home.homeV.target = 1; home.dimV.target = 1; home.labelV.target = 1
+      homeV.target = 1; dimV.target = 1; labelV.target = 1
     }
   }
   // an app from the switcher, or the neighbour a sideways finger brought: full size, then its workspace
@@ -435,6 +445,7 @@ Item {
       cur = 0
       if (!inRig || Quickshell.env("VELUM_TABLET_LAUNCH") !== "") Quickshell.execDetached(["uwsm-app", "--", "gtk-launch", id + ".desktop"])
       launchedId = id
+      launchOpened = false
       launchStart = Date.now()
     }
     homeV.snap(1); dimV.snap(0); labelV.snap(0)
@@ -444,6 +455,7 @@ Item {
   }
   property var openFrom: null
   property string launchedId: ""
+  property bool launchOpened: false
   property real launchStart: 0
   Timer {
     id: openLater
@@ -457,14 +469,13 @@ Item {
       c.set("s", (r ? r.w : home.areaH * home.cfg.splashIcon) / home.areaH); c.set("m", 1); c.set("o", 1); c.set("l", 0)
       c.z = 2
       c.to("x", 0, "smooth"); c.to("y", 0, "smooth"); c.to("s", 1, "smooth"); c.to("m", 0, "smooth")
-      home.homeV.target = 0
+      homeV.target = 0
       if (e.address) home.dispatch("hl.dsp.focus({ window = \"address:" + e.address + "\" })", "focuswindow address:" + e.address)
       home.settleWhen(function () {
         if (!c.settled(["x", "y", "s"])) return false
         if (!home.launchedId) return true
-        // a launched app: wait for its window on this screen, or give up after launchTimeout
-        if (Date.now() - home.launchStart > home.cfg.launchTimeout) return true
-        return !home.emptyOn(home.screenName)
+        // a launched app: wait for a new window, or give up after launchTimeout
+        return home.launchOpened || Date.now() - home.launchStart > home.cfg.launchTimeout
       }, "idle", false)
     }
   }
@@ -472,7 +483,9 @@ Item {
   // ---- the overlay lets go once the condition holds and (after a workspace change) the slide is over
   property var settleCheck: null
   property bool settleWait: false
+  property real settleStart: 0
   function settleWhen(check, to, workspaceChange) {
+    settleStart = Date.now()
     settleCheck = check
     settleTo = to
     settleWait = workspaceChange
@@ -484,7 +497,9 @@ Item {
     interval: Theme.dur("fast") / 2
     repeat: true
     onTriggered: {
-      if (!home.settleCheck || !home.settleCheck()) return
+      // never cover the screen for good: past launchTimeout the overlay lets go whatever it waits for
+      var late = Date.now() - home.settleStart > home.cfg.launchTimeout
+      if (home.settleCheck && !late && !home.settleCheck()) return
       stop()
       home.settleCheck = null
       if (home.settleTo === "home") {
@@ -580,7 +595,8 @@ Item {
         readonly property bool mine: home.screenName === per.name
         visible: mine && home.mode !== "idle" && home.mode !== "home"
         WlrLayershell.namespace: "velum-home-overlay"
-        WlrLayershell.layer: WlrLayer.Overlay
+        // above the windows, below Control Center, Notification Center and banners (overlay layer)
+        WlrLayershell.layer: WlrLayer.Top
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
         mask: Region { item: home.mode === "switcher" ? all : none }
         // the app area's size (a surface being mapped reports 0 for a moment: keep the last real one)
