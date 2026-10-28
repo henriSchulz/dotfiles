@@ -29,8 +29,7 @@
   "files": [],
   "loginApps": [],
   "iconOverrides": {
-    "org.gnome.nautilus": "~/.local/share/icons/MacTahoe/places/scalable/folder.svg",
-    "foot": "~/.local/share/icons/MacTahoe/apps/scalable/utilities-terminal.svg"
+    "org.gnome.nautilus": "~/.local/share/icons/MacTahoe/places/scalable/folder.svg"
   },
   "showUnknownApps": false,
   "ignoredApps": [
