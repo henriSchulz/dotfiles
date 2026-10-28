@@ -177,7 +177,11 @@ end
 
 function M.set(on)
   on = on == true or on == "on" or on == "true"
-  if on == M.on then return end
+  if on == M.on then
+    -- already on: tidy up anyway (windows that came while it was off, or shared a workspace)
+    if on then spread(); M.fill_all() end
+    return
+  end
   M.on = on
   apply_config()
   if on then
