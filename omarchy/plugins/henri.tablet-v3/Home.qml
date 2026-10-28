@@ -206,7 +206,7 @@ Item {
   property bool armed: false
   property real areaW: 0
   property real areaH: 0
-  property var cardItems: ({})      // key → Card
+  property var cardRep: null        // the Repeater of the gesture screen's cards
   property string settleTo: "idle"
   readonly property bool covering: mode === "drag" || mode === "switcher" || mode === "settle"
 
@@ -229,8 +229,22 @@ Item {
   property int page: 0
   property real swX: 0              // the switcher's scroll: where the newest column's centre sits
 
-  function card(i) { var c = cards[i]; return c ? cardItems[c.key] : null }
-  function register(key, item) { var o = Object.assign({}, cardItems); if (item) o[key] = item; else delete o[key]; cardItems = o }
+  // the card shown for cards[i], straight from the Repeater (a registry of its own kept references
+  // to delegates Qt had already deleted, and every call on one threw — 2026-10-28, the overlay
+  // then covered the screen for good)
+  function card(i) {
+    var o = cardRep && i >= 0 && i < cardRep.count ? cardRep.itemAt(i) : null
+    return o && typeof o.to === "function" ? o : null
+  }
+  // every way in (Tablet.qml, timers, the switcher's fingers) goes through here: whatever throws,
+  // the overlay lets go of the screen instead of covering it
+  function guard(name, fn) {
+    try { fn() } catch (e) {
+      console.warn("henri.tablet-v3 Home: " + name + ": " + e)
+      note("error " + name)
+      abort()
+    }
+  }
 
   // ---- a finger landed in the home zone
   // the finger did something else (a tap, a long press, a slide): nothing to draw
@@ -240,7 +254,7 @@ Item {
   }
   // drop whatever the overlay is doing (a new finger always wins over a stuck animation)
   function abort() {
-    settleTick.stop(); letGo.stop(); enterLater.stop(); openLater.stop(); closeLater.stop()
+    settleTick.stop(); letGo.stop(); enterLater.stop(); openLater.stop(); closeLater.stop(); relayoutLater.stop()
     settleCheck = null; launchedId = ""; armed = false
     mode = emptyOn(screenName) ? "home" : "idle"
     note("abort")
@@ -268,12 +282,12 @@ Item {
     cur = at
     backdrop(0, 0, 0, true); jumpTo(dimV, 0); jumpTo(labelV, 0)
     for (var j = 0; j < list.length; j++) {
-      var o = cardItems[list[j].key]
+      var o = card(j)
       if (!o) continue
       o.set("x", HM.besideX(j, at, 1, 0, areaW, cfg)); o.set("y", 0); o.set("s", 1); o.set("m", 0); o.set("l", 0); o.set("o", 1)
       o.z = j === at ? 2 : 1
     }
-    var c = cardItems[list[at].key]
+    var c = card(at)
     if (c) c.refresh()
     stat.shot = c && c.hasShot ? 0 : -1
     mode = "ready"
@@ -496,7 +510,7 @@ Item {
   Timer {
     id: enterLater
     interval: 0
-    onTriggered: {
+    onTriggered: home.guard("enterLater", function () {
       var g = HM.switcherGeo(home.cards.length, home.areaW, home.areaH, home.cfg)
       home.swX = g.lo
       for (var i = 0; i < home.cards.length; i++) {
@@ -508,7 +522,7 @@ Item {
         o.to("y", p.y, "snappy"); o.to("s", g.s, "snappy"); o.to("o", 1, "snappy")
       }
       backdrop(0, 1, 1, false); dimV.target = 1; labelV.target = 1
-    }
+    })
   }
   // an app from the switcher, or the neighbour a sideways finger brought: full size, then its workspace
   function openCard(i, hand) {
@@ -542,7 +556,7 @@ Item {
     id: closeLater
     property string key: ""
     interval: Theme.dur("normal")
-    onTriggered: {
+    onTriggered: home.guard("closeLater", function () {
       var list = home.cards.filter(function (c) { return c.key !== key })
       home.cards = list
       if (!list.length) { home.switcherHome(); return }
@@ -550,9 +564,9 @@ Item {
       var g = HM.switcherGeo(list.length, home.areaW, home.areaH, home.cfg)
       home.swX = Math.max(g.lo, Math.min(g.hi, home.swX))
       relayoutLater.restart()
-    }
+    })
   }
-  Timer { id: relayoutLater; interval: 0; onTriggered: home.layoutSwitcher(home.swX, false) }
+  Timer { id: relayoutLater; interval: 0; onTriggered: home.guard("relayout", function () { home.layoutSwitcher(home.swX, false) }) }
   function layoutSwitcher(sx, jumpNow) {
     var g = HM.switcherGeo(cards.length, areaW, areaH, cfg), t = Date.now()
     for (var i = 0; i < cards.length; i++) {
@@ -597,7 +611,7 @@ Item {
   Timer {
     id: openLater
     interval: 0
-    onTriggered: {
+    onTriggered: home.guard("openLater", function () {
       var c = home.card(home.cur), e = home.cards[home.cur], r = home.openFrom
       if (!c) return
       c.capture = true
@@ -614,7 +628,7 @@ Item {
         // a launched app: wait for a new window, or give up after launchTimeout
         return home.launchOpened || Date.now() - home.launchStart > home.cfg.launchTimeout
       }, "idle", false)
-    }
+    })
   }
 
   // ---- the overlay lets go once the condition holds and (after a workspace change) the slide is over
@@ -636,7 +650,9 @@ Item {
     onTriggered: {
       // never cover the screen for good: past launchTimeout the overlay lets go whatever it waits for
       var late = Date.now() - home.settleStart > home.cfg.launchTimeout
-      if (home.settleCheck && !late && !home.settleCheck()) return
+      var waiting = false
+      try { waiting = !!home.settleCheck && !late && !home.settleCheck() } catch (e) { waiting = false }
+      if (waiting) return
       stop()
       home.settleCheck = null
       if (home.settleTo === "home") {
@@ -724,7 +740,7 @@ Item {
           page: home.page
           pageX: pageV.value
           interactive: true
-          onTapped: function (id) { home.screenName = per.name; home.openApp(id) }
+          onTapped: function (id) { home.screenName = per.name; home.guard("openApp", function () { home.openApp(id) }) }
           onPageMoved: function (dx, t) { home.pageMoved(dx, t) }
           onPageReleased: function (v) { home.pageReleased(v, pages) }
         }
@@ -753,8 +769,8 @@ Item {
         function measure() { if (width > 0 && height > 0) { home.areaW = width; home.areaH = height } }
         onWidthChanged: if (mine || home.areaW === 0) measure()
         onHeightChanged: if (mine || home.areaH === 0) measure()
-        onMineChanged: if (mine) { measure(); home.homeScreenItem = shadowHome; home.coverItem = cover }
-        Component.onCompleted: if (mine || !home.homeScreenItem) { measure(); home.homeScreenItem = shadowHome; home.coverItem = cover }
+        onMineChanged: if (mine) { measure(); home.homeScreenItem = shadowHome; home.coverItem = cover; home.cardRep = cardRepeater }
+        Component.onCompleted: if (mine || !home.homeScreenItem) { measure(); home.homeScreenItem = shadowHome; home.coverItem = cover; home.cardRep = cardRepeater }
 
         Item { id: all; anchors.fill: parent }
         Item { id: none; width: 0; height: 0 }
@@ -826,6 +842,7 @@ Item {
           // the cards stay between gestures (kept by window), and so do their snapshots: a gesture
           // starts on the last one at once and only asks for a fresh one
           Repeater {
+            id: cardRepeater
             model: ScriptModel { values: overlay.mine ? home.cards : []; objectProp: "key" }
             Card {
               required property var modelData
@@ -834,8 +851,6 @@ Item {
               areaH: overlay.height
               labelOn: Math.max(0, labelV.value)
               capture: true
-              Component.onCompleted: home.register(modelData.key, this)
-              Component.onDestruction: home.register(modelData.key, null)
             }
           }
         }
@@ -861,7 +876,7 @@ Item {
             return -1
           }
           onPressed: function (m) { x0 = m.x; y0 = m.y; sx0 = home.swX; axis = ""; hit = cardAt(m.x, m.y); samples = [[Date.now(), m.x, m.y]] }
-          onPositionChanged: function (m) {
+          onPositionChanged: function (m) { home.guard("switcher onPositionChanged", function () {
             var t = Date.now(), list = samples.concat([[t, m.x, m.y]])
             while (list.length > 2 && t - list[0][0] > home.tt.sampleWindow) list.shift()
             samples = list
@@ -875,8 +890,8 @@ Item {
               var c = home.card(hit)
               if (c) c.set("l", dy < 0 ? dy : HM.rubber(dy, home.cfg.pushDown))
             }
-          }
-          onReleased: function (m) {
+          }) }
+          onReleased: function (m) { home.guard("switcher onReleased", function () {
             var a = samples[0], b = samples[samples.length - 1], dt = (b[0] - a[0]) / 1000
             var vx = dt > 0 ? (b[1] - a[1]) / dt : 0, vup = dt > 0 ? (a[2] - b[2]) / dt : 0
             if (!axis) { if (hit >= 0) home.openCard(hit, null); else home.switcherHome(); return }
@@ -890,7 +905,7 @@ Item {
             if (!c) return
             if (-c.pl > overlay.height * home.cfg.closeTravel || vup > home.cfg.closeFlick) home.closeCard(hit)
             else c.to("l", 0, "snappy")
-          }
+          }) }
           onCanceled: { if (axis === "x") home.layoutSwitcher(home.swX, false) }
         }
       }

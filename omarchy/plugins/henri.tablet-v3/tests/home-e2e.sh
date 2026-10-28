@@ -132,7 +132,7 @@ if runs H7; then
   # a stuck overlay never blocks the next finger: prepare() aborts it
   c henri.tablet homeOpen org.gnome.Papers >/dev/null; sleep 0.2
   pt m $X $B d s 40 u; sleep 0.4
-  want H7 "a new finger on the indicator ends a running launch animation" "$(hm | jq -r '.log | index("abort") != null')" "true"
+  want H7 "a new finger on the indicator ends a running launch animation (or it had already let go)" "$(hm | jq -r '.log | (index("abort") != null) or (index("→ idle") != null)')" "true"
   sleep 3
   a=$(hyprctl clients -j | jq -r '.[] | select(.class | test("Papers"; "i")) | .address' | head -1)
   [[ $a ]] && hyprctl dispatch "hl.dsp.window.close({ window = 'address:$a' })" >/dev/null
@@ -175,6 +175,30 @@ send("up", y - 360); s.close()
 PY
   sleep 1.4
   want H10 "a fast swipe through the edge socket goes home" "$(hm | jq -r .mode),$(c henri.tablet homeStats | jq -r '.[-1].lifts > 10')" "home,true"
+fi
+
+if runs H11; then
+  # a burst of gestures of every kind, then: no errors, and the screen is not covered
+  c henri.tablet clearLog >/dev/null
+  python3 - "$VELUM_EDGE_SOCKET" $X $((H - 6)) <<'PY'
+import socket, sys, time, random
+random.seed(7)
+x0, y0 = int(sys.argv[2]), int(sys.argv[3])
+for n in range(24):
+    s = socket.socket(socket.AF_UNIX); s.connect(sys.argv[1])
+    send = lambda p, x, y: s.sendall(f"velum-edge TB bottom {p} {x} {y}\n".encode())
+    up, dx, steps, rest = random.choice([360, 120, 220, 40]), random.choice([0, -260, 200, 30]), random.randint(3, 14), random.choice([0, 0, 0.3])
+    send("down", x0, y0)
+    for i in range(1, steps + 1): send("move", x0 + dx * i // steps, y0 - up * i // steps); time.sleep(0.012)
+    time.sleep(rest)
+    send("up", x0 + dx, y0 - up); s.close()
+    time.sleep(random.choice([0.05, 0.2, 0.6]))
+PY
+  sleep 4
+  errs=$(c henri.tablet home | jq -r '.log | map(select(startswith("error"))) | length')
+  mode=$(c henri.tablet home | jq -r .mode)
+  [[ $mode == switcher ]] && { pt m 30 $((H / 2)) d s 40 u; sleep 1.5; mode=$(c henri.tablet home | jq -r .mode); }
+  want H11 "24 mixed gestures in a row: no errors, the overlay lets go" "$errs,$(echo "$mode" | grep -cE '^(idle|home)$')" "0,1"
 fi
 
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"

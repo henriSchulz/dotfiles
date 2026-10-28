@@ -60,16 +60,16 @@ Item {
     for (var i = 0; i < actions.length; i++) {
       var a = actions[i]
       note(a.do + (a.phase ? ":" + a.phase : "") + (a.step ? ":" + a.step : ""))
-      if (root.active && (a.do === "tap" || a.do === "longpress" || a.do === "down" || (a.do === "slide" && a.phase === "end"))) homeCtl.other(a.do)
+      if (root.active && (a.do === "tap" || a.do === "longpress" || a.do === "down" || (a.do === "slide" && a.phase === "end"))) homeCtl.guard("other", () => homeCtl.other(a.do))
       if (root.active && (a.do === "lift" || a.do === "home" || a.do === "switcher")) {
         // tablet mode: the home screen and App Switcher of Home.qml follow the finger
         if (a.do === "lift") {
-          if (a.phase === "move") homeCtl.lift(a.up, a.dx, a.vy, a.x0)
-          else homeCtl.release(a.phase === "cancel" ? "cancel" : "end", a)
-        } else if (a.do === "home") homeCtl.release("home", a)
-        else if (a.phase === "start") homeCtl.arm()
-        else if (a.phase === "update") { if (a.up !== undefined) homeCtl.lift(a.up, a.dx, a.vy, a.x0) }
-        else homeCtl.release(a.cancelled ? "cancel" : "switcher", a)
+          if (a.phase === "move") homeCtl.guard("lift", () => homeCtl.lift(a.up, a.dx, a.vy, a.x0))
+          else homeCtl.guard("release", () => homeCtl.release(a.phase === "cancel" ? "cancel" : "end", a))
+        } else if (a.do === "home") homeCtl.guard("release", () => homeCtl.release("home", a))
+        else if (a.phase === "start") homeCtl.guard("arm", () => homeCtl.arm())
+        else if (a.phase === "update") { if (a.up !== undefined) homeCtl.guard("lift", () => homeCtl.lift(a.up, a.dx, a.vy, a.x0)) }
+        else homeCtl.guard("release", () => homeCtl.release(a.cancelled ? "cancel" : "switcher", a))
       } else if (a.do === "home") {
         mc("toggle()", "mission-control toggle mission")
       } else if (a.do === "switcher") {
@@ -257,7 +257,7 @@ Item {
         if (zone.swallow) return
         zone.pressed = true
         homeCtl.zoneFinger = true
-        if (root.active) homeCtl.prepare(zone.screen.name)
+        if (root.active) homeCtl.guard("prepare", () => homeCtl.prepare(zone.screen.name))
         root.run(zone.gesture.down(Date.now(), x, y), zone.screen.name); ticker.start()
       }
       function fingerMove(x, y) { if (zone.pressed) root.run(zone.gesture.move(Date.now(), x, y), zone.screen.name) }
@@ -333,7 +333,7 @@ Item {
         root.wake()
         if (sleeping) return               // this finger only wakes the indicator
         root.castBottom = { gesture: Gesture.create(root.tt), screen: screenName }
-        if (root.active) homeCtl.prepare(screenName)
+        if (root.active) homeCtl.guard("prepare", () => homeCtl.prepare(screenName))
         root.run(root.castBottom.gesture.down(t, x, y), screenName)
         castTicker.start()
         return
@@ -387,6 +387,8 @@ Item {
     function clearLog(): string { root.log = []; homeCtl.log = []; return "ok" }
     function home(): string { return JSON.stringify({ empty: homeCtl.emptyOn(homeCtl.screenName), mode: homeCtl.mode, screen: homeCtl.screenName, cards: homeCtl.cards.map(c => c.appId), at: homeCtl.cards.map((c, i) => { var k = homeCtl.card(i); return k ? [Math.round(k.px), Math.round(k.py), +k.ps.toFixed(2), +k.po.toFixed(2)] : null }), zoneFinger: homeCtl.zoneFinger,  cur: homeCtl.cur, armed: homeCtl.armed, fromHome: homeCtl.fromHome, area: [homeCtl.areaW, homeCtl.areaH], apps: homeCtl.gridApps.length, dock: homeCtl.dockApps.map(a => a.id), recent: homeCtl.recentApps.map(a => a.id), page: homeCtl.page, log: homeCtl.log }) }
     function homeStats(): string { return JSON.stringify(homeCtl.stats) }
+    // the way out from anywhere (ssh): the overlay lets go of the screen
+    function homeAbort(): string { homeCtl.abort(); return homeCtl.mode }
     function homeOpen(id: string): string { homeCtl.openApp(id); return homeCtl.mode }
     function pauseHome(on: string): string { root.homePaused = on === "toggle" ? !root.homePaused : on === "on" || on === "true"; return String(root.homePaused) }
     function tap(screen: string): string { windowBar.toggle(screen); return windowBar.openOn }
