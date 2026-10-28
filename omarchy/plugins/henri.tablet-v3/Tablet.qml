@@ -149,13 +149,16 @@ Item {
     return ""
   }
   property bool asleep: false
+  // the home indicator and its gesture switched off for a while (IPC pauseHome, e.g. while trying
+  // lab/web/home.html on the cast screen); the top edge stays. Not kept across a shell restart.
+  property bool homePaused: false
   onFullscreenOnChanged: wake()
   function wake() { asleep = false; if (fullscreenOn !== "") sleepTimer.restart(); else sleepTimer.stop() }
   Timer { id: sleepTimer; interval: root.tt.indicator.hideAfter; onTriggered: root.asleep = root.fullscreenOn !== "" }
   function sleepingOn(screenName) { return asleep && fullscreenOn === screenName }
 
   Variants {
-    model: root.active ? Quickshell.screens : Array.from(Quickshell.screens).filter(s => s.name === windowBar.castScreen)
+    model: root.homePaused ? [] : root.active ? Quickshell.screens : Array.from(Quickshell.screens).filter(s => s.name === windowBar.castScreen)
 
     PanelWindow {
       id: zone
@@ -290,6 +293,7 @@ Item {
       root.castTop = null
       VGestures.pull(p.surface, p.screen, "end", travel, b[0] > a[0] ? (b[1] - a[1]) * 1000 / (b[0] - a[0]) : 0)
     } else if (edge === "bottom") {
+      if (root.homePaused) { root.castBottom = null; castTicker.stop(); return }
       if (phase === "down") {
         var sleeping = root.sleepingOn(screenName)
         root.wake()
@@ -334,6 +338,7 @@ Item {
     target: "henri.tablet"
     function state(): string { return JSON.stringify({ active: root.active, screens: root.active ? Quickshell.screens.length : 0, log: root.log, castScreen: windowBar.castScreen, window: windowBar.ipc ? windowBar.ipc.class : "", windowBarOpen: windowBar.open }) }
     function clearLog(): string { root.log = []; return "ok" }
+    function pauseHome(on: string): string { root.homePaused = on === "toggle" ? !root.homePaused : on === "on" || on === "true"; return String(root.homePaused) }
     function tap(screen: string): string { windowBar.toggle(screen); return windowBar.openOn }
     function view(): string { return JSON.stringify({ asleep: root.asleep, fullscreenOn: root.fullscreenOn, slideScreen: root.slideScreen, neighbours: root.neighbours, dockOut: VGestures.out, shrunk: Object.keys(root.shrunk).length, dictateOn: windowBar.dictateOn, voxState: windowBar.voxState, entered: windowBar.entered, zones: VGestures.zones }) }
   }
