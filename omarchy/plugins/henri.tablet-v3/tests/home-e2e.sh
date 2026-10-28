@@ -201,6 +201,15 @@ PY
   want H11 "24 mixed gestures in a row: no errors, the overlay lets go" "$errs,$(echo "$mode" | grep -cE '^(idle|home)$')" "0,1"
 fi
 
+if runs H12; then
+  # on the home screen: a flick to the left turns the page, one to the right turns it back
+  [[ $(hm | jq -r .mode) == home ]] || { edgePull 360 120 0; sleep 1.5; }
+  pt m 1100 450 d s 30 g 500 450 6 12 u; sleep 1
+  p1=$(hm | jq -r .page)
+  pt m 400 450 d s 30 g 1000 450 6 12 u; sleep 1
+  want H12 "a flick turns the home screen's page and back" "$p1,$(hm | jq -r .page)" "1,0"
+fi
+
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"
 [[ ${KEEP:-} ]] || rig/rig.sh stop >/dev/null 2>&1
 [[ $fail == 0 ]]

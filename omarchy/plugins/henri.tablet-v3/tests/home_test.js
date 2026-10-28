@@ -84,4 +84,11 @@ test("released: SpringBoard's destinations from the last speed", () => {
   assert.strictEqual(dest(30, cfg.slideCommit * W + 10, 0, 100, 3, 1), "prev");
   assert.strictEqual(dest(30, -(cfg.slideCommit * W + 10), 0, -100, 3, 2), "back", "no app on that side");
 });
+test("Home.qml never reaches its springs through `home.` (ids are no properties; it threw and froze the screen)", () => {
+  const qml = fs.readFileSync(path.join(__dirname, "..", "Home.qml"), "utf8");
+  const ids = [...qml.matchAll(/^\s*Spring \{ id: (\w+)/gm)].map(m => m[1]);
+  assert.ok(ids.length >= 5, ids.join(" "));
+  const bad = ids.filter(id => new RegExp("\\bhome\\." + id + "\\b").test(qml));
+  assert.deepStrictEqual(bad, []);
+});
 console.log(n + " tests passed");

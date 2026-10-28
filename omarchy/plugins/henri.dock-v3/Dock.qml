@@ -166,8 +166,12 @@ Item {
   readonly property var palette: {
     var r = roles
     var sh = (r.popover.shadow || []).filter(function (l) { return !l.inset && l.blur > 0 })[0]
-    return { dark: dark, sheet: r.popover.bg, border: r.line.rim, hairline: r.line.base, shadow: sh ? sh.color : r.line.strong,
-             separator: r.line.strong, indicator: r.ink.secondary, label: r.tooltip.bg, labelText: r.tooltip.ink,
+    // the sheet in design 3 "Smoke" of lab/web/dock.html, the same as the tablet home screen's dock
+    // (Henri, 2026-10-28): dark tinted glass over the compositor's blur, one light hairline,
+    // light dots under running apps
+    var smoke = Theme.core.surface.tablet.home.dock
+    return { dark: dark, sheet: smoke.tint, border: "transparent", hairline: smoke.rim, shadow: smoke.shadow[0].color,  // lint-ok: no inner rim
+             separator: smoke.divider, indicator: smoke.dot, label: r.tooltip.bg, labelText: r.tooltip.ink,
              menu: r.menu.bg, menuText: r.menu.ink, menuHairline: r.menu.line, pill: r.popover.bg, pillText: r.popover.ink,
              opaque: r.popover.bgOpaque, danger: r.danger, onAccent: r.ink.onAccent }
   }

@@ -233,7 +233,7 @@ Item {
     }
   }
 
-  // ---- fingers (touch reaches a MouseArea as a synthesized mouse): a tap opens, a drag turns pages
+  // ---- fingers: a tap opens, a drag turns pages
   function appAt(x, y) {
     var p = dockRow.mapFromItem(hs, x, y)
     for (var i = 0; i < dockRow.children.length; i++) {
@@ -248,29 +248,50 @@ Item {
     }
     return ""
   }
+  // one finger's path, from real touch (MultiPointTouchArea) or a pointer (MouseArea, the rig)
+  QtObject {
+    id: finger
+    property real x0: 0
+    property real y0: 0
+    property real lastX: 0
+    property bool moved: false
+    property var samples: []
+    function down(x, y) { x0 = x; y0 = y; lastX = x; moved = false; samples = [[Date.now(), x]]; hs.pressedId = hs.appAt(x, y) }
+    function move(x, y) {
+      var t = Date.now(), list = samples.concat([[t, x]])
+      while (list.length > 2 && t - list[0][0] > Theme.core.surface.tablet.sampleWindow) list.shift()
+      samples = list; lastX = x
+      if (!moved && Math.hypot(x - x0, y - y0) > Theme.core.surface.tablet.slop) { moved = true; hs.pressedId = "" }
+      if (moved) hs.pageMoved(x - x0, t)
+    }
+    function up() {
+      var id = hs.pressedId
+      hs.pressedId = ""
+      if (!moved) { if (id) hs.tapped(id); return }
+      // the last few events' speed carries the page (a lift long after the last move: none)
+      var a = samples[0], b = samples[samples.length - 1], now = Date.now()
+      var fresh = now - b[0] < Theme.core.surface.tablet.sampleWindow
+      hs.pageReleased(fresh && b[0] > a[0] ? (b[1] - a[1]) * 1000 / (b[0] - a[0]) : 0)
+    }
+    function cancel() { hs.pressedId = ""; if (moved) hs.pageReleased(0) }
+  }
+  MultiPointTouchArea {
+    anchors.fill: parent
+    enabled: hs.interactive
+    maximumTouchPoints: 1
+    mouseEnabled: false
+    onPressed: function (pts) { finger.down(pts[0].x, pts[0].y) }
+    onUpdated: function (pts) { finger.move(pts[0].x, pts[0].y) }
+    onReleased: function (pts) { finger.up() }
+    onCanceled: finger.cancel()
+  }
   MouseArea {
     anchors.fill: parent
     enabled: hs.interactive
     preventStealing: true
-    property real x0: 0
-    property real y0: 0
-    property bool moved: false
-    property var samples: []
-    onPressed: function (m) { x0 = m.x; y0 = m.y; moved = false; samples = [[Date.now(), m.x]]; hs.pressedId = hs.appAt(m.x, m.y) }
-    onPositionChanged: function (m) {
-      var t = Date.now(), list = samples.concat([[t, m.x]])
-      while (list.length > 2 && t - list[0][0] > Theme.core.surface.tablet.sampleWindow) list.shift()
-      samples = list
-      if (!moved && Math.hypot(m.x - x0, m.y - y0) > Theme.core.surface.tablet.slop) { moved = true; hs.pressedId = "" }
-      if (moved) hs.pageMoved(m.x - x0, t)
-    }
-    onReleased: function (m) {
-      var id = hs.pressedId
-      hs.pressedId = ""
-      if (!moved) { if (id) hs.tapped(id); return }
-      var a = samples[0], b = samples[samples.length - 1]
-      hs.pageReleased(b[0] > a[0] ? (b[1] - a[1]) * 1000 / (b[0] - a[0]) : 0)
-    }
-    onCanceled: { hs.pressedId = ""; if (moved) hs.pageReleased(0) }
+    onPressed: function (m) { finger.down(m.x, m.y) }
+    onPositionChanged: function (m) { finger.move(m.x, m.y) }
+    onReleased: function (m) { finger.up() }
+    onCanceled: finger.cancel()
   }
 }

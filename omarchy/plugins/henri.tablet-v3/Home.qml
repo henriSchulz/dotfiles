@@ -328,25 +328,13 @@ Item {
   }
   // on the home screen the switcher's cards come up under the finger (as on an iPad), and sink back
   // if it lets go low
+  // on the home screen, as on an iPad: while the finger pulls up only the home screen gives way —
+  // its icons fade and the wallpaper blurs with the travel; the cards come in when it lets go
   function liftFromHome(up) {
     if (mode !== "home" && mode !== "homeDrag") return
-    if (!cards.length) cards = scanWindows(screenName)
-    if (!cards.length) return
     var p = Math.max(0, Math.min(1, up / (2 * tt.holdTravel)))
-    if (mode === "home") { mode = "homeDrag"; backdrop(1, 0, 1, true); jumpTo(dimV, 0) }
+    if (mode === "home") { mode = "homeDrag"; backdrop(1, 0, 1, true); jumpTo(dimV, 0); jumpTo(labelV, 0) }
     jumpTo(homeV, 1 - p); jumpTo(blurV, p)
-    jumpTo(labelV, p)
-    var g = HM.switcherGeo(cards.length, areaW, areaH, cfg)
-    swX = g.lo
-    for (var i = 0; i < cards.length; i++) {
-      var o = card(i)
-      if (!o) continue
-      var pos = HM.switcherPos(i, cards.length, g.lo, g, cfg)
-      o.set("x", pos.x); o.set("m", 0); o.set("l", 0); o.set("o", p)
-      o.to("y", pos.y + (1 - p) * areaH * cfg.enterFrom, followPreset)
-      o.to("s", g.s * (cfg.dockIcon + (1 - cfg.dockIcon) * p), followPreset)
-      o.capture = true
-    }
   }
   function sinkBack() {
     note("sink back")
@@ -360,7 +348,7 @@ Item {
     if (armed) return
     armed = true
     note("armed")
-    if (fromHome) { enterSwitcherFromHome(); return }
+    if (fromHome) return                       // from the home screen the cards come when the finger lets go
     for (var i = 0; i < cards.length; i++) { var o = card(i); if (o) o.capture = true }
     dimV.target = 1; labelV.target = 1
   }
@@ -489,47 +477,37 @@ Item {
   }
   function enterSwitcherFromHome() {
     if (mode === "switcher") return
-    if (mode === "homeDrag") {
-      note("switcher from home")
-      sinkDone.stop()
-      mode = "switcher"
-      var g = HM.switcherGeo(cards.length, areaW, areaH, cfg)
-      swX = g.lo
-      for (var i = 0; i < cards.length; i++) {
-        var o = card(i)
-        if (!o) continue
-        var p = HM.switcherPos(i, cards.length, g.lo, g, cfg)
-        o.to("x", p.x, "snappy"); o.to("y", p.y, "snappy"); o.to("s", g.s, "snappy"); o.to("o", 1, "snappy")
-      }
-      backdrop(0, 1, 1, false)
-      labelV.target = 1
-      return
-    }
     var list = scanWindows(screenName)      // fresh: the refresh prepare() asked for has arrived by now
-    if (!list.length) return
+    if (!list.length) { if (mode === "homeDrag") sinkBack(); return }
     note("switcher from home")
+    sinkDone.stop()
+    if (mode !== "homeDrag") { backdrop(1, 0, 1, true); jumpTo(dimV, 0); jumpTo(labelV, 0) }
     cards = list
     cur = list.length - 1
-    backdrop(1, 0, 1, true); jumpTo(dimV, 0); jumpTo(labelV, 0)
     mode = "switcher"
-    // the cards come up from below once they exist (Repeater): placeAndEnter runs on the next frame
-    enterLater.restart()
+    backdrop(0, 1, 1, false)
+    enterLater.restart()                     // the cards exist (Repeater) on the next turn
   }
+  // the cards fly in from the lower left, the leftmost first (the iPad, Henri 2026-10-28)
   Timer {
     id: enterLater
     interval: 0
     onTriggered: home.guard("enterLater", function () {
-      var g = HM.switcherGeo(home.cards.length, home.areaW, home.areaH, home.cfg)
+      var n = home.cards.length, g = HM.switcherGeo(n, home.areaW, home.areaH, home.cfg)
       home.swX = g.lo
-      for (var i = 0; i < home.cards.length; i++) {
+      for (var i = 0; i < n; i++) {
         var o = home.card(i)
         if (!o) continue
-        var p = HM.switcherPos(i, home.cards.length, g.lo, g, home.cfg)
+        var p = HM.switcherPos(i, n, g.lo, g, home.cfg)
+        var col = Math.floor((n - 1 - i) / g.rows), cols = Math.ceil(n / g.rows)
+        var order = cols - 1 - col                                    // 0 = the leftmost column
+        var fly = home.preset(home.cfg.flyInResponse + order * home.cfg.flyInStagger, home.cfg.flyInDamping)
         o.capture = true
-        o.set("x", p.x); o.set("y", p.y + home.areaH * home.cfg.enterFrom); o.set("s", g.s * home.cfg.dockIcon); o.set("m", 0); o.set("o", 0); o.set("l", 0)
-        o.to("y", p.y, "snappy"); o.to("s", g.s, "snappy"); o.to("o", 1, "snappy")
+        o.set("x", p.x - home.areaW * home.cfg.enterFromLeft); o.set("y", p.y + home.areaH * home.cfg.enterFrom)
+        o.set("s", g.s * home.cfg.dockIcon); o.set("m", 0); o.set("o", 0); o.set("l", 0)
+        o.to("x", p.x, fly); o.to("y", p.y, fly); o.to("s", g.s, fly); o.to("o", 1, fly)
       }
-      backdrop(0, 1, 1, false); dimV.target = 1; labelV.target = 1
+      dimV.target = 1; labelV.target = 1
     })
   }
   // an app from the switcher, or the neighbour a sideways finger brought: full size, then its workspace
@@ -685,14 +663,25 @@ Item {
   }
 
   // ---- home screen pages
-  function pageMoved(dx, t) { pageV.snap(-page * areaW + dx) }
+  // the pages follow the finger 1:1, give way past the first and last (rubber band), and settle on
+  // a spring that keeps the finger's speed (Spring.from() would drop it)
+  property int pageCount: 1
+  function pageMoved(dx, t) {
+    var x = -page * areaW + dx, lo = -(pageCount - 1) * areaW
+    if (x > 0) x = HM.rubber(x, areaW * cfg.pageRubber)
+    else if (x < lo) x = lo - HM.rubber(lo - x, areaW * cfg.pageRubber)
+    pageV.snap(x)
+  }
   function pageReleased(v, pages) {
+    pageCount = pages
     var i = Math.round(-pageV.value / Math.max(1, areaW))
     if (Math.abs(v) > cfg.pageFlick) i = page + (v < 0 ? 1 : -1)
     page = Math.max(0, Math.min(pages - 1, i))
+    var t = -page * areaW
     pageV.velocity = v
-    pageV.target = -page * areaW
-    if (pageV.value !== pageV.target) pageV.from(pageV.value)
+    if (pageV.target === t) pageV.target = t + (pageV.value < t ? -0.01 : 0.01)   // a change, so it runs
+    pageV.velocity = v
+    pageV.target = t
   }
   onActiveChanged: { if (!active) { mode = "idle"; cards = [] } else rescan.restart() }
 
@@ -752,7 +741,7 @@ Item {
           wallSource: home.wallpaperSource
           wallRect: Qt.rect(0, -per.reserved[1], per.modelData.width, per.modelData.height)
           onTapped: function (id) { home.screenName = per.name; home.guard("openApp", function () { home.openApp(id) }) }
-          onPageMoved: function (dx, t) { home.pageMoved(dx, t) }
+          onPageMoved: function (dx, t) { home.pageCount = pages; home.pageMoved(dx, t) }
           onPageReleased: function (v) { home.pageReleased(v, pages) }
         }
       }
