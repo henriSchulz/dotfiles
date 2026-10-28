@@ -107,11 +107,14 @@ local function apply_config()
   if panel then hl.config({ input = { touchdevice = { output = panel } } }) end
   if M.on then
     if not saved then
-      saved = { gaps_in = hl.get_config("general.gaps_in"), gaps_out = hl.get_config("general.gaps_out") }
+      saved = { gaps_in = hl.get_config("general.gaps_in"), gaps_out = hl.get_config("general.gaps_out"),
+                aspect = hl.get_config("layout.single_window_aspect_ratio") }
     end
-    hl.config({ general = { gaps_in = 0, gaps_out = 0 } })
+    -- every app fills its screen: no gaps, and no square single window (Omarchy's toggle)
+    hl.config({ general = { gaps_in = 0, gaps_out = 0 }, layout = { single_window_aspect_ratio = { 0, 0 } } })
   elseif saved then
     hl.config({ general = { gaps_in = saved.gaps_in, gaps_out = saved.gaps_out } })
+    if saved.aspect then hl.config({ layout = { single_window_aspect_ratio = saved.aspect } }) end
     saved = nil
   end
 end
@@ -156,5 +159,13 @@ end
 
 function M.toggle() M.set(not M.on) end
 
--- On load (start or reload) the config has just set its own gaps: take them as the saved ones.
-if M.on then apply_config() end
+-- On load (start or reload) take the config's own values as the saved ones — once all of it has
+-- loaded: Omarchy's toggles (single-window aspect ratio) come after this file.
+local fresh = true
+local function apply_fresh()
+  if not fresh then return end
+  fresh = false
+  if M.on then saved = nil; apply_config() end
+end
+hl.on("config.reloaded", apply_fresh)
+hl.on("hyprland.start", apply_fresh)
