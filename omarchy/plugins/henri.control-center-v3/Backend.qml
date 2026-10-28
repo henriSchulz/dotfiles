@@ -721,18 +721,23 @@ Item {
     if (!actionProc.running) actionProc.running = true
   }
 
-  // ---- Rotation lock (hypr-autorotate, the tablet): offered only where the panel
+  // ---- Rotation lock (hypr-autorotate, the tablet): offered where the panel
   //      has an accelerometer and the watcher is installed. Locked = the panel
   //      keeps the orientation it has now (the watcher skips while the lock file exists).
+  //      While a tablet casts this machine, the lock is ipadcast's: the cast desktop
+  //      stops following the tablet's turns while $XDG_RUNTIME_DIR/ipadcast/rotation-lock exists.
   property bool rotationAvailable: false
   property bool rotationLocked: false
   function setRotationLocked(on) {
     rotationLocked = on
-    run("hypr-autorotate " + (on ? "lock" : "unlock"))
+    if (cast) run((on ? "touch" : "rm -f") + ' "$XDG_RUNTIME_DIR/ipadcast/rotation-lock"')
+    else run("hypr-autorotate " + (on ? "lock" : "unlock"))
   }
   Process {
     id: rotationProc
-    command: ["bash", "-c", 'command -v hypr-autorotate >/dev/null || exit 0; '
+    command: ["bash", "-c", root.cast
+      ? '[[ -e "$XDG_RUNTIME_DIR/ipadcast/rotation-lock" ]] && echo locked || echo unlocked'
+      : 'command -v hypr-autorotate >/dev/null || exit 0; '
       + 'for d in /sys/bus/iio/devices/iio:device*; do [[ $(cat "$d/name" 2>/dev/null) == accel_3d ]] && { hypr-autorotate status; exit; }; done']
     stdout: StdioCollector {
       waitForEnd: true
