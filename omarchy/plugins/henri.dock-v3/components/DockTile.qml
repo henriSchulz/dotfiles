@@ -117,6 +117,7 @@ Item {
         smooth: true
         mipmap: true
         asynchronous: true
+        scale: VIconMetrics.scale(source)   // one visible size for every theme's icons
       }
 
       // Folder shown as a stack: the newest three files fanned on top of each other
