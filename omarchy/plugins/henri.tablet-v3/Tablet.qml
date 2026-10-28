@@ -142,7 +142,7 @@ Item {
     var m = null, mons = Hyprland.monitors.values
     for (var i = 0; i < mons.length; i++) if (mons[i].name === screenName) m = mons[i]
     if (!m || !m.activeWorkspace) return { prev: "", next: "" }
-    var list = Hyprland.workspaces.values.filter(w => w.id > 0 && w.monitor && w.monitor.id === m.id).sort((a, b) => a.id - b.id)
+    var list = Hyprland.workspaces.values.filter(w => String(w.name).indexOf("special:") !== 0 && w.monitor && w.monitor.id === m.id).sort((a, b) => a.id - b.id)
     var at = list.findIndex(w => w.id === m.activeWorkspace.id)
     function app(ws) {
       if (!ws) return ""

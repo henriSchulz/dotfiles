@@ -251,7 +251,9 @@ Item {
     var tl = Hyprland.toplevels.values
     for (var i = 0; i < tl.length; i++) {
       var t = tl[i], o = t.lastIpcObject
-      if (!o || !o.workspace || o.workspace.id <= 0 || o.floating || !o.mapped) continue
+      // named workspaces have negative ids too: the cast screen HEADLESS-SPARE shows "spare" while no
+      // monitor is there (2026-10-28: every pull on it ended "not dragging"); only special ones stay out
+      if (!o || !o.workspace || String(o.workspace.name || "").indexOf("special:") === 0 || o.floating || !o.mapped) continue
       if (mon && o.monitor !== mon.id) continue
       var id = appIdOf(o.class), e = entries[id]
       out.push({ key: String(o.address), address: String(o.address), toplevel: t, workspace: o.workspace.id, appId: id,
