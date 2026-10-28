@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Io
 import "file:///home/henri/.local/share/velum/qml/Velum"
 
-// The Photos widget of the home screen (iPadOS): one photo at a time, full bleed with the icons'
+// The Photos widget of the home screen (iPadOS, the medium size): one photo at a time, full bleed with the icons'
 // corner radius, its place and date over a soft shade at the bottom; another one fades in every
 // `rotateEvery` (the same one on every screen: it is picked by the clock, from midnight on). The photos come from
 // bin/velum-photo-picks (~/.cache/velum/photo-widget/picks.json + copies without metadata).

@@ -164,9 +164,8 @@ Item {
           readonly property string source: tile.isFolder || tile.isWidget ? "" : tile.modelData.icon
           anchors.horizontalCenter: parent.horizontalCenter
           y: (parent.height - height - hs.cfg.labelGap - name.height) / 2
-          // a widget reaches from its first icon's top edge to its last one's bottom edge, square
-          // (iPadOS), centred over its columns
-          width: tile.isWidget ? height : hs.g.icon
+          // a widget reaches from its first icon's left/top edge to its last one's right/bottom edge
+          width: hs.g.icon + (tile.span[0] - 1) * hs.cellW
           height: hs.g.icon + (tile.span[1] - 1) * hs.cellH
           scale: hs.pressedId === tile.appId && !hs.editing ? hs.cfg.pressScale : 1
           opacity: hs.pressedId === tile.appId && !hs.editing ? hs.lp.press : 1
