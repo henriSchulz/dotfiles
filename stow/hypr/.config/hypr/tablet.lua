@@ -46,15 +46,50 @@ local function has_tag(w)
   return false
 end
 
+-- A floating window that is its process's only window is an app that floats on its own (1Password
+-- does): in tablet mode it fills its screen like any app. Floating windows of a process that has
+-- another window are its dialogs and pickers; they stay floating with it.
+local function lone_app(w)
+  if not w.floating or not w.mapped or not w.workspace or w.workspace.special or w.pinned then return false end
+  for _, o in ipairs(hl.get_windows()) do
+    if o.address ~= w.address and o.pid == w.pid and o.mapped then return false end
+  end
+  return true
+end
+
+local function settle_app(w)
+  if lone_app(w) then
+    hl.dispatch(hl.dsp.window.tag({ tag = "+" .. TAG .. "-float", window = "address:" .. w.address }))
+    hl.dispatch(hl.dsp.window.float({ action = "disable", window = "address:" .. w.address }))
+    return hl.get_window("address:" .. w.address) or w
+  end
+  return w
+end
+
 local function fill(w)
   if not w.mapped or w.floating or w.fullscreen ~= 0 or not w.workspace or w.workspace.special then return end
   hl.dispatch(hl.dsp.window.tag({ tag = "+" .. TAG, window = "address:" .. w.address }))
   hl.dispatch(hl.dsp.window.fullscreen({ mode = "fullscreen", window = "address:" .. w.address }))
 end
 
-function M.fill_all() for _, w in ipairs(hl.get_windows()) do fill(w) end end
+function M.fill_all() for _, w in ipairs(hl.get_windows()) do fill(settle_app(w)) end end
+
+local function was_floating(w)
+  if type(w.tags) ~= "table" then return false end
+  for _, tag in ipairs(w.tags) do
+    if tag == TAG .. "-float" or tag == TAG .. "-float*" then return true end
+  end
+  return false
+end
 
 local function unfill_all()
+  for _, w in ipairs(hl.get_windows()) do
+    if was_floating(w) then
+      hl.dispatch(hl.dsp.window.tag({ tag = "-" .. TAG .. "-float", window = selector(w) }))
+      if w.fullscreen ~= 0 then hl.dispatch(hl.dsp.window.fullscreen({ mode = "fullscreen", window = selector(w) })) end
+      hl.dispatch(hl.dsp.window.float({ action = "enable", window = selector(w) }))
+    end
+  end
   for _, w in ipairs(hl.get_windows()) do
     if has_tag(w) then
       if w.fullscreen ~= 0 then hl.dispatch(hl.dsp.window.fullscreen({ mode = "fullscreen", window = selector(w) })) end
@@ -108,7 +143,9 @@ local function spread()
 end
 
 hl.on("window.open", function(w)
-  if not M.on or not tiled(w) or w.fullscreen ~= 0 then return end
+  if not M.on then return end
+  w = settle_app(w)
+  if not tiled(w) or w.fullscreen ~= 0 then return end
   local others = 0
   for _, o in ipairs(tiled_on(w.workspace)) do
     if o.address ~= w.address then others = others + 1 end
