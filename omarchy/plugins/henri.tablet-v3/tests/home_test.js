@@ -2,7 +2,7 @@
 const fs = require("fs"), path = require("path"), assert = require("assert"), vm = require("vm");
 const src = fs.readFileSync(path.join(__dirname, "..", "HomeModel.js"), "utf8").replace(/^\.pragma library$/m, "");
 const M = {};
-vm.runInNewContext(src + "\nout.M = { rubber, follow, besideX, switcherGeo, switcherPos, switcherSnap, switcherClamp, grid, cardRadius, destination, arrange, moveTo, slotAt, edgeOf, isFolder, arrangeLayout, folderOf, fold, unfold, moveInFolder, folderName, miniApps };", { out: M });
+vm.runInNewContext(src + "\nout.M = { rubber, follow, besideX, switcherGeo, switcherPos, switcherSnap, switcherClamp, grid, cardRadius, destination, arrange, moveTo, slotAt, edgeOf, isFolder, arrangeLayout, folderOf, fold, unfold, moveInFolder, folderName, miniApps, isWidget, place, pageCount, dropAt };", { out: M });
 const H_ = M.M;
 const tokens = fs.readFileSync(path.join(__dirname, "..", "..", "..", "qml", "Velum", "Tokens.js"), "utf8");
 const tcfg = JSON.parse(tokens.match(/^var core = (.*)$/m)[1]).surface.tablet, cfg = tcfg.home;
@@ -153,5 +153,24 @@ test("moveInFolder reorders inside; folderName takes the first shared category",
   assert.strictEqual(H_.folderName([["Graphics"], ["Graphics", "Office"]], names, "Folder"), "Creativity");
   assert.strictEqual(H_.folderName([["Game"], ["Office"]], names, "Folder"), "Folder");
   assert.strictEqual(H_.miniApps([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 3).length, 9);
+});
+test("place: a 2×2 widget takes its cells, icons flow around it and onto the next page", () => {
+  const span = id => H_.isWidget(id) ? [2, 2] : [1, 1];
+  const cells = H_.place(["widget:photos", "a", "b", "c", "d", "e"], span, 4, 2);
+  same(cells.map(e => [e.page, e.col, e.row]), [[0, 0, 0], [0, 2, 0], [0, 3, 0], [0, 2, 1], [0, 3, 1], [1, 0, 0]]);
+  same(cells[0], { page: 0, col: 0, row: 0, w: 2, h: 2 });
+  assert.strictEqual(H_.pageCount(cells), 2);
+  // a widget that no longer fits in the row starts where it fits; the gap fills with later icons
+  const c2 = H_.place(["a", "b", "c", "widget:photos", "d"], span, 4, 3);
+  same(c2.map(e => [e.page, e.col, e.row]), [[0, 0, 0], [0, 1, 0], [0, 2, 0], [0, 0, 1], [0, 3, 0]]);
+});
+test("dropAt: the item under the finger, or after the ones before that cell", () => {
+  const span = id => H_.isWidget(id) ? [2, 2] : [1, 1];
+  const g = { cols: 4, rows: 3, side: 0, top: 0 }, cw = 100, ch = 100;
+  const order = ["widget:photos", "a", "b", "c", "d"];
+  assert.strictEqual(H_.dropAt(order, "d", 150, 150, 0, span, g, cw, ch), 0, "on the widget");
+  assert.strictEqual(H_.dropAt(order, "a", 350, 50, 0, span, g, cw, ch), 2, "without a, c sits in the last column of row 0");
+  assert.strictEqual(H_.dropAt(order, "a", 350, 250, 0, span, g, cw, ch), 4, "an empty cell at the end");
+  assert.strictEqual(H_.isWidget("widget:photos") && !H_.isWidget("foot"), true);
 });
 console.log(n + " tests passed");

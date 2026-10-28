@@ -225,3 +225,52 @@ function folderName(catLists, names, fallback) {
 }
 // the folder's mini grid on its tile: the first `cols × cols` apps
 function miniApps(items, cols) { return items.slice(0, cols * cols) }
+
+// ---- widgets (iPadOS): an entry "widget:<kind>" of the order spans several cells
+function isWidget(id) { return typeof id === "string" && id.indexOf("widget:") === 0 && id.length > 7 }
+// Where every entry of `order` sits: [{ page, col, row, w, h }] in its order. Each takes the first
+// free cells where it fits, from the page the one before it is on (pages stay in order), so icons
+// flow around a widget and fill the gaps it leaves. spanOf(id) → [w, h] in cells.
+function place(order, spanOf, cols, rows) {
+  var pages = [], out = [], p0 = 0
+  function taken(p, c, r) { return pages[p] && pages[p][r * cols + c] }
+  function fits(p, c, r, w, h) {
+    if (c + w > cols || r + h > rows) return false
+    for (var y = r; y < r + h; y++) for (var x = c; x < c + w; x++) if (taken(p, x, y)) return false
+    return true
+  }
+  for (var i = 0; i < order.length; i++) {
+    var s = spanOf(order[i]), w = Math.min(cols, s[0]), h = Math.min(rows, s[1]), at = null
+    for (var p = p0; !at; p++) {
+      for (var k = 0; k < cols * rows && !at; k++) {
+        var c = k % cols, r = Math.floor(k / cols)
+        if (fits(p, c, r, w, h)) at = { page: p, col: c, row: r, w: w, h: h }
+      }
+    }
+    if (!pages[at.page]) pages[at.page] = []
+    for (var y = at.row; y < at.row + h; y++) for (var x = at.col; x < at.col + w; x++) pages[at.page][y * cols + x] = true
+    out.push(at)
+    p0 = at.page
+  }
+  return out
+}
+function pageCount(cells) {
+  var n = 1
+  for (var i = 0; i < cells.length; i++) n = Math.max(n, cells[i].page + 1)
+  return n
+}
+// Where a held item would land (the index moveTo takes): the cell under (x, y) on page p of the
+// grid as it is without the held item — the item covering that cell, or after every item before it
+function dropAt(order, id, x, y, p, spanOf, g, cellW, cellH) {
+  var base = order.filter(function (o) { return o !== id })
+  var cells = place(base, spanOf, g.cols, g.rows)
+  var c = Math.max(0, Math.min(g.cols - 1, Math.floor((x - g.side) / cellW)))
+  var r = Math.max(0, Math.min(g.rows - 1, Math.floor((y - g.top) / cellH)))
+  var key = (p * g.rows + r) * g.cols + c, before = 0
+  for (var i = 0; i < cells.length; i++) {
+    var e = cells[i]
+    if (e.page === p && c >= e.col && c < e.col + e.w && r >= e.row && r < e.row + e.h) return i
+    if ((e.page * g.rows + e.row) * g.cols + e.col < key) before = i + 1
+  }
+  return before
+}

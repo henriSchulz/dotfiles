@@ -138,8 +138,17 @@ Item {
   // the grid: what edit mode saved (order + folders), new apps after it (HM.arrangeLayout)
   property var savedOrder: []
   property var savedFolders: ({})
-  readonly property var layout: HM.arrangeLayout(gridApps.map(function (a) { return a.id }), savedOrder, savedFolders)
+  // widgets: an order entry each, the app a tap opens; one the saved order does not know yet
+  // starts at the top left of the first page (iPadOS puts a new widget there)
+  readonly property var widgets: ({ "widget:photos": { name: "Photos", app: "de.henri.IcloudPhotos" } })
+  readonly property var layout: {
+    var ids = Object.keys(widgets).concat(gridApps.map(function (a) { return a.id }))
+    var saved = savedOrder.slice()
+    for (var w in widgets) if (saved.indexOf(w) < 0) saved.unshift(w)
+    return HM.arrangeLayout(ids, saved, savedFolders)
+  }
   readonly property var gridOrder: layout.order
+  readonly property int gridPages: HM.pageCount(HM.place(gridOrder, function (id) { return HM.isWidget(id) ? [home.cfg.widget.cols, home.cfg.widget.rows] : [1, 1] }, home.cfg.cols, home.cfg.rows))
   property bool editing: false
   property string openFolder: ""   // "folder:…" open on the home screen
   // the home screen's tiles: apps and folders (with their apps). A new list only when tiles come,
@@ -148,6 +157,7 @@ Item {
   property string tilesKey: ""
   function syncTiles() {
     var l = home.layout, tiles = []
+    for (var w in widgets) tiles.push({ id: w, name: widgets[w].name, widget: w.slice(7) })
     for (var i = 0; i < gridApps.length; i++) if (!HM.folderOf(l.folders, gridApps[i].id)) tiles.push(gridApps[i])
     for (var k in l.folders) {
       var f = l.folders[k]
@@ -803,6 +813,10 @@ Item {
     command: ["readlink", "-f", home.wallpaperLink]
     stdout: StdioCollector { onStreamFinished: home.wallpaperTarget = String(text || "").trim().slice(0, 512) }
   }
+  // the Photos widget's photos: new picks once a day (the tool does nothing while they are fresh,
+  // and nothing on a machine without the iCloud Photos catalog)
+  Process { id: photoPicks; command: [home.homeDir + "/.local/share/velum/bin/velum-photo-picks"] }
+  Timer { interval: home.cfg.widget.refreshEvery; repeat: true; running: true; triggeredOnStart: true; onTriggered: if (!photoPicks.running) photoPicks.running = true }
   Component.onCompleted: { wallpaperProbe.running = true; scanApps(); Hyprland.refreshMonitors(); rescan.restart() }
   onModeChanged: {
     mark("mode " + mode)
@@ -893,7 +907,10 @@ Item {
           running: home.runningApps
           wallSource: home.wallpaperSource
           wallRect: Qt.rect(0, -per.reserved[1], per.modelData.width, per.modelData.height)
-          onTapped: function (id) { home.screenName = per.name; home.guard("openApp", function () { home.openApp(id) }) }
+          onTapped: function (id) {
+            if (HM.isWidget(id)) { id = home.widgets[id] ? home.widgets[id].app : ""; if (!id || !home.entries[id]) return }
+            home.screenName = per.name; home.guard("openApp", function () { home.openApp(id) })
+          }
           onPageMoved: function (dx, t) { home.pageCount = pages; home.pageMoved(dx, t) }
           onPageReleased: function (v) { home.pageReleased(v, pages) }
         }

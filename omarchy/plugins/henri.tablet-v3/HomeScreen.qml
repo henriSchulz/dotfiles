@@ -56,11 +56,15 @@ Item {
   signal folderRequested(string id)  // open ("folder:…") or close ("") a folder
 
   function slotOf(id) { var i = hs.shown.indexOf(id); return i < 0 ? 0 : i }
-  function slotX(i) { var at = i % hs.g.perPage; return Math.floor(i / hs.g.perPage) * hs.width + hs.g.side + (at % hs.g.cols) * hs.cellW }
-  function slotY(i) { var at = i % hs.g.perPage; return hs.g.top + Math.floor(at / hs.g.cols) * hs.cellH }
+  // cells: a widget spans several, icons flow around it (HM.place)
+  readonly property var wc: cfg.widget
+  function spanOf(id) { return HM.isWidget(id) ? [hs.wc.cols, hs.wc.rows] : [1, 1] }
+  readonly property var cells: HM.place(shown, spanOf, g.cols, g.rows)
+  function slotX(i) { var e = hs.cells[i]; return e ? e.page * hs.width + hs.g.side + e.col * hs.cellW : 0 }
+  function slotY(i) { var e = hs.cells[i]; return e ? hs.g.top + e.row * hs.cellH : 0 }
 
   readonly property var g: HM.grid(width, height, cfg)
-  readonly property int pages: Math.max(1, Math.ceil(order.length / g.perPage))
+  readonly property int pages: HM.pageCount(HM.place(order, spanOf, g.cols, g.rows))
   readonly property real cellW: (width - 2 * g.side) / g.cols
   readonly property real cellH: (height - g.top - g.bottom) / g.rows
   readonly property var lp: Theme.core.surface.launchpad
@@ -116,12 +120,14 @@ Item {
         required property int index
         readonly property string appId: modelData.id
         readonly property int slot: hs.slotOf(appId)
-        readonly property int pageOf: Math.floor(slot / hs.g.perPage)
+        readonly property int pageOf: hs.cells[slot] ? hs.cells[slot].page : 0
+        readonly property bool isWidget: !!modelData.widget
+        readonly property var span: hs.spanOf(appId)
         readonly property bool held: hs.dragId === appId
         readonly property bool isFolder: !!modelData.folder
         function holds(id) { return isFolder && modelData.items.some(function (a) { return a.id === id }) }
         // the visible body's share of the icon box: a measured icon's scale, a folder's plate
-        readonly property real body: isFolder ? Theme.core.surface.appIcon.content : VIconMetrics.scale(img.source)
+        readonly property real body: isFolder ? Theme.core.surface.appIcon.content : isWidget ? 1 : VIconMetrics.scale(img.source)
         property alias icon: img
         // its slot on a spring while the order changes under a held icon; the held one is the finger's
         Spring { id: sx; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: hs.slotX(tile.slot) }
@@ -133,8 +139,8 @@ Item {
         x: held ? hs.dragX - hs.pageX : sx.value
         y: held ? hs.dragY : sy.value
         z: held ? 2 : (sx.moving || sy.moving ? 1 : 0)
-        width: hs.cellW
-        height: hs.cellH
+        width: hs.cellW * span[0]
+        height: hs.cellH * span[1]
         scale: lift.value
         // the jiggle: every icon swings, neighbours the other way round (iPadOS)
         property real wobble: 0
@@ -148,15 +154,23 @@ Item {
         }
         Item {
           id: img
-          readonly property string source: tile.isFolder ? "" : tile.modelData.icon
+          readonly property string source: tile.isFolder || tile.isWidget ? "" : tile.modelData.icon
           anchors.horizontalCenter: parent.horizontalCenter
           y: (parent.height - height - hs.cfg.labelGap - name.height) / 2
-          width: hs.g.icon
-          height: width
+          // a widget reaches from its first icon's top edge to its last one's bottom edge, square
+          // (iPadOS), centred over its columns
+          width: tile.isWidget ? height : hs.g.icon
+          height: hs.g.icon + (tile.span[1] - 1) * hs.cellH
           scale: hs.pressedId === tile.appId && !hs.editing ? hs.cfg.pressScale : 1
           opacity: hs.pressedId === tile.appId && !hs.editing ? hs.lp.press : 1
           // armed as a folder target: a plate grows behind the icon (or the folder's own grows)
           Spring { id: aim; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: hs.mergeId === tile.appId ? 1 : 0 }
+          PhotoWidget {
+            anchors.fill: parent
+            visible: tile.isWidget
+            cfg: hs.wc
+            radius: hs.g.icon * hs.cfg.iconRadius
+          }
           FolderPlate {
             anchors.centerIn: parent
             size: img.width * Theme.core.surface.appIcon.content
@@ -174,7 +188,7 @@ Item {
             origin: Qt.point(hs.pageX + tile.x + img.x + (img.width - width) / 2, tile.y + img.y + (img.height - height) / 2)
           }
           Image {
-            visible: !tile.isFolder
+            visible: !tile.isFolder && !tile.isWidget
             anchors.fill: parent
             source: img.source
             sourceSize.width: width * 2
@@ -492,7 +506,7 @@ Item {
     finger.grabX = x - (t.x + hs.pageX)
     finger.grabY = y - t.y
     finger.iconY = t.icon.y + t.icon.height / 2
-    finger.dragFolder = t.isFolder
+    finger.dragFolder = t.isFolder || t.isWidget   // neither goes into a folder
     hs.dragX = t.x + hs.pageX
     hs.dragY = t.y
     hs.dropIndex = hs.order.indexOf(t.appId)
@@ -515,7 +529,7 @@ Item {
       if (hs.mergeAim) { hs.mergeAim = ""; hs.mergeId = ""; mergeTimer.stop() }
       // the others make room once the finger rests a moment (every move restarts the wait), so
       // an icon passing over them on its way to a folder target does not push that target away
-      finger.nextIndex = HM.slotAt(hs.dragX + hs.cellW / 2, hs.dragY + hs.cellH / 2, hs.page, hs.order.length, hs.g, hs.cellW, hs.cellH)
+      finger.nextIndex = HM.dropAt(hs.order, hs.dragId, hs.dragX + hs.cellW / 2, hs.dragY + hs.cellH / 2, hs.page, hs.spanOf, hs.g, hs.cellW, hs.cellH)
       if (finger.nextIndex !== hs.dropIndex) reorderTimer.restart()
     }
     var e = HM.edgeOf(x, hs.width, hs.cfg)
@@ -526,7 +540,7 @@ Item {
     var r = hs.fc.mergeZone * hs.g.icon / 2
     for (var j = 0; j < grid.count; j++) {
       var t = grid.itemAt(j)
-      if (!t || t.held || t.pageOf !== hs.page) continue
+      if (!t || t.held || t.isWidget || t.pageOf !== hs.page) continue
       var cx = hs.slotX(t.slot) + hs.pageX + t.icon.x + t.icon.width / 2, cy = hs.slotY(t.slot) + t.icon.y + t.icon.height / 2
       if (Math.abs(x - cx) < r && Math.abs(y - cy) < r) return t.appId
     }

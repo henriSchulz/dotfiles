@@ -17,6 +17,9 @@ voxtype-configure
 com.github.wwmm.easyeffects
 aether
 
+# Henri, 2026-10-28: Tensaku off the home screen
+dev.tensaku.Tensaku
+
 # file handlers — opened from files, never on their own
 imv
 mpv
