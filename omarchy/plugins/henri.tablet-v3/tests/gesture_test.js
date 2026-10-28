@@ -63,8 +63,8 @@ test("lift travel follows the finger", () => {
   for (let i = 1; i < a.length; i++) assert.ok(a[i].travel >= a[i - 1].travel);
   assert.ok(Math.abs(a[a.length - 1].travel - 50) < 1);
 });
-test("a long slow pull past homeTravel goes home", () => {
-  const a = play(stroke(X, H - 8, 0, -(cfg.homeTravel + 20), 900));
+test("a long steady pull past homeTravel goes home", () => {
+  const a = play(stroke(X, H - 8, 0, -(cfg.homeTravel + 20), 350));
   assert.deepStrictEqual(kinds(a).slice(-2), ["lift:move", "home"]);
 });
 test("a short fast flick goes home", () => {

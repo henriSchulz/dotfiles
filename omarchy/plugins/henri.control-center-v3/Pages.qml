@@ -172,8 +172,8 @@ Item {
           VTile {
             id: quick
             width: parent.width; height: conn.height - Theme.layout.module.toggle - 2 * Theme.layout.module.tileInset - cc.gap
-            // the rotation lock is a fifth badge where it exists; the badges shrink rather than touch
-            readonly property int count: cc.be.rotationAvailable ? 5 : 4
+            // tablet mode, and the rotation lock where it exists; the badges shrink rather than touch
+            readonly property int count: cc.be.rotationAvailable ? 6 : 5
             readonly property real b: Math.min(Theme.layout.module.quick,
               (width - 2 * Theme.layout.module.pad - (count - 1) * Theme.layout.list.gap) / count)
             Row {
@@ -183,6 +183,7 @@ Item {
               VBadge { size: quick.b; icon: "night-shift"; on: cc.be.nightShift; onTapped: cc.be.setNightShift(!cc.be.nightShift) }
               VBadge { size: quick.b; icon: cc.be.tilingLayout === "scrolling" ? "layout.columns" : "layout.tiles"; on: cc.be.tilingLayout === "scrolling"
                 onTapped: cc.be.setTilingLayout(cc.be.tilingLayout === "scrolling" ? "dwindle" : "scrolling") }
+              VBadge { size: quick.b; icon: "tablet"; on: Theme.touch; onTapped: cc.be.run("tablet-mode toggle") }
               VBadge { visible: cc.be.rotationAvailable; size: quick.b; icon: "rotation.lock"; on: cc.be.rotationLocked
                 onTapped: cc.be.setRotationLocked(!cc.be.rotationLocked) }
               VBadge { size: quick.b; icon: cc.be.kbdAvailable ? "keyboard.light" : "display"; on: cc.be.kbdAvailable && cc.be.kbd.level > 0

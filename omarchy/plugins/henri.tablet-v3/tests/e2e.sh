@@ -84,10 +84,11 @@ fi
 if runs T03; then
   c henri.tablet clearLog >/dev/null
   pt m $X $B d s 60 g $X $((B - 260)) 8 10 u
-  sleep 0.9; shot T03
-  want T03 "a flick up goes home (Mission Control)" "$(layer mission-control),$(log | jq -r '.[-1]')" "true,home"
-  want T03b "the dock went back" "$(dockHidden)" "true"
-  hyprctl dispatch 'hl.dsp.event("mission-control hide")' >/dev/null; sleep 0.6
+  sleep 1.2; shot T03
+  want T03 "a flick up goes home (tablet mode: the home screen, Home.qml)" "$(c henri.tablet home | jq -r .mode),$(log | jq -r '.[-1]')" "home,home"
+  want T03b "the dock-v3 stays away in tablet mode (the home screen has its own)" "$(layer henri-dock)" "false"
+  a=$(hyprctl clients -j | jq -r '[.[] | select(.monitor == ('"$(hyprctl monitors -j | jq '.[] | select(.name=="TB") | .id')"'))][0].address')
+  hyprctl dispatch "hl.dsp.focus({ window = 'address:$a' })" >/dev/null; sleep 1
 fi
 
 if runs T04; then
@@ -95,13 +96,14 @@ if runs T04; then
   # up 170 px at a normal pace, then the finger rests
   pt m $X $B d s 60 g $X $((B - 170)) 20 16 s 450
   shot T04-hold
-  mid=$(log | jq -r 'index("switcher:start") != null')
+  mid=$(c henri.tablet home | jq -r '.log | index("armed") != null')
   pt g $X $((B - 230)) 6 16 s 60 u
   sleep 1; shot T04
-  want T04 "pull up and pause opens the App Switcher" "$mid" "true"
-  want T04b "Mission Control is up after release" "$(layer mission-control)" "true"
+  want T04 "pull up and pause arms the App Switcher while the finger rests" "$mid" "true"
+  want T04b "the App Switcher is up after release" "$(c henri.tablet home | jq -r .mode)" "switcher"
   want T04c "nothing went home" "$(log | jq -r 'index("home") == null')" "true"
-  hyprctl dispatch 'hl.dsp.event("mission-control toggle")' >/dev/null; sleep 0.8
+  # tap the newest card: back to that app
+  pt m $((W / 2)) $((H / 2)) d s 60 u; sleep 1.2
 fi
 
 if runs T05; then
@@ -238,13 +240,6 @@ if runs T16; then
   hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "fullscreen" })' >/dev/null; sleep 0.5
 fi
 
-if runs T17; then
-  # pull the dock out, then on into Mission Control: the dock hands over (fades), no slide back
-  c henri.tablet clearLog >/dev/null
-  pt m $X $B d s 60 g $X $((B - 260)) 8 10 u; sleep 0.9
-  want T17 "Mission Control takes the dock over" "$(log | jq -c 'map(select(startswith("dock:")))[-1]'),$(dockHidden)" '"dock:handover",true'
-  hyprctl dispatch 'hl.dsp.event("mission-control hide")' >/dev/null; sleep 0.6
-fi
 
 # the open window bar's buttons, from the right: close, fullscreen, keyboard, mic, search
 barButton() {                                  # barButton N → "x y" (N = 1 for close …)

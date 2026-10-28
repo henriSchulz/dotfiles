@@ -10,9 +10,11 @@ import "Gesture.js" as Gesture
 // along the bottom edge of every screen, with the home indicator, and what a finger does there
 // (Gesture.js decides):
 //   pull up a little          nothing (the dock is no longer pulled from here, 2026-10-28)
-//   pull up far / flick        home: Mission Control (hyprmc, or the QML one without it: mc())
-//   pull up and pause          App Switcher: Mission Control under the finger (hyprmc.gesture,
-//                              or the QML one's "mission-control-gesture:…" events)
+//   pull up far / flick        home: in tablet mode the home screen (Home.qml: the app follows the
+//                              finger as a card into its icon); elsewhere Mission Control (hyprmc,
+//                              or the QML one without it: mc())
+//   pull up and pause          App Switcher: in tablet mode Home.qml's cards; elsewhere Mission
+//                              Control under the finger (hyprmc.gesture, or "mission-control-gesture:…")
 //   slide along the edge       next / previous app (one app per workspace in tablet mode)
 //   tap                        the window bar above the indicator (WindowBar.qml)
 //   double tap                 back to the previous app
@@ -57,7 +59,16 @@ Item {
     for (var i = 0; i < actions.length; i++) {
       var a = actions[i]
       note(a.do + (a.phase ? ":" + a.phase : "") + (a.step ? ":" + a.step : ""))
-      if (a.do === "home") {
+      if (root.active && (a.do === "lift" || a.do === "home" || a.do === "switcher")) {
+        // tablet mode: the home screen and App Switcher of Home.qml follow the finger
+        if (a.do === "lift") {
+          if (a.phase === "move") homeCtl.lift(a.up, a.dx)
+          else homeCtl.release(a.phase === "cancel" ? "cancel" : "end", a)
+        } else if (a.do === "home") homeCtl.release("home", a)
+        else if (a.phase === "start") homeCtl.arm()
+        else if (a.phase === "update") { if (a.up !== undefined) homeCtl.lift(a.up, a.dx) }
+        else homeCtl.release(a.cancelled ? "cancel" : "switcher", a)
+      } else if (a.do === "home") {
         mc("toggle()", "mission-control toggle mission")
       } else if (a.do === "switcher") {
         var t = Date.now()
@@ -240,11 +251,14 @@ Item {
           zone.swallow = root.sleepingOn(zone.screen.name)
           root.wake()
           if (zone.swallow) return
-          zone.pressed = true; root.run(zone.gesture.down(Date.now(), m.x, m.y), zone.screen.name); ticker.start()
+          zone.pressed = true
+          homeCtl.zoneFinger = true
+          if (root.active) homeCtl.prepare(zone.screen.name)
+          root.run(zone.gesture.down(Date.now(), m.x, m.y), zone.screen.name); ticker.start()
         }
         onPositionChanged: function (m) { if (zone.pressed) root.run(zone.gesture.move(Date.now(), m.x, m.y), zone.screen.name) }
-        onReleased: function (m) { if (zone.swallow) { zone.swallow = false; return } ticker.stop(); zone.pressed = false; root.run(zone.gesture.up(Date.now(), m.x, m.y), zone.screen.name) }
-        onCanceled: { if (zone.swallow) { zone.swallow = false; return } ticker.stop(); zone.pressed = false; root.run(zone.gesture.cancel(), zone.screen.name) }
+        onReleased: function (m) { homeCtl.zoneFinger = false; if (zone.swallow) { zone.swallow = false; return } ticker.stop(); zone.pressed = false; root.run(zone.gesture.up(Date.now(), m.x, m.y), zone.screen.name) }
+        onCanceled: { homeCtl.zoneFinger = false; if (zone.swallow) { zone.swallow = false; return } ticker.stop(); zone.pressed = false; root.run(zone.gesture.cancel(), zone.screen.name) }
       }
       // a resting finger sends no events: the pause that opens the App Switcher is seen here
       Timer {
@@ -299,6 +313,7 @@ Item {
         root.wake()
         if (sleeping) return               // this finger only wakes the indicator
         root.castBottom = { gesture: Gesture.create(root.tt), screen: screenName }
+        if (root.active) homeCtl.prepare(screenName)
         root.run(root.castBottom.gesture.down(t, x, y), screenName)
         castTicker.start()
         return
@@ -331,13 +346,18 @@ Item {
     }
   }
 
+  // tablet mode's home screen, home gesture and App Switcher
+  Home { id: homeCtl; active: root.active; dispatch: root.dispatch }
+
   // keyboard, fullscreen and close for the active window, above the indicator (tablet mode, the cast screen)
   WindowBar { id: windowBar; tabletMode: root.active; dispatch: root.dispatch }
 
   IpcHandler {
     target: "henri.tablet"
     function state(): string { return JSON.stringify({ active: root.active, screens: root.active ? Quickshell.screens.length : 0, log: root.log, castScreen: windowBar.castScreen, window: windowBar.ipc ? windowBar.ipc.class : "", windowBarOpen: windowBar.open }) }
-    function clearLog(): string { root.log = []; return "ok" }
+    function clearLog(): string { root.log = []; homeCtl.log = []; return "ok" }
+    function home(): string { return JSON.stringify({ empty: homeCtl.emptyOn(homeCtl.screenName), mode: homeCtl.mode, screen: homeCtl.screenName, cards: homeCtl.cards.map(c => c.appId), at: homeCtl.cards.map((c, i) => { var k = homeCtl.card(i); return k ? [Math.round(k.px), Math.round(k.py), +k.ps.toFixed(2), +k.po.toFixed(2)] : null }), zoneFinger: homeCtl.zoneFinger,  cur: homeCtl.cur, armed: homeCtl.armed, fromHome: homeCtl.fromHome, area: [homeCtl.areaW, homeCtl.areaH], apps: homeCtl.gridApps.length, dock: homeCtl.dockApps.map(a => a.id), recent: homeCtl.recentApps.map(a => a.id), page: homeCtl.page, log: homeCtl.log }) }
+    function homeOpen(id: string): string { homeCtl.openApp(id); return homeCtl.mode }
     function pauseHome(on: string): string { root.homePaused = on === "toggle" ? !root.homePaused : on === "on" || on === "true"; return String(root.homePaused) }
     function tap(screen: string): string { windowBar.toggle(screen); return windowBar.openOn }
     function view(): string { return JSON.stringify({ asleep: root.asleep, fullscreenOn: root.fullscreenOn, slideScreen: root.slideScreen, neighbours: root.neighbours, dockOut: VGestures.out, shrunk: Object.keys(root.shrunk).length, dictateOn: windowBar.dictateOn, voxState: windowBar.voxState, entered: windowBar.entered, zones: VGestures.zones }) }

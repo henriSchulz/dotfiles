@@ -19,7 +19,8 @@
 //   held      the finger rested below the slop for `longPress`: Spotlight (longpress)
 //   down      pushed down past `downSlop`: the app shrinks to a floating window (down)
 //
-// Actions: { do: "lift", phase: "move"|"end"|"cancel", travel, velocity }
+// Actions: { do: "lift", phase: "move"|"end"|"cancel", travel, up, dx, velocity, vx }
+//          (up: signed travel, dx: sideways from the start; tablet mode's Home.qml follows them)
 //          { do: "home" }
 //          { do: "switcher", phase: "start"|"update"|"end", delta, cancelled }
 //          { do: "app", step: +1|-1 }
@@ -83,10 +84,10 @@ function create(cfg) {
       }
       if (mode === "slide") out.push({ do: "slide", phase: "move", dx: dx })
       if (mode === "lift") {
-        out.push({ do: "lift", phase: "move", travel: Math.max(0, up) })
+        out.push({ do: "lift", phase: "move", travel: Math.max(0, up), up: up, dx: dx })
         out = out.concat(checkHold(t))
       } else if (mode === "switcher") {
-        out.push({ do: "switcher", phase: "update", delta: y - lastY })
+        out.push({ do: "switcher", phase: "update", delta: y - lastY, up: up, dx: dx })
       }
       lastY = y
       return out
@@ -106,10 +107,10 @@ function create(cfg) {
       var v = velocity(), dx = x - x0, was = mode
       mode = "done"
       if (was === "lift") {
-        if (travelUp() >= cfg.homeTravel || v.up >= cfg.homeFlick) out.push({ do: "home" })
-        else out.push({ do: "lift", phase: "end", travel: Math.max(0, travelUp()), velocity: v.up })
+        if (travelUp() >= cfg.homeTravel || v.up >= cfg.homeFlick) out.push({ do: "home", velocity: v.up, vx: v.x, dx: dx })
+        else out.push({ do: "lift", phase: "end", travel: Math.max(0, travelUp()), velocity: v.up, vx: v.x, dx: dx })
       } else if (was === "switcher") {
-        out.push({ do: "switcher", phase: "end", cancelled: false })
+        out.push({ do: "switcher", phase: "end", cancelled: false, dx: dx, travel: travelUp() })
       } else if (was === "slide") {
         out.push({ do: "slide", phase: "end", dx: dx })
         var flick = Math.abs(v.x) >= cfg.slideFlick && (v.x > 0) === (dx > 0)

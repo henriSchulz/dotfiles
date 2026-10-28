@@ -1681,7 +1681,7 @@ Item {
   PanelWindow {
     id: overlay
     screen: root.screen
-    visible: !root.remapping
+    visible: !root.remapping && !root.touchMode   // tablet mode: the home screen has its own dock (henri.tablet-v3 Home.qml)
     color: "transparent"
     WlrLayershell.namespace: "henri-dock-overlay"
     WlrLayershell.layer: root.overFullscreen ? WlrLayer.Overlay : WlrLayer.Top
@@ -1890,7 +1890,7 @@ Item {
   PanelWindow {
     id: bgWindow
     screen: root.screen
-    visible: !root.remapping
+    visible: !root.remapping && !root.touchMode   // tablet mode: the home screen has its own dock (henri.tablet-v3 Home.qml)
     color: "transparent"
     WlrLayershell.namespace: "henri-dock"
     WlrLayershell.layer: root.overFullscreen ? WlrLayer.Overlay : WlrLayer.Top
