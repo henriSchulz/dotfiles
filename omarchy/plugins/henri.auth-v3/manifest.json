@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.auth-v3",
+  "name": "Password prompt (v3, Velum)",
+  "version": "0.1.0",
+  "author": "Henri Schulz",
+  "license": "MIT",
+  "description": "Velum's polkit agent: a password modal at the top of the focused screen for pkexec and every other polkit request; shows the command ask-root was given. The password goes to polkit's own helper, never to the shell.",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Auth.qml"
+  },
+  "tags": [
+    "polkit",
+    "auth",
+    "quickshell"
+  ]
+}

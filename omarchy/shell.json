@@ -56,7 +56,8 @@
     "bibek.menu",
     "omarchy.notifications",
     "omadock",
-    "omarchy.lock"
+    "omarchy.lock",
+    "omarchy.polkit"
   ],
   "idle": {
     "displayOffBattery": 120,
