@@ -119,6 +119,41 @@ hyprctl dispatch 'hl.dsp.event("velum-keyboard toggle TB")' >/dev/null; sleep 0.
 hyprctl dispatch 'hl.dsp.event("velum-keyboard toggle TB")' >/dev/null; sleep 0.5
 want K13 "the button toggles: open, then closed again" "$(st | jq .shown),$(sent | awk -F'|' '{print $NF}')" "false,close"
 
+# ---- the edit menu: a long press in a text field (the rig has no bridge: hold says what it would answer)
+ms() { c omarchy.keyboard menuState; }
+# other plugins have full-screen surfaces of the same namespace: the menu's is one more than before
+fullLayers() { hyprctl layers -j | jq '[.TB.levels[][] | select(.namespace == "velum-surface" and .h == '$H')] | length'; }
+base=$(fullLayers)
+WAYLAND_DISPLAY=$NWL wl-copy --clear 2>/dev/null
+menuLayer() { [[ $(fullLayers) -gt $base ]] && echo true || echo false; }
+c omarchy.keyboard hold TB 500 400 touch 0 >/dev/null; sleep 0.5
+want M01 "no text field: no menu" "$(ms | jq .open),$(menuLayer)" "false,false"
+c omarchy.keyboard hold TB 500 400 touch 1 >/dev/null; sleep 0.5
+want M02 "in a text field the menu opens" "$(ms | jq .open),$(menuLayer),$(ms | jq -c .items)" 'true,true,["Cut","Copy","Select All"]'
+shot M02-menu
+c omarchy.keyboard menuTap Copy >/dev/null; sleep 0.6
+want M03 "Copy sends Control-C and the menu goes" "$(sent | awk -F'|' '{print $NF}'),$(ms | jq .open),$(menuLayer)" "combo ctrl c,false,false"
+WAYLAND_DISPLAY=$NWL wl-copy "e2e" 2>/dev/null; sleep 0.3
+c omarchy.keyboard hold TB 520 60 touch 1 >/dev/null; sleep 0.5
+want M04 "with something to paste, Paste; near the top it opens below the finger" "$(ms | jq -c .items)" '["Cut","Copy","Paste","Select All"]'
+shot M04-below
+pt m 900 650 d s 40 u; sleep 0.6
+want M05 "a tap beside it closes it and types nothing" "$(ms | jq .open),$(menuLayer),$(sent | awk -F'|' '{print $NF}')" "false,false,combo ctrl c"
+# apps: a terminal copies with Shift and has no Cut; an app with its own long-press menu keeps a finger's
+hyprctl dispatch "hl.dsp.exec_cmd('foot --app-id foot', { workspace = '$(hyprctl monitors -j | jq '.[] | select(.name=="TB") | .activeWorkspace.id')' })" >/dev/null; sleep 1.5
+c omarchy.keyboard hold TB 500 400 touch 1 >/dev/null; sleep 0.5
+want M06 "a terminal: Copy and Paste with Shift" "$(ms | jq -r .app),$(ms | jq -c .items)" 'foot,["Copy","Paste"]'
+c omarchy.keyboard menuTap Paste >/dev/null; sleep 0.6
+want M07 "Paste in a terminal sends Control-Shift-V" "$(sent | awk -F'|' '{print $NF}')" "combo ctrl+shift v"
+hyprctl dispatch 'hl.dsp.window.close()' >/dev/null; sleep 0.5
+hyprctl dispatch "hl.dsp.exec_cmd('foot --app-id chromium', { workspace = '$(hyprctl monitors -j | jq '.[] | select(.name=="TB") | .activeWorkspace.id')' })" >/dev/null; sleep 1.5
+c omarchy.keyboard hold TB 500 400 touch 1 >/dev/null; sleep 0.5
+want M08 "an app with its own menu keeps a finger's long press" "$(ms | jq -r .app),$(ms | jq .open)" "chromium,false"
+c omarchy.keyboard hold TB 500 400 pointer 1 >/dev/null; sleep 0.5
+want M09 "but a pointer hold (the iPad) gets the menu" "$(ms | jq .open)" "true"
+hyprctl dispatch 'hl.dsp.window.close()' >/dev/null; sleep 0.6
+want M10 "the app going closes the menu" "$(ms | jq .open)" "false"
+
 echo "keyboard e2e: $pass ok, $fail failed"
 [[ -n ${KEEP:-} ]] || rig/rig.sh stop >/dev/null
 [[ $fail == 0 ]]

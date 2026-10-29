@@ -47,8 +47,8 @@ BarWidget {
           anchors.centerIn: parent
           name: "keyboard"
           weight: "fill"
-          size: Style.spaceReal(15)
-          color: button ? button.foreground : Color.foreground
+          size: Theme.core.surface.menubar.icon
+          color: button ? button.foreground : Theme.r.popover.ink   // Velum's ink, never Omarchy's Color
         }
       }
     }

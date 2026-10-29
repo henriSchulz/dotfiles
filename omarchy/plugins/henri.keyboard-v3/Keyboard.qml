@@ -26,7 +26,13 @@ import "file:///home/henri/.local/share/velum/qml/Velum/KeyboardLayout.js" as Ke
 // Its mic key dictates (voxtype record start / stop; lit while voxtype records or transcribes). voxtype
 // pastes with wtype, which fcitx5 takes for a real key: while any dictation runs (also one from the
 // window bar or the hotkey) the bridge is told "hold on", so that key does not close the keyboard.
-// IPC: omarchy.keyboard toggle | open | close | state
+//
+// A long press (custom event "velum-hold SCREEN X Y touch|pointer" from velum-touchd or ipadcast) in a
+// focused text field opens the edit menu (EditMenu.qml, iPadOS's): Cut, Copy, Paste (when the clipboard
+// has something), Select All — a terminal gets Copy and Paste with Shift. The bridge says whether a text
+// field has the focus ("field" → "field N", fcitx5). A real finger in an app with a long-press menu of
+// its own (Chromium, GTK, Firefox: ownMenu) is left to that app; a pointer hold (the iPad's viewer) is not.
+// IPC: omarchy.keyboard toggle | open | close | state | hold SCREEN X Y KIND FIELD | menuState | menuTap LABEL
 Item {
   id: root
 
@@ -77,6 +83,7 @@ Item {
       onRead: function (line) {
         if (line === "show") root.open(false)
         else if (line === "hide") root.close(false)
+        else if (line.indexOf("field ") === 0) root.fieldAnswer(parseInt(line.slice(6)))
       }
     }
     onExited: function (code) { if (code !== 0) console.warn("henri.keyboard: velum-osk exited", code) }
@@ -107,6 +114,54 @@ Item {
     onExited: { root.voxState = ""; voxRetry.restart() }
   }
   Timer { id: voxRetry; interval: Theme.delay("hudHold") * 10; onTriggered: voxFollow.running = true }
+
+  // ---- the edit menu ------------------------------------------------------------------------------
+  // apps whose text fields answer a finger held on them with a menu of their own
+  readonly property var ownMenu: /^(chromium|google-chrome|brave-browser|chrome-.*|firefox|org\.gnome\..*|code|code-oss|electron.*|obsidian|signal)$/i
+  property var menuAt: null           // { screen, x, y } of the menu, kept while it fades out
+  property bool menuOpen: false
+  property var pendingHold: null      // a hold waiting for the clipboard and the bridge's answer
+  property bool clipboardFull: false
+  property int rigField: 0            // the rig has no bridge: hold() says what it would answer
+  readonly property var menuItems: {
+    var t = root.terminal, m = t ? ["ctrl", "shift"] : ["ctrl"], l = []
+    if (!t) l.push({ label: "Cut", line: KeyboardLayout.comboLine(m, "x") })
+    l.push({ label: "Copy", line: KeyboardLayout.comboLine(m, "c") })
+    if (root.clipboardFull) l.push({ label: "Paste", line: KeyboardLayout.comboLine(m, "v") })
+    if (!t) l.push({ label: "Select All", line: KeyboardLayout.comboLine(["ctrl"], "a") })
+    return l
+  }
+  function holdAt(screen, x, y, kind) {
+    if (kind === "touch" && root.ownMenu.test(root.appId)) return
+    root.pendingHold = { screen: screen, x: x, y: y }
+    clip.running = true                 // first the clipboard, so the words are known when it opens
+  }
+  Process {
+    id: clip
+    command: ["wl-paste", "--list-types"]
+    stdout: StdioCollector {}
+    onExited: function (code) {
+      root.clipboardFull = code === 0 && String(clip.stdout.text).trim() !== ""
+      if (!root.pendingHold) return
+      if (root.inRig) root.fieldAnswer(root.rigField)
+      else if (bridge.running) root.send("field")
+      else root.pendingHold = null
+    }
+  }
+  function fieldAnswer(n) {
+    var h = root.pendingHold
+    root.pendingHold = null
+    if (!h || n <= 0) return
+    root.menuOpen = false
+    root.menuAt = h
+    root.menuOpen = true
+  }
+  function menuChosen(item) {
+    root.menuOpen = false
+    if (item && item.line) root.send(item.line)
+  }
+  // another app took the focus: the menu was for the old one
+  onAppIdChanged: root.menuOpen = false
 
   // the dock gives way while the keyboard is up (as on an iPad): "velum-keyboard shown|hidden SCREEN"
   function announce() {
@@ -163,6 +218,12 @@ Item {
       var d = String(event.data)
       if (d.length > 64) return
       var name = ""
+      if (d.indexOf("velum-hold ") === 0) {
+        var a = d.slice(11).trim().split(" ")
+        if (a.length === 4 && /^[A-Za-z0-9_-]+$/.test(a[0]) && isFinite(a[1]) && isFinite(a[2]))
+          root.holdAt(a[0], Number(a[1]), Number(a[2]), a[3])
+        return
+      }
       if (d.indexOf("velum-touch ") === 0) name = d.slice(12).trim()
       else if (d.indexOf("velum-keyboard toggle ") === 0) name = d.slice(22).trim()
       else if (d.indexOf("velum-keyboard open ") === 0) name = d.slice(20).trim()
@@ -180,7 +241,32 @@ Item {
     function close(): void { root.close(true) }
     // rig: press the key that types `label` (or names `act`) as a finger would
     function tap(label: string): void { if (root.board) root.board.tap(label) }
+    // rig: a long press at X, Y as a source would send it; FIELD = the bridge's answer (0: no text field)
+    function hold(screen: string, x: real, y: real, kind: string, field: int): void { root.rigField = field; root.holdAt(screen, x, y, kind) }
+    function menuState(): string { return JSON.stringify({ open: root.menuOpen, at: root.menuAt, items: root.menuItems.map(function (i) { return i.label }), app: root.appId }) }
+    function menuTap(label: string): bool {
+      var w = menuWins.instances.length ? menuWins.instances[0] : null
+      if (!w) return false
+      for (var i = 0; i < root.menuItems.length; i++) if (root.menuItems[i].label === label) { w.choose(i); return true }
+      return false
+    }
     function state(): string { var b = root.board || {}; return JSON.stringify({ shown: root.shown, page: b.page, shift: b.shift, caps: b.caps, mods: b.mods, terminal: root.terminal, screen: root.screenName, bridge: bridge.running, sent: root.sent, voxState: root.voxState }) }
+  }
+
+  Variants {
+    id: menuWins
+    model: root.menuAt ? Quickshell.screens.filter(function (s) { return s.name === root.menuAt.screen }) : []
+    EditMenu {
+      required property var modelData
+      screen: modelData
+      items: root.menuItems
+      px: root.menuAt ? root.menuAt.x : 0
+      py: root.menuAt ? root.menuAt.y : 0
+      open: root.menuOpen
+      onChosen: function (item) { root.menuChosen(item) }
+      onDismissed: root.menuOpen = false
+      onGone: if (!root.menuOpen) root.menuAt = null
+    }
   }
 
   // ---- the surface ------------------------------------------------------------------------------

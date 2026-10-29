@@ -24,9 +24,11 @@
  *                          character ("combo ctrl+shift c"); through our own virtual keyboard, see press_combo
  *     open | close         the keyboard opened or closed by hand (open enters the mode)
  *     hold on|off          a dictation runs: voxtype's paste (wtype) must not close the keyboard
+ *     field                is a text field focused? answered with "field N" (fcitx5's Controller1.State)
  * Lines out (stdout):
  *     show | hide          the keyboard should appear / go
  *     mode osk|physical    fcitx5's input method mode
+ *     field 0|1|2          no text field focused | one, input method off | on (the edit menu asks)
  *
  * Text goes through fcitx5 while a text field there has the focus: a character as its keysym alone,
  * which fcitx5 commits as text (needs waylandim PreferKeyEvent=False), a key without a character by
@@ -445,6 +447,10 @@ static void line(char *l)
 		by_hand = true;
 		keymap_dirty = true;
 		set_shown(true);
+	} else if (!strcmp(l, "field")) {
+		char ans[16];
+		snprintf(ans, sizeof ans, "field %d", fcitx_state());
+		out(ans);
 	} else if (!strcmp(l, "hold on"))
 		hold = true;
 	else if (!strcmp(l, "hold off")) {
