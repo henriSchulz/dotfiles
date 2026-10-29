@@ -86,6 +86,7 @@ BarWidget {
     color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : root.smoke.tint
     border.width: Theme.layout.separator; border.color: Theme.reduceTransparency ? Theme.r.line.rim : root.smoke.rim
     opacity: island.shown ? 0 : 1
+    VLens { layers: Theme.r.popover.shadow; radius: pill.radius }
     Face { anchors.fill: parent }
   }
   // hover and clicks on the widget's fixed box, never on the growing pill

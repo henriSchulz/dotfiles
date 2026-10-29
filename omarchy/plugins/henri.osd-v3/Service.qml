@@ -460,6 +460,7 @@ Item {
         border.width: Theme.layout.separator
         border.color: Theme.r.line.rim
       }
+      VLens { layers: Theme.r.popover.shadow; radius: Theme.m.radius.panel }
 
       Column {
         id: column

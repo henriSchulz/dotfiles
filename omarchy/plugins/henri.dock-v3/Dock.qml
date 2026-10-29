@@ -1939,6 +1939,7 @@ Item {
         border.color: root.palette.hairline
         antialiasing: true
         Behavior on color { ColorAnimation { duration: Theme.dur("slow"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
+        VLens { layers: Theme.r.popover.shadow; radius: parent.radius }
         Rectangle {
           anchors.fill: parent; anchors.margins: 1
           radius: parent.radius - 1

@@ -1433,6 +1433,7 @@ Item {
     color: root.background
     border.width: Theme.layout.separator
     border.color: Theme.reduceTransparency ? Theme.r.line.rim : root.smoke.rim
+    VLens { layers: Theme.r.popover.shadow; radius: parent.radius }
   }
 
   Component { id: emptyModuleComponent; Item { implicitWidth: 0; implicitHeight: 0; visible: false } }

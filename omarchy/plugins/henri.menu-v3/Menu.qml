@@ -657,7 +657,9 @@ Item {
   readonly property bool dark: Theme.dark
   readonly property color glassFill: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
   readonly property color glassBorder: Theme.r.line.rim
-  readonly property color glassHighlight: Theme.r.line.rim
+  // the light along the top edge: the lens of the variant's popover shadow (an inset layer
+  // with a positive offset, Opal), else the rim
+  readonly property color glassHighlight: { var l = Theme.r.popover.shadow.filter(function (l) { return l.inset && l.offsetY > 0 })[0]; return l ? l.color : Theme.r.line.rim }
   readonly property color ink: Theme.r.popover.ink
   readonly property color inkSecondary: Theme.r.popover.inkSecondary
   readonly property color inkTertiary: Theme.r.ink.tertiary
