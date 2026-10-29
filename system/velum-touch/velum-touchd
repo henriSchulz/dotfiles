@@ -10,7 +10,9 @@ surfaces follow a finger there too, without tablet mode:
     down|move|up|cancel X Y" (logical px) to henri.tablet-v3, as from the cast;
   - in from the left / right: back / forward (alt+Left / alt+Right);
   - anything else (a tap on the bar, a drag that starts there) goes on as it was, landing point first;
-  - the last finger up: "velum-touch SCREEN" for the on-screen keyboard (henri.keyboard-v3).
+  - the last finger up: "velum-touch SCREEN" for the on-screen keyboard (henri.keyboard-v3);
+  - a lone finger held still for HOLD_S: "velum-hold SCREEN X Y touch" (logical px), the keyboard's
+    edit menu when a text field has the focus. The finger itself goes on to the app unchanged.
 
 How: the touchscreen is grabbed (EVIOCGRAB) and its fingers go on through a uinput copy, "velum
 touch"; Hyprland only sees that copy. A dead daemon releases the grab with its file, so the plain
@@ -29,6 +31,8 @@ NAME = b"velum touch"
 
 # Same strips and thresholds as the cast (server.py): logical px, px/s.
 EDGE_ZONE, EDGE_SIDE_ZONE, EDGE_DECIDE, EDGE_BACK, EDGE_FLICK = 28, 20, 8, 100, 600
+# A long press, as server.py's: this long (s) and no further than this from where it landed (logical px).
+HOLD_S, HOLD_SLOP = 0.5, 10
 
 # ---------------------------------------------------------------- evdev / uinput
 
@@ -204,6 +208,7 @@ class Touch:
     def reset(self):
         self.slot, self.cur, self.changed = 0, {}, set()   # input: slot → [tracking id, x, y]
         self.fingers, self.edge = set(), None             # passed on; held back at an edge
+        self.hold = None                                   # a lone finger that may become a long press
         self.passed = {}                                   # output: slot → tracking id
         self.next_id = 0
 
@@ -268,10 +273,38 @@ class Touch:
             return                                        # a finger from before the grab
         self.fingers.discard(slot) if kind == "u" else self.fingers.add(slot)
         self.emit(cmd)
+        self.track_hold(cmd)
         if kind == "u" and not self.fingers:
             screen = self.hypr.screen
             if screen:
                 self.hypr.event("velum-touch %s" % screen[0])
+
+    # -- a long press: one finger, still; tick() fires it from the main loop
+    def track_hold(self, cmd):
+        kind, slot = cmd[0], cmd[1]
+        h = self.hold
+        if kind == "d":
+            self.hold = None
+            if len(self.fingers) == 1 and self.hypr.screen:
+                x, y, sc = self.place(cmd)
+                self.hold = {"slot": slot, "x": x / sc, "y": y / sc, "sc": sc, "t": time.monotonic()}
+        elif h and slot == h["slot"]:
+            if kind == "u":
+                self.hold = None
+            elif self.hypr.screen:
+                x, y, sc = self.place(cmd)
+                if math.hypot(x / sc - h["x"], y / sc - h["y"]) > HOLD_SLOP:
+                    self.hold = None
+
+    def hold_wait(self):
+        """Seconds until the held finger counts (for select), or None."""
+        return max(0.0, self.hold["t"] + HOLD_S - time.monotonic()) if self.hold else None
+
+    def tick(self):
+        h = self.hold
+        if h and time.monotonic() - h["t"] >= HOLD_S and self.hypr.screen:
+            self.hold = None
+            self.hypr.event("velum-hold %s %.1f %.1f touch" % (self.hypr.screen[0], h["x"], h["y"]))
 
     # -- output: the copy Hyprland sees
     def emit(self, cmd):
@@ -401,9 +434,11 @@ def main():
     try:
         while True:
             touch.grab(vt_active())
-            r, _, _ = select.select([fd], [], [], 0.5)
+            wait = touch.hold_wait()
+            r, _, _ = select.select([fd], [], [], 0.5 if wait is None else min(0.5, wait))
             if r:
                 touch.read()
+            touch.tick()
     except OSError as e:                                   # the device went away: systemd starts us again
         print(f"velum-touchd: {e}", file=sys.stderr)
         return 1
