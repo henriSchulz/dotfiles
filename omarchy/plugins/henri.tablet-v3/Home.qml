@@ -27,7 +27,7 @@ Item {
   readonly property var tt: Theme.core.surface.tablet
   readonly property var cfg: tt.home
   readonly property string homeDir: Quickshell.env("HOME")
-  readonly property bool inRig: Quickshell.env("VELUM_SHELL_RIG") !== ""
+  readonly property bool inRig: (Quickshell.env("VELUM_SHELL_RIG") || "") !== ""
 
   // for tests: what happened last
   property var log: []
@@ -701,14 +701,14 @@ Item {
     note("tap " + id + (at >= 0 ? " (running)" : ""))
     var r = homeScreenItem ? homeScreenItem.iconRect(from || id, coverItem || homeScreenItem) : null
     var cmd = args && args.length && e.command && e.command.length ? ["uwsm-app", "--"].concat(e.command, args) : null
-    if (cmd && (!inRig || Quickshell.env("VELUM_TABLET_LAUNCH") !== "")) Quickshell.execDetached(cmd)
+    if (cmd && (!inRig || (Quickshell.env("VELUM_TABLET_LAUNCH") || "") !== "")) Quickshell.execDetached(cmd)
     if (at >= 0) {
       cards = list
       cur = at
     } else {
       cards = [{ key: "launch:" + id, address: "", toplevel: null, workspace: 0, appId: id, icon: e.icon, name: e.name, focus: 0 }]
       cur = 0
-      if (!cmd && (!inRig || Quickshell.env("VELUM_TABLET_LAUNCH") !== "")) Quickshell.execDetached(["uwsm-app", "--", "gtk-launch", id + ".desktop"])
+      if (!cmd && (!inRig || (Quickshell.env("VELUM_TABLET_LAUNCH") || "") !== "")) Quickshell.execDetached(["uwsm-app", "--", "gtk-launch", id + ".desktop"])
       launchedId = id
       launchOpened = false
       launchStart = Date.now()

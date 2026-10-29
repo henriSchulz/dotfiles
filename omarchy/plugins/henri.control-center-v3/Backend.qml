@@ -16,7 +16,7 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 // (Panel.qml:76-873) without its UI: Wi-Fi (Quickshell.Networking, 802.1X via
 // system/henri-wifi-eap, link stats/DNS/band), Bluetooth, sound (Pipewire +
 // pactl port availability, AirPods via librepods), brightness and displays
-// (omarchy-monitor-state), keyboard backlight, Now Playing, AirDrop
+// (omarchy-monitor-state), keyboard backlight, AirDrop
 // (LocalSend), tiling layout, hardware and low-power rendering. New in v3:
 // Do Not Disturb and Night Shift (shell services), battery and power profile
 // (UPower). The UI sets `opened` and `page`; scanning and polling follow.
@@ -618,9 +618,6 @@ Item {
     return shell && typeof shell.firstPartyServiceFor === "function"
       ? shell.firstPartyServiceFor(id) : null
   }
-  readonly property var media: opened ? service("omarchy.media") : null
-  readonly property var player: media ? media.activePlayer : null
-  readonly property bool playing: player ? player.isPlaying === true : false
 
   // ---- AirPods (librepods daemon)
   AirPodsService { id: pods }

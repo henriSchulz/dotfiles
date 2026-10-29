@@ -36,7 +36,7 @@ Item {
   property var manifest: null
 
   readonly property var tt: Theme.core.surface.tablet
-  readonly property bool inRig: Quickshell.env("VELUM_SHELL_RIG") !== ""
+  readonly property bool inRig: (Quickshell.env("VELUM_SHELL_RIG") || "") !== ""
   readonly property bool active: Theme.touch
   // Mission Control counts touchpad units: gestureDistance (150) for a full open
   readonly property real mcUnits: 150 / tt.switcherTravel
@@ -418,7 +418,7 @@ Item {
   // the fast way in: ipadcast keeps a connection to this socket and writes one line per event
   // (through Hyprland's socket every event was its own connection and came in 200-300 ms bursts)
   SocketServer {
-    active: !root.inRig || Quickshell.env("VELUM_EDGE_SOCKET") !== ""
+    active: !root.inRig || (Quickshell.env("VELUM_EDGE_SOCKET") || "") !== ""
     path: Quickshell.env("VELUM_EDGE_SOCKET") || (Quickshell.env("XDG_RUNTIME_DIR") + "/velum-edge.sock")
     handler: Socket {
       parser: SplitParser { onRead: function (line) { root.edgeLine(line) } }

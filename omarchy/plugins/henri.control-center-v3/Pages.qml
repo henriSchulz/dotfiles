@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Effects
 import Quickshell
 import "AirPods.js" as Pods
 import "file:///home/henri/.local/share/velum/qml/Velum"
@@ -193,58 +192,6 @@ Item {
         }
       }
 
-      // -- Now Playing: cover, title, a progress line, transport
-      VTile {
-        id: np
-        visible: cc.be.player !== null
-        readonly property var pl: cc.be.player
-        readonly property bool timed: pl !== null && pl.positionSupported === true && pl.lengthSupported === true && pl.length > 0
-        width: parent.width; height: npRow.height + (timed ? Theme.layout.module.pad + Theme.layout.meter.bar : 0) + 2 * Theme.layout.module.pad
-        // MPRIS only reports the position when asked
-        Timer { interval: 1000; repeat: true; running: np.visible && cc.be.playing && np.timed; onTriggered: np.pl.positionChanged() }
-        // the cover, blurred, as the tile's ground
-        Item { id: npBg; anchors.fill: parent; visible: false; layer.enabled: true
-          Image { anchors.fill: parent; source: art.source; fillMode: Image.PreserveAspectCrop; asynchronous: true
-            sourceSize: Qt.size(Theme.layout.module.toggle, Theme.layout.module.toggle) } }
-        Rectangle { id: npMask; anchors.fill: parent; radius: np.radius; visible: false; layer.enabled: true }
-        MultiEffect {
-          anchors.fill: parent; source: npBg
-          blurEnabled: true; blur: 1; blurMax: Theme.layout.meter.coverBlur
-          maskEnabled: true; maskSource: npMask
-          opacity: art.ready ? Theme.core.alpha.cover : 0
-          Behavior on opacity { NumberAnimation { duration: Theme.dur("slow") } }
-        }
-        Item {
-          id: npRow
-          x: Theme.layout.module.pad; y: Theme.layout.module.pad; width: parent.width - 2 * x; height: Theme.layout.module.toggle
-          VArtwork { id: art; size: parent.height; anchors.verticalCenter: parent.verticalCenter
-            source: np.pl && np.pl.trackArtUrl ? np.pl.trackArtUrl : "" }
-          Column {
-            x: art.width + Theme.layout.module.pad; width: parent.width - x - transport.width - Theme.layout.list.gap
-            anchors.verticalCenter: parent.verticalCenter
-            VText { width: parent.width; elide: Text.ElideRight; text: np.pl ? (np.pl.trackTitle || np.pl.identity || "") : ""; font.weight: Font.DemiBold; color: Theme.r.popover.ink }
-            VText { width: parent.width; elide: Text.ElideRight; text: np.pl ? (np.pl.trackArtist || np.pl.identity || "") : ""; tone: "secondary"; font.pixelSize: Theme.m.type.small }
-          }
-          Row {
-            id: transport
-            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-            VButton { kind: "plain"; icon: "backward"; onClicked: cc.be.media.runAction("previous", false) }
-            VButton { kind: "plain"; icon: cc.be.playing ? "pause" : "play"; onClicked: cc.be.media.runAction("playPause", false) }
-            VButton { kind: "plain"; icon: "forward"; onClicked: cc.be.media.runAction("next", false) }
-          }
-        }
-        Item {
-          visible: np.timed
-          x: Theme.layout.module.pad; y: npRow.y + npRow.height + Theme.layout.module.pad; width: parent.width - 2 * x; height: Theme.layout.meter.bar
-          VText { id: npPos; anchors.verticalCenter: parent.verticalCenter; tone: "secondary"; font.pixelSize: Theme.m.type.small
-            text: cc.formatTime(np.pl ? np.pl.position : 0) }
-          VText { id: npLen; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; tone: "secondary"; font.pixelSize: Theme.m.type.small
-            text: cc.formatTime(np.pl ? np.pl.length : 0) }
-          VMeter { x: npPos.width + Theme.layout.list.gap; width: npLen.x - x - Theme.layout.list.gap; anchors.verticalCenter: parent.verticalCenter
-            value: np.timed ? np.pl.position / np.pl.length : 0 }
-        }
-      }
-
       // -- Display | Sound: thick sliders, side by side (one height: the taller card)
       Row {
         spacing: cc.gap
@@ -306,10 +253,6 @@ Item {
   Component { id: wifiGlyph
     VSignal { size: Theme.layout.module.badge * Theme.layout.icon.badge * 1.15; color: Theme.r.ink.onAccent
       level: { var c = cc.be.wifiRows.filter(r => r.connected); return c.length ? c[0].signal / 100 : 1 } } }
-  function formatTime(sec) {
-    var s = Math.max(0, Math.floor(sec)), m = Math.floor(s / 60)
-    return m + ":" + (s % 60 < 10 ? "0" : "") + s % 60
-  }
   // a tile that opens a page, pressed like a badge
   component WidgetTile: VTile {
     id: wt
