@@ -1,0 +1,6 @@
+/* User stylesheet for every GTK3 app — Velum (~/Projects/velum, docs/GTK3.md).
+ * ~/.local/state/velum/gtk3-variant.css is written by the desktop's Velum settings owner (the menu bar)
+ * and imports ~/.local/share/velum/dist/gtk3/velum-<variant>-<light|dark>.css: the variant's colours as
+ * @define-color names and the Velum layer. GTK3 reads this once per app start: a variant or light/dark
+ * change applies to newly started apps. Remove this file to go back to plain Adwaita. */
+@import url("file:///home/henri/.local/state/velum/gtk3-variant.css");

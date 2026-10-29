@@ -25,7 +25,7 @@ done
 
 # Real dirs so stow does not fold them into this repo (other apps write there;
 # systemd also ignores a drop-in dir that is a symlink).
-run mkdir -p "$HOME/.config/uwsm" "$HOME/.local/share/dbus-1/services" "$HOME/.local/lib" "$HOME/.local/share/icons/hicolor/scalable/apps" "$HOME/.claude/skills" "$HOME/.config/gtk-4.0" "$HOME/.config/systemd/user/voxtype.service.d" "$HOME/.config/systemd/user/session.slice.d" "$HOME/.config/fcitx5/conf"
+run mkdir -p "$HOME/.config/uwsm" "$HOME/.local/share/dbus-1/services" "$HOME/.local/lib" "$HOME/.local/share/icons/hicolor/scalable/apps" "$HOME/.claude/skills" "$HOME/.config/gtk-4.0" "$HOME/.config/gtk-3.0" "$HOME/.config/systemd/user/voxtype.service.d" "$HOME/.config/systemd/user/session.slice.d" "$HOME/.config/fcitx5/conf"
 
 info "stowing: ${packages[*]}"
 run stow --dir "$DOTFILES_ROOT/stow" --target "$HOME" --restow "${packages[@]}"
