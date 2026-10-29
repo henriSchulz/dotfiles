@@ -118,6 +118,9 @@
     },
     {
       "id": "henri.keyboard-v3"
+    },
+    {
+      "id": "henri.auth-v3"
     }
   ],
   "version": 1

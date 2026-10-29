@@ -564,11 +564,13 @@ Item {
       Group {
         title: "Style"
         Row {
+          id: styleRow
           x: Theme.layout.module.pad; spacing: Theme.layout.module.pad; bottomPadding: Theme.layout.module.pad
-          readonly property real cell: (parent.width - 2 * Theme.layout.module.pad - 3 * spacing) / 4
+          readonly property var styles: ["pearl", "opal", "glass", "paper", "slate"]
+          readonly property real cell: (parent.width - 2 * Theme.layout.module.pad - (styles.length - 1) * spacing) / styles.length
           Repeater {
-            model: ["pearl", "glass", "paper", "slate"]
-            ThumbCell { required property var modelData; width: parent.cell; label: modelData.charAt(0).toUpperCase() + modelData.slice(1)
+            model: styleRow.styles
+            ThumbCell { required property var modelData; width: styleRow.cell; label: modelData.charAt(0).toUpperCase() + modelData.slice(1)
               variant: modelData; dark: Theme.dark; selected: Theme.variant === modelData
               onChosen: cc.velum.set("variant", modelData) }
           }
