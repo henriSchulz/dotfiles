@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.background-v3",
+  "name": "Background (global wallpaper, v3, Velum)",
+  "version": "3.0.0",
+  "author": "henri",
+  "description": "Omarchy background renderer on Velum motion; keeps the global wallpaper from henri.wallpaper(-v3) across theme changes",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Background.qml"
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.background"
+  }
+}
