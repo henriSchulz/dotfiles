@@ -30,6 +30,21 @@ hl.monitor({ output = "DP-1", mode = "preferred", position = "0x0", scale = omar
 hl.monitor({ output = "HEADLESS-SPARE", mode = "1770x1230@60", position = "20000x20000", scale = 1.5 })
 hl.workspace_rule({ workspace = "name:spare", monitor = "HEADLESS-SPARE", default = true, persistent = true })
 
+-- While the tablet casts (ipadcast, mac-cast), its screen comes first: the real monitor only
+-- mirrors HEADLESS-SPARE, with the tablet's scale. ipadcast writes the monitor names into this
+-- file and reloads; gone when the cast ends. A monitor plugged in meanwhile comes up mirroring.
+do
+  local flag = io.open((os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/ipadcast/mirror-monitor", "r")
+  if flag then
+    for name in flag:lines() do
+      if name ~= "" then
+        hl.monitor({ output = name, mode = "preferred", position = "0x0", scale = omarchy_monitor_scale, mirror = "HEADLESS-SPARE" })
+      end
+    end
+    flag:close()
+  end
+end
+
 -- Configure a specific monitor.
 -- hl.monitor({ output = "DP-2", mode = "2560x1440@144", position = "0x0", scale = 1 })
 

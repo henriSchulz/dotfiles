@@ -47,8 +47,8 @@ dispatch() { hyprctl dispatch "$1" >/dev/null || true; }
 # monitor vanishes Hyprland parks it on the spare one, and it stays there after
 # the replug (cursor:no_warps) even if a key press has moved the focus already.
 heal() {
-  # ipadcast gave the viewing device its own screen (workspace on the spare output): leave it there.
-  [[ -e ${XDG_RUNTIME_DIR:-/tmp}/ipadcast-device ]] && return 0
+  # While ipadcast has the monitor mirror the tablet's screen, Hyprland does not list the monitor:
+  # there is no real one to heal towards, and nothing happens here.
   local monitors spare real target last ws x y
   monitors=$(hyprctl -j monitors) || return 0
   spare=$(jq -c --arg n "$name" '.[] | select(.name == $n)' <<<"$monitors")
