@@ -10,7 +10,10 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 // island into a panel of tiles (VIslandWindow): the computer (opens About),
 // Sleep / Restart / Shut Down / Lock as round badges, then settings, App Store,
 // Force Quit and Log Out as rows. Restart, shut down and log out ask first on
-// a confirm card, like the "…" items on macOS.
+// a confirm card, like the "…" items on macOS. While a tablet casts this Mac's
+// screen (mac-cast) and can follow, a fifth badge Sleep Both sleeps the tablet
+// first and then the Mac (ipadcast, type 12 to mac-cast-kms); the Mac is woken
+// by its power key, the tablet by its own.
 Panel {
   id: root
   moduleName: "henri.system-menu-v3"
@@ -26,14 +29,17 @@ Panel {
   property var info: ({})
   property bool logoSqueezed: false
 
-  // the power badges, then the rows (choose(i) over IPC counts about, power, rows in this order)
+  // the power badges, then the rows (choose(i) over IPC counts about, power, rows in this order;
+  // Sleep Both, when shown, is the second and moves the ones after it)
   readonly property var about: ({ text: "About This Computer", page: "about" })
+  readonly property var sleepBoth: ({ text: "Sleep Both", icon: "sleep-pair", cmd: "hyprctl dispatch 'hl.dsp.event(\"ipadcast sleep\")'" })
   readonly property var power: [
-    { text: "Sleep", icon: "sleep", cmd: "systemctl suspend" },
+    { text: "Sleep", icon: "sleep", cmd: "systemctl suspend" }
+  ].concat(castSleeps ? [sleepBoth] : []).concat([
     { text: "Restart", icon: "restart", cmd: "omarchy-system-reboot", title: "Are you sure you want to restart your computer now?", confirm: "Restart" },
     { text: "Shut Down", icon: "power", cmd: "omarchy-system-shutdown", title: "Are you sure you want to shut down your computer now?", confirm: "Shut Down" },
     { text: "Lock", icon: "lock", cmd: "omarchy-system-lock" }
-  ]
+  ])
   readonly property var rows: [
     { text: "System Settings…", icon: "settings", cmd: "omarchy-menu toggle root" },
     { text: "App Store…", icon: "store", cmd: "xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-install" },
@@ -41,6 +47,37 @@ Panel {
   ]
   readonly property var logout: ({ text: "Log Out " + userName + "…", icon: "logout", cmd: "omarchy-system-logout", title: "Are you sure you want to log out now?", confirm: "Log Out" })
   readonly property var items: [about].concat(power, rows, [logout])
+
+  // ---- the tablet that casts: ipadcast writes $XDG_RUNTIME_DIR/ipadcast/cast.json every 2 s while one
+  // is connected and removes it after; sleepTablet says its mac-cast-kms follows a Sleep Both. Read here
+  // and not from henri.cast-v3: plugins share no service objects. VELUM_CAST_JSON names another file (rig).
+  property var cast: null
+  property real castNow: Date.now() / 1000
+  readonly property bool castSleeps: !!cast && cast.sleepTablet === true && castNow - cast.time < 8
+  FileView {
+    id: castFile
+    property bool missing: true
+    path: Quickshell.env("VELUM_CAST_JSON") || (Quickshell.env("XDG_RUNTIME_DIR") + "/ipadcast/cast.json")
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      let j = null
+      try { j = JSON.parse(text() || "null") } catch (e) {}
+      missing = false
+      root.cast = j
+    }
+    onLoadFailed: { root.cast = null; missing = true }
+  }
+  // a watch can't see a file that does not exist yet: look again now and then; the clock ends a cast
+  // whose reports stopped
+  Timer {
+    interval: 2000; repeat: true; running: true
+    onTriggered: {
+      root.castNow = Date.now() / 1000
+      if (castFile.missing || !root.castSleeps) castFile.reload()
+    }
+  }
 
   function perform(item) {
     if (item.page) { page = item.page; return }
