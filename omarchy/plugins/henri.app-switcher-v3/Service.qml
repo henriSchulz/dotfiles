@@ -1,37 +1,43 @@
-// App Switcher -- macOS-style Cmd+Tab, on Alt+Tab.
+// Window Switcher -- Alt+Tab through the windows of the current workspace.
 //
-// Hold Alt and press Tab: after a short moment a row of app icons appears,
-// most recently used first, the current app on the left. Every further Tab
-// (Shift+Tab goes back) moves the selection, letting go of Alt switches to it.
-// A quick tap switches straight to the previous app without flashing the row --
-// exactly what Cmd+Tab does on a Mac.
+// Hold Alt and press Tab: after a short moment a row of live window previews
+// appears, the window in front on the left, then the one used before it, and
+// so on. Every further Tab (Shift+Tab goes back) moves the selection, letting
+// go of Alt switches to it. A quick tap switches straight to the previous
+// window without flashing the row.
 //
-// Apps, not windows. Windows are grouped by their appId, and switching goes to
-// the app's most recently used window, wherever it lives -- on another
-// workspace the switch carries the workspace with it, out of the dock's
-// minimized parking spot it unminimizes.
+// Windows, not apps, and only the ones on the workspace you are on. It is the
+// answer to several fullscreen (or zoomed) windows lying on top of each other,
+// where only the top one is visible: the row shows every one of them as a
+// miniature, the way the workspace switcher (Super+Tab) shows workspaces.
+// Focusing a window under a fullscreen one hands the fullscreen over to it
+// (misc:on_focus_under_fullscreen = 1). Other workspaces are Super+Tab's job;
+// minimized windows (special:minimized) are the dock's.
 //
 // Keys. Hyprland owns them (bindings.lua): ALT+TAB, ALT+SHIFT+TAB and the
 // Alt_L release send `custom>>app-switcher <next|prev|commit>` on Hyprland's
 // event socket -- no process per key, so there is no latency and the events
-// arrive in the order they happened. The row never takes the keyboard: with Alt
-// held, Hyprland's binds win anyway, and holding focus would make Hyprland
-// refocus the window the row let go of. A click outside cancels, a click on an
-// icon switches, hovering preselects.
+// arrive in the order they happened. The plugin id and event names are the old
+// app switcher's, so the binds did not have to move. The row never takes the
+// keyboard: with Alt held, Hyprland's binds win anyway, and holding focus would
+// make Hyprland refocus the window the row let go of. A click outside cancels,
+// a click on a preview switches, hovering preselects.
 //
 // Order. The switcher keeps its own most-recently-used list, fed by every focus
 // change while the shell runs, because Hyprland's focusHistoryID only arrives
 // with an IPC refresh and would be one gesture behind. Windows the list has not
-// seen yet (right after a shell restart) fall back to that focusHistoryID, so
-// the very first Alt+Tab of a session is already in the right order.
+// seen yet (right after a shell restart) fall back to that focusHistoryID.
 //
 // Look and motion (Velum v3): the row is a floating card of the popover
 // material (Pearl by default), blurred by the compositor (namespace
-// velum-surface). It appears out of the centre on the smooth spring from
+// velum-surface). Tiles have the workspace switcher's shape -- the monitor's
+// aspect, the window fitted inside with rounded corners, icon and title under
+// it. The card appears out of the centre on the smooth spring from
 // launcherFrom with a fast fade and leaves faster than it came; the selection
-// jumps instantly (frequent interaction), only the app name under it crossfades.
+// ring jumps instantly (frequent interaction).
 
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -49,13 +55,13 @@ Item {
   property bool armed: false
   // The row is on screen (armed and held longer than the switcher delay).
   property bool shown: false
-  // App records in row order, frozen when the gesture starts so the selection
-  // cannot shift under the user while they tab through it.
-  property var apps: []
+  // Window records in row order, frozen when the gesture starts so the
+  // selection cannot shift under the user while they tab through it.
+  property var windows: []
   property int selected: 0
 
-  // Most recently used windows, newest first. Only ever compared by identity
-  // (indexOf), never dereferenced, so entries of closed windows are harmless.
+  // Most recently used windows (Wayland handles), newest first. Only ever
+  // compared by identity (indexOf), so entries of closed windows are harmless.
   property var mruWindows: []
 
   // ---------------------------------------------------------------- ordering
@@ -71,23 +77,15 @@ Item {
     root.mruWindows = next;
   }
 
-  // Hyprland's own focus history, for windows this service has not seen focused
-  // yet. Its toplevels carry the matching Wayland handle in `wayland`.
-  function hyprHistory(tl) {
-    const all = Hyprland.toplevels.values || [];
-    for (let i = 0; i < all.length; i++) {
-      if (all[i].wayland === tl) {
-        const o = all[i].lastIpcObject;
-        const n = o ? Number(o.focusHistoryID) : NaN;
-        return isFinite(n) ? n : 9999;
-      }
-    }
-    return 9999;
-  }
-
-  function windowRank(tl) {
-    const i = root.mruWindows.indexOf(tl);
-    return i >= 0 ? i : 1000 + root.hyprHistory(tl);
+  function windowRank(handle) {
+    if (handle.wayland && handle.wayland === ToplevelManager.activeToplevel)
+      return -1;
+    const i = root.mruWindows.indexOf(handle.wayland);
+    if (i >= 0)
+      return i;
+    const o = handle.lastIpcObject;
+    const n = o ? Number(o.focusHistoryID) : NaN;
+    return 1000 + (isFinite(n) ? n : 9999);
   }
 
   // ------------------------------------------------------------------- model
@@ -109,8 +107,6 @@ Item {
     }
   }
 
-  // Reverse-DNS ids often have no desktop entry under the full id, but do under
-  // their last segment (org.omarchy.agent -> agent.desktop).
   function entryFor(appId) {
     return root.lookup(appId) || root.lookup(root.shortId(appId));
   }
@@ -124,13 +120,9 @@ Item {
     return out.join(" ");
   }
 
-  // The desktop entry's name if there is one; otherwise the app id made
-  // readable -- the raw "org.omarchy.agent" is not a name anyone recognises.
   function appName(appId, entry) {
     const n = entry && entry.name ? String(entry.name) : "";
-    if (n.length > 0)
-      return n;
-    return root.titleCase(root.shortId(appId));
+    return n.length > 0 ? n : root.titleCase(root.shortId(appId));
   }
 
   function iconSource(appId, entry) {
@@ -154,30 +146,18 @@ Item {
   }
 
   function snapshot() {
+    const ws = Hyprland.focusedWorkspace;
+    const tls = ws && ws.toplevels ? (ws.toplevels.values || []) : [];
     const list = [];
-    const byId = ({});
-    const tls = ToplevelManager.toplevels.values || [];
     for (let i = 0; i < tls.length; i++) {
-      const tl = tls[i];
-      const appId = String(tl && tl.appId ? tl.appId : "").trim();
-      if (appId.length === 0)
+      const h = tls[i];
+      const o = h.lastIpcObject;
+      if (!h.wayland || (o && (o.mapped === false || o.hidden === true)))
         continue;
-      const rank = root.windowRank(tl);
-      const seen = byId[appId];
-      if (!seen) {
-        const entry = root.entryFor(appId);
-        const item = { appId: appId, rank: rank, window: tl, windows: 1,
-                       name: root.appName(appId, entry),
-                       icon: root.iconSource(appId, entry) };
-        byId[appId] = item;
-        list.push(item);
-      } else {
-        seen.windows += 1;
-        if (rank < seen.rank) {
-          seen.rank = rank;
-          seen.window = tl;
-        }
-      }
+      const appId = String(h.wayland.appId || (o && o.class) || "").trim();
+      const entry = root.entryFor(appId);
+      list.push({ handle: h, rank: root.windowRank(h), appId: appId,
+                  name: root.appName(appId, entry), icon: root.iconSource(appId, entry) });
     }
     list.sort((a, b) => a.rank - b.rank);
     return list;
@@ -187,8 +167,8 @@ Item {
 
   function begin(reveal) {
     Hyprland.refreshToplevels();
-    root.apps = root.snapshot();
-    // Index 0 is the app in front, so the first Tab lands on the previous one.
+    root.windows = root.snapshot();
+    // Index 0 is the window in front, so the first Tab lands on the previous one.
     root.selected = 0;
     root.armed = true;
     if (reveal)
@@ -196,23 +176,13 @@ Item {
   }
 
   function move(dir) {
-    const n = root.apps.length;
+    const n = root.windows.length;
     if (n > 0)
       root.selected = (root.selected + dir + n) % n;
   }
 
-  // The Hyprland handle behind a Wayland toplevel: it knows the workspace and
-  // the address, which the Wayland side does not expose.
-  function hyprFor(tl) {
-    const all = Hyprland.toplevels.values || [];
-    for (let i = 0; i < all.length; i++)
-      if (all[i].wayland === tl)
-        return all[i];
-    return null;
-  }
-
-  // Everything interpolated into a dispatch is checked for shape first: under
-  // the Lua parser a dispatch string is code, not a command with arguments.
+  // Under the Lua parser a dispatch string is code: the address is checked for
+  // shape before it goes in.
   function address(handle) {
     let v = String((handle && handle.address) || "").trim().toLowerCase();
     if (v.slice(0, 2) === "0x")
@@ -220,57 +190,19 @@ Item {
     return /^[0-9a-f]{4,16}$/.test(v) ? "0x" + v : "";
   }
 
-  function workspaceTarget(ws) {
-    if (!ws)
-      return "";
-    const name = String(ws.name || "");
-    return name !== "" ? name : String(ws.id);
-  }
-
-  function luaString(value) {
-    return String(value === null || value === undefined ? "" : value)
-      .replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
-  }
-
-  function dispatch(lua, legacy) {
-    Hyprland.dispatch(Hyprland.usingLua ? lua : legacy);
-  }
-
-  // Switching has to carry the window's workspace with it. Wayland activation
-  // alone only hands over focus -- it does not follow the window to another
-  // workspace, which made every app outside the current one look dead. The
-  // focus dispatcher does both in one step, so it is the main path and
-  // activation only steps in when there is no address to dispatch on.
   function activate(item) {
     if (!item)
       return;
-    const handle = root.hyprFor(item.window);
-    const addr = root.address(handle);
-    const ws = handle ? handle.workspace : null;
-    const wsName = ws ? String(ws.name || "") : "";
-
-    // Minimized windows are parked on a special workspace (that is how the
-    // dock minimizes). Switching to one unminimizes it onto the workspace the
-    // user is on, like clicking a minimized app in the macOS Dock -- opening
-    // the special workspace instead would be a different thing entirely.
-    if (addr && wsName.indexOf("special") === 0) {
-      const here = root.workspaceTarget(Hyprland.focusedWorkspace);
-      if (here) {
-        root.dispatch("hl.dsp.window.move({ window = \"address:" + addr + "\", workspace = \""
-                        + root.luaString(here) + "\", follow = false })",
-                      "movetoworkspacesilent " + here + ",address:" + addr);
-      }
-    }
-
+    const addr = root.address(item.handle);
     if (addr) {
-      root.dispatch("hl.dsp.focus({ window = \"address:" + addr + "\" })",
-                    "focuswindow address:" + addr);
+      Hyprland.dispatch(Hyprland.usingLua
+        ? "hl.dsp.focus({ window = \"address:" + addr + "\" })"
+        : "focuswindow address:" + addr);
       return;
     }
-
     try {
-      if (item.window && typeof item.window.activate === "function")
-        item.window.activate();
+      if (item.handle.wayland && typeof item.handle.wayland.activate === "function")
+        item.handle.wayland.activate();
     } catch (e) {}
   }
 
@@ -278,10 +210,10 @@ Item {
     revealTimer.stop();
     if (!root.armed)
       return "idle";
-    const item = root.apps[root.selected];
+    const item = root.windows[root.selected];
     root.armed = false;
     root.shown = false;
-    if (doSwitch && item && root.selected !== 0)
+    if (doSwitch && item && item.rank !== -1)
       root.activate(item);
     return "ok";
   }
@@ -335,10 +267,10 @@ Item {
     function cancel(): string { return root.cancel() }
     function status(): string {
       const names = [];
-      for (let i = 0; i < root.apps.length; i++)
-        names.push(root.apps[i].name + (root.apps[i].windows > 1 ? " (" + root.apps[i].windows + ")" : ""));
+      for (let i = 0; i < root.windows.length; i++)
+        names.push(root.windows[i].name + ": " + String(root.windows[i].handle.title || ""));
       return JSON.stringify({ armed: root.armed, shown: root.shown,
-                              selected: root.selected, apps: names });
+                              selected: root.selected, windows: names });
     }
   }
 
@@ -357,12 +289,15 @@ Item {
       readonly property var hyprMonitor: Hyprland.monitorFor(modelData)
       readonly property bool onFocusedMonitor:
           !Hyprland.focusedMonitor || !hyprMonitor || Hyprland.focusedMonitor.id === hyprMonitor.id
+      readonly property real monW: hyprMonitor ? hyprMonitor.width / hyprMonitor.scale : panel.width
+      readonly property real monH: hyprMonitor ? hyprMonitor.height / hyprMonitor.scale : panel.height
 
       // Mapped only while needed: a permanently mapped, click-through overlay
       // breaks the click-outside close of other popups (Hyprland focus grab).
       // Mapping starts with the gesture (armed), so it runs in parallel with
       // the switcher delay instead of after it.
-      visible: (root.armed || card.opacity > 0.001) && onFocusedMonitor && root.apps.length > 0
+      visible: (root.armed || card.opacity > 0.001) && onFocusedMonitor && root.windows.length > 0
+      readonly property bool active: root.shown || card.opacity > 0.001
       color: "transparent"
       anchors { top: true; bottom: true; left: true; right: true }
       exclusionMode: ExclusionMode.Ignore
@@ -370,18 +305,16 @@ Item {
       WlrLayershell.layer: WlrLayer.Overlay
       WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
-      readonly property bool open: root.shown && panel.onFocusedMonitor && root.apps.length > 0
-      readonly property real padding: Theme.layout.module.pad * 1.5
+      readonly property bool open: root.shown && panel.onFocusedMonitor && root.windows.length > 0
+      readonly property real pad: Theme.layout.module.pad * 1.5
       readonly property real gap: Theme.layout.module.gap
-      readonly property real cellGap: Theme.layout.module.gap
-
-      // Icons shrink once the row would leave the screen, like macOS does.
-      readonly property int cell: {
-        const n = Math.max(1, root.apps.length);
-        const room = (panel.width * 0.9 - padding * 2 - (n - 1) * cellGap) / n;
-        return Math.round(Math.max(Theme.layout.module.toggle, Math.min(Theme.layout.module.toggle * 2, room)));
+      // The workspace switcher's tile size, so both rows read as one family.
+      readonly property real tileW: {
+        const n = Math.max(1, root.windows.length);
+        const room = (panel.width * 0.9 - panel.pad * 2 - (n - 1) * panel.gap) / n;
+        return Math.max(Theme.layout.module.width / 5, Math.min(Theme.layout.module.width / 2, room));
       }
-      readonly property int iconSize: Math.round(cell * 0.78)
+      readonly property real tileH: panel.tileW * panel.monH / panel.monW
 
       TapHandler { enabled: root.shown; onTapped: root.cancel() }
 
@@ -393,8 +326,8 @@ Item {
       VFloatingCard {
         id: card
         anchors.centerIn: parent
-        width: content.width + panel.padding * 2
-        height: content.height + panel.padding * 2
+        width: row.width + panel.pad * 2
+        height: row.height + panel.pad * 2
         scale: grow.value
         opacity: panel.open ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: panel.open ? Theme.dur("fast") : Theme.exit(Theme.dur("base"))
@@ -403,69 +336,101 @@ Item {
         // Swallow clicks on the card's padding so they do not cancel.
         TapHandler {}
 
-        Column {
-          id: content
+        Row {
+          id: row
           anchors.centerIn: parent
           spacing: panel.gap
 
-          Row {
-            id: row
-            spacing: panel.cellGap
+          Repeater {
+            model: root.windows
 
-            Repeater {
-              model: root.apps
+            delegate: Column {
+              id: cell
+              required property var modelData
+              required property int index
+              readonly property var ipc: modelData.handle.lastIpcObject
+              readonly property real winW: ipc && ipc.size ? ipc.size[0] : panel.monW
+              readonly property real winH: ipc && ipc.size ? ipc.size[1] : panel.monH
+              // Fit the window into the tile, never upscale past the monitor's scale.
+              readonly property real k: Math.min(panel.tileW / Math.max(1, cell.winW), panel.tileH / Math.max(1, cell.winH))
+              readonly property bool isSelected: root.selected === index
+              readonly property real tileRadius: Theme.m.radius.control
 
-              delegate: Item {
-                id: cell
-                required property var modelData
-                required property int index
-                readonly property bool isSelected: root.selected === index
+              spacing: Theme.layout.list.gap
 
-                width: panel.cell
-                height: panel.cell
+              Item {
+                width: panel.tileW
+                height: panel.tileH
 
-                // Selection jumps instantly -- this is a frequent, fast
-                // interaction; a gliding highlight would lag the keystroke.
-                Rectangle {
-                  anchors.fill: parent
-                  radius: Theme.m.radius.panel - Theme.layout.module.tileInset
-                  visible: cell.isSelected
-                  color: Theme.r.fill.selected
-                  border.width: Theme.layout.separator
-                  border.color: Theme.r.line.base
-                }
-
-                Image {
-                  id: icon
+                Item {
+                  id: thumb
                   anchors.centerIn: parent
-                  width: panel.iconSize
-                  height: panel.iconSize
-                  source: cell.modelData.icon
-                  visible: source !== "" && status === Image.Ready
-                  sourceSize.width: 128
-                  sourceSize.height: 128
-                  asynchronous: true
-                  cache: true
-                  smooth: true
-                }
+                  width: Math.round(cell.winW * cell.k)
+                  height: Math.round(cell.winH * cell.k)
 
-                // Nothing on disk for this app: its initial, same footprint.
-                Rectangle {
-                  anchors.centerIn: parent
-                  width: panel.iconSize
-                  height: panel.iconSize
-                  radius: width * 0.22
-                  visible: !icon.visible
-                  color: Theme.r.popover.tile
-                  border.width: Theme.layout.separator
-                  border.color: Theme.r.line.rim
+                  Item {
+                    anchors.fill: parent
+                    layer.enabled: true
+                    layer.effect: MultiEffect {
+                      maskEnabled: true
+                      maskSource: mask
+                      maskThresholdMin: 0.5
+                      maskSpreadAtMin: 1.0
+                    }
 
-                  VText {
-                    anchors.centerIn: parent
-                    text: String(cell.modelData.name || "?").charAt(0).toUpperCase()
-                    font.pixelSize: Math.round(panel.iconSize * 0.5)
-                    font.weight: Font.DemiBold
-                    color: Theme.r.popover.inkSecondary
+                    // Until the first frame arrives: the app's tile.
+                    Rectangle {
+                      anchors.fill: parent
+                      color: Theme.r.popover.tile
+                      visible: !shot.hasContent
+                      Image {
+                        anchors.centerIn: parent
+                        width: Theme.layout.module.toggle
+                        height: width
+                        source: cell.modelData.icon
+                        sourceSize.width: 128
+                        sourceSize.height: 128
+                        asynchronous: true
+                        cache: true
+                      }
+                    }
+
+                    ScreencopyView {
+                      id: shot
+                      anchors.fill: parent
+                      // Capture only while visible; the service stays loaded.
+                      captureSource: panel.active ? cell.modelData.handle.wayland : null
+                      live: panel.active
+                      paintCursor: false
+                    }
+                  }
+
+                  Item {
+                    id: mask
+                    anchors.fill: parent
+                    layer.enabled: true
+                    visible: false
+                    Rectangle { anchors.fill: parent; radius: cell.tileRadius; color: "black" }
+                  }
+
+                  // The preview's own hairline, then the selection ring outside
+                  // it. The ring jumps instantly (frequent interaction).
+                  Rectangle {
+                    anchors.fill: parent
+                    radius: cell.tileRadius
+                    color: "transparent"
+                    border.width: Theme.layout.separator
+                    border.color: Theme.r.line.base
+                  }
+                  Rectangle {
+                    readonly property real ring: Theme.core.size.focusRing
+                    anchors.fill: parent
+                    anchors.margins: -2 * ring
+                    radius: cell.tileRadius + 2 * ring
+                    color: "transparent"
+                    visible: cell.isSelected
+                    border.width: ring + Theme.layout.separator
+                    border.color: Theme.r.accent.base
                   }
                 }
 
@@ -482,41 +447,35 @@ Item {
                   }
                 }
               }
-            }
-          }
 
-          // Name of the selected app. Fixed height so the card never resizes
-          // while the selection moves; the name crossfades (fast).
-          Item {
-            id: nameBox
-            width: row.width
-            height: Math.round(Theme.m.type.title * 1.6)
-            readonly property string name: {
-              const item = root.apps[root.selected];
-              return item ? item.name : "";
-            }
-            property bool showA: true
-            onNameChanged: { if (showA) nameB.text = name; else nameA.text = name; showA = !showA }
-            Component.onCompleted: nameA.text = name
-            VText {
-              id: nameA
-              anchors.fill: parent
-              horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-              elide: Text.ElideRight
-              font.pixelSize: Theme.m.type.title; font.weight: Font.DemiBold
-              color: Theme.r.popover.ink
-              opacity: nameBox.showA ? 1 : 0
-              Behavior on opacity { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
-            }
-            VText {
-              id: nameB
-              anchors.fill: parent
-              horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-              elide: Text.ElideRight
-              font.pixelSize: Theme.m.type.title; font.weight: Font.DemiBold
-              color: Theme.r.popover.ink
-              opacity: nameBox.showA ? 0 : 1
-              Behavior on opacity { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
+              // App icon and window title: two windows of the same app differ
+              // only here.
+              Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: Theme.layout.list.gap / 2 + Theme.layout.separator
+
+                Image {
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Theme.layout.icon.regular
+                  height: width
+                  source: cell.modelData.icon
+                  visible: source !== "" && status === Image.Ready
+                  sourceSize.width: 64
+                  sourceSize.height: 64
+                  asynchronous: true
+                  cache: true
+                  smooth: true
+                }
+
+                VText {
+                  width: Math.min(implicitWidth, panel.tileW - Theme.layout.icon.regular - parent.spacing)
+                  text: String(cell.modelData.handle.title || cell.modelData.name)
+                  elide: Text.ElideRight
+                  font.pixelSize: Theme.m.type.body
+                  font.weight: cell.isSelected ? Font.DemiBold : Theme.m.type.bodyWeight
+                  color: cell.isSelected ? Theme.r.popover.ink : Theme.r.popover.inkSecondary
+                }
+              }
             }
           }
         }

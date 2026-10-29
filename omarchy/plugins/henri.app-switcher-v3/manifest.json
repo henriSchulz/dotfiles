@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "id": "henri.app-switcher-v3",
-  "name": "App Switcher (v3, Velum)",
-  "version": "0.3.0",
+  "name": "Window Switcher (v3, Velum)",
+  "version": "0.4.0",
   "author": "henri",
-  "description": "macOS-style Cmd+Tab on Alt+Tab: hold Alt to see a row of app icons, Tab to pick, release Alt to switch. Groups windows by app, most recently used first.",
+  "description": "Alt+Tab through the windows of the current workspace: hold Alt to see live miniatures, most recently used first, Tab to pick, release Alt to switch. Brings back windows hidden under a fullscreen one.",
   "kinds": [
     "service"
   ],
