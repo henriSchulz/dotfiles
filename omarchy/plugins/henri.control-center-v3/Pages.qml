@@ -479,6 +479,14 @@ Item {
         }
       }
       Group {
+        title: "Input"
+        visible: cc.be.sourceRows.length > 0
+        Repeater {
+          model: cc.be.sourceRows
+          MRow { required property var modelData; icon: cc.be.sourceIconName(modelData); text: modelData.label; checked: modelData.active; onClicked: cc.be.setSource(modelData) }
+        }
+      }
+      Group {
         visible: cc.be.airpodsActive
         MRow { icon: "headphones"; text: cc.be.airpodsName
           detail: cc.be.airpodsLevel >= 0 ? cc.be.airpodsLevel + " %" : ""; onClicked: cc.push("airpods")

@@ -74,6 +74,7 @@ Item {
   property string page: "main"
   onPageChanged: {
     if (page === "sound" && !sinkPortProc.running) sinkPortProc.running = true
+    if (page === "sound" && !sourcePortProc.running) sourcePortProc.running = true
   }
 
   readonly property bool wifiScanning: opened && page === "wifi" && wifiOn
@@ -391,29 +392,39 @@ Item {
     interval: 20000
     onTriggered: root.btPending = ({})
   }
-  // ---- Sound outputs (pactl tells which sinks are actually plugged)
+  // ---- Sound outputs and inputs (pactl tells which are actually plugged)
+  function unplugged(text) {
+    var gone = ({})
+    try {
+      var list = JSON.parse(String(text || "[]"))
+      for (var i = 0; i < list.length; i++) {
+        var ports = list[i].ports || []
+        if (ports.length === 0) continue
+        var reachable = false
+        for (var j = 0; j < ports.length; j++) {
+          if (String(ports[j].availability || "") !== "not available") reachable = true
+        }
+        if (!reachable) gone[list[i].name] = true
+      }
+    } catch (e) {}
+    return gone
+  }
   property var unavailableSinks: ({})
   Process {
     id: sinkPortProc
     command: ["pactl", "-f", "json", "list", "sinks"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: {
-        var gone = ({})
-        try {
-          var list = JSON.parse(String(text || "[]"))
-          for (var i = 0; i < list.length; i++) {
-            var ports = list[i].ports || []
-            if (ports.length === 0) continue
-            var reachable = false
-            for (var j = 0; j < ports.length; j++) {
-              if (String(ports[j].availability || "") !== "not available") reachable = true
-            }
-            if (!reachable) gone[list[i].name] = true
-          }
-        } catch (e) {}
-        root.unavailableSinks = gone
-      }
+      onStreamFinished: root.unavailableSinks = root.unplugged(text)
+    }
+  }
+  property var unavailableSources: ({})
+  Process {
+    id: sourcePortProc
+    command: ["pactl", "-f", "json", "list", "sources"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.unavailableSources = root.unplugged(text)
     }
   }
   readonly property var sinkRows: {
@@ -444,6 +455,45 @@ Item {
       }
     }
   }
+  readonly property var source: Pipewire.defaultAudioSource
+  // inputs: every audio node that is no sink and no stream (Easy Effects' own stays: it is the
+  // processed microphone); the tablet's microphone while a tablet casts (ipadcast)
+  readonly property var sourceRows: {
+    var rows = []
+    var nodes = Pipewire.nodes ? Pipewire.nodes.values : []
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i]
+      if (!n || n.isSink || n.isStream || !n.audio) continue
+      var props = n.properties || {}
+      if (unavailableSources[n.name] && !(source !== null && n.id === source.id)) continue
+      rows.push({
+        id: n.id,
+        name: n.name || "",
+        label: n.name === "easyeffects_source" ? "Easy Effects"
+          : (n.nickname || props["node.nick"] || n.description || n.name || "Input"),
+        active: source !== null && n.id === source.id
+      })
+    }
+    return rows
+  }
+  // only the default: streams that follow it move with it, Easy Effects' own capture stays put
+  function setSource(row) {
+    var nodes = Pipewire.nodes ? Pipewire.nodes.values : []
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i] && nodes[i].id === row.id) {
+        Pipewire.preferredDefaultAudioSource = nodes[i]
+        Quickshell.execDetached(["pactl", "set-default-source", row.name])
+        return
+      }
+    }
+  }
+  function sourceIconName(row) {
+    var l = String(row.label + " " + row.name).toLowerCase()
+    if (l.indexOf("tablet") >= 0) return "tablet"
+    if (l.indexOf("headset") >= 0 || l.indexOf("head") >= 0) return "headphones"
+    return "mic"
+  }
+
   // Velum icon names for a device (UI picks these)
   function btIconName(icon) {
     var i = String(icon || "")
@@ -767,6 +817,7 @@ Item {
     kbdFile.reload()   // the service may have written its file after this panel loaded
     if (!stateProc.running) stateProc.running = true
     if (!sinkPortProc.running) sinkPortProc.running = true
+    if (!sourcePortProc.running) sourcePortProc.running = true
     if (!localsendProc.running) localsendProc.running = true
     if (!tilingProc.running) tilingProc.running = true
     if (!rotationProc.running) rotationProc.running = true

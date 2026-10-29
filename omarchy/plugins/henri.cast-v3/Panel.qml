@@ -135,6 +135,14 @@ Panel {
   }
   // this Mac's own keyboard and trackpad ("mac") or the tablet's cover ("tablet"); ipadcast turns
   // both on again when the tablet connects anew
+  // Power Mode: smoothness over battery, kept until switched off (ipadcast, type 10 to the tablet)
+  function setPerf(on) {
+    Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.event(\"ipadcast perf " + (on ? "on" : "off") + "\")"])
+  }
+  // the tablet's microphone as this Mac's input, kept until switched off (ipadcast, type 11 to the tablet)
+  function setMic(on) {
+    Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.event(\"ipadcast mic " + (on ? "on" : "off") + "\")"])
+  }
   function setInput(which, on) {
     Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.event(\"ipadcast " + which + "input " + (on ? "on" : "off") + "\")"])
   }
@@ -153,11 +161,12 @@ Panel {
 
   onConnectedChanged: if (!connected) close()
   onOpenedChanged: {
-    if (opened && !connected) close()
-    else if (opened && latest) info = latest
+    if (opened && !connected) { close(); return }
+    if (!opened) return
+    if (latest) info = latest
     // sync-status runs every 5 min (a find over the home folders, P-cores at full clock each
     // time): fresh numbers when somebody looks
-    else if (opened) Quickshell.execDetached(["systemctl", "--user", "start", "--no-block", "sync-status.service"])
+    Quickshell.execDetached(["systemctl", "--user", "start", "--no-block", "sync-status.service"])
   }
   visible: connected
   implicitWidth: connected ? button.implicitWidth : 0
@@ -316,6 +325,26 @@ Panel {
             }
           }
         }
+      }
+
+      // -- Power Mode: the tablet's performance profile while casting. Dimmed while the tablet's
+      // mac-cast cannot switch it (perfTablet absent: an older build)
+      VModuleRow {
+        width: parent.width; icon: "gauge"; text: "Power Mode"; clickable: false
+        dim: typeof root.i.perfTablet !== "boolean"
+        detail: root.i.perf === true ? "Smoothest, uses more battery" : ""
+        VSwitch { surface: "popover"; checked: root.i.perf === true; enabled: typeof root.i.perfTablet === "boolean"
+          onToggled: c => root.setPerf(c) }
+      }
+
+      // -- Microphone: the tablet's microphone as this Mac's input. Off, the tablet captures nothing.
+      // Dimmed while the tablet's mac-cast cannot switch it (micTablet absent: an older build)
+      VModuleRow {
+        width: parent.width; icon: "mic"; text: "Tablet Microphone"; clickable: false
+        dim: typeof root.i.micTablet !== "boolean"
+        detail: root.i.mic === true ? "Input of this Mac" : ""
+        VSwitch { surface: "popover"; checked: root.i.mic === true; enabled: typeof root.i.micTablet === "boolean"
+          onToggled: c => root.setMic(c) }
       }
 
       // -- the sync with this Mac: one row, its details on their own page
