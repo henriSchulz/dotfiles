@@ -4,8 +4,9 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
+import "file:///home/henri/.local/share/velum/qml/Velum"
 
-// Velum (v3): the popups are on Velum; the label is drawn by the bar.
+// Velum (v3): the popups are on Velum; the label is Velum text at the menu bar's size and weight.
 //
 // Date/time label for the bar, and the host for two popups: the Notification
 // Center (NotificationCenter.qml — like macOS, a click on the date opens the
@@ -197,8 +198,10 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: root.vertical ? "" : root.displayText
-    labelVisible: !root.vertical
+    // the button's own label knows no weight: the lab's bar text (surface.menubar.font) is drawn below
+    labelVisible: false
     hasVisualContent: root.vertical ? root.verticalLines.length > 0 : text !== ""
+    fixedWidth: root.vertical ? -1 : Math.ceil(label.implicitWidth + 2 * scaledHorizontalMargin)
     fixedHeight: root.vertical ? root.verticalLines.length * Style.bar.iconSlot : -1
     horizontalMargin: 8.75
     verticalPadding: 8.75
@@ -207,6 +210,16 @@ BarWidget {
       if (b === Qt.RightButton) root.cycleFormat()
       else if (b === Qt.MiddleButton) root.toggleCalendar()
       else root.togglePanel()
+    }
+
+    VText {
+      id: label
+      visible: !root.vertical
+      anchors.centerIn: parent
+      text: button.text
+      color: button.foreground
+      font.pixelSize: Theme.core.surface.menubar.font.size
+      font.weight: Theme.core.surface.menubar.font.weight
     }
 
     Column {

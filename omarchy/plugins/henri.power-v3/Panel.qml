@@ -107,7 +107,7 @@ Panel {
   readonly property real barContentWidth: (pctInBar ? pctMetrics.advanceWidth + Style.spaceReal(5) : 0) + glyphH * 2 + Style.spaceReal(2.5)
   // with the percentage shown the button paints a wider block than an icon
   readonly property real openPanelIndicatorWidth: !button.vertical ? barContentWidth : 0
-  TextMetrics { id: pctMetrics; font.family: root.bar ? root.bar.fontFamily : Theme.font; font.pixelSize: Style.font.body; text: root.pctText }
+  TextMetrics { id: pctMetrics; font.family: root.bar ? root.bar.fontFamily : Theme.font; font.pixelSize: Theme.core.surface.menubar.font.size; font.weight: Theme.core.surface.menubar.font.weight; text: root.pctText }
 
   BarIconButton {
     id: button
@@ -125,7 +125,8 @@ Panel {
             width: implicitWidth
             text: root.pctText
             color: button ? button.foreground : Color.foreground
-            pixelSize: Style.font.body
+            pixelSize: Theme.core.surface.menubar.font.size
+            weight: Theme.core.surface.menubar.font.weight
           }
           VBattery {
             anchors.verticalCenter: parent.verticalCenter

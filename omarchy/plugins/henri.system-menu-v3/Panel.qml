@@ -7,7 +7,7 @@ import qs.Ui
 import "file:///home/henri/.local/share/velum/qml/Velum"
 
 // System menu v3 (Velum) — the macOS Apple menu, laid out like the Control
-// Center. The Omarchy logo sits on the bar's left island; a click grows that
+// Center. The apps glyph sits on the bar's left island (as in the Opal lab); a click grows that
 // island into a panel of tiles (VIslandWindow): the computer (opens About),
 // Sleep / Restart / Shut Down / Lock as round badges, then settings, App Store,
 // Force Quit and Log Out as rows. Restart, shut down and log out ask first on
@@ -162,12 +162,18 @@ Panel {
   implicitWidth: button.implicitWidth + (appLabel.visible ? root.mb.island.gap + appLabel.implicitWidth : 0)
   implicitHeight: button.implicitHeight
 
+  // the lab's left island: the apps glyph (fill) at the menu bar's icon size, as wide as the glyph,
+  // so the island's padX and gap are the only space around it (the Omarchy slot added ~10 px a side)
   BarIconButton {
     id: button
     width: implicitWidth; height: parent.height
     bar: root.bar
-    text: root.logo
-    fontFamily: "omarchy"
+    fixedWidth: root.bar && root.bar.vertical ? -1 : root.mb.icon
+    opticalSize: root.mb.icon
+    iconComponent: Component {
+      VIcon { anchors.centerIn: parent; name: "apps"; weight: "fill"; size: root.mb.icon; surface: "popover"
+              color: root.bar ? root.bar.foreground : Theme.r.popover.ink }
+    }
     tooltipText: ""
     onPressed: function(b) { root.toggle() }
     scale: logoScale.value
@@ -178,7 +184,7 @@ Panel {
     x: button.width + root.mb.island.gap; anchors.verticalCenter: parent.verticalCenter
     text: root.appName
     color: root.bar ? root.bar.foreground : Theme.r.popover.ink
-    font.pixelSize: root.mb.font.size; font.weight: Font.DemiBold
+    font.pixelSize: root.mb.font.size; font.weight: Font.Bold
     MouseArea { anchors.fill: parent; onClicked: root.toggle() }
   }
   // Press feedback on the bar logo whenever the menu opens: squeeze, then spring back.
