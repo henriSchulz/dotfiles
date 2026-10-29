@@ -22,6 +22,10 @@ import "file:///home/henri/.local/share/velum/qml/Velum/KeyboardLayout.js" as Ke
 // height while it is up (exclusive zone), so the app moves its text above it. Its command key opens
 // the shortcuts page; combos go to velum-osk as "combo MODS KEY" (wtype, the only path that keeps
 // the modifiers).
+//
+// Its mic key dictates (voxtype record start / stop; lit while voxtype records or transcribes). voxtype
+// pastes with wtype, which fcitx5 takes for a real key: while any dictation runs (also one from the
+// window bar or the hotkey) the bridge is told "hold on", so that key does not close the keyboard.
 // IPC: omarchy.keyboard toggle | open | close | state
 Item {
   id: root
@@ -77,6 +81,33 @@ Item {
     }
     onExited: function (code) { if (code !== 0) console.warn("henri.keyboard: velum-osk exited", code) }
   }
+  // ---- dictation --------------------------------------------------------------------------------
+  // the rig never records the real microphone (tests/voxtype-stub, its state in the fake HOME)
+  readonly property string voxtype: root.inRig ? Qt.resolvedUrl("tests/voxtype-stub").toString().replace(/^[a-z]+:\/\//, "") : "voxtype"
+  property string voxState: ""        // voxtype's alt: idle | recording | transcribing | stopped ("" = not known)
+  readonly property bool dictating: voxState === "recording" || voxState === "transcribing"
+  // the mic key only where a voxtype daemon runs (the tablet has it switched off: "stopped")
+  readonly property bool canDictate: voxState === "idle" || dictating
+  function dictate() {
+    Quickshell.execDetached([root.voxtype, "record", root.dictating ? "stop" : "start"])
+  }
+  onDictatingChanged: root.send(root.dictating ? "hold on" : "hold off")
+  Process {
+    id: voxFollow
+    running: true
+    command: [root.voxtype, "status", "--follow", "--format", "json"]
+    stdout: SplitParser {
+      onRead: function (line) {
+        var o = null
+        try { o = JSON.parse(line) } catch (e) { return }
+        root.voxState = String(o.alt || "")
+      }
+    }
+    // no voxtype daemon (or it went away): try again later, never in a tight loop
+    onExited: { root.voxState = ""; voxRetry.restart() }
+  }
+  Timer { id: voxRetry; interval: Theme.delay("hudHold") * 10; onTriggered: voxFollow.running = true }
+
   // the dock gives way while the keyboard is up (as on an iPad): "velum-keyboard shown|hidden SCREEN"
   function announce() {
     var e = "velum-keyboard " + (root.shown ? "shown " : "hidden ") + (root.screenName || (Quickshell.screens[0] ? Quickshell.screens[0].name : ""))
@@ -149,7 +180,7 @@ Item {
     function close(): void { root.close(true) }
     // rig: press the key that types `label` (or names `act`) as a finger would
     function tap(label: string): void { if (root.board) root.board.tap(label) }
-    function state(): string { var b = root.board || {}; return JSON.stringify({ shown: root.shown, page: b.page, shift: b.shift, caps: b.caps, mods: b.mods, terminal: root.terminal, screen: root.screenName, bridge: bridge.running, sent: root.sent }) }
+    function state(): string { var b = root.board || {}; return JSON.stringify({ shown: root.shown, page: b.page, shift: b.shift, caps: b.caps, mods: b.mods, terminal: root.terminal, screen: root.screenName, bridge: bridge.running, sent: root.sent, voxState: root.voxState }) }
   }
 
   // ---- the surface ------------------------------------------------------------------------------
@@ -207,6 +238,9 @@ Item {
           shortcuts: true
           terminal: root.terminal
           onHideRequested: root.close(true)
+          dictation: root.canDictate
+          dictating: root.dictating
+          onDictateRequested: root.dictate()
         }
       }
     }

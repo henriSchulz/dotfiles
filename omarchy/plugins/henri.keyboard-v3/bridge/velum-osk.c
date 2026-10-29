@@ -23,6 +23,7 @@
  *     combo MODS KEY       a key combo: MODS ctrl+alt+shift+super or "-", KEY a keysym name or one
  *                          character ("combo ctrl+shift c"); through our own virtual keyboard, see press_combo
  *     open | close         the keyboard opened or closed by hand (open enters the mode)
+ *     hold on|off          a dictation runs: voxtype's paste (wtype) must not close the keyboard
  * Lines out (stdout):
  *     show | hide          the keyboard should appear / go
  *     mode osk|physical    fcitx5's input method mode
@@ -65,6 +66,13 @@ static bool osk_mode, shown, by_hand;
  * mode, which must not close the keyboard — the mode is entered again instead (rearm) */
 static uint64_t combo_grace;
 static bool rearm;
+/* a dictation runs (and for a moment after it): voxtype pastes with wtype, which ends the mode just the
+ * same; the keyboard stays up as on an iPad */
+static bool hold;
+/* another keyboard can have reached fcitx5 since our last key (the mode ended, the keyboard opened, a
+ * wtype of ours): its keymap may be that keyboard's, see own_keymap */
+static bool keymap_dirty = true;
+#define HOLD_AFTER_MS 1500
 
 static uint64_t now_ms(void)
 {
@@ -130,7 +138,9 @@ static void set_mode(bool on)
 		return;
 	osk_mode = on;
 	out(on ? "mode osk" : "mode physical");
-	if (!on && now_ms() < combo_grace) { /* our own combo, not a real key */
+	if (!on)
+		keymap_dirty = true;
+	if (!on && shown && (hold || now_ms() < combo_grace)) { /* our own combo or a dictation's paste, not a real key */
 		rearm = true;
 		return;
 	}
@@ -212,6 +222,7 @@ static void wtype(const char *flag, const char *arg)
 	pid_t pid;
 	if (posix_spawnp(&pid, "wtype", NULL, NULL, argv, environ) == 0)
 		waitpid(pid, NULL, 0);
+	keymap_dirty = true;
 }
 
 /* fcitx5 commits a character as text (text-input) but a key as a key (its virtual keyboard): sent too
@@ -240,12 +251,35 @@ static bool fcitx_char(xkb_keysym_t sym)
 	return backend_key(sym, 0, 0, false) && backend_key(sym, 0, 0, true);
 }
 
+static bool vk_ready(void);
+static struct wl_display *wl;
+static struct zwp_virtual_keyboard_v1 *vk;
+
+/* fcitx5 forwards a key code with the keymap of the keyboard it last saw: after wtype (voxtype pastes
+ * with it, tablet-v3 sends the Enter after a dictation with it) that is wtype's own keymap, where
+ * Return's code means nothing — Enter stayed dead after a dictation (Henri, 2026-10-29). A modifiers
+ * event from our virtual keyboard makes it the seat's keyboard again, and Hyprland hands fcitx5 its
+ * keymap, the compositor's own. fcitx5 takes it in on its own time: a key sent at once was still lost,
+ * so the next one waits KEYMAP_SETTLE_MS — only when another keyboard can have been in between
+ * (keymap_dirty), so a held delete still repeats at its pace. */
+#define KEYMAP_SETTLE_MS 60
+static void own_keymap(void)
+{
+	if (!keymap_dirty || !vk_ready())
+		return;
+	zwp_virtual_keyboard_v1_modifiers(vk, 0, 0, 0, 0);
+	wl_display_roundtrip(wl);
+	usleep(KEYMAP_SETTLE_MS * 1000);
+	keymap_dirty = false;
+}
+
 static bool fcitx_key(xkb_keysym_t sym)
 {
 	xkb_keycode_t code;
 	uint32_t state;
 	if (!find_key(sym, &code, &state))
 		return false;
+	own_keymap();
 	return backend_key(sym, code, 0, false) && backend_key(sym, code, 0, true);
 }
 
@@ -295,10 +329,8 @@ static void press_key(const char *name)
  * — Command+Space became Super+Escape, the system menu (Henri, 2026-10-27). With the same keymap the
  * codes mean what they say for Hyprland's binds, for fcitx5's grab and for the app. fcitx5 takes it for
  * a real key and leaves on-screen-keyboard mode, which set_mode() then enters again. */
-static struct wl_display *wl;
 static struct wl_seat *seat;
 static struct zwp_virtual_keyboard_manager_v1 *vk_manager;
-static struct zwp_virtual_keyboard_v1 *vk;
 
 static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char *iface, uint32_t ver)
 {
@@ -411,7 +443,13 @@ static void line(char *l)
 		press_combo(l + 6);
 	else if (!strcmp(l, "open")) {
 		by_hand = true;
+		keymap_dirty = true;
 		set_shown(true);
+	} else if (!strcmp(l, "hold on"))
+		hold = true;
+	else if (!strcmp(l, "hold off")) {
+		hold = false;
+		combo_grace = now_ms() + HOLD_AFTER_MS; /* voxtype says idle as it pastes; the Enter after it comes later */
 	} else if (!strcmp(l, "close")) {
 		by_hand = false;
 		set_shown(false);

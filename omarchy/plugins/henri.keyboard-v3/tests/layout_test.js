@@ -4,8 +4,8 @@ const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "qml", "Velum
 const L = new Function(src + "; return { place, keyAt, text, height, rows, shortcuts, modIcons, keyLabel, comboKey, comboLine }")()
 const s = { padX: 6, padTop: 8, padBottom: 10, gap: 7, keyHeight: 50 }
 let n = 0
-for (const [page, sc] of [["letters", false], ["numbers", false], ["symbols", false], ["letters", true], ["numbers", true]]) {
-  const keys = L.place(page, 1080, s, sc)
+for (const [page, sc, dict] of [["letters", false], ["numbers", false], ["symbols", false], ["letters", true], ["numbers", true], ["symbols", true, true], ["letters", true, true]]) {
+  const keys = L.place(page, 1080, s, sc, dict)
   for (let r = 0; r < 4; r++) {
     const row = keys.filter(k => k.id.split(":")[1] == r)
     const last = row[row.length - 1]
@@ -26,6 +26,13 @@ assert.strictEqual(L.height(s), 8 + 4 * 50 + 3 * 7 + 10)
 // the shortcuts key sits beside the page key only when asked for
 assert(!L.place("letters", 1080, s).some(k => k.act === "shortcuts"))
 assert.strictEqual(L.place("letters", 1080, s, true).filter(k => k.act === "shortcuts").length, 1)
+// the desktop board: tab first in the top row, letters as wide there as in the next row; the mic only when asked for
+const desk = L.place("letters", 1080, s, true, true), row = r => desk.filter(k => k.id.split(":")[1] == r)
+assert.strictEqual(row(0)[0].key, "Tab"); assert(!L.place("letters", 1080, s).some(k => k.key === "Tab"), "the lock's board has no tab")
+assert(Math.abs(row(0)[1].w - row(1)[0].w) < 0.5, "q as wide as a (to half a px: a row has a gap more)")
+assert.strictEqual(row(3).filter(k => k.act === "dictate").length, 1)
+assert.strictEqual(row(3)[row(3).findIndex(k => k.act === "dictate") + 1].act, "space", "the mic sits left of the space bar")
+assert(!L.place("letters", 1080, s, true).some(k => k.act === "dictate"))
 // a terminal copies with Shift and has its own group
 const copy = (t) => L.shortcuts(t)[0].items.find(i => i.label === "Copy")
 assert.deepStrictEqual(copy(false).mods, ["ctrl"]); assert.deepStrictEqual(copy(true).mods, ["ctrl", "shift"])
@@ -39,4 +46,4 @@ assert.strictEqual(L.comboKey(keys.find(k => k.out === "q")), "q")
 assert.strictEqual(L.comboKey({ act: "space", out: " " }), "space")
 assert.strictEqual(L.comboKey({ key: "BackSpace" }), "BackSpace")
 assert.strictEqual(L.keyLabel("c"), "C"); assert.strictEqual(L.keyLabel("space"), "Space")
-console.log(`layout: ${n + 19} checks ok`)
+console.log(`layout: ${n + 25} checks ok`)
