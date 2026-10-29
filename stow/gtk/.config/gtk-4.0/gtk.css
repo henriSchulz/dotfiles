@@ -1,11 +1,9 @@
-/* User stylesheet for every GTK4 app.
+/* User stylesheet for every GTK4 app — Velum only (henri-ui is gone, Henri 2026-10-29).
  * Velum (~/Projects/velum): the variant's light/dark variables — ~/.local/state/velum/gtk-variant.css
  * is written by the desktop's Velum settings owner (the menu bar) and imports
  * ~/.local/share/velum/dist/gtk4/velum-<variant>.css — then the Velum layer for libadwaita apps.
  * Light/dark follows GSettings color-scheme live; a variant change applies to newly started apps.
- * henri-files.css only touches Nautilus windows (Nautilus is not installed; kept for it). */
-@import url("file:///home/henri/.local/share/henri-ui/gtk-tokens.css");
-@import url("file:///home/henri/.local/state/henri-ui/gtk-colors.css");
-@import url("file:///home/henri/.config/gtk-4.0/henri-files.css");
+ * (henri-ui's gtk-tokens.css / gtk-colors.css and henri-files.css for Nautilus were loaded before
+ * Velum until 2026-10-29; Velum's layer uses none of their variables.) */
 @import url("file:///home/henri/.local/state/velum/gtk-variant.css");
 @import url("file:///home/henri/.local/share/velum/gtk/velum-gtk.css");
