@@ -22,7 +22,6 @@
   "pages": [
     [
       "app:de.henri.Finder",
-      "app:things-clone",
       "app:mdview",
       "app:mdview-quick",
       "app:chromium",
@@ -32,22 +31,20 @@
       "folder:f2",
       "folder:f4",
       "folder:f5",
-      "app:Discord",
       "app:org.gnome.Papers",
       "app:gtkwave",
       "app:keepass",
       "app:localsend",
-      "app:md.obsidian.Obsidian",
       "app:signal",
       "app:omarchy-settings",
       "app:vim",
       "app:com.microsoft.VSCode",
-      "app:WhatsApp",
       "app:com.github.xournalpp.xournalpp",
       "app:YouTube",
       "dir:d1",
       "dir:d2",
-      "dir:d3"
+      "dir:d3",
+      "app:imv"
     ]
   ],
   "folders": {
@@ -69,10 +66,8 @@
       "cover": null,
       "items": [
         "app:de.henri.IcloudPhotos",
-        "app:imv",
         "app:foto",
         "app:mpv",
-        "app:Basecamp",
         "app:aether"
       ]
     },
@@ -103,7 +98,6 @@
         "app:Disk Usage",
         "app:cliamp",
         "app:com.github.wwmm.easyeffects",
-        "app:Zoom",
         "app:xdvi",
         "app:dev.tensaku.Tensaku",
         "app:Docker",
@@ -127,9 +121,7 @@
   },
   "workflows": {},
   "apps": {},
-  "hidden": [
-    "app:1password"
-  ],
+  "hidden": [],
   "seen": [
     "app:1password",
     "app:Basecamp",
@@ -161,6 +153,7 @@
     "app:foot",
     "app:foto",
     "app:gtkwave",
+    "app:iCloud Mail",
     "app:imv",
     "app:keepass",
     "app:libreoffice-calc",
@@ -183,7 +176,6 @@
     "app:qdbusviewer",
     "app:signal",
     "app:system-config-printer",
-    "app:things-clone",
     "app:vim",
     "app:voxtype-configure",
     "app:xdvi"
