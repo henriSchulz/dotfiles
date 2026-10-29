@@ -124,9 +124,12 @@ Item {
   // Velum: the islands carry the material, so the ink is always the popover ink
   // of the variant (Pearl by default); dark/light follows the wallpaper under
   // the bar (same measurement as Control Center v3, so both always agree).
-  // Smoke (surface.menubar, the dock's design 3): light ink on dark tinted glass
+  // Smoke (surface.menubar, the dock's design 3): light ink on dark tinted glass — unless the
+  // variant says its chrome is its own glass (metrics.chrome.smoke 0: Opal), then the islands
+  // wear the popover material and its ink
   readonly property var smoke: Theme.core.surface.menubar
-  property color themeForeground: Theme.reduceTransparency ? Theme.r.popover.ink : smoke.ink
+  readonly property bool smoky: !!Theme.m.chrome.smoke
+  property color themeForeground: Theme.reduceTransparency || !smoky ? Theme.r.popover.ink : smoke.ink
   property color themeContrastForeground: Theme.r.popover.bgOpaque
   property color transparentForeground: themeForeground
   property color foreground: themeForeground
@@ -138,7 +141,7 @@ Item {
   property bool foregroundAnimationEnabled: true
   // macOS-style menu bar: translucent so the Hyprland blur shows through.
   property real backgroundOpacity: 1
-  property color background: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : smoke.tint
+  property color background: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : smoky ? smoke.tint : Theme.r.popover.bg
   property color urgent: Theme.r.accent.base
   VBackdrop { id: velumBackdrop; region: "40%x30%+0+0"; gravity: "North" }
   VelumSettings { id: velumSettings; priority: 2; prefersDark: velumBackdrop.dark }
@@ -1432,7 +1435,7 @@ Item {
     radius: height / 2
     color: root.background
     border.width: Theme.layout.separator
-    border.color: Theme.reduceTransparency ? Theme.r.line.rim : root.smoke.rim
+    border.color: Theme.reduceTransparency || !root.smoky ? Theme.r.line.rim : root.smoke.rim
     VLens { layers: Theme.r.popover.shadow; radius: parent.radius }
   }
 

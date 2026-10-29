@@ -68,9 +68,11 @@ BarWidget {
   // clicks left of this (widget x) are on the symbol, right of it on the dots
   readonly property real splitX: width / 2 + (iconSize - faceW) / 2
   readonly property var smoke: Theme.core.surface.menubar
-  readonly property color ink: Theme.reduceTransparency ? Theme.r.popover.ink : smoke.ink
-  readonly property color inkSecondary: Theme.reduceTransparency ? Theme.r.popover.inkSecondary : smoke.inkSecondary
-  readonly property color inkTertiary: Theme.reduceTransparency ? Theme.r.ink.tertiary : smoke.inkTertiary
+  // the variant may wear its own glass instead of Smoke (metrics.chrome.smoke 0: Opal), as the bar does
+  readonly property bool smoky: !!Theme.m.chrome.smoke
+  readonly property color ink: Theme.reduceTransparency || !smoky ? Theme.r.popover.ink : smoke.ink
+  readonly property color inkSecondary: Theme.reduceTransparency || !smoky ? Theme.r.popover.inkSecondary : smoke.inkSecondary
+  readonly property color inkTertiary: Theme.reduceTransparency || !smoky ? Theme.r.ink.tertiary : smoke.inkTertiary
   readonly property real pillW: restW + (hover ? Theme.layout.module.pad : 0)
   implicitWidth: restW + 2 * Theme.layout.module.pad
   implicitHeight: barSize
@@ -83,8 +85,8 @@ BarWidget {
     width: pw.value; height: root.pillH; radius: height / 2
     // at rest the island wears the menu bar's Smoke (surface.menubar); opened it grows into the
     // Control Center's own material
-    color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : root.smoke.tint
-    border.width: Theme.layout.separator; border.color: Theme.reduceTransparency ? Theme.r.line.rim : root.smoke.rim
+    color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : root.smoky ? root.smoke.tint : Theme.r.popover.bg
+    border.width: Theme.layout.separator; border.color: Theme.reduceTransparency || !root.smoky ? Theme.r.line.rim : root.smoke.rim
     opacity: island.shown ? 0 : 1
     VLens { layers: Theme.r.popover.shadow; radius: pill.radius }
     Face { anchors.fill: parent }

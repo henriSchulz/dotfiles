@@ -170,8 +170,12 @@ Item {
     // (Henri, 2026-10-28): dark tinted glass over the compositor's blur, one light hairline,
     // light dots under running apps
     var smoke = Theme.core.surface.tablet.home.dock
-    return { dark: dark, sheet: smoke.tint, border: "transparent", hairline: smoke.rim, shadow: smoke.shadow[0].color,  // lint-ok: no inner rim
-             separator: smoke.divider, indicator: smoke.dot, label: r.tooltip.bg, labelText: r.tooltip.ink,
+    // unless the variant wears its own glass as chrome (metrics.chrome.smoke 0: Opal): the popover
+    // material with its lens, dark ink on light glass by day
+    var glass = !Theme.m.chrome.smoke
+    return { dark: dark, sheet: glass ? r.popover.bg : smoke.tint, border: "transparent",  // lint-ok: no inner rim
+             hairline: glass ? r.line.rim : smoke.rim, shadow: glass && sh ? sh.color : smoke.shadow[0].color,
+             separator: glass ? r.popover.line : smoke.divider, indicator: glass ? r.popover.ink : smoke.dot, label: r.tooltip.bg, labelText: r.tooltip.ink,
              menu: r.menu.bg, menuText: r.menu.ink, menuHairline: r.menu.line, pill: r.popover.bg, pillText: r.popover.ink,
              opaque: r.popover.bgOpaque, danger: r.danger, onAccent: r.ink.onAccent }
   }
