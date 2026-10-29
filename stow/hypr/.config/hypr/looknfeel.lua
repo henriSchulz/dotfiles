@@ -224,9 +224,11 @@ if low_power_render then
 end
 
 -- System Settings (omarchy-settings, ~/Projects/settings): a macOS-27-shaped
--- settings window. 868 × 768 = the 723 × 640 measured on macOS at the app's
--- own 1.2 scale. It tiles like any other window (it used to float and centre itself); its
--- sidebar is translucent, so it gets the compositor blur.
+-- settings window. It opens above the other windows, centred, at its own size
+-- (Velum's surface.settings width × height, set by the app), instead of joining
+-- the tiling (Henri, 2026-10-29). Its sidebar is translucent, so it gets the
+-- compositor blur.
+hl.window_rule({ match = { class = "^omarchy-settings$", title = "^System Settings$" }, float = true, center = true })
 hl.window_rule({ match = { title = "^System Settings$" }, opacity = "1.0 override" })
 
 -- Velum window frame (~/Projects/velum, surface.window tokens): hairline instead of the theme's
