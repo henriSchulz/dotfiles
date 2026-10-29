@@ -538,6 +538,8 @@ Item {
   function applyHwStat(raw) {
     var s
     try { s = JSON.parse(String(raw || "").trim()) } catch (e) { return }
+    // the very first sample has nothing to compare with: take the second one soon, not a poll later
+    if (!hwPrev && root.opened) hwSecond.restart()
     if (hwPrev && s.cpuTotal > hwPrev.cpuTotal) {
       var dt = s.cpuTotal - hwPrev.cpuTotal
       cpuLoad = Math.max(0, Math.min(100, Math.round(100 * (1 - (s.cpuIdle - hwPrev.cpuIdle) / dt))))
@@ -556,6 +558,7 @@ Item {
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.applyHwStat(text) }
   }
   Timer { interval: Theme.delay("settle"); running: root.opened; onTriggered: root.refreshHardware() }
+  Timer { id: hwSecond; interval: Theme.delay("loading"); onTriggered: root.refreshHardware() }
   Timer { interval: root.hwInterval; repeat: true; running: root.opened; onTriggered: root.refreshHardware() }
 
   // ---- Top processes (system/henri-topcpu, on the Hardware page): the programs using the most CPU,

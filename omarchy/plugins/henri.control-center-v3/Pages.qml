@@ -117,7 +117,6 @@ Item {
     Column {
       id: mp
       spacing: cc.gap
-      readonly property real colW: (width - cc.gap) / 2
 
       // the tiles come in one after the other when the island opens (stagger.step apart, at most stagger.max)
       property real t: 1
@@ -139,47 +138,44 @@ Item {
         if (cc.be.opened && cc.current === "main") mp.reveal()
       } }
 
-      // -- connectivity | quick badges
+      // -- 2+3 Mix (Henri 2026-10-29, lab/web/control-center-2.html and -3.html): the connections and
+      // the toggles on the left, brightness and volume as tall sliders on the right
       Item {
-        width: parent.width; height: conn.height
-        VTile {
-          id: conn
-          width: mp.colW; height: connCol.height + 2 * Theme.layout.module.tileInset
-          Column {
-            id: connCol; y: Theme.layout.module.tileInset; width: parent.width
-            VToggleTile { width: parent.width; icon: "wifi"; title: "Wi-Fi"; on: cc.be.wifiOn
-              glyph: cc.be.wifiOn && cc.be.wifiName ? wifiGlyph : null
-              subtitle: !cc.be.wifiOn ? "Off" : cc.be.wifiPending || cc.be.wifiName || "Not Connected"
-              onToggled: cc.be.toggleWifi(); onOpened: cc.push("wifi") }
-            VToggleTile { width: parent.width; icon: "bluetooth"; title: "Bluetooth"; on: cc.be.btOn
-              subtitle: !cc.be.btOn ? "Off" : cc.be.btConnected.length === 1 ? (cc.be.btConnected[0].name || "1 Device") + cc.btBattery(cc.be.btConnected[0])
-                        : cc.be.btConnected.length > 1 ? cc.be.btConnected.length + " Devices" : "On"
-              onToggled: cc.be.toggleBluetooth(); onOpened: cc.push("bluetooth") }
-            VToggleTile { width: parent.width; icon: "airdrop"; title: "AirDrop"; on: cc.be.localsendRunning
-              subtitle: cc.be.localsendRunning ? "LocalSend On" : "Off"
-              onToggled: cc.be.toggleAirdrop(); onOpened: cc.be.openAirdrop() }
-          }
-        }
+        id: top
+        width: parent.width; height: left.height
+        readonly property int columns: cc.be.brightnessAvailable ? 2 : 1
         Column {
-          x: mp.colW + cc.gap; width: mp.colW; spacing: cc.gap
-          // two tiles of three badges, together as tall as the connectivity tile
+          id: left
+          width: parent.width - top.columns * (Theme.layout.meter.column + cc.gap); spacing: cc.gap
+          VTile {
+            id: conn
+            width: parent.width; height: connCol.height + 2 * Theme.layout.module.tileInset
+            Column {
+              id: connCol; x: Theme.layout.module.tileInset; y: Theme.layout.module.tileInset; width: parent.width - 2 * x
+              VToggleTile { tinted: true; width: parent.width; icon: "wifi"; title: "Wi-Fi"; on: cc.be.wifiOn
+                glyph: cc.be.wifiOn && cc.be.wifiName ? wifiGlyph : null
+                subtitle: !cc.be.wifiOn ? "Off" : cc.be.wifiPending || cc.be.wifiName || "Not Connected"
+                onToggled: cc.be.toggleWifi(); onOpened: cc.push("wifi") }
+              VToggleTile { tinted: true; width: parent.width; icon: "bluetooth"; title: "Bluetooth"; on: cc.be.btOn
+                subtitle: !cc.be.btOn ? "Off" : cc.be.btConnected.length === 1 ? (cc.be.btConnected[0].name || "1 Device") + cc.btBattery(cc.be.btConnected[0])
+                          : cc.be.btConnected.length > 1 ? cc.be.btConnected.length + " Devices" : "On"
+                onToggled: cc.be.toggleBluetooth(); onOpened: cc.push("bluetooth") }
+              VToggleTile { tinted: true; width: parent.width; icon: "airdrop"; title: "AirDrop"; on: cc.be.localsendRunning
+                subtitle: cc.be.localsendRunning ? "LocalSend On" : "Off"
+                onToggled: cc.be.toggleAirdrop(); onOpened: cc.be.openAirdrop() }
+            }
+          }
+          // the six toggles in one row (Opal: glass wells, metrics.badge.well)
           VTile {
             id: quick
-            width: parent.width; height: (conn.height - cc.gap) / 2
-            readonly property real b: Math.min(Theme.layout.module.quick, (width - 2 * Theme.layout.module.pad - 2 * Theme.layout.list.gap) / 3)
-            readonly property real spread: (width - 2 * Theme.layout.module.pad - 3 * b) / 2
+            width: parent.width; height: quick.b + 2 * Theme.layout.module.pad
+            readonly property real b: Math.min(Theme.layout.module.quick, (width - 2 * Theme.layout.module.pad - 5 * Theme.layout.list.gap) / 6)
             Row {
-              anchors.centerIn: parent; spacing: quick.spread
+              anchors.centerIn: parent; spacing: (quick.width - 2 * Theme.layout.module.pad - 6 * quick.b) / 5
               VBadge { size: quick.b; icon: "moon"; on: Theme.dark; onTapped: cc.velum.set("appearance", Theme.dark ? "light" : "dark") }
               VBadge { size: quick.b; icon: "night-shift"; on: cc.be.nightShift; onTapped: cc.be.setNightShift(!cc.be.nightShift) }
               VBadge { size: quick.b; icon: cc.be.kbdAvailable ? "keyboard.light" : "display"; on: cc.be.kbdAvailable && cc.be.kbd.level > 0
                 onTapped: cc.push(cc.be.kbdAvailable ? "keyboard" : "display") }
-            }
-          }
-          VTile {
-            width: parent.width; height: quick.height
-            Row {
-              anchors.centerIn: parent; spacing: quick.spread
               VBadge { size: quick.b; icon: cc.be.tilingLayout === "scrolling" ? "layout.columns" : "layout.tiles"; on: cc.be.tilingLayout === "scrolling"
                 onTapped: cc.be.setTilingLayout(cc.be.tilingLayout === "scrolling" ? "dwindle" : "scrolling") }
               VBadge { size: quick.b; icon: "tablet"; on: Theme.touch; onTapped: cc.be.run("tablet-mode toggle") }
@@ -190,61 +186,43 @@ Item {
             }
           }
         }
-      }
-
-      // -- Display | Sound: thick sliders, side by side (one height: the taller card)
-      Row {
-        spacing: cc.gap
-        readonly property real cardH: Math.max(dispCard.naturalHeight, soundCard.naturalHeight)
-        Card {
-          id: dispCard; width: mp.colW; height: parent.cardH
-          title: "Display"; opens: "display"
-          titleDetail: cc.be.brightnessAvailable ? "" : (cc.be.focusedMonitor || "")
-          Item {
-            visible: cc.be.brightnessAvailable; width: parent.width; height: visible ? Theme.layout.meter.slider + Theme.layout.module.pad : 0
-            VFillSlider { x: Theme.layout.module.pad; width: parent.width - 2 * x; icon: "brightness"
-              value: cc.be.brightness / 100; readout: cc.be.brightness + " %"; onMoved: v => cc.be.setBrightness(v * 100) }
-          }
-          MRow { visible: !cc.be.brightnessAvailable; height: visible ? Theme.layout.module.row : 0; icon: "display"
-            text: "Appearance"; detail: Theme.variant.charAt(0).toUpperCase() + Theme.variant.slice(1) + " · " + (Theme.dark ? "Dark" : "Light")
-            onClicked: cc.push("display") }
-        }
-        Card {
-          id: soundCard; width: mp.colW; height: parent.cardH
-          title: "Sound"; opens: cc.be.airpodsActive ? "airpods" : "sound"
-          titleDetail: cc.be.airpodsActive ? cc.be.airpodsName : (cc.be.sinkRows.filter(r => r.active).map(r => r.label)[0] || "")
-          Item {
-            width: parent.width; height: Theme.layout.meter.slider + Theme.layout.module.pad
-            VFillSlider { x: Theme.layout.module.pad; width: parent.width - 2 * x
-              icon: cc.be.muted || cc.be.volume <= 0 ? "sound.mute" : cc.be.volume < 0.34 ? "sound.low" : cc.be.volume < 0.67 ? "sound.mid" : "sound"
-              value: cc.be.muted ? 0 : cc.be.volume; readout: cc.be.muted ? "Muted" : Math.round(cc.be.volume * 100) + " %"
-              onMoved: v => cc.be.setVolume(v); onIconClicked: cc.be.toggleMute() }
-          }
+        // brightness (where there is a backlight) and volume; held or right-clicked: their pages
+        Row {
+          anchors.right: parent.right; height: left.height; spacing: cc.gap
+          VFillSlider { visible: cc.be.brightnessAvailable; vertical: true; width: Theme.layout.meter.column; height: parent.height; icon: "brightness"
+            value: cc.be.brightness / 100; readout: cc.be.brightness + " %"; onMoved: v => cc.be.setBrightness(v * 100); onOpened: cc.push("display") }
+          VFillSlider { vertical: true; width: Theme.layout.meter.column; height: parent.height
+            icon: cc.be.muted || cc.be.volume <= 0 ? "sound.mute" : cc.be.volume < 0.34 ? "sound.low" : cc.be.volume < 0.67 ? "sound.mid" : "sound"
+            value: cc.be.muted ? 0 : cc.be.volume; readout: cc.be.muted ? "Muted" : Math.round(cc.be.volume * 100) + " %"
+            onMoved: v => cc.be.setVolume(v); onIconClicked: cc.be.toggleMute(); onOpened: cc.push(cc.be.airpodsActive ? "airpods" : "sound") }
         }
       }
 
-      // -- battery and hardware as small widgets (each opens its page)
-      Row {
-        spacing: cc.gap
-        WidgetTile {
+      // -- the battery, and the numbers as chips (each opens its page)
+      VTile {
+        width: parent.width; height: Theme.layout.module.toggle + 2 * Theme.layout.module.tileInset
+        Item {
+          id: battArea
           visible: cc.be.hasBattery
-          width: mp.colW; onClicked: cc.push("battery")
-          VBatteryArt { id: wbat; x: Theme.layout.module.pad; anchors.verticalCenter: parent.verticalCenter; size: Theme.layout.meter.battery / 2
+          x: Theme.layout.module.pad; width: battCol.x + battCol.width; height: parent.height
+          VBatteryArt { id: wbat; anchors.verticalCenter: parent.verticalCenter; size: Theme.layout.meter.battery / 2
             level: cc.be.batteryLevel; charging: cc.be.charging; plugged: cc.be.onAC && !cc.be.charging }
           Column {
-            x: wbat.x + wbat.width + Theme.layout.module.pad; width: parent.width - x - Theme.layout.module.pad; anchors.verticalCenter: parent.verticalCenter
-            VText { text: Math.round(cc.be.batteryLevel * 100) + " %"; color: Theme.r.popover.ink; font.pixelSize: Theme.m.type.title; font.weight: Font.DemiBold }
-            VText { width: parent.width; elide: Text.ElideRight; tone: "secondary"; font.pixelSize: Theme.m.type.small
+            id: battCol
+            x: wbat.width + Theme.layout.module.pad; anchors.verticalCenter: parent.verticalCenter
+            VText { text: Math.round(cc.be.batteryLevel * 100) + " %"; color: Theme.r.popover.ink; font.weight: Font.DemiBold }
+            VText { tone: "secondary"; font.pixelSize: Theme.m.type.small
               text: cc.be.batteryTime ? cc.be.batteryTime : cc.be.charging ? "Charging" : cc.be.onAC ? "Power Adapter" : "Battery" }
           }
+          MouseArea { anchors.fill: parent; onClicked: cc.push("battery") }
         }
-        WidgetTile {
-          width: cc.be.hasBattery ? mp.colW : mp.width; onClicked: cc.push("hardware")
-          Row {
-            anchors.centerIn: parent; spacing: Theme.layout.module.pad * 2
-            MiniRing { value: Math.max(0, cc.be.cpuLoad) / 100; label: "CPU" }
-            MiniRing { value: cc.be.memUsedFrac; label: "Memory" }
-          }
+        Row {
+          anchors.right: parent.right; anchors.rightMargin: Theme.layout.module.pad; anchors.verticalCenter: parent.verticalCenter
+          spacing: Theme.layout.control.gap
+          // the load needs two samples: until the second, no number rather than a false 0 %
+          Chip { icon: "cpu"; text: cc.be.cpuLoad < 0 ? "--" : cc.be.cpuLoad + " %"; onClicked: cc.push("hardware") }
+          Chip { icon: "memory"; text: Math.round(cc.be.memUsedFrac * 100) + " %"; onClicked: cc.push("hardware") }
+          Chip { icon: "display"; text: Theme.variant.charAt(0).toUpperCase() + Theme.variant.slice(1) + " · " + (Theme.dark ? "Dark" : "Light"); onClicked: cc.push("display") }
         }
       }
     }
@@ -253,27 +231,31 @@ Item {
   Component { id: wifiGlyph
     VSignal { size: Theme.layout.module.badge * Theme.layout.icon.badge * 1.15; color: Theme.r.ink.onAccent
       level: { var c = cc.be.wifiRows.filter(r => r.connected); return c.length ? c[0].signal / 100 : 1 } } }
-  // a tile that opens a page, pressed like a badge
-  component WidgetTile: VTile {
-    id: wt
+  // a value on a tile that opens its page (Mix: CPU, memory, appearance): the variant's off badge as a
+  // capsule (Opal: a glass well with the lens), a small glyph and the value
+  component Chip: Rectangle {
+    id: chip
+    property string icon: ""
+    property string text: ""
     signal clicked()
-    height: Theme.layout.meter.card
-    Spring { id: wtPress; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: wtMouse.pressed ? Theme.scale("press") : 1 }
-    scale: wtPress.value
-    Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.r.popover.fillHover; visible: wtMouse.containsMouse }
-    MouseArea { id: wtMouse; anchors.fill: parent; hoverEnabled: true; onClicked: wt.clicked() }
+    readonly property bool well: !!(Theme.m.badge && Theme.m.badge.well)
+    implicitHeight: Theme.layout.capsule.height
+    implicitWidth: chipRow.implicitWidth + 2 * Theme.layout.list.padX
+    radius: height / 2
+    color: Theme.r.popover.badgeOff
+    border.width: well ? 0 : Theme.layout.separator; border.color: Theme.r.line.base
+    VLens { visible: chip.well; layers: Theme.r.popover.shadow; radius: chip.radius }
+    Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.r.popover.fillHover; visible: chipMouse.containsMouse }
+    Row {
+      id: chipRow
+      anchors.centerIn: parent; spacing: Theme.layout.list.gap / 2
+      VIcon { anchors.verticalCenter: parent.verticalCenter; name: chip.icon; size: Theme.layout.icon.small; color: Theme.r.popover.inkSecondary }
+      VText { anchors.verticalCenter: parent.verticalCenter; text: chip.text; font.pixelSize: Theme.m.type.small; font.weight: Font.Medium; color: Theme.r.popover.ink }
+    }
+    Spring { id: chipPress; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: chipMouse.pressed ? Theme.scale("press") : 1 }
+    scale: chipPress.value
+    MouseArea { id: chipMouse; anchors.fill: parent; hoverEnabled: true; onClicked: chip.clicked() }
   }
-  component MiniRing: Column {
-    id: mr
-    property real value: 0
-    property string label: ""
-    spacing: Theme.layout.list.gap / 4
-    VRing { anchors.horizontalCenter: parent.horizontalCenter; size: Theme.layout.module.quick; line: Theme.layout.meter.bar
-      value: mr.value; color: mr.value >= 0.9 ? Theme.r.danger : Theme.r.accent.base
-      VText { anchors.centerIn: parent; text: Math.round(mr.value * 100); color: Theme.r.popover.ink; font.pixelSize: Theme.m.type.small; font.weight: Font.DemiBold } }
-    VText { anchors.horizontalCenter: parent.horizontalCenter; text: mr.label; tone: "secondary"; font.pixelSize: Theme.m.type.small }
-  }
-
   // ================================================================ Wi-Fi
   Component {
     id: wifiPage
