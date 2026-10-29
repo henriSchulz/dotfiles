@@ -1,0 +1,18 @@
+#!/bin/bash
+# ask-root — run a command as root through polkit: Velum's password modal (henri.auth-v3, the session's
+# polkit agent) comes out of the top of the focused screen and shows the command; Henri types the password
+# there, it goes to polkit's own helper. Output and exit code come back here, as from any command.
+#
+#   ask-root 'COMMAND'      COMMAND runs through bash -c as root, in the current directory
+#
+# polkit tells the agent only the program (bash), so the command is noted for the modal first
+# ($XDG_RUNTIME_DIR/velum-auth/request, read within a minute). Exit 126/127: cancelled or no agent.
+set -u
+[[ $# == 1 && -n $1 ]] || { echo "usage: ask-root 'COMMAND'" >&2; exit 2; }
+dir=${XDG_RUNTIME_DIR:-/tmp}/velum-auth
+mkdir -p -m 700 "$dir"
+python3 -c 'import json, sys, time; print(json.dumps({"cmd": sys.argv[1], "t": time.time()}))' "$1" > "$dir/request"
+pkexec --keep-cwd /usr/bin/bash -c "$1"
+rc=$?
+rm -f "$dir/request"
+exit $rc
