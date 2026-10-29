@@ -1,0 +1,52 @@
+#!/bin/bash
+# ask-run — a command Henri has to run himself (sudo, a password, a confirmation): a foot window opens on
+# his current screen with the command already in it; Enter runs it, the password goes in, and the window
+# closes by itself afterwards (at once on success, after a few seconds on failure so the error is seen).
+#
+#   ask-run [--wait] [--title TITLE] 'COMMAND'      COMMAND runs through bash -c (pipes, ~, && work)
+#
+# --wait blocks until the window is done and exits with the command's exit code (Ctrl+C or a closed
+# window: 130). Without it, the status path is printed; the exit code lands there when it is done.
+# Status files: $XDG_RUNTIME_DIR/ask-run/ID.status
+set -u
+dir=${XDG_RUNTIME_DIR:-/tmp}/ask-run
+mkdir -p "$dir"
+
+if [[ ${1:-} == --inner ]]; then                       # inside the foot window
+  id=$2 cmd=$3
+  trap 'echo 130 > "$dir/$id.status"; exit 130' INT HUP TERM
+  printf '\n  \e[1m%s\e[0m\n\n' "$cmd"
+  read -rp "  Press Enter to run it (Ctrl+C cancels) " _
+  echo
+  bash -c "$cmd"
+  rc=$?
+  echo "$rc" > "$dir/$id.status"
+  if [[ $rc != 0 ]]; then
+    printf '\n  \e[31mFailed (exit %s)\e[0m — closing in 5 s\n' "$rc"
+    sleep 5
+  fi
+  exit "$rc"
+fi
+
+wait=0 title="Run as Henri"
+while [[ $# -gt 1 ]]; do
+  case $1 in
+    --wait) wait=1; shift ;;
+    --title) title=$2; shift 2 ;;
+    *) break ;;
+  esac
+done
+[[ $# == 1 ]] || { echo "usage: ask-run [--wait] [--title TITLE] 'COMMAND'" >&2; exit 2; }
+
+id=$(date +%s%N)
+setsid -f foot --app-id ask-run --title "$title" "$0" --inner "$id" "$1" >/dev/null 2>&1
+status=$dir/$id.status
+if (( ! wait )); then echo "$status"; exit 0; fi
+
+# the window closed without a status (closed by hand): give up once no foot of ours is left
+sleep 1
+while [[ ! -e $status ]]; do
+  pgrep -f -- "--inner $id " >/dev/null || { [[ -e $status ]] || echo 130 > "$status"; break; }
+  sleep 0.5
+done
+exit "$(cat "$status")"
