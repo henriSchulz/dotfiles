@@ -28,6 +28,8 @@ Item {
   property rect wallRect: Qt.rect(0, 0, width, height)
   property var running: ({})       // app id → true: a dot under its dock icon
   readonly property var dk: cfg.dock
+  // the dock wears Smoke (design 3) unless the variant's chrome is its own glass (metrics.chrome.smoke 0: Opal)
+  readonly property bool smoky: !!Theme.m.chrome.smoke
   // edit mode (iPadOS: touch and hold): `order` places the grid apps (ids), `apps` stays as it is,
   // so a new order only moves tiles and never rebuilds them
   property var order: apps.map(function (a) { return a.id })
@@ -287,7 +289,7 @@ Item {
       }
       Rectangle {
         anchors.fill: parent
-        color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : hs.dk.tint
+        color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : hs.smoky ? hs.dk.tint : Theme.r.popover.bg
       }
     }
     Item {
@@ -302,8 +304,9 @@ Item {
       radius: dock.radius
       color: "transparent"   // lint-ok: the rim only
       border.width: 1 / Screen.devicePixelRatio
-      border.color: hs.dk.rim
+      border.color: hs.smoky ? hs.dk.rim : Theme.r.line.rim
     }
+    VLens { layers: Theme.r.popover.shadow; radius: dock.radius }
     Row {
       id: dockRow
       anchors.centerIn: parent
@@ -320,7 +323,7 @@ Item {
             anchors.centerIn: parent
             width: Theme.layout.separator
             height: parent.height * hs.cfg.dividerShare
-            color: hs.dk.divider
+            color: hs.smoky ? hs.dk.divider : Theme.r.popover.line
           }
           Image {
             visible: !parent.modelData.sep
@@ -340,7 +343,7 @@ Item {
             width: hs.dk.dotSize
             height: width
             radius: width / 2
-            color: hs.dk.dot
+            color: hs.smoky ? hs.dk.dot : Theme.r.popover.ink
           }
         }
       }

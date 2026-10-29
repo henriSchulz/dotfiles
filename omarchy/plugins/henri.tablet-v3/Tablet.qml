@@ -353,8 +353,58 @@ Item {
     repeat: true
     onTriggered: if (root.castBottom) root.run(root.castBottom.gesture.tick(Date.now()), root.castBottom.screen)
   }
+  // ---- A touchpad in tablet mode, as an iPad with a Magic Keyboard: the four-finger swipe up
+  // (input.lua sends it here instead of to Mission Control while tablet mode is on) moves a virtual
+  // finger from the middle of the focused screen's home zone, so the app follows it as a card,
+  // goes home, or opens the App Switcher on a pause, exactly as the finger on the edge does.
+  //   "velum-pad start|move|end|cancel <dx> <dy>"   (touchpad units since the last event)
+  // Tap, press and hold and push down have no touchpad meaning: they are dropped.
+  property var pad: null           // { gesture, screen, x, y }
+  function padRun(actions, screenName) {
+    root.run(actions.filter(a => a.do !== "tap" && a.do !== "longpress" && a.do !== "down"), screenName)
+  }
+  function padEvent(phase, dx, dy) {
+    var t = Date.now()
+    if (phase === "start") {
+      if (root.pad) { padTicker.stop(); padRun(root.pad.gesture.cancel(), root.pad.screen); root.pad = null }
+      var m = Hyprland.focusedMonitor
+      if (!root.active || root.homePaused || !m) return
+      root.wake()
+      var p0 = { gesture: Gesture.create(root.tt), screen: m.name, x: 0, y: 0 }
+      root.pad = p0
+      homeCtl.guard("prepare", () => homeCtl.prepare(p0.screen))
+      padRun(p0.gesture.down(t, 0, 0), p0.screen)
+      padTicker.start()
+      return
+    }
+    var p = root.pad
+    if (!p) return
+    if (phase === "move") {
+      p.x += dx * root.tt.padScale; p.y += dy * root.tt.padScale
+      padRun(p.gesture.move(t, p.x, p.y), p.screen)
+      return
+    }
+    padTicker.stop()
+    root.pad = null
+    padRun(phase === "end" ? p.gesture.up(t, p.x, p.y) : p.gesture.cancel(), p.screen)
+  }
+  // resting fingers send no updates: the pause that opens the App Switcher is seen here
+  Timer {
+    id: padTicker
+    interval: Theme.core.surface.tablet.holdTime / 4
+    repeat: true
+    onTriggered: if (root.pad) root.padRun(root.pad.gesture.tick(Date.now()), root.pad.screen)
+  }
+  function padLine(d) {
+    var f = d.split(" "), dx = Number(f[2]), dy = Number(f[3])
+    if (d.length > 64 || f.length !== 4 || !isFinite(dx) || !isFinite(dy)) return
+    if (["start", "move", "end", "cancel"].indexOf(f[1]) < 0) return
+    root.padEvent(f[1], dx, dy)
+  }
+
   function edgeLine(d) {
     d = String(d)
+    if (d.indexOf("velum-pad ") === 0) { root.padLine(d); return }
     if (d.indexOf("velum-edge ") !== 0 || d.length > 96) return
     var f = d.split(" "), x = Number(f[4]), y = Number(f[5])
     if (f.length !== 6 || !isFinite(x) || !isFinite(y)) return
@@ -388,6 +438,7 @@ Item {
     function home(): string { return JSON.stringify({ empty: homeCtl.emptyOn(homeCtl.screenName), mode: homeCtl.mode, screen: homeCtl.screenName, cards: homeCtl.cards.map(c => c.appId), at: homeCtl.cards.map((c, i) => { var k = homeCtl.card(i); return k ? [Math.round(k.px), Math.round(k.py), +k.ps.toFixed(2), +k.po.toFixed(2)] : null }), zoneFinger: homeCtl.zoneFinger,  cur: homeCtl.cur, armed: homeCtl.armed, fromHome: homeCtl.fromHome, area: [homeCtl.areaW, homeCtl.areaH], apps: homeCtl.gridApps.length, pages: homeCtl.gridPages, editing: homeCtl.editing, dock: homeCtl.dockApps.map(a => a.id), recent: homeCtl.recentApps.map(a => a.id), page: homeCtl.page, log: homeCtl.log }) }
     function homeStats(): string { return JSON.stringify(homeCtl.stats) }
     // the way out from anywhere (ssh): the overlay lets go of the screen
+    function pad(phase: string, dx: real, dy: real): string { root.padEvent(phase, dx, dy); return root.pad ? root.pad.gesture.mode : "none" }
     function homeAbort(): string { homeCtl.abort(); return homeCtl.mode }
     function homeOpen(id: string): string { homeCtl.openApp(id); return homeCtl.mode }
     // folders: the saved layout, the tiles on the grid, the open folder; homeFolder opens one ("" closes)

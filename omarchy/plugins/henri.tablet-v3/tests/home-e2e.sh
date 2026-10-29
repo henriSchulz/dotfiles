@@ -212,6 +212,59 @@ if runs H12; then
   else want H12 "one page: a flick leaves the page where it is" "$p1,$(hm | jq -r .page)" "0,0"; fi
 fi
 
+if runs H13; then
+  # an app on a named workspace (the cast screen HEADLESS-SPARE shows "spare" while no monitor is
+  # there; 2026-10-28 every pull on it ended "not dragging"): it is a card like any other
+  a=$(hyprctl activewindow -j | jq -r .address)
+  hyprctl dispatch "hl.dsp.window.move({ workspace = 'name:spare', follow = true, window = 'address:$a' })" >/dev/null; sleep 1
+  c henri.tablet clearLog >/dev/null
+  pt m $X $B d s 80 g $X $((B - 420)) 16 12 u
+  sleep 1.4; shot H13-named
+  want H13 "a swipe up from an app on a named workspace goes home" "$(hm | jq -r .mode),$(wsEmpty)" "home,true"
+  want H13b "it was dragged as a card" "$(c henri.tablet homeStats | jq -r '.[-1].to | startswith("not dragging")')" "false"
+fi
+
+# a touchpad in tablet mode (iPad with a Magic Keyboard): input.lua sends the four-finger swipe as
+# "velum-pad start|move|end|cancel DX DY" (deltas in touchpad units); a virtual finger on the
+# focused screen's home zone runs the same gesture
+pad() { hyprctl dispatch "hl.dsp.event(\"velum-pad $1 ${2:-0} ${3:-0}\")" >/dev/null; }
+padPull() {   # padPull UNITS MS REST_MS
+  local n=$(( $2 / 16 )) i
+  pad start
+  for ((i = 1; i <= n; i++)); do pad move 0 "-$(echo "scale=3; $1 / $n" | bc)"; sleep 0.016; done
+  sleep "$(echo "scale=3; $3 / 1000" | bc)"
+  pad end
+}
+padFromApp() {
+  local a; a=$(hyprctl clients -j | jq -r '[.[] | select(.workspace.id > 0)][0].address')
+  hyprctl dispatch "hl.dsp.focus({ window = 'address:$a' })" >/dev/null; sleep 1.2
+  c henri.tablet clearLog >/dev/null
+}
+
+if runs H14; then
+  padFromApp
+  padPull 420 260 0
+  sleep 1.4; shot H14-pad-home
+  want H14 "four fingers up on the touchpad: the app follows as a card and goes home" "$(hm | jq -r .mode),$(wsEmpty)" "home,true"
+  want H14b "it was dragged as a card" "$(c henri.tablet homeStats | jq -r '.[-1].to | startswith("not dragging")')" "false"
+fi
+
+if runs H15; then
+  padFromApp
+  padPull 220 220 350
+  sleep 1; shot H15-pad-switcher
+  want H15 "four fingers up and rest: the App Switcher" "$(hm | jq -r .mode)" "switcher"
+  pt m 30 $((H / 2)) d s 40 u; sleep 1.5
+fi
+
+if runs H16; then
+  padFromApp
+  ws0=$(hyprctl monitors -j | jq '.[] | select(.name=="TB") | .activeWorkspace.id')
+  pad start; pad move 0 -3; pad move 0 2; pad move 0 6; pad end
+  sleep 1
+  want H16 "a touchpad nudge down neither shrinks the app nor opens the window bar" "$(c henri.tablet state | jq -r '.log | map(select(. == "down" or . == "tap")) | length'),$(hyprctl monitors -j | jq --argjson w "$ws0" '.[] | select(.name=="TB") | .activeWorkspace.id == $w')" "0,true"
+fi
+
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"
 [[ ${KEEP:-} ]] || rig/rig.sh stop >/dev/null 2>&1
 [[ $fail == 0 ]]
