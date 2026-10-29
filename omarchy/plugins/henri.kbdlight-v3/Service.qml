@@ -1,0 +1,216 @@
+// Keyboard backlight -- the macOS way. (henri.kbdlight-v3: the fork of henri.kbdlight on
+// Velum -- the fade is Velum's Spring on the gentle preset; IPC target, events, state and
+// live files unchanged.)
+//
+// One level, set in Control Center (henri.control-center-v2 reads this
+// service and calls setLevel / setTimeoutSeconds). The keys stay lit while
+// someone types and fade out `timeout` seconds after the last key press; the
+// next press fades them back in.
+//
+// Key presses. Hyprland reports them from Lua (hl.on("input.keyboard.key"),
+// input.lua) as `custom>>kbdlight key` on its event socket, at most once per
+// second -- no /dev/input access, so no `input` group and no root. The event
+// carries no device, so a press on an external keyboard counts too.
+//
+// The LED. PWM on /sys/class/leds/kbd_backlight, written through logind by
+// one long-lived brightnessctl loop (the fade sends a value per frame, which
+// must not mean a fork per frame). Perceptual curve (squared) like the screen
+// backlight in henri.osd.
+//
+// The tablet's detachable keyboard (Acer Switch Alpha 12) has no LED device:
+// its light is on or off, set through a vendor HID report by the
+// henri-kbdlight-hid helper (one long-lived process; it answers every line
+// with present/absent, so a detached keyboard makes the service unavailable
+// and an attached one gets the current state again). There the level is 0 or
+// 1 (`binary`) and the light switches instead of fading.
+//
+// State: ~/.local/state/henri/kbdlight.json ({ level, timeout }), machine-local.
+//
+// Test shell (shell/rig, VELUM_SHELL_RIG set): the LED is never written -- no brightnessctl
+// writer, no henri-kbdlight-hid -- and the state file is left alone; the fade still runs and
+// `status` shows the raw value it would have sent.
+//
+// Control Center. Since omarchy 4.0.6 a plugin only gets its own service
+// object, so the Control Center cannot hold this one. It reads the live state
+// from $XDG_RUNTIME_DIR/henri-kbdlight-<Hyprland instance>.json (written here
+// on every change) and sends `kbdlight set <level>` / `kbdlight timeout
+// <seconds>` as Hyprland custom events, the same way the key presses arrive.
+
+import QtQuick
+import Quickshell
+import Quickshell.Io
+import Quickshell.Hyprland
+import "file:///home/henri/.local/share/velum/qml/Velum"
+
+Item {
+  id: root
+
+  property var shell: null
+  property var manifest: null
+
+  readonly property string device: "kbd_backlight"
+  // a test shell shares /sys and the state files with the live desktop: it never writes them
+  readonly property bool inRig: (Quickshell.env("VELUM_SHELL_RIG") || "") !== ""
+  readonly property string statePath: Quickshell.env("HOME") + "/.local/state/henri/kbdlight.json"
+
+  property real maxRaw: 0
+  property bool hidPresent: false
+  readonly property bool binary: maxRaw <= 0 && hidPresent
+  readonly property bool available: maxRaw > 0 || hidPresent
+
+  // What the user set (0 = off, 1 = full) and how long the keys stay lit
+  // after the last press (seconds, 0 = never turn off).
+  property real level: 0.5
+  property int timeout: 30
+  // Lit: a key was pressed within `timeout`.
+  property bool lit: true
+  readonly property var timeoutChoices: [5, 30, 60, 300, 0]
+
+  function clamp(v) { return Math.max(0, Math.min(1, v)) }
+  function rawFor(l) { return l <= 0 ? 0 : Math.max(1, Math.round(maxRaw * l * l)) }
+
+  function setLevel(v) {
+    level = binary ? (v > 0 ? 1 : 0) : clamp(v)
+    wake()
+    save.restart()
+  }
+  function setTimeoutSeconds(s) {
+    timeout = Math.max(0, Math.round(s))
+    wake()
+    save.restart()
+  }
+  function wake() {
+    lit = true
+    if (timeout > 0) idle.restart()
+    else idle.stop()
+  }
+
+  Timer {
+    id: idle
+    interval: Math.max(1, root.timeout) * 1000
+    onTriggered: root.lit = false
+  }
+
+  Process {
+    running: true
+    command: ["brightnessctl", "-m", "-d", root.device]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var f = text.trim().split("\n")[0].split(",")
+        if (f.length < 5) return
+        root.sentRaw = parseInt(f[2], 10)
+        root.maxRaw = parseInt(f[4], 10) || 0
+        // Start the fade from where the LED is, not from black.
+        if (root.maxRaw > 0) glow.from(Math.sqrt(root.clamp(root.sentRaw / root.maxRaw)))
+        root.wake()
+      }
+    }
+  }
+
+  Process {
+    id: writer
+    running: root.maxRaw > 0 && !root.inRig
+    stdinEnabled: true
+    command: ["bash", "-c", "while read -r v; do brightnessctl -q -d " + root.device + " set \"$v\"; done"]
+  }
+
+  // ── On/off keyboard (henri-kbdlight-hid) ─────────────────────────────────
+  readonly property bool hidOn: lit && level > 0
+  property string hidSent: ""
+  function hidSend(force) {
+    var w = hidOn ? "on" : "off"
+    if (!hid.running || (!force && w === hidSent)) return
+    hidSent = w
+    hid.write(w + "\n")
+  }
+  onHidOnChanged: if (binary) hidSend(false)
+  Process {
+    id: hid
+    running: root.maxRaw <= 0 && !root.inRig
+    stdinEnabled: true
+    command: ["henri-kbdlight-hid"]
+    stdout: SplitParser {
+      onRead: line => {
+        var present = line === "present"
+        if (present === root.hidPresent) return
+        root.hidPresent = present
+        // attached (again): the firmware may have kept or lost the light, set it
+        if (present) { root.level = root.level > 0 ? 1 : 0; root.wake(); root.hidSend(true) }
+        else root.hidSent = ""
+      }
+    }
+    onRunningChanged: if (running) write("probe\n")
+  }
+  Timer {
+    interval: 10000
+    repeat: true
+    running: hid.running
+    onTriggered: hid.write("probe\n")
+  }
+
+  property int sentRaw: -1
+  // The fade: Velum's gentle spring (big, calm changes). Reduced motion leaves it alone: the
+  // light only fades, nothing on screen moves, and Velum keeps fades under reduced motion.
+  Spring {
+    id: glow
+    preset: Theme.spring("gentle")
+    target: root.lit ? root.level : 0
+    onValueChanged: {
+      var raw = root.rawFor(value)
+      if (raw === root.sentRaw) return
+      if (root.inRig) { root.sentRaw = raw; return }
+      if (writer.running) { root.sentRaw = raw; writer.write(raw + "\n") }
+    }
+  }
+
+  // ── State file ──────────────────────────────────────────────────────────
+  FileView {
+    id: stateFile
+    path: root.statePath
+    printErrors: false
+    onLoaded: {
+      try {
+        var s = JSON.parse(text())
+        if (typeof s.level === "number") root.level = root.clamp(s.level)
+        if (typeof s.timeout === "number") root.timeout = Math.max(0, Math.round(s.timeout))
+      } catch (e) {}
+      root.wake()
+    }
+  }
+  Timer {
+    id: save
+    interval: 500
+    onTriggered: if (!root.inRig) stateFile.setText(JSON.stringify({ level: Math.round(root.level * 1000) / 1000, timeout: root.timeout }) + "\n")
+  }
+
+  // ── Live state for the Control Center ───────────────────────────────────
+  // per Hyprland instance, so a nested test shell never overwrites the live one's file
+  readonly property string livePath: Quickshell.env("XDG_RUNTIME_DIR") + "/henri-kbdlight-" + Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") + ".json"
+  readonly property string liveText: JSON.stringify({ available: available, binary: binary, level: Math.round(level * 1000) / 1000,
+                                                      timeout: timeout, timeoutChoices: timeoutChoices })
+  onLiveTextChanged: live.restart()
+  Timer { id: live; interval: 50; onTriggered: liveFile.setText(root.liveText + "\n") }
+  FileView { id: liveFile; path: root.livePath; printErrors: false }
+  Component.onCompleted: live.restart()
+
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event.name !== "custom") return
+      var d = String(event.data)
+      if (d === "kbdlight key") root.wake()
+      else if (d.indexOf("kbdlight set ") === 0) root.setLevel(parseFloat(d.slice(13)) || 0)
+      else if (d.indexOf("kbdlight timeout ") === 0) root.setTimeoutSeconds(parseInt(d.slice(17), 10) || 0)
+    }
+  }
+
+  IpcHandler {
+    target: "henri-kbdlight"
+    function set(level: real): string { root.setLevel(level); return "ok" }
+    function timeout(seconds: int): string { root.setTimeoutSeconds(seconds); return "ok" }
+    function wake(): string { root.wake(); return "ok" }
+    function status(): string {
+      return JSON.stringify({ available: root.available, binary: root.binary, level: root.level, timeout: root.timeout, lit: root.lit, raw: root.sentRaw, hid: root.hidSent })
+    }
+  }
+}

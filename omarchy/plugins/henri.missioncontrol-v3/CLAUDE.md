@@ -11,10 +11,8 @@ irgendwo als Zahl. Henris zentrale henri-ui-Bibliothek gilt hier bewusst
 **nicht** — nichts daraus importieren oder übernehmen.
 
 Reduced Motion: folgt dem systemweiten Schalter — Velums `"reduceMotion": true` in
-`~/.local/state/velum/settings.json`, oder, bis System Settings Velums Datei schreibt, der alte
-Schalter (System Settings › Bedienungshilfen › Bewegung reduzieren = `var reduceMotion = true` in
-`~/.local/share/henri-ui/Prefs.js`). `Motion.qml` liest beide per `FileView` als Text — das ist kein
-Import aus Velum oder henri-ui.
+`~/.local/state/velum/settings.json` (System Settings › Bedienungshilfen › Bewegung reduzieren).
+`Motion.qml` liest die Datei per `FileView` als Text — das ist kein Import aus Velum.
 Zusätzlich `MC_REDUCED_MOTION=1` (an) bzw. `=0` (aus, übersteuert) in der Umgebung der Shell — auf Omarchy per
 `hl.env("MC_REDUCED_MOTION", "1")` in `~/.config/hypr/looknfeel.lua` (Session neu
 starten; `omarchy-restart-shell` reicht Variablen nicht durch). Zum Testen ohne

@@ -644,10 +644,10 @@ Item {
   // macOS 26 "Tahoe" Spotlight (spotlight-design-spec.md, Variante A): a
   // capsule search field pinned at 23 % of the screen, a separate glass panel
   // for the results growing downward only, four round category buttons to the
-  // right. Geometry from Spot.js (measured for apple-ui), colours and motion
-  // from Velum, the selection is the variant's accent. Point values go through
+  // right. Geometry from Velum's surface.spotlight tokens (measured on macOS),
+  // colours and motion from Velum, the selection is the variant's accent. Point values go through
   // Style.space().
-  readonly property var sp: Spot.spotlight
+  readonly property var sp: Theme.core.surface.spotlight
   function pt(v) { return Style.space(v) }
   readonly property string uiFont: Theme.font
   readonly property string symbolFont: VIcons.sfFamily
@@ -3083,8 +3083,8 @@ Item {
             clip: true
             spacing: root.rowSpacing
             boundsBehavior: Flickable.DragAndOvershootBounds
-            flickDeceleration: Spot.flickDeceleration
-            maximumFlickVelocity: Spot.maximumFlickVelocity
+            flickDeceleration: Theme.core.motion.scroll.flickDeceleration
+            maximumFlickVelocity: Theme.core.motion.scroll.maximumFlickVelocity
             Accessible.role: Accessible.List
 
             delegate: Rectangle {
@@ -3259,8 +3259,8 @@ Item {
             cellWidth: Math.floor(appGrid.width / Math.max(1, root.gridColumns))
             cellHeight: root.gridCellHeight
             boundsBehavior: Flickable.DragAndOvershootBounds
-            flickDeceleration: Spot.flickDeceleration
-            maximumFlickVelocity: Spot.maximumFlickVelocity
+            flickDeceleration: Theme.core.motion.scroll.flickDeceleration
+            maximumFlickVelocity: Theme.core.motion.scroll.maximumFlickVelocity
 
             delegate: Item {
               id: cell
@@ -3477,8 +3477,8 @@ Item {
               model: pageModel
               clip: true
               boundsBehavior: Flickable.DragAndOvershootBounds
-              flickDeceleration: Spot.flickDeceleration
-              maximumFlickVelocity: Spot.maximumFlickVelocity
+              flickDeceleration: Theme.core.motion.scroll.flickDeceleration
+              maximumFlickVelocity: Theme.core.motion.scroll.maximumFlickVelocity
               Accessible.role: Accessible.List
 
               section.property: "section"

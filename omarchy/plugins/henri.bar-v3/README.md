@@ -12,6 +12,18 @@ the shell for its whole session.
 - The bar receives its config from the host shell as a `barConfig` property; the host loads it from `~/.config/omarchy/shell.json` (or `config/omarchy/shell.json` when the user has no file).
 - `omarchy bar position` updates only the user shell.json file.
 
+## Velum tray (bar-v3)
+
+`widgets/Tray.qml` is the system tray on Velum: the drawer chevron and icons in the bar
+(`surface.menubar.tray`), the Tray Icons popover (right click on the chevron; a `VBarPopup`
+on `motion.barPopup`) and an app's tray menu (menu roles, opens with no transition, the
+highlight jumps, submenus drilled into in place under a back row; keys ↑ ↓ ⏎ → ←).
+A third-party plugin's `widgets/*.manifest.json` is not scanned by omarchy-shell, so the id
+`omarchy.tray` in the layout loads omarchy's own built-in tray. To put this one in the bar,
+add a custom qml entry:
+`{ "id": "velum.tray", "source": "~/.config/omarchy/plugins/henri.bar-v3/widgets/Tray.qml" }`
+(pinning keeps the entry's `source`).
+
 ## Customizing
 
 The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`config/omarchy/shell.json`](../../../config/omarchy/shell.json). Once you customize anything via the bar gestures, `omarchy bar ...`, or by editing shell.json directly, your file is canonical — there is no deep-merge.

@@ -1,6 +1,5 @@
 import QtQuick
 import "file:///home/henri/.local/share/velum/qml/Velum"
-import "../Look.js" as Look
 import qs.Commons
 
 // Dock settings (spec §19): every option live, sliders for size and
@@ -17,9 +16,9 @@ Item {
   readonly property real cardW: Theme.layout.module.width
   readonly property real maxBody: Math.max(Style.space(200), dock.planeHeight * 0.7)
   readonly property real cardH: Math.min(maxBody, body.implicitHeight + Theme.layout.module.pad * 2)
-  readonly property var r: dock.rectFor(dock.mainLength / 2, dock.dockBaseline + dock.tileSize + Style.space(Look.dock.labelGap),
-      dock.horizontal ? cardW : cardH + Style.space(Look.dock.labelArrowH),
-      dock.horizontal ? cardH + Style.space(Look.dock.labelArrowH) : cardW)
+  readonly property var r: dock.rectFor(dock.mainLength / 2, dock.dockBaseline + dock.tileSize + Style.space(Theme.core.surface.dock.shape.labelGap),
+      dock.horizontal ? cardW : cardH + Style.space(Theme.core.surface.dock.shape.labelArrowH),
+      dock.horizontal ? cardH + Style.space(Theme.core.surface.dock.shape.labelArrowH) : cardW)
   x: Math.max(Style.space(6), Math.min(dock.planeWidth - r.w - Style.space(6), r.x))
   y: Math.max(Style.space(6), Math.min(dock.planeHeight - r.h - Style.space(6), r.y))
   width: r.w
@@ -80,8 +79,8 @@ Item {
         contentHeight: body.implicitHeight + Theme.layout.module.pad * 2
         clip: true
         boundsBehavior: Flickable.DragAndOvershootBounds
-        flickDeceleration: Look.flickDeceleration
-        maximumFlickVelocity: Look.maximumFlickVelocity
+        flickDeceleration: Theme.core.motion.scroll.flickDeceleration
+        maximumFlickVelocity: Theme.core.motion.scroll.maximumFlickVelocity
 
         Column {
           id: body
@@ -92,14 +91,14 @@ Item {
             bottomPadding: Theme.layout.list.gap }
 
           VModuleSection { width: parent.width; text: "Size  " + Math.round(panel.s.tileSize) + " px" }
-          SliderLine { from: Look.dock.tileMin; to: Look.dock.tileMax; value: panel.s.tileSize
+          SliderLine { from: Theme.core.surface.dock.shape.tileMin; to: Theme.core.surface.dock.shape.tileMax; value: panel.s.tileSize
             onMoved: v => dock.setSetting("tileSize", Math.round(v)) }
           VModuleRow { width: parent.width; text: "Magnification"; clickable: false
             VSwitch { surface: "popover"; checked: panel.s.magnification; onToggled: c => dock.setSetting("magnification", c) } }
           VModuleSection { width: parent.width; text: "Magnified size  " + Math.round(Math.max(panel.s.tileSize, panel.s.magnifiedSize)) + " px"
             opacity: panel.s.magnification ? 1 : Theme.core.alpha.disabled }
           SliderLine { enabled: panel.s.magnification; opacity: enabled ? 1 : Theme.core.alpha.disabled
-            from: panel.s.tileSize; to: Look.dock.tileMax; value: Math.max(panel.s.tileSize, panel.s.magnifiedSize)
+            from: panel.s.tileSize; to: Theme.core.surface.dock.shape.tileMax; value: Math.max(panel.s.tileSize, panel.s.magnifiedSize)
             onMoved: v => dock.setSetting("magnifiedSize", Math.round(v)) }
 
           VModuleSection { width: parent.width; text: "Position on Screen" }

@@ -10,32 +10,22 @@ QtObject {
   // Reduced motion: no translate or scale anywhere, only `instant` fades. On
   // when MC_REDUCED_MOTION=1 is in the environment, or when the system-wide
   // switch is on: Velum's `reduceMotion` in ~/.local/state/velum/settings.json,
-  // or -- until System Settings writes Velum's file -- the old switch
-  // (`var reduceMotion = true` in henri-ui's Prefs.js). Both are read as plain
-  // files; nothing of Velum or henri-ui is imported. MC_REDUCED_MOTION=0 forces
-  // it off for testing.
+  // read as a plain file (nothing of Velum is imported). MC_REDUCED_MOTION=0
+  // forces it off for testing.
   readonly property string envReduced: String(Quickshell.env("MC_REDUCED_MOTION") || "")
   // text() blocks on the first read (blockLoading), so the very first open
   // already knows; it is reactive, so a change on disk flips it live.
   readonly property bool velumReduced: {
     try { return JSON.parse(velum.text() || "{}").reduceMotion === true } catch (e) { return false }
   }
-  readonly property bool legacyReduced: /^\s*var\s+reduceMotion\s*=\s*true\b/m.test(prefs.text() || "")
-  readonly property bool systemReduced: velumReduced || legacyReduced
+  readonly property bool systemReduced: velumReduced
   readonly property bool reduced: envReduced === "1" || (envReduced !== "0" && systemReduced)
 
   readonly property FileView velum: FileView {
     path: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/velum/settings.json"
     blockLoading: true      // known before the first open
     watchChanges: true
-    printErrors: false      // no Velum on this machine: the other switches
-    onFileChanged: reload()
-  }
-  readonly property FileView prefs: FileView {
-    path: (Quickshell.env("XDG_DATA_HOME") || (Quickshell.env("HOME") + "/.local/share")) + "/henri-ui/Prefs.js"
-    blockLoading: true
-    watchChanges: true
-    printErrors: false      // no henri-ui on this machine: just the env switch
+    printErrors: false      // no Velum on this machine: just the env switch
     onFileChanged: reload()
   }
 

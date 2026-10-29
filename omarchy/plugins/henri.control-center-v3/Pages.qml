@@ -731,7 +731,7 @@ Item {
           VSwitch { surface: "popover"; checked: cc.be.noEffectsOn; onToggled: c => cc.be.setNoEffects(c) } }
         VText { x: Theme.layout.module.pad; width: parent.width - 2 * x; wrapMode: Text.WordWrap; tone: "secondary"; font.pixelSize: Theme.m.type.small
           bottomPadding: Theme.layout.list.gap
-          text: "No Effects turns off blur, shadows and window animations." }
+          text: "No Effects turns off blur, shadows and window animations, and makes menus and panels opaque." }
       }
     }
   }

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.kbdlight-v3",
+  "name": "Keyboard Backlight (v3, Velum)",
+  "version": "1.1.0",
+  "author": "henri",
+  "description": "Keyboard backlight the macOS way: one level set in Control Center, fades out after a while without a key press and back in on the next one. The fade is a Velum spring.",
+  "kinds": [
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

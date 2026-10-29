@@ -1,6 +1,5 @@
 import QtQuick
 import "file:///home/henri/.local/share/velum/qml/Velum"
-import "../Look.js" as Look
 import Quickshell.Io
 
 // Contents of one pinned folder for a stack: listed once at start and again

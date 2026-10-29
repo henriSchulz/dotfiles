@@ -1,6 +1,5 @@
 import QtQuick
 import "file:///home/henri/.local/share/velum/qml/Velum"
-import "../Look.js" as Look
 import qs.Commons
 
 // The name above the hovered tile (spec §6): appears at once (80 ms fade),
@@ -45,7 +44,7 @@ Item {
       text: label.text
       color: dock.palette.labelText
       font.family: Theme.font
-      font.pixelSize: Style.space(Look.dock.labelFont)
+      font.pixelSize: Style.space(Theme.core.surface.dock.shape.labelFont)
       font.weight: Font.Normal
       renderType: Text.NativeRendering
     }

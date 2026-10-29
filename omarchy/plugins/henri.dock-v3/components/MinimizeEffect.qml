@@ -1,6 +1,5 @@
 import QtQuick
 import "file:///home/henri/.local/share/velum/qml/Velum"
-import "../Look.js" as Look
 import "../DockModel.js" as DockModel
 
 // Minimize / restore animation (spec §12) drawn from a window snapshot the

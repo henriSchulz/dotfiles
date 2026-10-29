@@ -3,9 +3,11 @@
 Velum fork of henri.dock (same behaviour, same IPC target `dock`, same settings file
 `~/.config/omarchy/henri.dock.json` and pinned list). What changed:
 
-- Shape from `Look.js` (apple-ui's dock geometry copied in), colours from Velum's roles
+- Shape from Velum's `surface.dock.shape` tokens (the macOS Dock spec's geometry, once
+  apple-ui's `Apple.dock`), colours from Velum's roles
   (`roles` = the variant's roles in the dock's own light/dark, taken from the wallpaper
-  under the dock or the setting), motion from Velum's `surface.dock` tokens (`mo`).
+  under the dock or the setting), motion from Velum's `surface.dock` tokens (`mo`), list
+  flicking from `motion.scroll`.
 - `components/Reveal.qml`, `MenuList.qml`, `SpringValue.qml` replace the henri-ui pieces:
   menus open with no transition and fade out on `menu.close`; stacks and settings use
   Velum's popover motion. Settings are Velum controls (VSlider, VSwitch, VSegment, VModuleRow).

@@ -1,6 +1,5 @@
 import QtQuick
 import "file:///home/henri/.local/share/velum/qml/Velum"
-import "../Look.js" as Look
 import qs.Commons
 
 // Context menu over a tile (spec §10): glass bubble with an arrow at the
@@ -22,8 +21,8 @@ Item {
   readonly property real cardW: Math.max(Theme.m.menu.minWidth, list.implicitWidth + Theme.m.menu.pad * 2)
   readonly property real cardH: list.implicitHeight + Theme.m.menu.pad * 2
   readonly property var r: dock.rectFor(anchorMain, anchorCross,
-      dock.horizontal ? cardW : cardH + Style.space(Look.dock.labelArrowH),
-      dock.horizontal ? cardH + Style.space(Look.dock.labelArrowH) : cardW)
+      dock.horizontal ? cardW : cardH + Style.space(Theme.core.surface.dock.shape.labelArrowH),
+      dock.horizontal ? cardH + Style.space(Theme.core.surface.dock.shape.labelArrowH) : cardW)
   readonly property real cx: Math.max(Style.space(6), Math.min(dock.planeWidth - r.w - Style.space(6), r.x))
   readonly property real cy: Math.max(Style.space(6), Math.min(dock.planeHeight - r.h - Style.space(6), r.y))
   x: dock.horizontal ? cx : r.x

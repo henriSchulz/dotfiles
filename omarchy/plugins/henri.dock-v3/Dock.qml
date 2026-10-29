@@ -1,7 +1,8 @@
 // henri.dock-v3 — the macOS Dock for the Omarchy shell (Quickshell / Hyprland), on Velum.
 //
 // Spec: docs/dock-spec.md (Aufbau, Verhalten, Animationen). Fork of henri.dock:
-// same behaviour; shape from Look.js (apple-ui's dock geometry), colours from
+// same behaviour; shape from Velum's surface.dock.shape tokens (the macOS Dock spec's
+// geometry, first carried in apple-ui), colours from
 // Velum's roles (Pearl by default, the dock's own light/dark from its wallpaper),
 // motion from Velum's surface.dock tokens (`mo`), menus/stacks on components/
 // Reveal + MenuList (Velum motion: menus open with no transition). Two layer
@@ -22,7 +23,6 @@
 // and as IPC (`omarchy-shell dock <fn>`).
 import QtQuick
 import "file:///home/henri/.local/share/velum/qml/Velum"
-import "Look.js" as Look
 import "file:///home/henri/.local/share/velum/qml/Velum/Tokens.js" as VT
 import Quickshell
 import Quickshell.Io
@@ -45,10 +45,10 @@ Item {
 
   // ======================================================== settings (§19)
   readonly property var defaults: ({
-    tileSize: Look.dock.tileSize,
+    tileSize: Theme.core.surface.dock.shape.tileSize,
     magnification: true,
-    magnifiedSize: Look.dock.magnifiedSize,
-    magnificationRadius: Look.dock.magnificationRadius,
+    magnifiedSize: Theme.core.surface.dock.shape.magnifiedSize,
+    magnificationRadius: Theme.core.surface.dock.shape.magnificationRadius,
     position: "bottom",
     minimizeEffect: "scale",
     minimizeToAppIcon: false,
@@ -188,19 +188,19 @@ Item {
   readonly property real planeWidth: plane.width
   readonly property real planeHeight: plane.height
   readonly property real mainLength: horizontal ? planeWidth : planeHeight
-  readonly property real edgeGap: Style.space(Look.dock.edgeGap) + (touchMode ? Theme.core.surface.tablet.homeZone : 0)
-  readonly property real padCross: Style.space(Look.dock.padCross)
-  readonly property real padMain: Style.space(Look.dock.padMain)
-  readonly property real separatorWidth: 1 + Style.space(Look.dock.separatorPad) * 2
+  readonly property real edgeGap: Style.space(Theme.core.surface.dock.shape.edgeGap) + (touchMode ? Theme.core.surface.tablet.homeZone : 0)
+  readonly property real padCross: Style.space(Theme.core.surface.dock.shape.padCross)
+  readonly property real padMain: Style.space(Theme.core.surface.dock.shape.padMain)
+  readonly property real separatorWidth: 1 + Style.space(Theme.core.surface.dock.shape.separatorPad) * 2
   readonly property real dockBaseline: edgeGap + padCross
-  readonly property int tileSize: DockModel.fittingTileSize(entryList, Number(settings.tileSize) || Look.dock.tileSize,
-      mainLength - Style.space(16), Look.dock.gapFraction, Style.space(Look.dock.gapMin), padMain,
-      Style.space(Look.dock.separatorPad), Look.dock.tileMin)
-  readonly property int magnifiedSize: Math.max(tileSize, Number(settings.magnifiedSize) || Look.dock.magnifiedSize)
-  readonly property real gap: DockModel.gapFor(tileSize, Look.dock.gapFraction, Style.space(Look.dock.gapMin))
+  readonly property int tileSize: DockModel.fittingTileSize(entryList, Number(settings.tileSize) || Theme.core.surface.dock.shape.tileSize,
+      mainLength - Style.space(16), Theme.core.surface.dock.shape.gapFraction, Style.space(Theme.core.surface.dock.shape.gapMin), padMain,
+      Style.space(Theme.core.surface.dock.shape.separatorPad), Theme.core.surface.dock.shape.tileMin)
+  readonly property int magnifiedSize: Math.max(tileSize, Number(settings.magnifiedSize) || Theme.core.surface.dock.shape.magnifiedSize)
+  readonly property real gap: DockModel.gapFor(tileSize, Theme.core.surface.dock.shape.gapFraction, Style.space(Theme.core.surface.dock.shape.gapMin))
   readonly property real bgThickness: edgeGap + padCross * 2 + tileSize
-  readonly property real cornerRadius: DockModel.cornerRadius(tileSize, Look.dock.radiusFactor, Style.space(Look.dock.radiusMin), Style.space(Look.dock.radiusMax))
-  readonly property real indicatorSize: DockModel.indicatorSize(tileSize, Style.space(Look.dock.indicator), Style.space(Look.dock.indicatorMin), Style.space(Look.dock.indicatorMax))
+  readonly property real cornerRadius: DockModel.cornerRadius(tileSize, Theme.core.surface.dock.shape.radiusFactor, Style.space(Theme.core.surface.dock.shape.radiusMin), Style.space(Theme.core.surface.dock.shape.radiusMax))
+  readonly property real indicatorSize: DockModel.indicatorSize(tileSize, Style.space(Theme.core.surface.dock.shape.indicator), Style.space(Theme.core.surface.dock.shape.indicatorMin), Style.space(Theme.core.surface.dock.shape.indicatorMax))
   readonly property real iconBase: 128
   readonly property var insideWindows: [bgWindow]
 
@@ -228,11 +228,11 @@ Item {
     if (!t) {
       var trash = tileFor("trash")
       var m = trash ? trash.main - (tileSize + gap) : mainLength / 2
-      var ins = tileSize * (1 - Look.dock.iconBody) / 2
+      var ins = tileSize * (1 - Theme.core.surface.dock.shape.iconBody) / 2
       return { u0: m - tileSize / 2 + ins, u1: m + tileSize / 2 - ins, vNear: dockBaseline + ins, vFar: dockBaseline + tileSize - ins }
     }
     var s = Math.max(4, t.visSize)
-    var inset = s * (1 - Look.dock.iconBody) / 2
+    var inset = s * (1 - Theme.core.surface.dock.shape.iconBody) / 2
     return { u0: t.main - s / 2 + inset, u1: t.main + s / 2 - inset, vNear: dockBaseline + inset, vFar: dockBaseline + s - inset }
   }
 
@@ -458,7 +458,7 @@ Item {
       var w = watchers[path]
       var entries = DockModel.sortEntries(w.entries || [], fo.sortBy || "dateAdded")
       var peek = []
-      for (var pe2 = 0; pe2 < entries.length && pe2 < Look.dock.stackPeek; pe2++) peek.push(iconFor(entries[pe2].icon))
+      for (var pe2 = 0; pe2 < entries.length && pe2 < Theme.core.surface.dock.shape.stackPeek; pe2++) peek.push(iconFor(entries[pe2].icon))
       var fid = "folder:" + path
       map[fid] = { id: fid, kind: "folder", name: fo.name || DockModel.baseName(path), path: path, icon: folderIcon(path),
         displayAs: fo.displayAs || "stack", viewContentAs: fo.viewContentAs || "auto", sortBy: fo.sortBy || "dateAdded",
@@ -924,7 +924,7 @@ Item {
     if (resizing) {
       var next = Math.round(resizeStart + (c - resizeCross))
       if (mods & Qt.AltModifier) { var steps = [16, 32, 48, 64, 128]; var best = steps[0]; for (var i = 0; i < steps.length; i++) if (Math.abs(steps[i] - next) < Math.abs(best - next)) best = steps[i]; next = best }
-      next = DockModel.clamp(next, Look.dock.tileMin, Look.dock.tileMax)
+      next = DockModel.clamp(next, Theme.core.surface.dock.shape.tileMin, Theme.core.surface.dock.shape.tileMax)
       if (next !== settings.tileSize) setSetting("tileSize", next)
       if (mods & Qt.ShiftModifier) {
         // Shift: drag the separator to another screen edge to move the dock there
@@ -1050,7 +1050,7 @@ Item {
     menuModel = buildMenu(item)
     var t = rep.itemAt(row)
     menu.anchorMain = t ? t.main : mainLength / 2
-    menu.anchorCross = dockBaseline + (t ? t.visSize : tileSize) + Style.space(Look.dock.labelGap) / 2
+    menu.anchorCross = dockBaseline + (t ? t.visSize : tileSize) + Style.space(Theme.core.surface.dock.shape.labelGap) / 2
     hideTimer.stop()
     menuOpen = true
   }
@@ -1179,7 +1179,7 @@ Item {
     var t = tileFor(id)
     stack.folder = item
     stack.entries = item.entries || []
-    var view = DockModel.resolveView(item.viewContentAs, stack.entries.length, Look.dock.fanMax)
+    var view = DockModel.resolveView(item.viewContentAs, stack.entries.length, Theme.core.surface.dock.shape.fanMax)
     if (!horizontal && view === "fan") view = "grid"
     stack.view = view
     stack.anchorMain = t ? t.main : mainLength / 2
@@ -1705,7 +1705,7 @@ Item {
       return root.rectFor(root.bgStart + root.bgLength / 2, 0, root.bgLength + pad * 2, root.dockBaseline + root.maxVis + root.padCross)
     }
     readonly property var triggerRect: root.autoHide && root.dockHidden && !root.manualHidden
-      ? root.rectFor(root.bgStart + root.bgLength / 2, 0, Math.max(root.bgLength, 200), Style.space(Look.dock.triggerZone)) : { x: 0, y: 0, w: 0, h: 0 }
+      ? root.rectFor(root.bgStart + root.bgLength / 2, 0, Math.max(root.bgLength, 200), Style.space(Theme.core.surface.dock.shape.triggerZone)) : { x: 0, y: 0, w: 0, h: 0 }
 
     mask: Region {
       x: overlay.captureAll ? 0 : overlay.zoneRect.x
@@ -1839,8 +1839,8 @@ Item {
             text: root.removeMode ? "Remove" : (src && src.item ? src.item.name : text)
             shown: (root.removeMode) || ((root.hovering && !root.fingerOn || root.kbMode) && src !== null && !root.popupOpen && !root.dragging && !root.resizing)
             anchorMain: root.dragging ? root.ghostMain : (src ? src.main : anchorMain)
-            anchorCross: root.dragging ? root.ghostCross + root.tileSize + Style.space(Look.dock.labelGap)
-                                       : (src ? root.dockBaseline + src.visSize + Style.space(Look.dock.labelGap) : anchorCross)
+            anchorCross: root.dragging ? root.ghostCross + root.tileSize + Style.space(Theme.core.surface.dock.shape.labelGap)
+                                       : (src ? root.dockBaseline + src.visSize + Style.space(Theme.core.surface.dock.shape.labelGap) : anchorCross)
             z: 30
           }
         }

@@ -1,6 +1,5 @@
 import QtQuick
 import "file:///home/henri/.local/share/velum/qml/Velum"
-import "../Look.js" as Look
 import qs.Commons
 
 // Rounded glass card with a small arrow pointing at the dock (label, menu,
@@ -15,12 +14,12 @@ Item {
   property color hairline: palette.hairline
   property real radius: Theme.m.radius.tooltip
   property string arrowSide: "bottom"
-  property real arrowW: Style.space(Look.dock.labelArrowW)
-  property real arrowH: Style.space(Look.dock.labelArrowH)
+  property real arrowW: Style.space(Theme.core.surface.dock.shape.labelArrowW)
+  property real arrowH: Style.space(Theme.core.surface.dock.shape.labelArrowH)
   // Arrow tip position along the card's arrow side (0.5 = centred).
   property real arrowAt: 0.5
-  property real padX: Style.space(Look.dock.labelPadX)
-  property real padY: Style.space(Look.dock.labelPadY)
+  property real padX: Style.space(Theme.core.surface.dock.shape.labelPadX)
+  property real padY: Style.space(Theme.core.surface.dock.shape.labelPadY)
   default property alias content: inner.data
   readonly property alias cardItem: card
 

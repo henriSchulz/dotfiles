@@ -1,6 +1,5 @@
 import QtQuick
 import "file:///home/henri/.local/share/velum/qml/Velum"
-import "../Look.js" as Look
 import QtQuick.Effects
 import qs.Commons
 
@@ -76,7 +75,7 @@ Item {
   // ------------------------------------------------------------ separator
   Rectangle {
     visible: tile.isSeparator
-    readonly property real len: dock.tileSize * Look.dock.separatorFraction
+    readonly property real len: dock.tileSize * Theme.core.surface.dock.shape.separatorFraction
     width: dock.horizontal ? 1 : len
     height: dock.horizontal ? len : 1
     anchors.centerIn: parent
@@ -97,7 +96,7 @@ Item {
     opacity: dock.effectTargetId === tile.itemId && dock.effectRunning && tile.kind === "minimizedWindow" ? 0 : tile.pulse * tile.appear
     transform: Translate { x: dock.hopX(tile.hop); y: dock.hopY(tile.hop) }
 
-    readonly property real body: dock.iconBase * Look.dock.iconBody
+    readonly property real body: dock.iconBase * Theme.core.surface.dock.shape.iconBody
     readonly property real inset: (dock.iconBase - body) / 2
 
     Item {
@@ -179,7 +178,7 @@ Item {
           }
         }
         Image {
-          readonly property real s: dock.iconBase * Look.dock.thumbBadge
+          readonly property real s: dock.iconBase * Theme.core.surface.dock.shape.thumbBadge
           x: art.inset + art.body - s + art.inset * 0.5
           y: art.inset + art.body - s + art.inset * 0.5
           width: s; height: s
@@ -194,9 +193,9 @@ Item {
         id: badge
         readonly property string label: tile.item ? dock.badgeText(tile.item.badge) : ""
         visible: label.length > 0
-        readonly property real h: Math.max(dock.iconBase * Look.dock.badgeFraction, Style.space(Look.dock.badgeMin) * dock.iconBase / dock.tileSize)
+        readonly property real h: Math.max(dock.iconBase * Theme.core.surface.dock.shape.badgeFraction, Style.space(Theme.core.surface.dock.shape.badgeMin) * dock.iconBase / dock.tileSize)
         height: h
-        width: Math.max(h, badgeLabel.implicitWidth + Style.space(Look.dock.badgePadX) * 2 * dock.iconBase / dock.tileSize)
+        width: Math.max(h, badgeLabel.implicitWidth + Style.space(Theme.core.surface.dock.shape.badgePadX) * 2 * dock.iconBase / dock.tileSize)
         radius: h / 2
         x: art.inset + art.body - width + h * 0.25
         y: art.inset - h * 0.25
@@ -210,7 +209,7 @@ Item {
           text: badge.label
           color: dock.palette.onAccent
           font.family: Theme.font
-          font.pixelSize: Style.space(Look.dock.badgeFont) * dock.iconBase / dock.tileSize
+          font.pixelSize: Style.space(Theme.core.surface.dock.shape.badgeFont) * dock.iconBase / dock.tileSize
           font.weight: Font.Medium
         }
       }
@@ -222,8 +221,8 @@ Item {
       source: artContent
       shadowEnabled: true
       shadowBlur: 0.25
-      shadowVerticalOffset: Look.dock.iconShadowY * dock.iconBase / dock.tileSize
-      shadowOpacity: Look.dock.iconShadowAlpha
+      shadowVerticalOffset: Theme.core.surface.dock.shape.iconShadowY * dock.iconBase / dock.tileSize
+      shadowOpacity: Theme.core.surface.dock.shape.iconShadowAlpha
       brightness: tile.pressed || tile.dropTarget ? dock.mo.pressedBrightness - 1 : 0
       autoPaddingEnabled: true
     }
@@ -231,13 +230,13 @@ Item {
     // Keyboard focus ring (§17): only while the dock is driven from the keyboard
     Rectangle {
       visible: tile.focused
-      x: art.inset - Style.space(Look.dock.focusRing) * 1.5
-      y: art.inset - Style.space(Look.dock.focusRing) * 1.5
-      width: art.body + Style.space(Look.dock.focusRing) * 3
+      x: art.inset - Style.space(Theme.core.surface.dock.shape.focusRing) * 1.5
+      y: art.inset - Style.space(Theme.core.surface.dock.shape.focusRing) * 1.5
+      width: art.body + Style.space(Theme.core.surface.dock.shape.focusRing) * 3
       height: width
       radius: width * 0.24
       color: "transparent"
-      border.width: Style.space(Look.dock.focusRing) * dock.iconBase / dock.tileSize
+      border.width: Style.space(Theme.core.surface.dock.shape.focusRing) * dock.iconBase / dock.tileSize
       border.color: dock.accent
       antialiasing: true
     }
@@ -248,7 +247,7 @@ Item {
   Rectangle {
     id: dot
     readonly property real d: dock.indicatorSize
-    readonly property var dr: dock.rectFor(tile.main, dock.edgeGap + Style.space(Look.dock.indicatorGap), d, d)
+    readonly property var dr: dock.rectFor(tile.main, dock.edgeGap + Style.space(Theme.core.surface.dock.shape.indicatorGap), d, d)
     x: dr.x - tile.x
     y: dr.y - tile.y
     width: d; height: d

@@ -1,6 +1,5 @@
 import QtQuick
 import "file:///home/henri/.local/share/velum/qml/Velum"
-import "../Look.js" as Look
 import qs.Commons
 
 // Folder stack over the dock (spec §11): fan (entries fly out of the tile on
@@ -56,12 +55,12 @@ Item {
   }
 
   // ---------------------------------------------------------------- fan
-  readonly property int fanMax: Look.dock.fanMax
+  readonly property int fanMax: Theme.core.surface.dock.shape.fanMax
   readonly property var fanEntries: entries.length > fanMax ? entries.slice(0, fanMax - 1) : entries
   readonly property int fanCount: fanEntries.length + (entries.length > fanMax ? 1 : 0)
-  readonly property real pillH: Style.space(Look.dock.fanPill)
-  readonly property real fanIcon: Style.space(Look.dock.fanIcon)
-  readonly property real fanPitch: fanIcon + Style.space(Look.dock.fanGap)
+  readonly property real pillH: Style.space(Theme.core.surface.dock.shape.fanPill)
+  readonly property real fanIcon: Style.space(Theme.core.surface.dock.shape.fanIcon)
+  readonly property real fanPitch: fanIcon + Style.space(Theme.core.surface.dock.shape.fanGap)
 
   Repeater {
     model: stack.view === "fan" ? stack.fanCount : 0
@@ -76,8 +75,8 @@ Item {
       readonly property real rawP: stack.open ? Math.max(0, Math.min(1, (stack.progress * total - dock.stagger(index)) / dock.mo.fan)) : stack.progress
       readonly property real p: stack.bez(rawP, stack.open ? Theme.curve("out") : Theme.curve("exit"))
       readonly property real t: n > 1 ? index / (n - 1) : 0
-      readonly property real angle: Look.dock.fanAngle * t * t
-      readonly property real finalCross: stack.anchorCross + Style.space(Look.dock.fanGap) + index * stack.fanPitch
+      readonly property real angle: Theme.core.surface.dock.shape.fanAngle * t * t
+      readonly property real finalCross: stack.anchorCross + Style.space(Theme.core.surface.dock.shape.fanGap) + index * stack.fanPitch
       // Reduce Motion: entries sit at their fanned-out place and only fade.
       readonly property real geo: dock.reduceMotion ? 1 : p
       readonly property real cross: stack.anchorCross + (finalCross - stack.anchorCross) * geo
@@ -122,7 +121,7 @@ Item {
           text: fe.more ? "Show more in File Manager" : (fe.entry ? fe.entry.name : "")
           color: stack.pal.pillText
           font.family: Theme.font
-          font.pixelSize: Style.space(Look.dock.labelFont)
+          font.pixelSize: Style.space(Theme.core.surface.dock.shape.labelFont)
           elide: Text.ElideMiddle
           width: Math.min(implicitWidth, Style.space(260))
         }
@@ -141,18 +140,18 @@ Item {
 
   // ---------------------------------------------------------------- grid / list
   readonly property bool panelView: view === "grid" || view === "list"
-  readonly property int cols: Math.max(1, Math.min(Look.dock.gridColumns, entries.length))
-  readonly property real cell: Style.space(Look.dock.gridCell)
-  readonly property real cellH: Style.space(Look.dock.gridIcon) + Style.space(Look.dock.gridFont) * 2.6 + Style.space(8)
-  readonly property real listRow: Style.space(Look.dock.listRow)
-  readonly property real panelW: view === "grid" ? cols * cell + Style.space(Look.dock.gridPad) * 2 : Math.max(Theme.m.menu.minWidth, listCol.implicitWidth + Theme.m.menu.pad * 2)
+  readonly property int cols: Math.max(1, Math.min(Theme.core.surface.dock.shape.gridColumns, entries.length))
+  readonly property real cell: Style.space(Theme.core.surface.dock.shape.gridCell)
+  readonly property real cellH: Style.space(Theme.core.surface.dock.shape.gridIcon) + Style.space(Theme.core.surface.dock.shape.gridFont) * 2.6 + Style.space(8)
+  readonly property real listRow: Style.space(Theme.core.surface.dock.shape.listRow)
+  readonly property real panelW: view === "grid" ? cols * cell + Style.space(Theme.core.surface.dock.shape.gridPad) * 2 : Math.max(Theme.m.menu.minWidth, listCol.implicitWidth + Theme.m.menu.pad * 2)
   readonly property real panelBodyH: view === "grid"
-      ? Math.min(Math.ceil(entries.length / cols) * cellH, cellH * 4) + Style.space(Look.dock.gridPad) * 2
+      ? Math.min(Math.ceil(entries.length / cols) * cellH, cellH * 4) + Style.space(Theme.core.surface.dock.shape.gridPad) * 2
       : Math.min(listCol.implicitHeight, listRow * 18) + Theme.m.menu.pad * 2
   readonly property real panelH: panelBodyH + footer.height
-  readonly property var pr: dock.rectFor(anchorMain, anchorCross + Style.space(Look.dock.labelGap),
-      horizontal ? panelW : panelH + Style.space(Look.dock.labelArrowH),
-      horizontal ? panelH + Style.space(Look.dock.labelArrowH) : panelW)
+  readonly property var pr: dock.rectFor(anchorMain, anchorCross + Style.space(Theme.core.surface.dock.shape.labelGap),
+      horizontal ? panelW : panelH + Style.space(Theme.core.surface.dock.shape.labelArrowH),
+      horizontal ? panelH + Style.space(Theme.core.surface.dock.shape.labelArrowH) : panelW)
   readonly property real px: Math.max(Style.space(6), Math.min(dock.planeWidth - pr.w - Style.space(6), pr.x))
   readonly property real py: Math.max(Style.space(6), Math.min(dock.planeHeight - pr.h - Style.space(6), pr.y))
 
@@ -183,16 +182,16 @@ Item {
       // Grid of icons with names
       GridView {
         visible: stack.view === "grid"
-        x: Style.space(Look.dock.gridPad); y: Style.space(Look.dock.gridPad)
+        x: Style.space(Theme.core.surface.dock.shape.gridPad); y: Style.space(Theme.core.surface.dock.shape.gridPad)
         width: stack.cols * stack.cell
-        height: stack.panelBodyH - Style.space(Look.dock.gridPad) * 2
+        height: stack.panelBodyH - Style.space(Theme.core.surface.dock.shape.gridPad) * 2
         clip: true
         cellWidth: stack.cell
         cellHeight: stack.cellH
         model: stack.view === "grid" ? stack.entries : []
         boundsBehavior: Flickable.DragAndOvershootBounds
-        flickDeceleration: Look.flickDeceleration
-        maximumFlickVelocity: Look.maximumFlickVelocity
+        flickDeceleration: Theme.core.motion.scroll.flickDeceleration
+        maximumFlickVelocity: Theme.core.motion.scroll.maximumFlickVelocity
         delegate: Item {
           id: ge
           required property var modelData
@@ -204,7 +203,7 @@ Item {
             id: gIcon
             anchors.horizontalCenter: parent.horizontalCenter
             y: Style.space(4)
-            width: Style.space(Look.dock.gridIcon); height: width
+            width: Style.space(Theme.core.surface.dock.shape.gridIcon); height: width
             source: dock.iconFor(ge.modelData.icon)
             sourceSize: Qt.size(128, 128)
             fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true; asynchronous: true
@@ -216,7 +215,7 @@ Item {
             text: ge.modelData.name
             color: stack.pal.menuText
             font.family: Theme.font
-            font.pixelSize: Style.space(Look.dock.gridFont)
+            font.pixelSize: Style.space(Theme.core.surface.dock.shape.gridFont)
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
             maximumLineCount: 2
@@ -235,8 +234,8 @@ Item {
         contentHeight: listCol.implicitHeight
         clip: true
         boundsBehavior: Flickable.DragAndOvershootBounds
-        flickDeceleration: Look.flickDeceleration
-        maximumFlickVelocity: Look.maximumFlickVelocity
+        flickDeceleration: Theme.core.motion.scroll.flickDeceleration
+        maximumFlickVelocity: Theme.core.motion.scroll.maximumFlickVelocity
         Column {
           id: listCol
           width: parent.width
@@ -246,27 +245,27 @@ Item {
               id: le
               required property var modelData
               width: listCol.width
-              implicitWidth: lText.implicitWidth + Style.space(Look.dock.listIcon) + Style.space(30)
+              implicitWidth: lText.implicitWidth + Style.space(Theme.core.surface.dock.shape.listIcon) + Style.space(30)
               height: stack.listRow
-              radius: Style.space(Look.dock.menuHighlightRadius)
+              radius: Style.space(Theme.core.surface.dock.shape.menuHighlightRadius)
               color: leHover.hovered ? dock.accent : "transparent"
               HoverHandler { id: leHover }
               Image {
                 x: Style.space(6); anchors.verticalCenter: parent.verticalCenter
-                width: Style.space(Look.dock.listIcon); height: width
+                width: Style.space(Theme.core.surface.dock.shape.listIcon); height: width
                 source: dock.iconFor(le.modelData.icon)
                 sourceSize: Qt.size(64, 64)
                 fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true; asynchronous: true
               }
               Text {
                 id: lText
-                x: Style.space(6) + Style.space(Look.dock.listIcon) + Style.space(8)
+                x: Style.space(6) + Style.space(Theme.core.surface.dock.shape.listIcon) + Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width - x - Style.space(20)
                 text: le.modelData.name
                 color: leHover.hovered ? "#ffffffff" : stack.pal.menuText
                 font.family: Theme.font
-                font.pixelSize: Style.space(Look.dock.menuFont)
+                font.pixelSize: Style.space(Theme.core.surface.dock.shape.menuFont)
                 elide: Text.ElideMiddle
               }
               Text {
@@ -276,7 +275,7 @@ Item {
                 text: "›"
                 color: lText.color
                 font.family: Theme.font
-                font.pixelSize: Style.space(Look.dock.menuFont)
+                font.pixelSize: Style.space(Theme.core.surface.dock.shape.menuFont)
               }
               TapHandler { onTapped: stack.openEntry(le.modelData) }
             }
@@ -296,7 +295,7 @@ Item {
           x: Theme.m.menu.pad; anchors.verticalCenter: parent.verticalCenter
           width: parent.width - Theme.m.menu.pad * 2
           height: stack.listRow
-          radius: Style.space(Look.dock.menuHighlightRadius)
+          radius: Style.space(Theme.core.surface.dock.shape.menuHighlightRadius)
           color: fHover.hovered ? dock.accent : "transparent"
           HoverHandler { id: fHover }
           Text {
@@ -304,7 +303,7 @@ Item {
             text: stack.entries.length + (stack.entries.length === 1 ? " item" : " items") + " — Open in File Manager"
             color: fHover.hovered ? "#ffffffff" : stack.pal.menuText
             font.family: Theme.font
-            font.pixelSize: Style.space(Look.dock.menuFont)
+            font.pixelSize: Style.space(Theme.core.surface.dock.shape.menuFont)
           }
           TapHandler { onTapped: stack.openFolder() }
         }

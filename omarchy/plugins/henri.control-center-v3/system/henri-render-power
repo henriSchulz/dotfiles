@@ -7,10 +7,14 @@
 # every (re)load:
 #   low-power-render  direct scanout, 2 blur passes, color management off
 #   no-effects        blur, shadows and animations off (M1 power measurements,
-#                     ~/Projects/m1-power). Without blur the glass menus only
-#                     look washed out, so this also sets noEffects in henri-ui's
-#                     Prefs.js (Motion.glass off → solid menus) and restarts the
-#                     shell, which reads it only at start.
+#                     ~/Projects/m1-power). Without blur the glass surfaces only
+#                     look washed out, so this also turns on Velum's Reduce
+#                     Transparency (opaque material) in
+#                     ~/.local/state/velum/settings.json — every Velum surface
+#                     follows the file live, no shell restart. Turning the
+#                     effects back on clears it again only if this script set
+#                     it (marker no-effects-opaque), so a Reduce Transparency
+#                     the user chose stays.
 # `status` prints key=value lines the panel parses, including the values
 # Hyprland actually runs with, so the switches never lie about what is applied.
 set -euo pipefail
@@ -23,24 +27,27 @@ if [[ ${1:-} == effects ]]; then
   [[ ${1:-} == status ]] && exec "$0" status
 fi
 
-# Mirror the no-effects flag into Prefs.js; restart the shell if it changed.
+# Mirror the no-effects flag into Velum's reduceTransparency.
 solid_menus() {
-  local hui="$HOME/.local/share/henri-ui" want=false
-  [[ -e $dir/no-effects ]] && want=true
-  [[ -e $hui/Motion.js ]] || return 0
-  [[ -e $hui/Prefs.js ]] || cp "$hui/Prefs.default.js" "$hui/Prefs.js"
-  grep -qx "var noEffects = $want" "$hui/Prefs.js" && return 0
-  [[ $want == false ]] && ! grep -q '^var noEffects' "$hui/Prefs.js" && return 0
-  { grep -v '^var noEffects' "$hui/Prefs.js"; echo "var noEffects = $want"; } > "$hui/Prefs.js.tmp"
-  mv "$hui/Prefs.js.tmp" "$hui/Prefs.js"
-  # Plugins with their own henri-ui copy follow, then one restart — detached,
-  # because the caller is the shell that is about to go away.
-  setsid -f bash -c 'HENRI_UI_NO_RESTART=1 henri-ui-sync; omarchy-restart-shell' >/dev/null 2>&1 </dev/null
+  local velum="${XDG_STATE_HOME:-$HOME/.local/state}/velum/settings.json" mark="$dir/no-effects-opaque" want
+  [[ -f $velum ]] || return 0
+  want=$(jq -r '.reduceTransparency == true' "$velum" 2>/dev/null) || return 0
+  if [[ -e $dir/no-effects ]]; then
+    [[ $want == true ]] && return 0          # already opaque (the user's choice): leave it, no marker
+    : > "$mark"; want=true
+  else
+    [[ -e $mark ]] || return 0               # not ours to clear
+    rm -f "$mark"; [[ $want == true ]] || return 0
+    want=false
+  fi
+  # written in place (not replaced): the shells' file watch stays on the same file
+  local new; new=$(jq --argjson v "$want" '.reduceTransparency = $v' "$velum")
+  printf '%s\n' "$new" > "$velum"
 }
 
 case "${1:-status}" in
-  on)     mkdir -p "$dir"; : > "$flag"; hyprctl reload >/dev/null; solid_menus ;;
-  off)    rm -f "$flag"; hyprctl reload >/dev/null; solid_menus ;;
+  on)     mkdir -p "$dir"; : > "$flag"; hyprctl reload >/dev/null; if [[ $flag == */no-effects ]]; then solid_menus; fi ;;
+  off)    rm -f "$flag"; hyprctl reload >/dev/null; if [[ $flag == */no-effects ]]; then solid_menus; fi ;;
   toggle) if [[ -e $flag ]]; then set -- off; else set -- on; fi
           [[ $flag == */no-effects ]] && exec "$0" effects "$1"; exec "$0" "$1" ;;
   status) ;;
