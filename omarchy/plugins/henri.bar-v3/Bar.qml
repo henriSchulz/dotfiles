@@ -423,7 +423,10 @@ Item {
   }
 
   readonly property bool vertical: position === "left" || position === "right"
-  readonly property int barSize: vertical ? Style.bar.sizeVertical : Style.bar.sizeHorizontal
+  // Velum: the horizontal bar's size and its islands' measures are the menu bar's surface tokens
+  // (surface.menubar: the Opal lab's bar); a vertical bar keeps Omarchy's size
+  readonly property var mb: Theme.core.surface.menubar
+  readonly property int barSize: vertical ? Style.bar.sizeVertical : mb.height
 
   function normalizePosition(value) {
     return BarModel.normalizePosition(value)
@@ -1380,7 +1383,7 @@ Item {
           id: leftMods
           island: leftIsland
           anchors.left: parent.left
-          anchors.leftMargin: Theme.layout.module.pad + Theme.layout.capsule.padX / 2
+          anchors.leftMargin: Theme.layout.module.pad + root.mb.island.padX
           anchors.verticalCenter: parent.verticalCenter
         }
 
@@ -1388,7 +1391,7 @@ Item {
           id: rightMods
           island: rightIsland
           anchors.right: parent.right
-          anchors.rightMargin: Theme.layout.module.pad + Theme.layout.capsule.padX / 2
+          anchors.rightMargin: Theme.layout.module.pad + root.mb.island.padX
           anchors.verticalCenter: parent.verticalCenter
         }
       }
@@ -1424,12 +1427,12 @@ Item {
   component Island: Rectangle {
     property Item target
     property var holder: null
-    readonly property real islandH: Math.max(Theme.layout.capsule.height, root.barSize - 2 * Theme.layout.module.tileInset - 2 * Theme.layout.separator)
+    readonly property real islandH: root.vertical ? Math.max(Theme.layout.capsule.height, root.barSize - 2 * Theme.layout.module.tileInset - 2 * Theme.layout.separator) : root.mb.island.height
     visible: target !== null && target.width > 0
     opacity: holder ? 0 : 1
     // whole pixels, the same as VIslandWindow's island rect: the surface takes over exactly here
-    x: target ? Math.round(target.x - Theme.layout.capsule.padX / 2) : 0
-    width: target ? Math.round(target.width + Theme.layout.capsule.padX) : 0
+    x: target ? Math.round(target.x - root.mb.island.padX) : 0
+    width: target ? Math.round(target.width + 2 * root.mb.island.padX) : 0
     height: islandH
     anchors.verticalCenter: parent.verticalCenter
     radius: height / 2
@@ -2095,9 +2098,10 @@ Item {
     tooltipText: outputTooltip || String(setting("tooltip", ""))
     active: outputActive
     keepSpace: setting("keepSpace", false) === true
-    horizontalMargin: Number(setting("horizontalMargin", 7.5))
+    // Velum: the gap between modules and the module text come from surface.menubar (the lab's bar)
+    horizontalMargin: Number(setting("horizontalMargin", root.mb.island.gap / 2))
     verticalPadding: Number(setting("verticalPadding", 6))
-    fontSize: Number(setting("fontSize", 12))
+    fontSize: Number(setting("fontSize", root.mb.font.size))
 
     onPressed: function(button) {
       var command = ""

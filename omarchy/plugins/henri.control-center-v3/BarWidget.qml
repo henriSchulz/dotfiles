@@ -59,7 +59,8 @@ BarWidget {
     return ""
   }
   property bool hover: false
-  readonly property real pillH: Math.max(Theme.layout.capsule.height, barSize - 2 * Theme.layout.module.tileInset - 2 * Theme.layout.separator)
+  // the pill is an island of the menu bar (surface.menubar.island)
+  readonly property real pillH: Theme.core.surface.menubar.island.height
   // the widget keeps the hovered width at all times: the pill grows inside it, so the bar never
   // re-centres it under the pointer (that moved it away, hover flickered and clicks were lost)
   readonly property real faceW: activity ? activityFace.implicitWidth : dots.implicitWidth

@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 import qs.Commons
 import qs.Ui
 import "file:///home/henri/.local/share/velum/qml/Velum"
@@ -144,18 +145,41 @@ Panel {
     }
   }
 
-  implicitWidth: button.implicitWidth
+  // Velum: beside the logo the active app's name, as macOS's bold app name on the left of the menu
+  // bar (the Opal lab's "Notes"). Hidden on an empty workspace (the home screen): Hyprland's
+  // activeToplevel keeps the last window there.
+  readonly property var activeWin: Hyprland.activeToplevel
+  readonly property var activeIpc: activeWin ? activeWin.lastIpcObject : null
+  readonly property bool workspaceHasWindows: { var ws = Hyprland.focusedWorkspace, o = ws ? ws.lastIpcObject : null; return !!(o && (o.windows || 0) > 0) }
+  readonly property string appName: {
+    if (!activeIpc || !workspaceHasWindows) return ""
+    var c = String(activeIpc.class || ""), e = null
+    try { e = DesktopEntries.byId(c) || DesktopEntries.heuristicLookup(c) } catch (err) {}
+    return e && e.name ? e.name : c
+  }
+  readonly property var mb: Theme.core.surface.menubar
+
+  implicitWidth: button.implicitWidth + (appLabel.visible ? root.mb.island.gap + appLabel.implicitWidth : 0)
   implicitHeight: button.implicitHeight
 
   BarIconButton {
     id: button
-    anchors.fill: parent
+    width: implicitWidth; height: parent.height
     bar: root.bar
     text: root.logo
     fontFamily: "omarchy"
     tooltipText: ""
     onPressed: function(b) { root.toggle() }
     scale: logoScale.value
+  }
+  VText {
+    id: appLabel
+    visible: root.appName !== ""
+    x: button.width + root.mb.island.gap; anchors.verticalCenter: parent.verticalCenter
+    text: root.appName
+    color: root.bar ? root.bar.foreground : Theme.r.popover.ink
+    font.pixelSize: root.mb.font.size; font.weight: Font.DemiBold
+    MouseArea { anchors.fill: parent; onClicked: root.toggle() }
   }
   // Press feedback on the bar logo whenever the menu opens: squeeze, then spring back.
   Spring { id: logoScale; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: root.logoSqueezed ? Theme.scale("press") : 1 }
