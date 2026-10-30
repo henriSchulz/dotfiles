@@ -803,6 +803,35 @@ Item {
   property bool localsendRunning: false
   function run(cmd) { Quickshell.execDetached(["bash", "-c", cmd]) }
 
+  // Slider position on the OSD bar's grid: 4 extra-dim steps below the 16 normal ones.
+  // The henri.osd-v3 service owns the dim layer and the glide; it gets `osd set <pos>`.
+  property real brightGrid: 0
+  readonly property bool dimAware: !cast && /^(eDP|LVDS|DSI)-/.test(internalMonitor)
+  function gridFromRaw(raw, max) {
+    var f = raw / max, floor = 0.01, minF = 0.0025, l
+    if (f < floor - 0.5 / max) l = -Math.min(1, Math.log(Math.max(f, 1 / max) / floor) / Math.log(minF / floor))
+    else l = Math.sqrt(Math.max(0, Math.min(1, (f - floor) / (1 - floor))))
+    return (l < 0 ? l * 4 + 4 : 4 + l * 16) / 20
+  }
+  function setBrightGrid(g) {
+    g = Math.max(0, Math.min(1, g))
+    brightGrid = g
+    brightness = Math.max(1, Math.round(g * 100))
+    Hyprland.dispatch(Hyprland.usingLua ? "hl.dsp.event(\"osd set " + g.toFixed(4) + "\")" : "event osd set " + g.toFixed(4))
+  }
+  Process {
+    id: gridProc
+    command: ["brightnessctl", "-m", "-c", "backlight"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var f = String(text || "").trim().split("\n")[0].split(",")
+        var raw = parseInt(f[2], 10), max = parseInt(f[4], 10)
+        if (f.length >= 5 && max > 0) root.brightGrid = root.gridFromRaw(raw, max)
+      }
+    }
+  }
+
   function setBrightness(value) {
     var percent = Math.max(1, Math.min(100, Math.round(value)))
     brightness = percent
@@ -884,6 +913,7 @@ Item {
         root.monitorScale = Display.normalizeScale(String(lines[6] || "").trim())
         root.displays = Display.parseDisplays(String(lines[7] || "[]").trim())
         if (root.cast && !castBrightProc.running) castBrightProc.running = true
+        else if (root.dimAware && !gridProc.running) gridProc.running = true
       }
     }
   }

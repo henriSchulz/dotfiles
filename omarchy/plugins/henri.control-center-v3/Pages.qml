@@ -190,7 +190,7 @@ Item {
         Row {
           anchors.right: parent.right; height: left.height; spacing: cc.gap
           VFillSlider { visible: cc.be.brightnessAvailable; vertical: true; width: Theme.layout.meter.column; height: parent.height; icon: "brightness"
-            value: cc.be.brightness / 100; readout: cc.be.brightness + " %"; onMoved: v => cc.be.setBrightness(v * 100); onOpened: cc.push("display") }
+            value: cc.be.dimAware ? cc.be.brightGrid : cc.be.brightness / 100; readout: (cc.be.dimAware ? Math.round(cc.be.brightGrid * 100) : cc.be.brightness) + " %"; onMoved: v => cc.be.dimAware ? cc.be.setBrightGrid(v) : cc.be.setBrightness(v * 100); onOpened: cc.push("display") }
           VFillSlider { vertical: true; width: Theme.layout.meter.column; height: parent.height
             icon: cc.be.muted || cc.be.volume <= 0 ? "sound.mute" : cc.be.volume < 0.34 ? "sound.low" : cc.be.volume < 0.67 ? "sound.mid" : "sound"
             value: cc.be.muted ? 0 : cc.be.volume; readout: cc.be.muted ? "Muted" : Math.round(cc.be.volume * 100) + " %"
@@ -467,8 +467,8 @@ Item {
       MHead { title: "Display" }
       Group {
         title: cc.be.brightnessAvailable ? "Brightness" : ""
-        titleDetail: cc.be.brightnessAvailable ? cc.be.brightness + " %" : ""
-        SliderRow { visible: cc.be.brightnessAvailable; icon: "brightness.low"; iconEnd: "brightness"; value: cc.be.brightness / 100; onMoved: v => cc.be.setBrightness(v * 100) }
+        titleDetail: cc.be.brightnessAvailable ? (cc.be.dimAware ? Math.round(cc.be.brightGrid * 100) : cc.be.brightness) + " %" : ""
+        SliderRow { visible: cc.be.brightnessAvailable; icon: "brightness.low"; iconEnd: "brightness"; value: cc.be.dimAware ? cc.be.brightGrid : cc.be.brightness / 100; onMoved: v => cc.be.dimAware ? cc.be.setBrightGrid(v) : cc.be.setBrightness(v * 100) }
         MRow { icon: "night-shift"; text: "Night Shift"; clickable: false
           VSwitch { surface: "popover"; checked: cc.be.nightShift; onToggled: c => cc.be.setNightShift(c) } }
       }

@@ -348,6 +348,13 @@ Item {
     }
   }
 
+  // Control Center slider: a grid position 0…1, same scale as the bar. No HUD.
+  function setGrid(g) {
+    if (isNaN(g) || !backlight || maxRaw <= 0) return
+    brightLevel = fromGrid(g)
+    level = brightLevel
+  }
+
   function stepBrightness(action) {
     var cur = brightLevel
     var dir = action.indexOf("up") === 0 ? 1 : -1
@@ -368,6 +375,7 @@ Item {
       if (parts[0] === "volume") root.volumeKey(parts[1] || "up")
       else if (parts[0] === "brightness") root.brightnessKey(parts[1] || "up")
       else if (parts[0] === "cast") root.cast = parts[1] === "on"
+      else if (parts[0] === "set") root.setGrid(parseFloat(parts[1]))
     }
   }
 
