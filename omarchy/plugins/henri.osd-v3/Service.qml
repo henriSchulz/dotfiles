@@ -187,7 +187,7 @@ Item {
   // below 0 and steps above, each step the same width in the bar.
   readonly property int dimSteps: 4
   readonly property real minFrac: 0.0025    // backlight at level -1
-  readonly property real maxDim: 0.7        // black layer at level -1
+  readonly property real maxDim: 0.93       // black layer at level -1
   readonly property int gridSteps: dimSteps + steps
   function toGrid(l) { return (l < 0 ? l * dimSteps + dimSteps : dimSteps + l * steps) / gridSteps }
   function fromGrid(x) {
