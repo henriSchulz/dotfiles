@@ -131,6 +131,10 @@ o.bind("SUPER + SHIFT + F", "File manager", { launch = "finder --new-window" })
 o.bind("SUPER + ALT + SHIFT + F", "File manager (cwd)",
   [[sh -c 'exec setsid uwsm-app -- finder --new-window "$(omarchy-cmd-terminal-cwd)"']])
 
+-- SUPER+SHIFT+M war Omarchys Music (Spotify); jetzt mdview.
+hl.unbind("SUPER + SHIFT + M")
+o.bind("SUPER + SHIFT + M", "mdview", { launch = "mdview" })
+
 -- Super+Backspace in Files (Nautilus) und im Finder = in den Papierkorb, wie
 -- Cmd+Backspace am Mac; in allen anderen Fenstern bleibt es Omarchys
 -- Transparenz-Umschalter.
