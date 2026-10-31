@@ -1,0 +1,17 @@
+#!/bin/bash
+# ipadcast-session-start — at Hyprland start: bring ipadcast up when a tablet hangs on the cable.
+# The tablet asks for it itself (ssh mac-start), but right after a login it asks before uwsm has put
+# HYPRLAND_INSTANCE_SIGNATURE into systemd's environment, so the unit's condition skips the start
+# and the tablet stays on "Waiting for Mac". This waits for the signature, then starts the server
+# if this machine is the Mac of the cable network (10.55.0.1) and the link has carrier.
+# Elsewhere (the tablet runs the same dotfiles) it does nothing.
+set -u
+ip -4 -br addr 2>/dev/null | grep -q ' 10\.55\.0\.1/' || exit 0
+systemctl --user cat ipadcast.service >/dev/null 2>&1 || exit 0
+for _ in $(seq 60); do
+  systemctl --user show-environment | grep -q '^HYPRLAND_INSTANCE_SIGNATURE=' && break
+  sleep 0.5
+done
+dev=$(ip -4 -br addr | awk '/ 10\.55\.0\.1\//{print $1}')
+[[ $(cat /sys/class/net/$dev/carrier 2>/dev/null) == 1 ]] || exit 0
+systemctl --user start ipadcast.service
