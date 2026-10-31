@@ -291,4 +291,20 @@ do
     so:close()
     pcall(hl.plugin.load, shape)
   end
+  -- hyprphase (~/Projects/hyprphase) lets ipadcast move the frame phase of HEADLESS-SPARE onto the
+  -- tablet's vblank; it needs the patched aquamarine (~/Projects/aquamarine-phase), so not while this
+  -- Hyprland still runs a replaced (deleted) libaquamarine
+  local phase = os.getenv("HOME") .. "/.local/lib/hyprphase/hyprphase.so"
+  local pso = io.open(phase, "r")
+  if pso then
+    pso:close()
+    local maps, fresh = io.open("/proc/self/maps", "r"), false
+    if maps then
+      for line in maps:lines() do
+        if line:find("libaquamarine", 1, true) then fresh = not line:find("(deleted)", 1, true) break end
+      end
+      maps:close()
+    end
+    if fresh then pcall(hl.plugin.load, phase) end
+  end
 end
