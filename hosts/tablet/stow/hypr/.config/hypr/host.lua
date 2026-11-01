@@ -40,8 +40,9 @@ hl.config({ input = { touchdevice = { transform = start }, tablet = { transform 
 
 o.launch_on_start("hypr-autorotate")
 
--- Power key (XF86PowerOff): the screen goes dark at once, as on an iPad, instead of the system
--- menu of bindings.lua (here a finger pulls that menu down from the left of the top edge).
+-- Power key (XF86PowerOff): the tablet locks and the screen goes dark at once, as on an iPad,
+-- instead of the system menu of bindings.lua (here a finger pulls that menu down from the left of
+-- the top edge). Locked, because a dark panel still hands touches to the apps.
 -- Hyprland wakes the screen on every key event, press and release alike, right after the binds run
 -- (misc:key_press_enables_dpms, InputManager::setupKeyboard). So the press only notes whether the
 -- screen was dark, and the release puts it out a tick later, past its own wake-up; a press on a dark
@@ -60,5 +61,6 @@ hl.bind("XF86PowerOff", function() power_woke = not screen_lit() end,
   { locked = true, description = "Screen off" })
 hl.bind("XF86PowerOff", function()
   if power_woke then power_woke = false; return end
+  hl.dispatch(hl.dsp.exec_cmd("omarchy-system-lock"))
   hl.timer(function() hl.dispatch(hl.dsp.dpms({ action = "disable" })) end, { timeout = 1, type = "oneshot" })
 end, { locked = true, release = true, description = "Screen off" })
