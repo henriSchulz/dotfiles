@@ -47,7 +47,7 @@ Item {
       opened: root.opened, openness: Math.round(root.openness * 100) / 100, page: root.page, pages: root.pageCount, editing: root.editing,
       folder: root.openFolder, query: root.query, results: root.results.length, selected: root.selIndex,
       apps: root.desktopIds.length, readOnly: root.readOnly, error: root.loadError,
-      settingsOpen: root.settingsOpen, menu: contextMenu.open, menuItems: contextMenu.open ? contextMenu.model.map(function(m) { return m.text || "-" }) : [],
+      settingsOpen: root.settingsOpen, menu: contextMenu.open || touchMenu.open, touchMenu: touchMenu.open, touchRect: touchMenu.open ? [Math.round(touchMenu.mx), Math.round(touchMenu.my), Math.round(touchMenu.pw)] : null, menuItems: (contextMenu.open ? contextMenu.model : touchMenu.open ? touchMenu.model : []).map(function(m) { return m.text || "-" }),
       picks: Object.keys(root.picks).length, info: root.infoId, folderPage: folderPanel.fpage, folderPages: folderPanel.pageCount,
       lastCopy: root.lastCopy, firstResult: root.results.length ? (root.results[0].kind || "app") + ":" + root.results[0].title : "",
       dragId: root.dragId, armed: root.armedTarget, hover: root.hoverTarget, drag: [Math.round(root.dragX), Math.round(root.dragY)], hidden: root.layout.hidden.length, lastLaunch: root.lastLaunch,
@@ -753,6 +753,7 @@ Item {
     root.cancelDrag()
     root.contextId = ""
     contextMenu.open = false
+    touchMenu.open = false
     closeAnim.from = 1; closeAnim.to = 0
     if (Theme.reduceMotion) closeAnim.duration = Theme.dur("fast")
     closeAnim.restart()
@@ -1045,7 +1046,9 @@ Item {
 
   // ------------------------------------------------------- context menu
   property string contextId: ""
-  function openContext(id, px, py) {
+  // touchFrom: the pressed tile's rect when a finger held it — the menu is then Velum's VTouchMenu
+  // (iPadOS: out of the tile), else the macOS menu at the pointer
+  function openContext(id, px, py, touchFrom) {
     root.contextId = id === "" ? "empty" : id
     var m = []
     var picked = root.pickedInOrder()
@@ -1061,6 +1064,12 @@ Item {
       var top = [{ text: "New Workflow with " + picked.length + (picked.length === 1 ? " App" : " Apps"), act: "workflow" }]
       if (picked.length >= 2) top.unshift({ text: "New Folder with " + picked.length + " Apps", act: "group" })
       m = top.concat([{ separator: true }], m)
+    }
+    if (touchFrom) {
+      touchMenu.model = m
+      touchMenu.from = touchFrom
+      touchMenu.open = true
+      return
     }
     contextMenu.model = m
     contextMenu.x = Math.min(px, win.width - contextMenu.width)
@@ -1080,6 +1089,7 @@ Item {
   function runContext(act) {
     var id = root.contextId
     contextMenu.open = false
+    touchMenu.open = false
     root.contextId = ""
     if (act === "open") root.activate(id)
     else if (act === "hide") root.commit(LM.hide(root.layout, id))
@@ -1112,6 +1122,7 @@ Item {
     if (k === Qt.Key_Escape) {
       event.accepted = true
       if (contextMenu.open) { contextMenu.open = false; return }
+      if (touchMenu.open) { touchMenu.open = false; root.contextId = ""; return }
       if (root.settingsOpen) { root.settingsOpen = false; return }
       if (root.pickFor !== "") { root.pickFor = ""; return }
       if (root.infoId !== "") { root.infoId = ""; return }
@@ -1486,6 +1497,8 @@ Item {
         property var hit: null
         property bool moved: false
         property bool swipe: false
+        property bool finger: false     // the press came from a finger (a hold opens the touch menu)
+        property bool menuHold: false   // that hold opened the touch menu and is still down
         property real lastX: 0
         property real lastT: 0
         property real vel: 0
@@ -1534,7 +1547,9 @@ Item {
           search.forceActiveFocus()
           if (contextMenu.open) { contextMenu.open = false; root.contextId = ""; mouse.accepted = true; hit = { kind: "swallowed" }; return }
           pressX = mouse.x; pressY = mouse.y
-          moved = false; swipe = false
+          moved = false; swipe = false; menuHold = false
+          // a finger (tablet mode, or a touchscreen's synthesized press): a hold opens the touch menu
+          finger = Theme.touch || touchPoint.active
           hit = hitAt(mouse.x, mouse.y)
           if (mouse.button === Qt.RightButton) {
             root.openContext(hit.kind === "tile" || hit.kind === "folderItem" ? hit.id : "", mouse.x, mouse.y)
@@ -1554,6 +1569,19 @@ Item {
         onPositionChanged: function(mouse) {
           if (!hit || hit.kind === "swallowed") return
           if (root.dragId !== "") { root.dragMove(mouse.x, mouse.y); return }
+          if (menuHold) {
+            // the finger slides over the rows; the held tile moved off the menu goes into edit mode in the hand
+            touchMenu.track(mouse.x, mouse.y)
+            var off = Math.max(Math.abs(mouse.x - pressX), Math.abs(mouse.y - pressY))
+            if (!touchMenu.nearby(mouse.x, mouse.y, Theme.core.surface.tablet.home.menu.dragSlop) && off > Theme.core.surface.tablet.home.menu.dragSlop) {
+              menuHold = false
+              touchMenu.open = false
+              root.contextId = ""
+              root.editing = true
+              root.beginDrag(hit.id, hit.kind === "folderItem" ? "folder" : "grid", mouse.x, mouse.y, hit.ox, hit.oy)
+            }
+            return
+          }
           var dist = Math.max(Math.abs(mouse.x - pressX), Math.abs(mouse.y - pressY))
           if (!moved && dist > Theme.core.surface.dock.dragThreshold) {
             moved = true
@@ -1584,6 +1612,7 @@ Item {
           var h = hit
           hit = null
           root.pressId = ""
+          if (menuHold) { menuHold = false; touchMenu.release(); return }
           if (!h || h.kind === "swallowed") return
           if (root.dragId !== "") { root.endDrag(); return }
           if (swipe) { swipe = false; root.settle(vel); return }
@@ -1607,15 +1636,24 @@ Item {
             else root.hideAnimated(false)
           }
         }
-        onCanceled: { holdTimer.stop(); root.pressId = ""; if (root.dragId !== "") root.cancelDrag(); if (swipe) { swipe = false; root.settle(0) } }
+        onCanceled: { holdTimer.stop(); root.pressId = ""; menuHold = false; if (root.dragId !== "") root.cancelDrag(); if (swipe) { swipe = false; root.settle(0) } }
         onWheel: function(wheel) { root.onWheelEvent(wheel) }
 
+        // passive: only tells a finger from a pointer, the press still reaches this MouseArea
+        PointHandler { id: touchPoint; acceptedDevices: PointerDevice.TouchScreen }
         Timer {
           id: holdTimer
           interval: root.lp.longPress
           onTriggered: {
             var h = pointer.hit
             if (!h || (h.kind !== "tile" && h.kind !== "folderItem")) return
+            if (pointer.finger && !root.editing) {
+              var fw = h.kind === "folderItem" ? folderPanel.cellW : root.cellW, fh = h.kind === "folderItem" ? folderPanel.cellH : root.cellH
+              root.pressId = ""
+              root.openContext(h.id, pointer.mouseX, pointer.mouseY, { x: pointer.pressX - h.ox, y: pointer.pressY - h.oy, w: fw, h: fh })
+              pointer.menuHold = true
+              return
+            }
             root.editing = true
             root.pressId = ""
             root.beginDrag(h.id, h.kind === "folderItem" ? "folder" : "grid", pointer.mouseX, pointer.mouseY, h.ox, h.oy)
@@ -1638,6 +1676,13 @@ Item {
         id: contextMenu
         z: 20
         onTriggered: function(index) { root.runContext(model[index].act) }
+      }
+      VTouchMenu {
+        id: touchMenu
+        anchors.fill: parent
+        z: 20
+        onTriggered: function(entry) { root.runContext(entry.act) }
+        onDismissRequested: { touchMenu.open = false; root.contextId = "" }
       }
 
       InfoSheet {

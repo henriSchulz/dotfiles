@@ -12,6 +12,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 shell=$(cd "$here/../.." && pwd)
 cd "$shell"
 export VELUM_RIG_ID=launchpad VELUM_RIG_PLUGINS="henri.launchpad-v3"
+# pointer behaviour unless a case asks for touch (the rig shares the live settings, where "tablet" may be on)
+export VELUM_TOUCH=${VELUM_TOUCH:-0}
 R=rig/state/launchpad
 F=$R/home/.config/omarchy
 FILTER=${1:-}
@@ -536,6 +538,29 @@ if runs P01; then
   open ""; c testMove "$(pageItem 0 0) 0 3" >/dev/null; sleep 0.8
   want P01-N2 "read-only never overwrites the file" '. == "{nope\n"' "$(jq -Rs . "$F/launchpad/layout.json")"
   fresh
+fi
+
+# ---- TM touch menu (a finger: Velum's VTouchMenu out of the tile; VELUM_TOUCH=1 = tablet mode) ----
+if runs TM; then
+  VELUM_TOUCH=1 fresh; open ""
+  a=$(pageItem 0 0)
+  read -r ax ay <<<"$(at "$a")"
+  pt m "$ax" "$ay" d s 700 u; sleep 0.6
+  want TM-H1 "a finger held on a tile: the touch menu, no edit mode" '.touchMenu == true and .editing == false and (.menuItems | index("Get Info…")) != null'
+  shot TM-menu
+  pt m 60 60 d s 40 u; sleep 0.6
+  want TM-H2 "a tap beside it closes it" '.touchMenu == false and .menu == false'
+  # where the menu lies (it opens on the same spot each time), then hold and slide in one go
+  pt m "$ax" "$ay" d s 700 u; sleep 0.4
+  r=$(st | jq -c .touchRect); mx=$(jq '.[0] + 40' <<<"$r"); ry=$(jq '.[1] + 6 + 46 + 23' <<<"$r")
+  pt m 60 60 d s 40 u; sleep 0.6
+  pt m "$ax" "$ay" d s 700 g "$mx" "$ry" 10 16 s 120 u; sleep 0.8
+  want TM-H3 "held, slid onto Get Info…, lifted: the info sheet" ".touchMenu == false and .info == \"$a\""
+  key -k Escape; sleep 0.4
+  pt m "$ax" "$ay" d s 700 g $((ax - 150)) $((ay - 120)) 10 16 s 300
+  want TM-H4 "the held tile moved off the menu: edit mode with it in the hand" ".touchMenu == false and .editing == true and .dragId == \"$a\""
+  pt u; sleep 0.6
+  shut; fresh
 fi
 
 echo

@@ -112,7 +112,10 @@ BarWidget {
     trayMenuOpen = false
   }
 
-  function openTrayMenu(item, anchorItem, mouse) {
+  // a finger held the item: the menu grows out of it on VTouchMenu's spring (iPadOS) instead of
+  // appearing with no transition
+  property bool trayTouch: false
+  function openTrayMenu(item, anchorItem, mouse, touch) {
     if (!item || !item.menu) {
       var point = anchorItem.QsWindow.contentItem.mapFromItem(anchorItem, mouse.x, mouse.y)
       item.display(anchorItem.QsWindow.window, point.x, point.y)
@@ -126,6 +129,7 @@ BarWidget {
     resetTrayMenu()
     activeTrayItem = item
     activeTrayAnchor = anchorItem
+    trayTouch = touch === true && !Theme.reduceMotion
     trayMenuOpen = true
   }
 
@@ -578,7 +582,29 @@ BarWidget {
       visible: opacity > 0
       // The menu fades out with its submenu still showing; back to the root level only once it
       // is gone (a switch to another tray item resets at once, from openTrayMenu()).
-      onVisibleChanged: if (!visible) root.resetTrayMenu()
+      onVisibleChanged: if (!visible) { root.resetTrayMenu(); root.trayTouch = false }
+
+      // touch: out of the tray item on VTouchMenu's spring, back into it on close (surface.touchMenu)
+      readonly property var tc: Theme.core.surface.touchMenu
+      Spring {
+        id: touchV
+        preset: root.trayMenuOpen
+          ? { response: trayMenu.tc.openResponse / 1000 * Theme.speed, dampingRatio: trayMenu.tc.openDamping }
+          : { response: trayMenu.tc.openResponse / 1000 * Theme.speed * Theme.core.motion.exitFactor, dampingRatio: trayMenu.tc.closeDamping }
+        target: root.trayMenuOpen && root.trayTouch ? 1 : 0
+      }
+      Binding {
+        target: trayMenu; property: "opacity"; when: root.trayTouch
+        value: Math.max(0, Math.min(1, touchV.value / trayMenu.tc.fadeShare))
+        restoreMode: Binding.RestoreNone
+      }
+      transform: Scale {
+        readonly property real s: root.trayTouch ? trayMenu.tc.fromScale + (1 - trayMenu.tc.fromScale) * touchV.value : 1
+        origin.x: Math.max(0, Math.min(trayMenu.width, trayMenuWindow.anchorX - trayMenu.x))
+        origin.y: 0
+        xScale: s
+        yScale: s
+      }
 
       Connections {
         target: root
@@ -586,8 +612,8 @@ BarWidget {
           if (root.trayMenuOpen) {
             fade.stop(); flash.stop()
             trayMenu.highlighted = -1; trayMenu.flashOff = false; trayMenu.busy = false; trayMenu.pending = null
-            trayMenu.opacity = 1
-          } else fade.restart()
+            if (!root.trayTouch) trayMenu.opacity = 1
+          } else if (!root.trayTouch) fade.restart()
         }
         function onSubmenuDepthChanged() { trayMenu.highlighted = -1 }
       }
@@ -920,8 +946,8 @@ BarWidget {
     implicitWidth: visible ? root.trayItemExtent : 0
     implicitHeight: visible ? root.trayItemExtent : 0
 
-    function displayMenu(mouse) {
-      root.openTrayMenu(trayItemRoot.modelData, trayItemRoot, mouse)
+    function displayMenu(mouse, touch) {
+      root.openTrayMenu(trayItemRoot.modelData, trayItemRoot, mouse, touch)
     }
 
     TrayIcon {
@@ -942,10 +968,13 @@ BarWidget {
       property bool held: false
       onEntered: if (root.bar) root.bar.showTooltip(trayItemRoot, root.trayTooltip(modelData))
       onExited: if (root.bar) root.bar.hideTooltip(trayItemRoot)
+      // passive: only tells a finger from a pointer, the press still reaches this MouseArea
+      PointHandler { id: touchPoint; acceptedDevices: PointerDevice.TouchScreen }
       onPressAndHold: function(mouse) {
         if (mouse.button !== Qt.LeftButton) return
         held = true
-        trayItemRoot.displayMenu(mouse)
+        // a finger (tablet mode, or a touchscreen's synthesized press): the touch menu's motion
+        trayItemRoot.displayMenu(mouse, Theme.touch || touchPoint.active)
       }
       onPressed: function(mouse) {
         held = false

@@ -917,6 +917,7 @@ Item {
     pressedIndex = hoverIndex
   }
   function moveTo(mouseX, mouseY, pressed, mods) {
+    if (menuHold) { touchMenu.track(mouseX, mouseY); return }
     var m = mainOf(mouseX, mouseY), c = crossOf(mouseX, mouseY)
     pointerMain = m; pointerCross = c
     invertMagnification = (mods & Qt.ControlModifier) !== 0 && (mods & Qt.ShiftModifier) !== 0
@@ -974,6 +975,7 @@ Item {
     else { hideAnim.go(0); armAutoHide() }
   }
   function releaseAt(mouseX, mouseY, button) {
+    if (menuHold) { menuHold = false; touchMenu.release(); return }
     if (touchSwipe) { touchSwipeEnd(false); return }
     if (resizing) { resizing = false; return }
     if (dragging) { endDrag(); return }
@@ -983,7 +985,11 @@ Item {
     if (button === Qt.LeftButton && hoverIndex === idx) activate(idx)
   }
   function longPress() {
-    if (pressedIndex >= 0 && !dragging && !pressMoved) { var i = pressedIndex; pressedIndex = -1; openMenuFor(i) }
+    if (pressedIndex >= 0 && !dragging && !pressMoved) {
+      var i = pressedIndex; pressedIndex = -1
+      // a finger: Velum's touch menu out of the tile (iPadOS), still held — it slides over the rows
+      if (fingerPress) { openMenuFor(i, true); menuHold = true } else openMenuFor(i)
+    }
   }
 
   function activate(row) {
@@ -1042,19 +1048,33 @@ Item {
   }
 
   // ---- menus
-  function openMenuFor(row) {
+  property bool menuTouch: false   // the open menu is the touch menu (a finger held the tile)
+  property bool menuHold: false    // that finger is still down
+  // the menu for VTouchMenu: `enabled: false` is its `disabled`, also in submenus
+  function touchModel(list) {
+    return (list || []).map(function (e) {
+      if (!e || e.separator) return e
+      var o = Object.assign({}, e)
+      if (e.enabled === false) o.disabled = true
+      if (e.submenu) o.submenu = touchModel(e.submenu)
+      return o
+    })
+  }
+  function openMenuFor(row, touch) {
     var id = tiles.get(row).itemId
     var item = items[id]
     if (!item) return
     menuItemId = id
     menuModel = buildMenu(item)
     var t = rep.itemAt(row)
+    menuTouch = touch === true
+    if (menuTouch && t) { var tp = t.mapToItem(touchMenu, 0, 0); touchMenu.from = { x: tp.x, y: tp.y, w: t.width, h: t.height } }
     menu.anchorMain = t ? t.main : mainLength / 2
     menu.anchorCross = dockBaseline + (t ? t.visSize : tileSize) + Style.space(Theme.core.surface.dock.shape.labelGap) / 2
     hideTimer.stop()
     menuOpen = true
   }
-  function closeMenu() { menuOpen = false; armAutoHide() }
+  function closeMenu() { menuOpen = false; menuHold = false; armAutoHide() }
   onAltHeldChanged: if (menuOpen && menuItemId) menuModel = buildMenu(items[menuItemId] || {})
   function buildMenu(item) {
     var m = []
@@ -1655,6 +1675,7 @@ Item {
     function probeMove(x: string, y: string): string { root.moveTo(Number(x), Number(y), true, 0); return "ok" }
     function probeRelease(x: string, y: string): string { root.releaseAt(Number(x), Number(y), Qt.LeftButton); return "ok" }
     function probeMenu(index: int): string { root.openMenuFor(index); return "ok" }
+    function probeTouchMenu(index: int): string { root.openMenuFor(index, true); return JSON.stringify({ open: touchMenu.open, x: Math.round(touchMenu.mx), y: Math.round(touchMenu.my), w: Math.round(touchMenu.pw), rows: touchMenu.model.length }) }
     function probeMenuRun(text: string): string { var m = root.menuModel; for (var i = 0; i < m.length; i++) if (m[i].text === text) { root.menuOpen = false; root.runMenuAction(m[i]); return "ok" } return "none" }
     function probeStack(index: int): string { root.toggleStack(tiles.get(index).itemId); return "ok" }
     function probeLaunching(index: int): string { var it = root.items[tiles.get(index).itemId]; var lp = DockModel.copyMap(root.launchPending); lp[it.key] = Date.now(); root.launchPending = lp; root.rebuild(); return "ok" }
@@ -1864,10 +1885,19 @@ Item {
           }
         }
 
+        VTouchMenu {
+          id: touchMenu
+          anchors.fill: parent
+          z: 50
+          open: root.menuOpen && root.menuTouch
+          model: root.menuTouch ? root.touchModel(root.menuModel) : []
+          onTriggered: function (entry) { root.menuOpen = false; root.menuHold = false; root.runMenuAction(entry); root.armAutoHide() }
+          onDismissRequested: root.closeMenu()
+        }
         DockMenu {
           id: menu
           dock: root
-          open: root.menuOpen
+          open: root.menuOpen && !root.menuTouch
           model: root.menuModel
           z: 50
           onActivated: function (entry) { root.menuOpen = false; root.runMenuAction(entry); root.armAutoHide() }

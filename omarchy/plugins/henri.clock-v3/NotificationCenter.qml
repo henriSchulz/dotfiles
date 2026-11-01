@@ -616,34 +616,51 @@ Panel {
         }
       }
 
-      // ---- Context menu (right click / Options): Velum's menu, opens with no transition.
+      // ---- Context menu: Velum's menu — at the pointer with no transition (right click / Options),
+      // or out of the held card on a spring (a finger: VTouchMenu, iPadOS)
       Item {
         id: contextMenu
         z: 60
         property bool open: false
+        property bool touch: false
         property var entries: []
         property var handler: null
         anchors.fill: parent
-        visible: menu.visible
-        function show(sceneX, sceneY, list, fn) {
+        visible: menu.visible || touchMenu.active
+        // touchRect: the held card's rect in scene coordinates when a finger opened it
+        function show(sceneX, sceneY, list, fn, touchRect) {
           var p = keyCatcher.mapFromItem(null, sceneX, sceneY)
-          entries = list.map(function(e) { return e.separator ? e : { text: e.text, disabled: e.enabled === false, danger: !!e.danger, id: e.id } })
+          entries = list.map(function(e) { return e.separator ? e : { text: e.text, disabled: e.enabled === false, danger: !!e.danger, id: e.id, checked: e.checked } })
           handler = fn
-          menu.x = Math.min(p.x, keyCatcher.width - menu.implicitWidth - Theme.layout.module.tileInset)
-          menu.y = Math.min(p.y, keyCatcher.height - menu.implicitHeight - Theme.layout.module.tileInset)
+          touch = !!touchRect
+          if (touch) {
+            var r = keyCatcher.mapFromItem(null, touchRect.x, touchRect.y)
+            touchMenu.from = { x: r.x, y: r.y, w: touchRect.w, h: touchRect.h }
+          } else {
+            menu.x = Math.min(p.x, keyCatcher.width - menu.implicitWidth - Theme.layout.module.tileInset)
+            menu.y = Math.min(p.y, keyCatcher.height - menu.implicitHeight - Theme.layout.module.tileInset)
+          }
           open = true
         }
         function hide() { open = false }
-        MouseArea { anchors.fill: parent; enabled: contextMenu.open; acceptedButtons: Qt.AllButtons; onPressed: contextMenu.hide() }
+        function run(e) {
+          contextMenu.hide()
+          if (contextMenu.handler) contextMenu.handler(e)
+        }
+        MouseArea { anchors.fill: parent; enabled: contextMenu.open && !contextMenu.touch; acceptedButtons: Qt.AllButtons; onPressed: contextMenu.hide() }
         VMenu {
           id: menu
-          open: contextMenu.open
+          open: contextMenu.open && !contextMenu.touch
           model: contextMenu.entries
-          onTriggered: function(index) {
-            var e = contextMenu.entries[index]
-            contextMenu.hide()
-            if (contextMenu.handler) contextMenu.handler(e)
-          }
+          onTriggered: function(index) { contextMenu.run(contextMenu.entries[index]) }
+        }
+        VTouchMenu {
+          id: touchMenu
+          anchors.fill: parent
+          open: contextMenu.open && contextMenu.touch
+          model: contextMenu.entries
+          onTriggered: function(entry) { contextMenu.run(entry) }
+          onDismissRequested: contextMenu.hide()
         }
       }
     }
@@ -822,8 +839,8 @@ Panel {
       if (card.collapsedGroup) root.setExpanded(card.stackItem.key, true)
       else root.openEntry(card.entry)
     }
-    function showMenu(sx, sy) {
-      root.contextMenuFor(card.entry, sx, sy)
+    function showMenu(sx, sy, touchRect) {
+      root.contextMenuFor(card.entry, sx, sy, touchRect)
     }
 
     Item {
@@ -879,7 +896,7 @@ Panel {
           acceptedDevices: PointerDevice.TouchScreen
           longPressThreshold: Theme.delay("longPress") / 1000
           onPressedChanged: if (pressed) fired = false
-          onLongPressed: { fired = true; var p = face.mapToItem(null, point.position.x, point.position.y); card.showMenu(p.x, p.y) }
+          onLongPressed: { fired = true; var p = face.mapToItem(null, point.position.x, point.position.y), o = face.mapToItem(null, 0, 0); card.showMenu(p.x, p.y, { x: o.x, y: o.y, w: face.width, h: face.height }) }
         }
         WheelHandler {
           acceptedDevices: PointerDevice.TouchPad
@@ -1025,7 +1042,7 @@ Panel {
     }
   }
 
-  function contextMenuFor(entry, sx, sy) {
+  function contextMenuFor(entry, sx, sy, touchRect) {
     var list = [
       { text: "Mute for 1 Hour", id: "hour" },
       { text: "Mute for Today", id: "today" },
@@ -1036,10 +1053,10 @@ Panel {
       if (e.id === "hour") root.mute(3600000)
       else if (e.id === "today") root.muteUntilMidnight()
       else if (e.id === "settings") root.run("omarchy-launch-or-focus omarchy-menu 'omarchy-menu setup'")
-    })
+    }, touchRect)
   }
 
-  function widgetMenuFor(index, sx, sy) {
+  function widgetMenuFor(index, sx, sy, touchRect) {
     var row = widgetModel.get(index)
     var def = catalogueEntry(row.wid)
     var list = []
@@ -1054,7 +1071,7 @@ Panel {
       if (String(e.id).indexOf("size:") === 0) root.setWidgetSize(index, String(e.id).slice(5))
       else if (e.id === "remove") root.removeWidget(index)
       else if (e.id === "edit") root.editing = true
-    })
+    }, touchRect)
   }
 
   // A widget tile in the Flow (size from the model), with edit-mode minus and drag.
@@ -1102,7 +1119,7 @@ Panel {
         acceptedDevices: PointerDevice.TouchScreen
         longPressThreshold: Theme.delay("longPress") / 1000
         onPressedChanged: if (pressed) fired = false
-        onLongPressed: { fired = true; var p = face.mapToItem(null, point.position.x, point.position.y); root.widgetMenuFor(tile.index, p.x, p.y) }
+        onLongPressed: { fired = true; var p = face.mapToItem(null, point.position.x, point.position.y), o = face.mapToItem(null, 0, 0); root.widgetMenuFor(tile.index, p.x, p.y, { x: o.x, y: o.y, w: face.width, h: face.height }) }
       }
       // Edit mode: press and drag reorders; the ghost follows the pointer.
       DragHandler {

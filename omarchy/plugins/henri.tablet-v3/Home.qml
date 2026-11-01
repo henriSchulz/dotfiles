@@ -739,9 +739,9 @@ Item {
     var out = []
     var acts = (e.actions || []).filter(function (a) { return !home.isNewWindow(a) && a.command.length }).slice(0, cfg.menu.actionsMax)
     for (var i = 0; i < acts.length; i++) out.push({ text: acts[i].name, action: "action", actionId: acts[i].id })
-    if (out.length) out.push({ group: true })
+    if (out.length) out.push({ separator: true })
     out.push({ text: "New Window", icon: "plus", action: "new" })
-    out.push({ group: true })
+    out.push({ separator: true })
     out.push({ text: "Edit Home Screen", icon: "apps", action: "edit" })
     return out
   }

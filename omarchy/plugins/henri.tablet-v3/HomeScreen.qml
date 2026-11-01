@@ -654,7 +654,7 @@ Item {
       if (inMenu || menuHold) {
         // a finger slides over the rows; a held icon moved off the menu goes into edit mode in the hand
         iconMenu.hot = iconMenu.rowAt(x, y)
-        if (menuHold && !iconMenu.contains(x, y) && Math.hypot(x - x0, y - y0) > hs.mc.dragSlop && hs.gridTileAt(x0, y0)) {
+        if (menuHold && !iconMenu.nearby(x, y, hs.mc.dragSlop) && Math.hypot(x - x0, y - y0) > hs.mc.dragSlop && hs.gridTileAt(x0, y0)) {
           menuHold = false
           hs.menuId = ""
           hs.editRequested(true)

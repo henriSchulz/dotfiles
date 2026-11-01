@@ -71,7 +71,7 @@ sleep 3.5
 read -r kx ky < <(icon keepass)
 pt m "$kx" "$ky" d s 650; sleep 0.4; shot M3-grid
 want M3 "touch and hold a grid icon: its menu, no edit mode yet" "$(hm | jq -r '.menu + "," + (.editing | tostring)')" "keepass,false"
-pt g $((kx - 60)) $((ky + 60)) 8 16 s 200; sleep 0.3; shot M3-drag
+pt g $((kx - 120)) $((ky - 80)) 8 16 s 200; sleep 0.3; shot M3-drag
 want M3b "the held icon moved off the menu: edit mode, the menu gone" "$(hm | jq -r '.menu + "," + (.editing | tostring)')" ",true"
 pt g "$kx" "$ky" 8 16 s 900 u; sleep 0.8
 pt m 1300 900 d s 60 u; sleep 0.6
@@ -81,6 +81,11 @@ row=$(hm | jq -r .menu)
 # Edit Home Screen is the last row: under New Window
 pt m $((kx + 40)) $((ky + 147)) d s 60 u; sleep 0.8
 want M4 "Edit Home Screen from the menu" "$row,$(hm | jq -r '.editing | tostring')" "keepass,true"
+pt m 1300 900 d s 60 u; sleep 0.6
+
+# a grid icon: the finger slides down across the gap onto the rows (no edit mode on the way), lifts on one
+pt m "$kx" "$ky" d s 650 g $((kx + 40)) $((ky + 147)) 10 16 s 120 u; sleep 0.8
+want M5 "held grid icon, slid onto Edit Home Screen, lifted: chosen, not dragged" "$(hm | jq -r '(.editing | tostring) + "," + (.log | map(select(startswith("menu keepass"))) | last)')" "true,menu keepass edit"
 pt m 1300 900 d s 60 u; sleep 0.6
 
 echo "passed $pass, failed $fail${failed[*]:+: ${failed[*]}}"
