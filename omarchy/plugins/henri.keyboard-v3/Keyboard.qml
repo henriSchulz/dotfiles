@@ -133,8 +133,31 @@ Item {
   }
   function holdAt(screen, x, y, kind) {
     if (kind === "touch" && root.ownMenu.test(root.appId)) return
+    if (where.running || clip.running) return
     root.pendingHold = { screen: screen, x: x, y: y }
-    clip.running = true                 // first the clipboard, so the words are known when it opens
+    where.running = true                // first: is the finger on the focused app's window at all
+  }
+  // fcitx5 keeps the last text field focused when the screen shows no window (the tablet's home
+  // screen, an empty workspace) or the finger is on the bar: the menu opens only on the focused
+  // window, on the workspace its screen shows (Henri 2026-11-01: only on text)
+  Process {
+    id: where
+    command: ["sh", "-c", "hyprctl -j monitors; echo; echo --; hyprctl -j activewindow"]
+    stdout: StdioCollector {}
+    onExited: function (code) {
+      if (root.pendingHold && root.onFocusedWindow(String(where.stdout.text), root.pendingHold)) clip.running = true
+      else root.pendingHold = null
+    }
+  }
+  function onFocusedWindow(text, h) {
+    var parts = text.split("\n--\n"), mons = [], w = null
+    try { mons = JSON.parse(parts[0]); w = JSON.parse(parts[1]) } catch (e) { return false }
+    var m = mons.filter(function (o) { return o.name === h.screen })[0]
+    if (!m || !w || !w.address || w.monitor !== m.id || !w.workspace) return false
+    var shown = w.workspace.id === m.activeWorkspace.id || (m.specialWorkspace && w.workspace.id === m.specialWorkspace.id)
+    if (!shown) return false
+    var gx = m.x + h.x, gy = m.y + h.y
+    return gx >= w.at[0] && gx <= w.at[0] + w.size[0] && gy >= w.at[1] && gy <= w.at[1] + w.size[1]
   }
   Process {
     id: clip

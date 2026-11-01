@@ -126,6 +126,8 @@ fullLayers() { hyprctl layers -j | jq '[.TB.levels[][] | select(.namespace == "v
 base=$(fullLayers)
 WAYLAND_DISPLAY=$NWL wl-copy --clear 2>/dev/null
 menuLayer() { [[ $(fullLayers) -gt $base ]] && echo true || echo false; }
+# a window with a text field under the finger (an app neither a terminal nor one with its own menu)
+hyprctl dispatch "hl.dsp.exec_cmd('foot --app-id velum-text', { workspace = '$(hyprctl monitors -j | jq '.[] | select(.name=="TB") | .activeWorkspace.id')' })" >/dev/null; sleep 1.5
 c omarchy.keyboard hold TB 500 400 touch 0 >/dev/null; sleep 0.5
 want M01 "no text field: no menu" "$(ms | jq .open),$(menuLayer)" "false,false"
 c omarchy.keyboard hold TB 500 400 touch 1 >/dev/null; sleep 0.5
@@ -139,6 +141,7 @@ want M04 "with something to paste, Paste; near the top it opens below the finger
 shot M04-below
 pt m 900 650 d s 40 u; sleep 0.6
 want M05 "a tap beside it closes it and types nothing" "$(ms | jq .open),$(menuLayer),$(sent | awk -F'|' '{print $NF}')" "false,false,combo ctrl c"
+hyprctl dispatch 'hl.dsp.window.close()' >/dev/null; sleep 0.5
 # apps: a terminal copies with Shift and has no Cut; an app with its own long-press menu keeps a finger's
 hyprctl dispatch "hl.dsp.exec_cmd('foot --app-id foot', { workspace = '$(hyprctl monitors -j | jq '.[] | select(.name=="TB") | .activeWorkspace.id')' })" >/dev/null; sleep 1.5
 c omarchy.keyboard hold TB 500 400 touch 1 >/dev/null; sleep 0.5
@@ -153,6 +156,10 @@ c omarchy.keyboard hold TB 500 400 pointer 1 >/dev/null; sleep 0.5
 want M09 "but a pointer hold (the iPad) gets the menu" "$(ms | jq .open)" "true"
 hyprctl dispatch 'hl.dsp.window.close()' >/dev/null; sleep 0.6
 want M10 "the app going closes the menu" "$(ms | jq .open)" "false"
+# the home screen of tablet mode: an empty workspace, though fcitx5 still names the last text field
+hyprctl dispatch "hl.dsp.focus({ workspace = 'emptynm' })" >/dev/null; sleep 0.5
+c omarchy.keyboard hold TB 500 400 touch 1 >/dev/null; sleep 0.6
+want M11 "no window under the finger (empty workspace): no menu, whatever fcitx5 says" "$(ms | jq .open),$(menuLayer)" "false,false"
 
 echo "keyboard e2e: $pass ok, $fail failed"
 [[ -n ${KEEP:-} ]] || rig/rig.sh stop >/dev/null
