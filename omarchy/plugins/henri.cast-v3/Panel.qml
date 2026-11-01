@@ -139,6 +139,10 @@ Panel {
   function setPerf(on) {
     Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.event(\"ipadcast perf " + (on ? "on" : "off") + "\")"])
   }
+  // Fast Mode: a smaller stream (the tablet scales it up), a few ms less latency (ipadcast, "fast" in cast.json)
+  function setFast(on) {
+    Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.event(\"ipadcast fast " + (on ? "on" : "off") + "\")"])
+  }
   // the tablet's microphone as this Mac's input, kept until switched off (ipadcast, type 11 to the tablet)
   function setMic(on) {
     Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.event(\"ipadcast mic " + (on ? "on" : "off") + "\")"])
@@ -238,6 +242,29 @@ Panel {
   }
 
   readonly property var i: root.info || ({})
+
+  // a tile shows its new state at the click: the tablet answers only in its next report (every
+  // 2 s, its cover a round later). The wish stands until a report agrees, at most 6 s
+  property var pending: ({})
+  function want(key, on) {
+    const p = Object.assign({}, pending)
+    p[key] = { on: on, until: Date.now() / 1000 + 6 }
+    pending = p
+  }
+  function tileOn(key, reported) {
+    const p = pending[key]
+    return p && now < p.until ? p.on : reported
+  }
+  onInfoChanged: {
+    const r = { mac: i.macInput !== false, tablet: i.tabletInput === true, light: i.kbdlight === true }
+    const p = {}
+    let changed = false
+    for (const k in pending) {
+      if (pending[k].on === r[k] || now >= pending[k].until) changed = true
+      else p[k] = pending[k]
+    }
+    if (changed) pending = p
+  }
   readonly property real third: (content.width - 2 * Theme.layout.module.gap) / 3
   function goBack() { if (stack.depth > 1) stack.pop(); else root.close() }
 
@@ -299,9 +326,9 @@ Panel {
         spacing: Theme.layout.module.gap
         Repeater {
           model: [
-            { text: "Mac", icon: "laptop", on: root.i.macInput !== false, can: true, key: "mac" },
-            { text: "Tablet", icon: "tablet", on: root.i.tabletInput === true, can: typeof root.i.tabletInput === "boolean", key: "tablet" },
-            { text: "Keyboard Light", icon: "keyboard.light", on: root.i.kbdlight === true, can: root.i.keyboard === true, key: "light" }
+            { text: "Mac", icon: "laptop", on: root.tileOn("mac", root.i.macInput !== false), can: true, key: "mac" },
+            { text: "Tablet", icon: "tablet", on: root.tileOn("tablet", root.i.tabletInput === true), can: typeof root.i.tabletInput === "boolean", key: "tablet" },
+            { text: "Keyboard Light", icon: "keyboard.light", on: root.tileOn("light", root.i.kbdlight === true), can: root.i.keyboard === true, key: "light" }
           ]
           VTile {
             id: inputTile
@@ -313,8 +340,12 @@ Panel {
               anchors.fill: parent; radius: parent.radius
               enabled: inputTile.modelData.can
               selected: inputTile.modelData.on && inputTile.modelData.can
-              onClicked: inputTile.modelData.key === "light" ? root.setKeyboardLight(!inputTile.modelData.on)
-                : root.setInput(inputTile.modelData.key, !inputTile.modelData.on)
+              onClicked: {
+                const key = inputTile.modelData.key, on = !inputTile.modelData.on
+                if (key === "light") root.setKeyboardLight(on)
+                else root.setInput(key, on)
+                root.want(key, on)   // last: the model is rebuilt, this delegate goes
+              }
               Column {
                 anchors.centerIn: parent
                 VIcon { anchors.horizontalCenter: parent.horizontalCenter; name: inputTile.modelData.icon
@@ -335,6 +366,16 @@ Panel {
         detail: root.i.perf === true ? "Smoothest, uses more battery" : ""
         VSwitch { surface: "popover"; checked: root.i.perf === true; enabled: typeof root.i.perfTablet === "boolean"
           onToggled: c => root.setPerf(c) }
+      }
+
+      // -- Fast Mode: a smaller stream for a few ms less latency. Dimmed while ipadcast does not
+      // offer it (fast absent: an older server)
+      VModuleRow {
+        width: parent.width; icon: "bolt"; text: "Fast Mode"; clickable: false
+        dim: typeof root.i.fast !== "boolean"
+        detail: "Lower resolution, a few ms less latency"
+        VSwitch { surface: "popover"; checked: root.i.fast === true; enabled: typeof root.i.fast === "boolean"
+          onToggled: c => root.setFast(c) }
       }
 
       // -- Microphone: the tablet's microphone as this Mac's input. Off, the tablet captures nothing.
