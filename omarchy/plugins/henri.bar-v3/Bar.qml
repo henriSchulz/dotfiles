@@ -1187,7 +1187,8 @@ Item {
       }
     }
     // Tablet mode: a finger dragged down from the bar (or from the top strip over a fullscreen
-    // app) pulls Control Center (right third) or Notification Center (the rest) after it —
+    // app) pulls the system menu (left third), Control Center (right third) or Notification
+    // Center (the middle) after it —
     // VGestures, the surfaces follow. Below surface.tablet.slop it stays a tap on the bar.
     DragHandler {
       id: touchPull
@@ -1208,9 +1209,12 @@ Item {
       onActiveChanged: {
         var name = barWindow.screen ? barWindow.screen.name : ""
         if (active) {
-          // the item above the finger (VPullZone), else the right share Control Center, the rest Notification Center
+          // the item above the finger (VPullZone), else the left share the system menu, the right
+          // share Control Center, the middle Notification Center
           surface = VGestures.zoneAt(name, centroid.pressPosition.x)
-          if (surface === "") surface = centroid.pressPosition.x > barWindow.width * (1 - Theme.core.surface.tablet.controlCenterShare) ? "controlCenter" : "notifications"
+          var px = centroid.pressPosition.x, tt = Theme.core.surface.tablet
+          if (surface === "") surface = px < barWindow.width * tt.systemMenuShare ? "systemMenu"
+                                      : px > barWindow.width * (1 - tt.controlCenterShare) ? "controlCenter" : "notifications"
           cancelled = false; samples = []
         } else if (!cancelled) {
           VGestures.pull(surface, name, "end", travel(), speed())

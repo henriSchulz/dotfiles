@@ -191,6 +191,10 @@ Panel {
   Spring { id: logoScale; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: root.logoSqueezed ? Theme.scale("press") : 1 }
   Timer { id: logoPulse; interval: Theme.dur("instant") || 1; onTriggered: root.logoSqueezed = false }
 
+  // a finger pulls the menu down from the top edge above the logo or the app name (tablet mode,
+  // cast screen); henri.bar-v3 also sends the left third of the edge here
+  VPullZone { surface: "systemMenu"; item: root; island: win; opened: root.opened; onCommit: root.open() }
+
   // A Dynamic Island: the left island of the bar (the logo) grows into the menu, and on into the
   // About or confirm card (it keeps its left and top edge, and morphs between the pages).
   VIslandWindow {

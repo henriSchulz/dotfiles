@@ -306,7 +306,8 @@ Item {
     var z = VGestures.zoneAt(screenName, x)   // the menu-bar item above the finger (VPullZone)
     if (z !== "") return z
     var c = root.tt.cast, u = w > 0 ? x / w : c.spacesFrom
-    return u < c.notificationsShare ? "notifications" : u >= c.spacesFrom && u < c.spacesTo ? "spaces" : "controlCenter"
+    return u < c.systemMenuShare ? "systemMenu" : u < c.notificationsShare ? "notifications"
+         : u >= c.spacesFrom && u < c.spacesTo ? "spaces" : "controlCenter"
   }
   function castEdge(screenName, edge, phase, x, y) {
     var t = Date.now()
