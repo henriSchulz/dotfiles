@@ -232,10 +232,15 @@ hl.unbind("ALT + SHIFT + TAB")
 o.bind("ALT + TAB", "Window switcher", hl.dsp.event("app-switcher next"))
 o.bind("ALT + SHIFT + TAB", "Window switcher (previous)", hl.dsp.event("app-switcher prev"))
 o.bind("ALT + ESCAPE", "Window switcher (cancel)", hl.dsp.event("app-switcher cancel"))
--- transparent: Nach Alt+Tab sperrt ("shadowt") Hyprland alle Bindings auf der
--- noch gedrückten Alt-Taste — ohne das Flag feuert das Loslassen nie.
-o.bind("ALT + Alt_L", nil, hl.dsp.event("app-switcher commit"), { release = true, transparent = true })
-o.bind("ALT + SHIFT + Alt_L", nil, hl.dsp.event("app-switcher commit"), { release = true, transparent = true })
+-- Loslassen von Alt nicht als Release-Bind: der feuerte selbst mit transparent
+-- nie (nachgemessen 2026-11-01: next kam an, commit nie, Reihe blieb offen).
+-- Der Tasten-Hook läuft vor allen Binds und sieht jedes Loslassen; Keycode 64 =
+-- Alt_L (xkb). Ohne laufende Geste antwortet das Plugin nur "idle".
+hl.on("input.keyboard.key", function(keycode, _, state)
+  if keycode == 64 and state == 0 then
+    hl.dispatch(hl.dsp.event("app-switcher commit"))
+  end
+end)
 
 -- Mission Control (henri.missioncontrol) auf F8: die einzige noch freie Taste.
 -- Weder Omarchy noch diese Datei hatten F8 belegt, und auch die Medienfunktion
