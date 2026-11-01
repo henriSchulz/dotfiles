@@ -42,7 +42,9 @@ hl.config({
       brightness = 0.92,
       vibrancy = 0.17,
       vibrancy_darkness = 0.35,
-      popups = true,
+      -- off: Velum's menus and popovers are opaque; blurring popups only showed their shadow
+      -- margin as a grey box behind every GTK menu (Henri, YouTube app, 2026-11-01)
+      popups = false,
       popups_ignorealpha = 0.2,
     },
   },
