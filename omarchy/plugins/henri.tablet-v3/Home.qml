@@ -1099,6 +1099,8 @@ Item {
               entry: modelData
               areaW: overlay.width
               areaH: overlay.height
+              origin: { var m = home.monitorOf(home.screenName), o = m ? m.lastIpcObject : null
+                        return o ? Qt.point(o.x || 0, o.y || 0) : Qt.point(0, 0) }
               labelOn: Math.max(0, labelV.value)
               capture: true
             }

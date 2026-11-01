@@ -19,6 +19,7 @@ Item {
   property var cfg: Theme.core.surface.tablet.home
   property real areaW: 0
   property real areaH: 0
+  property point origin: Qt.point(0, 0)  // the app area's top left on the Hyprland layout
   property bool capture: false         // take (and keep) a snapshot of the window
   property real labelOn: 0             // the switcher's name above the card
   readonly property bool hasShot: shot.hasContent
@@ -114,14 +115,25 @@ Item {
     VShadow { layers: Theme.r.popover.shadow; radius: card.radius }
   }
 
+  // where the window sits in the app area: the one on top fills it (fullscreen), an app's windows
+  // under it fill only the work area below the bar (monocle), so their snapshot goes there and the
+  // window background around it, never a transparent margin with the card's shadow showing
+  readonly property rect geo: {
+    var o = entry.toplevel ? entry.toplevel.lastIpcObject : null
+    if (!o || !o.at || !o.size || o.fullscreen || areaW <= 0) return Qt.rect(0, 0, areaW, areaH)
+    var x = o.at[0] - origin.x, y = o.at[1] - origin.y, w = o.size[0], h = o.size[1]
+    if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > areaW + 1 || y + h > areaH + 1) return Qt.rect(0, 0, areaW, areaH)
+    return Qt.rect(x, y, w, h)
+  }
+
   // ---- the content: the window's snapshot, or its icon on the window background until it arrives
   Item {
     id: content
     anchors.fill: parent
+    clip: true
     Rectangle {
       anchors.fill: parent
       color: Theme.r.bg.window
-      visible: !shot.hasContent
       Image {
         anchors.centerIn: parent
         width: card.areaH * card.cfg.splashIcon
@@ -130,11 +142,15 @@ Item {
         sourceSize.width: width
         sourceSize.height: height
         asynchronous: true
+        visible: !shot.hasContent
       }
     }
     ScreencopyView {
       id: shot
-      anchors.fill: parent
+      x: card.geo.x
+      y: card.geo.y
+      width: card.geo.width
+      height: card.geo.height
       captureSource: card.capture && card.entry.toplevel ? card.entry.toplevel.wayland : null
       live: false
       paintCursor: false

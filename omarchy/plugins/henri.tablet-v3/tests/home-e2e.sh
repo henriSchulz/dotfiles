@@ -265,6 +265,35 @@ if runs H16; then
   want H16 "a touchpad nudge down neither shrinks the app nor opens the window bar" "$(c henri.tablet state | jq -r '.log | map(select(. == "down" or . == "tap")) | length'),$(hyprctl monitors -j | jq --argjson w "$ws0" '.[] | select(.name=="TB") | .activeWorkspace.id == $w')" "0,true"
 fi
 
+if runs H17; then
+  # two windows of one app on its workspace, as tablet.lua stacks them: monocle, the newer one in
+  # fullscreen, the older one the work area's size below the bar. Its card shows its snapshot there,
+  # on the window background, never a narrower snapshot over the card's shadow.
+  padFromApp
+  n0=$(hyprctl clients -j | jq 'length')
+  ws=$(hyprctl monitors -j | jq '.[] | select(.name=="TB") | .activeWorkspace.id')
+  layout0=$(hyprctl getoption general:layout -j | jq -r .str)
+  gin0=$(hyprctl getoption general:gaps_in -j | jq -r '.css | split(" ")[0]')
+  gout0=$(hyprctl getoption general:gaps_out -j | jq -r '.css | split(" ")[0]')
+  border0=$(hyprctl getoption general:border_size -j | jq -r .int)
+  hyprctl eval "hl.config({ general = { layout = 'monocle', gaps_in = 0, gaps_out = 0, border_size = 0 } })" >/dev/null
+  hyprctl dispatch "hl.dsp.exec_cmd('foot --app-id app4')" >/dev/null; sleep 1.5
+  hyprctl dispatch "hl.dsp.window.move({ workspace = '$ws', follow = true, window = 'class:app4' })" >/dev/null; sleep 0.3
+  for a in $(hyprctl clients -j | jq -r --argjson w "$ws" '.[] | select(.workspace.id == $w and .class != "app4") | .address'); do
+    hyprctl dispatch "hl.dsp.window.fullscreen({ mode = 'fullscreen', action = 'unset', window = 'address:$a' })" >/dev/null
+  done
+  hyprctl dispatch "hl.dsp.window.fullscreen({ mode = 'fullscreen', action = 'set', window = 'class:app4' })" >/dev/null; sleep 0.8
+  under=$(hyprctl clients -j | jq -c --argjson w "$ws" '[.[] | select(.workspace.id == $w and .fullscreen == 0) | .size][0]')
+  c henri.tablet clearLog >/dev/null
+  edgePull 220 220 350
+  sleep 1.2; shot H17-stacked-switcher
+  want H17 "the App Switcher: a card for each of the app's windows" "$(hm | jq -r '.mode + "," + (.cards | length | tostring)')" "switcher,$((n0 + 1))"
+  want H17b "the window under it fills the width (monocle), not half of it" "$(jq '.[0]' <<<"$under")" "$W"
+  pt m 30 $((H / 2)) d s 40 u; sleep 1.5
+  hyprctl dispatch "hl.dsp.window.close({ window = 'class:app4' })" >/dev/null
+  hyprctl eval "hl.config({ general = { layout = '$layout0', gaps_in = $gin0, gaps_out = $gout0, border_size = $border0 } })" >/dev/null; sleep 0.5
+fi
+
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"
 [[ ${KEEP:-} ]] || rig/rig.sh stop >/dev/null 2>&1
 [[ $fail == 0 ]]
