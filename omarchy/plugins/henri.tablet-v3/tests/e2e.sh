@@ -137,11 +137,19 @@ if runs T06; then
 fi
 
 if runs T07; then
+  # the left third pulls the system menu (Henri 2026-11-01: not Notification Center)
   pt m 200 12 d s 60 g 200 160 20 16 s 60
   shot T07-mid
   pt g 200 420 10 16 s 30 u
   sleep 0.8; shot T07
-  want T07 "pulling the left of the bar opens Notification Center" "$(c omarchy.clock centerState | jq .opened 2>/dev/null || c omarchy.clock centerState)" "true"
+  want T07 "pulling the left of the bar opens the system menu" "$(c henri.system-menu state | jq .opened),$(c omarchy.clock centerState | jq .opened 2>/dev/null)" "true,false"
+  c henri.system-menu close; sleep 0.8
+  # the middle, beside every item, still pulls Notification Center
+  cc=$(c henri.tablet view | jq '.zones.TB.controlCenter[0] | floor'); nx=$(( (W / 3 + cc) / 2 ))
+  pt m $nx 12 d s 60 g $nx 160 20 16 s 60
+  pt g $nx 420 10 16 s 30 u
+  sleep 0.8; shot T07b
+  want T07b "pulling the middle of the bar (x $nx) opens Notification Center" "$(c omarchy.clock centerState | jq .opened 2>/dev/null || c omarchy.clock centerState)" "true"
   c omarchy.clock close; sleep 0.8
 fi
 
@@ -157,7 +165,7 @@ fi
 if runs T09; then
   pt m 200 12 d s 60 g 200 30 6 16 s 30 g 200 14 6 16 u
   sleep 0.7
-  want T09 "a short pull down and back leaves Notification Center shut" "$(c omarchy.clock centerState | jq .opened 2>/dev/null)" "false"
+  want T09 "a short pull down and back leaves the system menu shut" "$(c henri.system-menu state | jq .opened)" "false"
 fi
 
 if runs T10; then
@@ -279,13 +287,25 @@ if runs T20; then
   edge() { hyprctl dispatch "hl.dsp.event(\"velum-edge TB top $1 $2 $3\")" >/dev/null; }
   pullAt() { c henri.tablet clearLog >/dev/null; edge down "$1" 2; sleep 0.1; edge move "$1" 120; sleep 0.1; edge move "$1" 260; sleep 0.1; edge up "$1" 260; sleep 1; }
   zx() { view | jq -r --arg s "$1" '.zones.TB[$s] | (.[0] + .[1]) / 2 | floor'; }
-  for s in controlCenter spaces battery; do
+  for s in systemMenu controlCenter spaces battery; do
     x=$(zx $s)
     pullAt "$x"; shot "T20-$s"
     island=$(hyprctl layers -j | jq '[.TB.levels[][] | select(.namespace == "velum-surface" and .w >= 300)] | length > 0')
     want "T20-$s" "a pull above the $s item (x $x) opens it" "$(log | jq -r '.[0]'),$island" "cast:top:$s,true"
-    hyprctl dispatch 'hl.dsp.event("menu close")' >/dev/null; c henri.control-center-v3 close >/dev/null; c henri.power close >/dev/null; sleep 0.8
+    hyprctl dispatch 'hl.dsp.event("menu close")' >/dev/null; c henri.control-center-v3 close >/dev/null; c henri.power close >/dev/null; c henri.system-menu close >/dev/null; sleep 0.8
   done
+fi
+
+if runs T21; then
+  # beside every item the shares of surface.tablet.cast decide: left the system menu, then Notification Center
+  edge() { hyprctl dispatch "hl.dsp.event(\"velum-edge TB top $1 $2 $3\")" >/dev/null; }
+  pullAt() { c henri.tablet clearLog >/dev/null; edge down "$1" 2; sleep 0.1; edge move "$1" 120; sleep 0.1; edge move "$1" 260; sleep 0.1; edge up "$1" 260; sleep 1; }
+  pullAt $((W * 15 / 100)); shot T21-left
+  want T21 "a cast pull at the far left opens the system menu" "$(log | jq -r '.[0]'),$(c henri.system-menu state | jq .opened)" "cast:top:systemMenu,true"
+  c henri.system-menu close >/dev/null; sleep 0.8
+  pullAt $((W * 30 / 100)); shot T21-nc
+  want T21b "a cast pull left of centre opens Notification Center" "$(log | jq -r '.[0]'),$(c omarchy.clock centerState | jq .opened 2>/dev/null)" "cast:top:notifications,true"
+  c omarchy.clock close >/dev/null; sleep 0.8
 fi
 
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"

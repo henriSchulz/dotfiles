@@ -57,6 +57,17 @@ Item {
   signal unfolded(string id)         // an app dragged out of the open folder (edit mode)
   signal folderRequested(string id)  // open ("folder:…") or close ("") a folder
   signal widgetTapped(string id, string item)   // a widget and what it shows (the photo's id)
+  // the context menu of an app's icon (IconMenu.qml, iPadOS: touch and hold): the app it is open for,
+  // the one it still lifts while it closes, and its rows (Home.qml)
+  property string menuId: ""
+  property string menuHeld: ""
+  property var menuEntries: function (id) { return [] }
+  signal menuChosen(string id, var entry)
+  readonly property var mc: cfg.menu
+  // the rest of the home screen goes under the blurred wallpaper while a menu is open
+  readonly property real menuFade: 1 - mc.gridFade * iconMenu.shown
+  onInteractiveChanged: if (!interactive) menuId = ""
+  onEditingChanged: if (editing) menuId = ""
 
   function slotOf(id) { var i = hs.shown.indexOf(id); return i < 0 ? 0 : i }
   // cells: a widget spans several, icons flow around it (HM.place)
@@ -113,7 +124,7 @@ Item {
   Item {
     id: track
     x: hs.pageX
-    opacity: hs.gridOpacity * (1 - Math.min(1, hs.fv))
+    opacity: hs.gridOpacity * (1 - Math.min(1, hs.fv)) * hs.menuFade
     visible: opacity > 0.002
     scale: hs.gridScale
     transformOrigin: Item.Center
@@ -200,7 +211,7 @@ Item {
             origin: Qt.point(hs.pageX + tile.x + img.x + (img.width - width) / 2, tile.y + img.y + (img.height - height) / 2)
           }
           Image {
-            visible: !tile.isFolder && !tile.isWidget
+            visible: !tile.isFolder && !tile.isWidget && hs.menuHeld !== tile.appId
             anchors.fill: parent
             source: img.source
             sourceSize.width: width * 2
@@ -234,7 +245,7 @@ Item {
     anchors.bottomMargin: hs.cfg.dotsAbove
     spacing: hs.cfg.dot + hs.cfg.labelGap
     visible: hs.pages > 1 && hs.gridOpacity > 0.002
-    opacity: hs.gridOpacity * (1 - Math.min(1, hs.fv))
+    opacity: hs.gridOpacity * (1 - Math.min(1, hs.fv)) * hs.menuFade
     Repeater {
       model: hs.pages
       Rectangle {
@@ -255,7 +266,7 @@ Item {
     anchors.bottomMargin: hs.g.dockGap - hs.dockShift
     width: dockRow.width + 2 * hs.g.dockPad
     height: hs.g.dockH
-    opacity: 1 - Math.min(1, hs.fv)
+    opacity: (1 - Math.min(1, hs.fv)) * hs.menuFade
     visible: opacity > 0.002
     readonly property real radius: hs.g.dockIcon * hs.cfg.iconRadius + hs.g.dockPad
     // design 3 "Smoke" (lab/web/dock.html): dark tinted glass over the blurred wallpaper, a light
@@ -326,7 +337,7 @@ Item {
             color: hs.smoky ? hs.dk.divider : Theme.r.popover.line
           }
           Image {
-            visible: !parent.modelData.sep
+            visible: !parent.modelData.sep && hs.menuHeld !== parent.appId
             anchors.fill: parent
             source: parent.modelData.icon || ""
             sourceSize.width: width * 2
@@ -374,7 +385,7 @@ Item {
   // the blurred wallpaper behind it: here (the gesture overlay covers the screen) or in a window
   // of its own under this one (folderBackdrop false: the home screen's window ends at the bar)
   property bool folderBackdrop: true
-  readonly property real folderShown: fv
+  readonly property real folderShown: Math.max(fv, iconMenu.shown)
   FolderBackdrop {
     x: hs.wallRect.x; y: hs.wallRect.y; width: hs.wallRect.width; height: hs.wallRect.height
     visible: hs.folderBackdrop && opacity > 0.002
@@ -596,6 +607,8 @@ Item {
     interval: Theme.delay("longPress")
     onTriggered: {
       if (finger.moved || !finger.down0) return
+      var id = hs.editing || finger.inFolder ? "" : hs.appAt(finger.x0, finger.y0)
+      if (id && !HM.isFolder(id) && !HM.isWidget(id) && hs.openMenu(id)) { finger.menuHold = true; return }
       if (!hs.editing) hs.editRequested(true)
       if (finger.inFolder) return
       if (hs.beginDrag(finger.x0, finger.y0)) finger.dragging = true
@@ -618,16 +631,37 @@ Item {
     property int nextIndex: -1         // the slot under a held icon, before the others make room
     property bool dragFolder: false
     property bool inFolder: false      // the press began with a folder open
+    property bool menuHold: false      // the press opened the context menu and is still down
+    property bool inMenu: false        // the press began on the open context menu
+    property bool swallow: false       // the press closed the context menu: nothing else
     property var samples: []
     function down(x, y) {
       x0 = x; y0 = y; lastX = x; moved = false; dragging = false; down0 = true; samples = [[Date.now(), x]]
+      menuHold = false; inMenu = false; swallow = false
+      if (hs.menuId) {
+        if (iconMenu.contains(x, y)) { inMenu = true; iconMenu.hot = iconMenu.rowAt(x, y) }
+        else { swallow = true; hs.menuId = "" }   // a tap beside the menu closes it (iPadOS)
+        return
+      }
       inFolder = hs.openFolder !== ""
       if (inFolder) { hs.pressedId = hs.folderAppAt(x, y); if (hs.pressedId) hold.restart(); return }
       hs.pressedId = hs.appAt(x, y)
-      if (hs.gridTileAt(x, y)) hold.restart()
+      if (hs.gridTileAt(x, y) || (!hs.editing && hs.pressedId)) hold.restart()
     }
     function move(x, y) {
       if (dragging) { hs.dragTo(x, y); return }
+      if (swallow) return
+      if (inMenu || menuHold) {
+        // a finger slides over the rows; a held icon moved off the menu goes into edit mode in the hand
+        iconMenu.hot = iconMenu.rowAt(x, y)
+        if (menuHold && !iconMenu.contains(x, y) && Math.hypot(x - x0, y - y0) > hs.mc.dragSlop && hs.gridTileAt(x0, y0)) {
+          menuHold = false
+          hs.menuId = ""
+          hs.editRequested(true)
+          if (hs.beginDrag(x0, y0)) { dragging = true; hs.dragTo(x, y) }
+        }
+        return
+      }
       if (inFolder) {
         if (!moved && Math.hypot(x - x0, y - y0) > Theme.core.surface.tablet.slop) { moved = true; hold.stop(); if (!hs.editing) hs.pressedId = "" }
         // edit mode: an app pulled out of the panel goes back to the grid, the folder closes
@@ -652,6 +686,9 @@ Item {
     function up() {
       hold.stop(); down0 = false
       if (dragging) { dragging = false; hs.drop(); return }
+      if (swallow) { swallow = false; return }
+      // lifted on a row chooses it; anywhere else the menu stays open (iPadOS)
+      if (inMenu || menuHold) { inMenu = false; menuHold = false; var row = iconMenu.hot; if (row >= 0) iconMenu.choose(row); else iconMenu.hot = -1; return }
       var id = hs.pressedId
       hs.pressedId = ""
       if (inFolder) {
@@ -676,6 +713,7 @@ Item {
     }
     function cancel() {
       hold.stop(); down0 = false; inFolder = false
+      if (swallow || inMenu || menuHold) { swallow = false; inMenu = false; menuHold = false; if (!iconMenu.busy) iconMenu.hot = -1; return }
       if (dragging) { dragging = false; hs.drop(); return }
       hs.pressedId = ""; if (moved) hs.pageReleased(0)
     }
@@ -698,6 +736,38 @@ Item {
     onPositionChanged: function (m) { finger.move(m.x, m.y) }
     onReleased: function (m) { finger.up() }
     onCanceled: finger.cancel()
+  }
+
+  // ---- the context menu of an app's icon
+  // the icon's box (not its visible body: the lifted copy scales by the icon's metrics itself)
+  function iconBox(id) {
+    for (var i = 0; i < dockRow.children.length; i++) {
+      var d = dockRow.children[i]
+      if (d.appId === id) { var p = d.mapToItem(hs, 0, 0); return { x: p.x, y: p.y + hs.dockShift, w: d.width, icon: d.modelData.icon } }
+    }
+    var t = gridTileAt(finger.x0, finger.y0)
+    if (t && t.appId === id) { var q = t.mapToItem(hs, t.icon.x, t.icon.y); return { x: q.x, y: q.y, w: t.icon.width, icon: t.modelData.icon } }
+    return null
+  }
+  function openMenu(id) {
+    var box = iconBox(id), list = hs.menuEntries(id) || []
+    if (!box || !list.length) return false
+    iconMenu.entries = list
+    iconMenu.from = box
+    iconMenu.iconSource = box.icon || ""
+    iconMenu.pressScale = hs.cfg.pressScale
+    hs.pressedId = ""
+    hs.menuHeld = id
+    hs.menuId = id
+    return true
+  }
+  IconMenu {
+    id: iconMenu
+    anchors.fill: parent
+    open: hs.menuId !== ""
+    onActiveChanged: if (!active) hs.menuHeld = ""
+    onCloseRequested: hs.menuId = ""
+    onChosen: function (entry) { hs.menuChosen(hs.menuHeld, entry) }
   }
 
   // edit mode ends with Done (iPadOS, top right), as with a tap on an empty spot

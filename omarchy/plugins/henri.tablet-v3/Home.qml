@@ -126,7 +126,10 @@ Item {
       try { cats = (e.categories || []).map(String) } catch (err) {}
       var cmd = []
       try { cmd = (e.command || []).map(String) } catch (err) {}
-      map[id] = { id: id, name: String(e.name || id), icon: home.iconOf(e.icon), cats: cats, command: cmd }
+      // the entry's own actions (Chromium's New Incognito Window …): rows of the icon's context menu
+      var acts = []
+      try { acts = (e.actions || []).map(function (a) { return { id: String(a.id || ""), name: String(a.name || a.id || ""), command: (a.command || []).map(String) } }) } catch (err) {}
+      map[id] = { id: id, name: String(e.name || id), icon: home.iconOf(e.icon), cats: cats, command: cmd, actions: acts }
       if (!home.homeHides(e, id)) list.push(id)
     }
     list.sort(function (a, b) { return map[a].name.localeCompare(map[b].name) })
@@ -378,7 +381,7 @@ Item {
   // drop whatever the overlay is doing (a new finger always wins over a stuck animation)
   function abort() {
     settleTick.stop(); letGo.stop(); enterLater.stop(); openLater.stop(); closeLater.stop(); relayoutLater.stop()
-    settleCheck = null; launchedId = ""; armed = false; homeSwitchAt = 0
+    settleCheck = null; launchedId = ""; armed = false; homeSwitchAt = 0; appSwitchAt = 0
     mode = emptyOn(screenName) ? "home" : "idle"
     note("abort")
     endStat("abort")
@@ -572,6 +575,7 @@ Item {
   // the first empty workspace on the gesture's screen (not just any empty one: another monitor's
   // would leave this screen on its app)
   property real homeSwitchAt: 0       // when the last switch to an empty workspace went out
+  property real appSwitchAt: 0        // when the last switch to an app's workspace went out
   function goHomeNow() {
     homeSwitchAt = Date.now()
     var mon = String(screenName).replace(/[^A-Za-z0-9_-]/g, "")
@@ -641,9 +645,11 @@ Item {
     layoutApp(i, i === was ? hand : null)
     for (var j = 0; j < cards.length; j++) if (j !== i && card(j) && Math.abs(j - i) > 1) card(j).to("o", 0, "snappy")
     var e = cards[i]
+    // another app's workspace slides in under the card: the overlay waits for that slide too
+    if (i !== was) appSwitchAt = Date.now()
     dispatch("hl.dsp.focus({ window = \"address:" + e.address + "\" })", "focuswindow address:" + e.address)
     var c = card(i)
-    settleWhen(function () { return !c || c.settled(["x", "y", "s"]) }, "idle", false)
+    settleWhen(function () { return !c || c.settled(["x", "y", "s"]) }, "idle", i !== was)
   }
   function switcherHome() {
     note("switcher home")
@@ -691,16 +697,17 @@ Item {
   // ---- from the home screen: an app's icon
   // args: started with them (also when it runs: a running app takes them over D-Bus and shows
   // the item); from: the tile the card grows out of when it is not the app's icon (a widget)
-  function openApp(id, args, from) {
+  // fresh: a command that opens a new window even when the app runs (the context menu's New Window)
+  function openApp(id, args, from, fresh) {
     if (!active) return
     var e = entries[id]
     if (!e) return
     var list = scanWindows(screenName || (Quickshell.screens[0] ? Quickshell.screens[0].name : ""))
     var at = -1
-    for (var i = list.length - 1; i >= 0; i--) if (list[i].appId === id) { at = i; break }
+    for (var i = list.length - 1; !fresh && i >= 0; i--) if (list[i].appId === id) { at = i; break }
     note("tap " + id + (at >= 0 ? " (running)" : ""))
     var r = homeScreenItem ? homeScreenItem.iconRect(from || id, coverItem || homeScreenItem) : null
-    var cmd = args && args.length && e.command && e.command.length ? ["uwsm-app", "--"].concat(e.command, args) : null
+    var cmd = fresh ? fresh : args && args.length && e.command && e.command.length ? ["uwsm-app", "--"].concat(e.command, args) : null
     if (cmd && (!inRig || (Quickshell.env("VELUM_TABLET_LAUNCH") || "") !== "")) Quickshell.execDetached(cmd)
     if (at >= 0) {
       cards = list
@@ -719,6 +726,36 @@ Item {
     openLater.restart()
   }
   property var openFrom: null
+
+  // ---- the context menu of an icon (HomeScreen → IconMenu.qml): the app's own actions, New Window,
+  // Edit Home Screen. A new window lands on the home screen's empty workspace, so it is an app of its
+  // own there (tablet.lua); the card grows out of the icon as at a launch.
+  property var screenHomes: ({})        // screen name → its interactive home screen (IPC homeIcon)
+  property string menuOpenId: ""         // the app whose context menu is open (IPC home: "menu")
+  function isNewWindow(a) { return /^new[-_ ]?window$/i.test(a.id || "") }
+  function menuFor(id) {
+    var e = entries[id]
+    if (!e) return []
+    var out = []
+    var acts = (e.actions || []).filter(function (a) { return !home.isNewWindow(a) && a.command.length }).slice(0, cfg.menu.actionsMax)
+    for (var i = 0; i < acts.length; i++) out.push({ text: acts[i].name, action: "action", actionId: acts[i].id })
+    if (out.length) out.push({ group: true })
+    out.push({ text: "New Window", icon: "plus", action: "new" })
+    out.push({ group: true })
+    out.push({ text: "Edit Home Screen", icon: "apps", action: "edit" })
+    return out
+  }
+  function menuChosen(id, entry) {
+    note("menu " + id + " " + entry.action + (entry.actionId ? " " + entry.actionId : ""))
+    if (entry.action === "edit") { editing = true; return }
+    var e = entries[id]
+    if (!e) return
+    // New Window: the entry's own new-window action when it has one (browsers), else the app again
+    var want = entry.action === "action" ? function (a) { return a.id === entry.actionId } : isNewWindow
+    var act = (e.actions || []).filter(want)[0]
+    var cmd = act && act.command.length ? ["uwsm-app", "--"].concat(act.command) : ["uwsm-app", "--", "gtk-launch", id + ".desktop"]
+    openApp(id, [], id, cmd)
+  }
   property string launchedId: ""
   property bool launchOpened: false
   property real launchStart: 0
@@ -735,13 +772,16 @@ Item {
       c.z = 2
       c.to("x", 0, "smooth"); c.to("y", 0, "smooth"); c.to("s", 1, "smooth"); c.to("m", 0, "smooth")
       backdrop(0, 0, 0, false)
-      if (e.address) home.dispatch("hl.dsp.focus({ window = \"address:" + e.address + "\" })", "focuswindow address:" + e.address)
+      if (e.address) {
+        home.appSwitchAt = Date.now()
+        home.dispatch("hl.dsp.focus({ window = \"address:" + e.address + "\" })", "focuswindow address:" + e.address)
+      }
       home.settleWhen(function () {
         if (!c.settled(["x", "y", "s"])) return false
         if (!home.launchedId) return true
         // a launched app: wait for a new window, or give up after launchTimeout
         return home.launchOpened || Date.now() - home.launchStart > home.cfg.launchTimeout
-      }, "idle", false)
+      }, "idle", !!e.address)
     })
   }
 
@@ -773,9 +813,12 @@ Item {
         if (!home.homeSwitchAt) home.goHomeNow()
         letGo.to = "home"
       } else letGo.to = "idle"
-      // the workspace's slide may still run underneath: only what is left of it
+      // the workspace's slide may still run underneath: only what is left of it (an app's workspace
+      // too, or its window slides in from the side once the overlay is gone)
       var since = home.homeSwitchAt ? Date.now() - home.homeSwitchAt : 0
+      var appSince = home.appSwitchAt ? Date.now() - home.appSwitchAt : 0
       letGo.interval = home.settleTo === "home" ? Math.max(Theme.dur("fast"), home.cfg.settle - since)
+                     : home.settleWait && home.appSwitchAt ? Math.max(Theme.dur("fast"), home.cfg.settle - appSince)
                      : home.settleWait || home.launchedId ? home.cfg.settle : Theme.dur("fast")
       letGo.restart()
     }
@@ -786,6 +829,7 @@ Item {
     onTriggered: {
       home.mode = to
       home.homeSwitchAt = 0
+      home.appSwitchAt = 0
       home.launchedId = ""
       home.armed = false
       home.cards = home.scanWindows(home.screenName)
@@ -923,6 +967,10 @@ Item {
           wallRect: Qt.rect(0, -per.reserved[1], per.modelData.width, per.modelData.height)
           onTapped: function (id) { home.screenName = per.name; home.guard("openApp", function () { home.openApp(id) }) }
           onWidgetTapped: function (id, item) { home.screenName = per.name; home.openWidget(id, item) }
+          menuEntries: home.menuFor
+          Component.onCompleted: { var m = Object.assign({}, home.screenHomes); m[per.name] = { item: homeItem, top: function () { return per.reserved[1] } }; home.screenHomes = m }
+          onMenuIdChanged: { home.menuOpenId = menuId; if (menuId) home.note("menu open " + menuId) }
+          onMenuChosen: function (id, entry) { home.screenName = per.name; home.guard("menuChosen", function () { home.menuChosen(id, entry) }) }
           onPageMoved: function (dx, t) { home.pageCount = pages; home.pageMoved(dx, t) }
           onPageReleased: function (v) { home.pageReleased(v, pages) }
         }
