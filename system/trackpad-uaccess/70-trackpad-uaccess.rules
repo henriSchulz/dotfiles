@@ -1,0 +1,3 @@
+# Signing in Papers reads absolute finger positions from the trackpad.
+# Only touchpads get uaccess (seat ACL for the active user); keyboards stay root/input only.
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TOUCHPAD}=="1", ENV{ID_INPUT_KEYBOARD}!="1", TAG+="uaccess"
