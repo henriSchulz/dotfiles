@@ -102,11 +102,13 @@ local function tiled(w)
   return w.mapped and not w.floating and w.workspace ~= nil and not w.workspace.special
 end
 
--- The lowest workspace id without windows, skipping ids already handed out.
-local function free_workspace(taken)
+-- The lowest workspace id without windows, skipping ids already handed out. An empty one that
+-- lives on another monitor (its shown workspace) is not free: the app would land on that screen.
+local function free_workspace(taken, monitor)
   local used = {}
   for _, ws in ipairs(hl.get_workspaces()) do
-    if ws.windows > 0 then used[ws.id] = true end
+    local elsewhere = monitor and ws.monitor and ws.monitor.name ~= monitor.name
+    if ws.windows > 0 or elsewhere then used[ws.id] = true end
   end
   for id = 1, 99 do
     if not used[id] and not taken[id] then return id end
@@ -121,6 +123,14 @@ local function tiled_on(ws)
   return list
 end
 
+-- A workspace that does not exist yet comes up on the focused monitor: it is moved to the one the
+-- window is on, and the view follows only then (so the window stays on its screen).
+local function move_to(w, id, monitor, follow)
+  hl.dispatch(hl.dsp.window.move({ workspace = tostring(id), follow = false, window = selector(w) }))
+  if monitor then hl.dispatch(hl.dsp.workspace.move({ workspace = tostring(id), monitor = monitor.name })) end
+  if follow then hl.dispatch(hl.dsp.focus({ workspace = tostring(id) })) end
+end
+
 -- Every workspace keeps one tiled window; the others go to free workspaces.
 local function spread()
   local taken = {}
@@ -131,10 +141,10 @@ local function spread()
         local keep = ws.last_window and ws.last_window.address or list[1].address
         for _, w in ipairs(list) do
           if w.address ~= keep then
-            local id = free_workspace(taken)
+            local id = free_workspace(taken, ws.monitor)
             if not id then return end
             taken[id] = true
-            hl.dispatch(hl.dsp.window.move({ workspace = tostring(id), follow = false, window = selector(w) }))
+            move_to(w, id, ws.monitor, false)
           end
         end
       end
@@ -146,14 +156,18 @@ hl.on("window.open", function(w)
   if not M.on then return end
   w = settle_app(w)
   if not tiled(w) or w.fullscreen ~= 0 then return end
-  local others = 0
+  local others = {}
   for _, o in ipairs(tiled_on(w.workspace)) do
-    if o.address ~= w.address then others = others + 1 end
+    if o.address ~= w.address then others[#others + 1] = o end
   end
-  if others > 0 then
-    local id = free_workspace({})
-    if id then
-      hl.dispatch(hl.dsp.window.move({ workspace = tostring(id), follow = true, window = selector(w) }))
+  if #others > 0 then
+    local monitor = w.monitor or w.workspace.monitor
+    local id = free_workspace({}, monitor)
+    if id then move_to(w, id, monitor, true) end
+    -- Hyprland took the app there out of fullscreen when the new window came: give it back
+    for _, o in ipairs(others) do
+      local now = hl.get_window(selector(o))
+      if now then fill(now) end
     end
   end
   fill(hl.get_window(selector(w)) or w)
