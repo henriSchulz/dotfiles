@@ -14,5 +14,7 @@ RestartSec=2
 ExecStopPost=/bin/sh -c 'f="%t/ipadcast/mac-input-off"; [ -e "$f" ] && rm -f "$f" && hyprctl reload >/dev/null; true'
 # nor the monitor mirroring the tablet's screen (hypr/monitors.lua reads that flag)
 ExecStopPost=/bin/sh -c 'f="%t/ipadcast/mirror-monitor"; [ -e "$f" ] && rm -f "$f" && hyprctl reload >/dev/null && sleep 1 && %h/.local/bin/hypr-spare-output heal; true'
+# nor HEADLESS-SPARE in a viewer's shape (hypr/monitors.lua reads that file too)
+ExecStopPost=/bin/sh -c 'f="%t/ipadcast/spare-shape"; [ -e "$f" ] && rm -f "$f" && hyprctl reload >/dev/null; true'
 # Power Mode's Mac side back to saving (ipadcast-perf.path, root); the file exists only once installed
 ExecStopPost=/bin/sh -c '[ -w /run/ipadcast-perf/state ] && echo off > /run/ipadcast-perf/state; true'

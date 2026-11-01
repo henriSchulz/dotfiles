@@ -30,6 +30,20 @@ hl.monitor({ output = "DP-1", mode = "preferred", position = "0x0", scale = omar
 hl.monitor({ output = "HEADLESS-SPARE", mode = "1770x1230@60", position = "20000x20000", scale = 1.5 })
 hl.workspace_rule({ workspace = "name:spare", monitor = "HEADLESS-SPARE", default = true, persistent = true })
 
+-- While a viewer casts, ipadcast gives HEADLESS-SPARE the viewer's shape and writes it into this
+-- file ("MODE POSITION SCALE TRANSFORM"), so a reload keeps it instead of restarting the stream.
+-- Gone when the cast ends.
+do
+  local f = io.open((os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/ipadcast/spare-shape", "r")
+  if f then
+    local mode, pos, scale, tr = (f:read("l") or ""):match("^(%S+) (%S+) (%S+) (%d)$")
+    f:close()
+    if mode then
+      hl.monitor({ output = "HEADLESS-SPARE", mode = mode, position = pos, scale = tonumber(scale), transform = tonumber(tr) })
+    end
+  end
+end
+
 -- While the tablet casts (ipadcast, mac-cast), its screen comes first: the real monitor only
 -- mirrors HEADLESS-SPARE, with the tablet's scale. ipadcast writes the monitor names into this
 -- file and reloads; gone when the cast ends. A monitor plugged in meanwhile comes up mirroring.
