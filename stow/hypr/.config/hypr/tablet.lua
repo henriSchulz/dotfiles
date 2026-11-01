@@ -1,12 +1,15 @@
 -- Tablet mode: the Hyprland side of Velum's tablet mode (henri.tablet-v3 draws the home
 -- indicator and its gestures, henri.bar-v3 the pulls from the top edge).
 --
--- On:  one app per workspace, as on an iPad. A new tiled window that would share its
---      workspace moves to the first free one (and the view follows it); switching the mode on
---      spreads windows that share a workspace the same way, keeping the one last used there.
---      Floating windows (dialogs, pickers) stay with their app. No gaps around the app, and
---      the touchscreen is mapped to the built-in panel (eDP-*).
--- Off: the gaps come back; windows stay where they are.
+-- On:  one app per workspace, as on an iPad. The windows of one app (one class) share its
+--      workspace, stacked: the layout is monocle, so each fills the screen, and the one on top is
+--      in fullscreen (Hyprland has one fullscreen window per workspace; focusing another takes it
+--      over, misc.on_focus_under_fullscreen = 1). A new tiled window goes to its app's workspace,
+--      or, for an app not open yet, to the first free one (the view follows it); switching the mode
+--      on sorts windows the same way, the app last used on a workspace keeping it. Floating windows
+--      (dialogs, pickers) stay with their app. No gaps around the app, and the touchscreen is
+--      mapped to the built-in panel (eDP-*).
+-- Off: gaps and layout come back; windows stay where they are.
 --
 -- The state lives in Velum's settings, ~/.local/state/velum/settings.json ("tablet": true),
 -- which every shell plugin already watches. Switch it with `tablet-mode on|off|toggle|status`
@@ -72,8 +75,6 @@ local function fill(w)
   hl.dispatch(hl.dsp.window.fullscreen({ mode = "fullscreen", window = "address:" .. w.address }))
 end
 
-function M.fill_all() for _, w in ipairs(hl.get_windows()) do fill(settle_app(w)) end end
-
 local function was_floating(w)
   if type(w.tags) ~= "table" then return false end
   for _, tag in ipairs(w.tags) do
@@ -131,23 +132,61 @@ local function move_to(w, id, monitor, follow)
   if follow then hl.dispatch(hl.dsp.focus({ workspace = tostring(id) })) end
 end
 
--- Every workspace keeps one tiled window; the others go to free workspaces.
+-- The app a window belongs to: its class (all terminals of one kind are one app, as on an iPad).
+local function app_of(w) return w.class ~= "" and w.class or w.initial_class or "" end
+
+-- The workspace of app `app` on `monitor` (from a window other than `skip`): where a new window of it goes.
+local function app_workspace(app, monitor, skip)
+  for _, o in ipairs(hl.get_windows()) do
+    if o.address ~= skip and tiled(o) and app_of(o) == app
+       and (not monitor or not o.monitor or o.monitor.name == monitor.name) then
+      return o.workspace.id
+    end
+  end
+end
+
+-- The window on top of a workspace: the one last used there, or else its first tiled window;
+-- never `skip` (a window just moved away, still in the workspace's list for a moment).
+local function top_of(ws, skip)
+  local list = {}
+  for _, w in ipairs(tiled_on(ws)) do if w.address ~= skip then list[#list + 1] = w end end
+  if ws.last_window then
+    for _, w in ipairs(list) do if w.address == ws.last_window.address then return w end end
+  end
+  return list[1]
+end
+
+-- Every app gets one workspace on its screen: its windows gather where the one used last is
+-- (unless another app was used there later), the others go to free workspaces.
 local function spread()
-  local taken = {}
-  for _, ws in ipairs(hl.get_workspaces()) do
-    if not ws.special and ws.windows > 1 then
-      local list = tiled_on(ws)
-      if #list > 1 then
-        local keep = ws.last_window and ws.last_window.address or list[1].address
-        for _, w in ipairs(list) do
-          if w.address ~= keep then
-            local id = free_workspace(taken, ws.monitor)
-            if not id then return end
-            taken[id] = true
-            move_to(w, id, ws.monitor, false)
-          end
-        end
+  local wins = {}
+  for _, w in ipairs(hl.get_windows()) do if tiled(w) then wins[#wins + 1] = w end end
+  table.sort(wins, function(a, b) return (a.focus_history_id or 1e9) < (b.focus_history_id or 1e9) end)
+  local home, owner, taken = {}, {}, {}
+  for _, w in ipairs(wins) do
+    local monitor = w.monitor or w.workspace.monitor
+    local key = app_of(w) .. "@" .. (monitor and monitor.name or "")
+    if not home[key] then
+      local here = w.workspace.id
+      if owner[here] == nil then home[key] = here
+      else
+        home[key] = free_workspace(taken, monitor)
+        if not home[key] then return end
       end
+      owner[home[key]] = key
+      taken[home[key]] = true
+    end
+    if home[key] ~= w.workspace.id then move_to(w, home[key], monitor, false) end
+  end
+end
+
+-- Every workspace's top window in fullscreen (the others fill it through the monocle layout).
+function M.fill_all()
+  for _, w in ipairs(hl.get_windows()) do settle_app(w) end
+  for _, ws in ipairs(hl.get_workspaces()) do
+    if not ws.special then
+      local top = top_of(ws)
+      if top then fill(hl.get_window(selector(top)) or top) end
     end
   end
 end
@@ -155,20 +194,23 @@ end
 hl.on("window.open", function(w)
   if not M.on then return end
   w = settle_app(w)
-  if not tiled(w) or w.fullscreen ~= 0 then return end
-  local others = {}
+  -- it may come in fullscreen already (it took it over from the app it opened over): sort it anyway
+  if not tiled(w) then return end
+  local monitor = w.monitor or w.workspace.monitor
+  local app = app_of(w)
+  local strangers = false
   for _, o in ipairs(tiled_on(w.workspace)) do
-    if o.address ~= w.address then others[#others + 1] = o end
+    if o.address ~= w.address and app_of(o) ~= app then strangers = true end
   end
-  if #others > 0 then
-    local monitor = w.monitor or w.workspace.monitor
-    local id = free_workspace({}, monitor)
-    if id then move_to(w, id, monitor, true) end
-    -- Hyprland took the app there out of fullscreen when the new window came: give it back
-    for _, o in ipairs(others) do
-      local now = hl.get_window(selector(o))
-      if now then fill(now) end
-    end
+  local came = w.workspace.id
+  local target = app_workspace(app, monitor, w.address)
+  if not target and strangers then target = free_workspace({}, monitor) end
+  if target and target ~= came then
+    move_to(w, target, monitor, true)
+    -- Hyprland took the app the window came over out of fullscreen: give it back
+    local left = hl.get_workspace(tostring(came))
+    local top = left and top_of(left, w.address)
+    if top then fill(top) end
   end
   fill(hl.get_window(selector(w)) or w)
 end)
@@ -184,18 +226,44 @@ local function internal_output()
   end
 end
 
+-- Omarchy's per-workspace layouts (SUPER+L, kept as one file per workspace id) beat general.layout:
+-- while the mode is on, every numbered workspace gets monocle under the same selector (a rule for
+-- a selector already known is updated in place; a range rule would win for good, rules cannot be
+-- taken back), and off, Omarchy's files are read again, the rest gets the layout of before.
+local LAYOUTS = (os.getenv("XDG_STATE_HOME") or (os.getenv("HOME") .. "/.local/state")) .. "/omarchy/workspace-layouts"
+local MAX_WS = 99
+
+local function layout_rules(on, before)
+  for id = 1, MAX_WS do
+    local file = LAYOUTS .. "/" .. id .. ".lua"
+    if on then hl.workspace_rule({ workspace = tostring(id), layout = "monocle" })
+    elseif read_file(file) then pcall(dofile, file)
+    else hl.workspace_rule({ workspace = tostring(id), layout = before }) end
+  end
+end
+
 local function apply_config()
   local panel = internal_output()
   if panel then hl.config({ input = { touchdevice = { output = panel } } }) end
   if M.on then
     if not saved then
       saved = { gaps_in = hl.get_config("general.gaps_in"), gaps_out = hl.get_config("general.gaps_out"),
+                layout = hl.get_config("general.layout"), border = hl.get_config("general.border_size"),
+                under_fs = hl.get_config("misc.on_focus_under_fullscreen"),
                 aspect = hl.get_config("layout.single_window_aspect_ratio") }
     end
-    -- every app fills its screen: no gaps, and no square single window (Omarchy's toggle)
-    hl.config({ general = { gaps_in = 0, gaps_out = 0 }, layout = { single_window_aspect_ratio = { 0, 0 } } })
+    -- every app fills its screen: no gaps or borders, no square single window (Omarchy's toggle),
+    -- an app's windows stacked (monocle), and the one focused takes over the fullscreen. Switching
+    -- the layout takes every window out of fullscreen; the callers fill them again (refill).
+    hl.config({ general = { gaps_in = 0, gaps_out = 0, border_size = 0, layout = "monocle" },
+                misc = { on_focus_under_fullscreen = 1 },
+                layout = { single_window_aspect_ratio = { 0, 0 } } })
+    layout_rules(true)
   elseif saved then
-    hl.config({ general = { gaps_in = saved.gaps_in, gaps_out = saved.gaps_out } })
+    layout_rules(false, saved.layout or "dwindle")
+    hl.config({ general = { gaps_in = saved.gaps_in, gaps_out = saved.gaps_out, border_size = saved.border,
+                            layout = saved.layout or "dwindle" } })
+    if saved.under_fs ~= nil then hl.config({ misc = { on_focus_under_fullscreen = saved.under_fs } }) end
     if saved.aspect then hl.config({ layout = { single_window_aspect_ratio = saved.aspect } }) end
     saved = nil
   end
@@ -226,6 +294,13 @@ local function wm_restore()
   if was and henri_wm then henri_wm.set("macos") end
 end
 
+-- The layout switch lands after this call returns and takes the windows out of fullscreen then:
+-- fill them now and once more when it has.
+local function refill()
+  M.fill_all()
+  hl.timer(function() if M.on then M.fill_all() end end, { timeout = 100, type = "oneshot" })
+end
+
 function M.set(on)
   on = on == true or on == "on" or on == "true"
   if on == M.on then
@@ -238,7 +313,7 @@ function M.set(on)
   if on then
     wm_tile()
     spread()
-    for _, w in ipairs(hl.get_windows()) do fill(w) end
+    refill()
   else
     unfill_all()
     wm_restore()
@@ -256,7 +331,7 @@ local function apply_fresh()
   if M.on then
     saved = nil
     apply_config()
-    M.fill_all()
+    refill()
   end
 end
 hl.on("config.reloaded", apply_fresh)
