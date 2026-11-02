@@ -31,6 +31,7 @@ Item {
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
 
     if (payload.fontFamily) root.fontFamily = payload.fontFamily
+    root.refreshSessions()
 
     if (payload.mode === "select" || payload.mode === "input") {
       root.openDmenu(payload)
@@ -828,6 +829,7 @@ Item {
       case "file": return isDir ? "Folder" : "Document"
       case "calc": return "Calculator"
       case "clip": return "Clipboard"
+      case "session": return "Claude Code Session"
       default: return ""
     }
   }
@@ -838,10 +840,81 @@ Item {
       case "actions": return "Actions"
       case "files": return "Files"
       case "clipboard": return "Clipboard"
+      case "sessions": return "Claude Code"
       case "web": return "Web"
       case "drilldown": return "Elsewhere"
       default: return ""
     }
+  }
+
+  // --------------------------------------------------------------- Claude Code sessions
+  //
+  // Typed words find Claude Code sessions by title, first and last prompt and folder (the Sessions
+  // app's read-only index, ~/Projects/sessions/bin/sessions-backend, read again whenever Spotlight
+  // opens — incremental, a quarter second). Newest first, at most `maxSessionHits`; Return resumes
+  // the session in a new foot, or brings its terminal forward when it runs.
+  property var claudeSessions: []
+  readonly property int maxSessionHits: 5
+  readonly property string sessionsBackend: root.homeDir() + "/Projects/sessions/bin/sessions-backend"
+  Process {
+    id: sessionsIndex
+    command: [root.sessionsBackend, "index"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var d
+        try { d = JSON.parse(text) } catch (e) { return }
+        var names = {}, out = []
+        for (var i = 0; i < (d.folders || []).length; i++) names[d.folders[i].path] = d.folders[i].name
+        for (var j = 0; j < (d.sessions || []).length; j++) {
+          var x = d.sessions[j]
+          var folder = names[x.group] || root.baseNameOf(x.group)
+          out.push({ id: x.id, title: x.title, folder: folder, updated: x.updated,
+                     hay: (x.title + " " + x.firstPrompt + " " + x.lastPrompt + " " + folder + " " + x.cwd).toLowerCase() })
+        }
+        root.claudeSessions = out
+        if (root.opened && root.filterText.trim()) root.scheduleRebuild()
+      }
+    }
+  }
+  function refreshSessions() { if (!sessionsIndex.running) sessionsIndex.running = true }
+  function sessionRows(query) {
+    var terms = String(query || "").toLowerCase().trim().split(/\s+/).filter(function(t) { return t.length > 1 })
+    if (!terms.length) return []
+    var rows = []
+    for (var i = 0; i < root.claudeSessions.length && rows.length < root.maxSessionHits; i++) {
+      var e = root.claudeSessions[i], ok = true
+      for (var t = 0; t < terms.length; t++) if (e.hay.indexOf(terms[t]) < 0) { ok = false; break }
+      if (!ok) continue
+      rows.push({
+        itemId: "session." + e.id,
+        kind: "session",
+        icon: Spot.sf(0x100A7C),   // SF terminal
+        iconFont: root.symbolFont,
+        appIcon: "",
+        appId: "",
+        isDir: false,
+        label: e.title,
+        target: e.id,
+        detail: e.folder + " · " + Qt.formatDate(new Date(e.updated), "d MMM"),
+        path: "",
+        childCount: 0,
+        action: "",
+        provider: "",
+        score: 1e14 + i,
+        section: "sessions"
+      })
+    }
+    return rows
+  }
+  readonly property bool sessionsInRig: (Quickshell.env("VELUM_SHELL_RIG") || "") !== ""
+  function resumeSession(id) {
+    if (root.sessionsInRig) { console.log("henri.menu-v3: would resume session " + id); return }
+    Quickshell.execDetached([root.sessionsBackend, "resume", id])
+  }
+  function showSession(id) {
+    if (root.sessionsInRig) { console.log("henri.menu-v3: would show session " + id); return }
+    var app = root.homeDir() + "/Projects/sessions/bin/sessions"
+    Quickshell.execDetached(["bash", "-c", "\"$1\" select \"$2\" && \"$1\" present", "bash", app, id])
   }
 
   // --------------------------------------------------------------- clipboard
@@ -1615,6 +1688,11 @@ Item {
         }
         rows = grouped
         if (root.category === "") {
+          var sessionHits = root.sessionRows(query)
+          if (!rows.length && sessionHits.length) sessionHits[0].section = "top"
+          rows = rows.concat(sessionHits)
+        }
+        if (root.category === "") {
           var engine = root.searchEngineTemplate()
           var engineHost = engine.url.split("/")[2] || engine.name
           rows.push({
@@ -1930,6 +2008,12 @@ Item {
       filterText = ""
       // ⌃↩ shows the item in its folder (spec §9 „Im Finder zeigen“).
       root.openPath(reveal ? (root.dirNameOf(path) || "/") : path)
+    } else if (row.kind === "session") {
+      var sessionId = row.target
+      applySerial = requestSerial
+      opened = false
+      filterText = ""
+      root.resumeSession(sessionId)
     } else if (row.kind === "clip") {
       var clipTarget = row.target
       var clipMime = row.appId
@@ -2347,6 +2431,11 @@ Item {
       rows.push(root.sec(root.act("Copy Result", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(result) }) }, result), "copy"))
       rows.push(root.sec(root.act("Copy Expression", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(root.filterText.trim()) }) }, root.filterText.trim()), "copy"))
       rows.push(root.sec(root.webAction(root.filterText.trim()), "more"))
+    } else if (row.kind === "session") {
+      var sid = row.target
+      rows.push(root.sec(root.act("Resume", "terminal", function() { root.finishWith(function() { root.resumeSession(sid) }) }, "or show its terminal"), "open"))
+      rows.push(root.sec(root.act("Show in Sessions", "open", function() { root.finishWith(function() { root.showSession(sid) }) }), "open"))
+      rows.push(root.sec(root.act("Copy Session ID", "clipboard", function() { root.finishWith(function() { root.copyToClipboard(sid) }) }, sid), "copy"))
     } else if (row.kind === "clip") {
       if (row.appId) {
         rows.push(root.sec(root.act("Copy Image", "copy", function() { root.finishWith(function() { root.copyImageToClipboard(row.target, row.appId) }) }), "copy"))

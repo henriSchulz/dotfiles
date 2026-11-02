@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.sessions-v3",
+  "name": "Claude Code sessions (v3, Velum)",
+  "version": "0.1.0",
+  "author": "Henri Schulz",
+  "license": "MIT",
+  "description": "Claude Code in the menu bar: a terminal glyph while sessions run (orange dot when one waits for you), a bar popup with the running sessions (click = its terminal), and a notification when a session needs you. Data from the Sessions app's backend (~/Projects/sessions).",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Claude Code sessions",
+    "description": "Running Claude Code sessions; orange when one waits for you",
+    "category": "System",
+    "allowMultiple": false,
+    "defaults": {},
+    "schema": []
+  }
+}
