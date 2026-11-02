@@ -12,6 +12,12 @@ ok(S.statusOf(A({ state: "blocked" })) === "attention", "blocked wins over busy"
 ok(S.statusOf(A({ pid: 0, state: "done" })) === "", "done job without process = not running")
 ok(S.statusText(A({ status: "idle" })) === "Your turn", "idle text")
 ok(S.statusText(A({ state: "blocked" })) === "Waiting for you", "blocked text")
+ok(S.statusOf(A({ status: "idle", phase: "turn" })) === "attention", "phase turn = attention")
+ok(S.statusOf(A({ status: "idle", phase: "idle" })) === "idle", "phase idle = idle")
+ok(S.statusText(A({ status: "idle", phase: "idle", kind: "background" })) === "Idle in the background", "idle text")
+ok(S.statusOf(A({ phase: "working" })) === "working", "phase working")
+ok(S.statusOf(A({ pid: 0, phase: "done" })) === "", "phase done = not running")
+ok(S.rows([A({ sessionId: "i", phase: "idle", status: "idle" }), A({ sessionId: "w", phase: "working" }), A({ sessionId: "t", phase: "turn", status: "idle" })], {}, "/home/h").map(r => r.id).join("") === "twi", "rows: waiting, working, idle")
 
 let r = S.decide(null, [A()], 0, 30000, "")
 ok(r.notices.length === 0, "first snapshot never notifies")

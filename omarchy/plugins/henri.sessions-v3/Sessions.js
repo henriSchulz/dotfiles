@@ -3,9 +3,17 @@
 // Pure (node tests/sessions_test.js). Input: `sessions-backend live` entries
 // ({sessionId, pid, status busy|idle, state working|blocked|done, kind, name, cwd, window, job}).
 
-// working: on a turn · attention: waits for Henri (a question, a permission, or its turn is over) · "" not running
+// working: on a turn · attention: waits for Henri (a question or a permission — or its turn is over
+// and he has not looked yet) · idle: running, nothing pending · "" not running. The backend's `phase`
+// (sessions-backend live) decides; without one, the old rule from status and job state.
 function statusOf(l) {
   if (!l) return ""
+  if (l.phase !== undefined) {
+    if (l.phase === "working") return "working"
+    if (l.phase === "waiting" || l.phase === "turn") return "attention"
+    if (l.phase === "idle") return "idle"
+    return ""
+  }
   if (!l.pid) return l.state === "blocked" ? "attention" : ""
   if (l.state === "blocked") return "attention"
   if (l.status === "busy") return "working"
@@ -15,7 +23,8 @@ function statusOf(l) {
 function statusText(l) {
   var st = statusOf(l)
   if (st === "working") return l.kind === "background" ? "Working in the background" : "Working"
-  if (st === "attention") return l.state === "blocked" ? "Waiting for you" : "Your turn"
+  if (st === "attention") return l.state === "blocked" || l.phase === "waiting" ? "Waiting for you" : "Your turn"
+  if (st === "idle") return l.kind === "background" ? "Idle in the background" : "Idle"
   return ""
 }
 
@@ -35,7 +44,8 @@ function rows(live, titles, home) {
                folder: t.folder || (l.cwd === home ? "Home" : baseName(l.cwd)),
                status: st, statusText: statusText(l), window: l.window || "", job: l.job || "", pid: l.pid || 0 })
   }
-  out.sort(function (a, b) { return (a.status === b.status ? 0 : a.status === "attention" ? -1 : 1) })
+  var rank = { attention: 0, working: 1, idle: 2 }
+  out.sort(function (a, b) { return rank[a.status] - rank[b.status] })
   return out
 }
 

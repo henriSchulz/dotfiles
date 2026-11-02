@@ -29,7 +29,9 @@ BarWidget {
     onLoaded: { try { root.rows = JSON.parse(text()).rows || [] } catch (e) {} }
   }
   readonly property int waiting: rows.filter(function (r) { return r.status === "attention" }).length
-  readonly property int working: rows.length - waiting
+  readonly property int working: rows.filter(function (r) { return r.status === "working" }).length
+  readonly property int idle: rows.length - waiting - working
+  // the dot: orange while one waits, the accent while one works, none while they only sit idle
   readonly property color dotColor: waiting ? s.attention : Theme.r.accent.base
 
   property bool popupOpen: false
@@ -68,6 +70,7 @@ BarWidget {
             x: parent.width - width / 2
             y: -height / 2
             width: root.b.badge; height: width; radius: width / 2
+            visible: root.waiting > 0 || root.working > 0
             color: root.dotColor
           }
         }
@@ -111,7 +114,7 @@ BarWidget {
           width: parent.width
           font.pixelSize: Theme.m.type.small
           color: Theme.r.popover.inkSecondary
-          text: [root.waiting ? root.waiting + " waiting for you" : "", root.working ? root.working + " working" : ""].filter(function (x) { return x }).join(" · ")
+          text: [root.waiting ? root.waiting + " waiting for you" : "", root.working ? root.working + " working" : "", root.idle ? root.idle + " idle" : ""].filter(function (x) { return x }).join(" · ")
         }
       }
 
@@ -138,7 +141,7 @@ BarWidget {
             x: Theme.layout.list.padX
             anchors.verticalCenter: parent.verticalCenter
             width: root.s.dot; height: width; radius: width / 2
-            color: row.modelData.status === "attention" ? root.s.attention : Theme.r.accent.base
+            color: row.modelData.status === "attention" ? root.s.attention : row.modelData.status === "working" ? Theme.r.accent.base : Theme.r.popover.inkSecondary
           }
           Column {
             x: dot.x + dot.width + Theme.layout.list.padX
