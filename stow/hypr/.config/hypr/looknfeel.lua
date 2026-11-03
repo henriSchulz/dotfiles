@@ -275,6 +275,13 @@ do
     flag:close()
     hl.config({ cursor = { invisible = true } })
   end
+  -- no compositor blur while a tablet casts: a blur pass per blurred layer on every frame cost the
+  -- cast 3–5 ms of latency (bar and Dock, measured 2026-11-03); the monitor keeps its glass otherwise
+  local noblur = io.open((os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/ipadcast/no-blur", "r")
+  if noblur then
+    noblur:close()
+    hl.config({ decoration = { blur = { enabled = false } } })
+  end
   -- the tablet's fingers arrive on the touchscreen "ipadcast touch" (ztouch): it covers the output
   -- the tablet shows, which ipadcast names in this file (the Mac has no touchscreen of its own)
   local touch = io.open((os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/ipadcast/touch-output", "r")
