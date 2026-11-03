@@ -103,6 +103,23 @@ local function tiled(w)
   return w.mapped and not w.floating and w.workspace ~= nil and not w.workspace.special
 end
 
+-- The windows a fullscreen window covered keep their fade at 0 when the layout switch drops it, so
+-- they stay invisible in the tiling. A fullscreen on and off on a workspace with more windows
+-- recomputes the fade of all of them.
+local function reveal_all()
+  for _, ws in ipairs(hl.get_workspaces()) do
+    if not ws.special and ws.windows > 1 then
+      for _, w in ipairs(hl.get_workspace_windows(tostring(ws.id)) or {}) do
+        if tiled(w) and w.fullscreen == 0 then
+          hl.dispatch(hl.dsp.window.fullscreen({ mode = "fullscreen", window = selector(w) }))
+          hl.dispatch(hl.dsp.window.fullscreen({ mode = "fullscreen", window = selector(w) }))
+          break
+        end
+      end
+    end
+  end
+end
+
 -- The lowest workspace id without windows, skipping ids already handed out. An empty one that
 -- lives on another monitor (its shown workspace) is not free: the app would land on that screen.
 local function free_workspace(taken, monitor)
@@ -215,6 +232,35 @@ hl.on("window.open", function(w)
   fill(hl.get_window(selector(w)) or w)
 end)
 
+-- Hyprland 0.56's monocle hides the windows under the visible one with an alpha of 0 and skips that
+-- while a window of the workspace is in fullscreen, and a focus on a workspace not shown yet does
+-- not reach it at all; the fullscreen hand-over (on_focus_under_fullscreen) then left the focused
+-- window invisible, and its hidden fade could outlive the mode. So a focus on a workspace with more
+-- than one window takes it out of fullscreen, focuses it again now that its workspace is shown (the
+-- monocle makes it the visible one) and fills it. Deferred: a focus on another workspace switches
+-- there only after this event.
+local healing = false
+
+local function heal(address)
+  local w = hl.get_window("address:" .. address)
+  local active = hl.get_active_window()
+  -- only the window still focused (a later focus has its own turn)
+  if not M.on or not w or not active or active.address ~= address or not tiled(w) or #tiled_on(w.workspace) < 2 then return end
+  healing = true
+  for _, o in ipairs(tiled_on(w.workspace)) do
+    if o.fullscreen ~= 0 then hl.dispatch(hl.dsp.window.fullscreen({ mode = "fullscreen", window = selector(o) })) end
+  end
+  hl.dispatch(hl.dsp.focus({ window = "address:" .. address }))
+  fill(hl.get_window("address:" .. address) or w)
+  healing = false
+end
+
+hl.on("window.active", function(w)
+  if not M.on or healing or not w or not w.address then return end
+  local address = w.address
+  hl.timer(function() heal(address) end, { timeout = 1, type = "oneshot" })
+end)
+
 -- ---------------------------------------------------------------- config
 
 -- The gaps as they were before the mode came on (from the config: Omarchy + looknfeel.lua).
@@ -309,14 +355,19 @@ function M.set(on)
     return
   end
   M.on = on
-  apply_config()
   if on then
+    apply_config()
     wm_tile()
     spread()
     refill()
   else
+    -- out of fullscreen before the layout changes: the layout switch drops it on its own, and the
+    -- windows it covered then stayed invisible
     unfill_all()
+    apply_config()
     wm_restore()
+    -- once the layout switch has landed (after this call returns)
+    hl.timer(function() if not M.on then reveal_all() end end, { timeout = 100, type = "oneshot" })
   end
 end
 
