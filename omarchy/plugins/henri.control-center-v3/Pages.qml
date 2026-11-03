@@ -186,12 +186,12 @@ Item {
             }
           }
         }
-        // brightness (where there is a backlight) and volume; held or right-clicked: their pages
+        // brightness (where there is a backlight) and volume; held or right-clicked (a finger: tapped): their pages
         Row {
           anchors.right: parent.right; height: left.height; spacing: cc.gap
-          VFillSlider { visible: cc.be.brightnessAvailable; vertical: true; width: Theme.layout.meter.column; height: parent.height; icon: "brightness"
+          VFillSlider { visible: cc.be.brightnessAvailable; vertical: true; width: Theme.layout.meter.column; height: parent.height; icon: "brightness"; opens: true
             value: cc.be.dimAware ? cc.be.brightGrid : cc.be.brightness / 100; readout: (cc.be.dimAware ? Math.round(cc.be.brightGrid * 100) : cc.be.brightness) + " %"; onMoved: v => cc.be.dimAware ? cc.be.setBrightGrid(v) : cc.be.setBrightness(v * 100); onOpened: cc.push("display") }
-          VFillSlider { vertical: true; width: Theme.layout.meter.column; height: parent.height
+          VFillSlider { vertical: true; width: Theme.layout.meter.column; height: parent.height; opens: true; iconAction: true
             icon: cc.be.muted || cc.be.volume <= 0 ? "sound.mute" : cc.be.volume < 0.34 ? "sound.low" : cc.be.volume < 0.67 ? "sound.mid" : "sound"
             value: cc.be.muted ? 0 : cc.be.volume; readout: cc.be.muted ? "Muted" : Math.round(cc.be.volume * 100) + " %"
             onMoved: v => cc.be.setVolume(v); onIconClicked: cc.be.toggleMute(); onOpened: cc.push(cc.be.airpodsActive ? "airpods" : "sound") }

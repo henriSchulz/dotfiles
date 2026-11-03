@@ -88,7 +88,7 @@ BarWidget {
     // Control Center's own material
     color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : root.smoky ? root.smoke.tint : Theme.r.popover.bg
     border.width: Theme.layout.separator; border.color: Theme.reduceTransparency || !root.smoky ? Theme.r.line.rim : root.smoke.rim
-    opacity: island.shown ? 0 : 1
+    opacity: island.holdsIsland ? 0 : 1   // gone once the surface has drawn over it (VIslandWindow.holdsIsland)
     VLens { layers: Theme.r.popover.shadow; radius: pill.radius }
     Face { anchors.fill: parent }
   }
