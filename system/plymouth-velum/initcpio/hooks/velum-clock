@@ -1,0 +1,22 @@
+#!/usr/bin/ash
+# Tells the LUKS screen (Plymouth theme velum) the time; its script has no clock of its own.
+# The kernel set the system clock from the RTC, /etc/localtime comes along in the initramfs.
+
+run_hook() {
+  (
+    while plymouth --ping 2>/dev/null; do
+      plymouth update --status="clock $(date +'%H:%M %u %d %m')"
+      sleep 5
+    done
+  ) &
+  echo $! > /run/velum-clock.pid
+}
+
+run_latehook() {
+  # the root disk is open
+  plymouth update --status=unlocked
+}
+
+run_cleanuphook() {
+  [ -f /run/velum-clock.pid ] && kill "$(cat /run/velum-clock.pid)" 2>/dev/null
+}

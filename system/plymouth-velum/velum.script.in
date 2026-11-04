@@ -1,0 +1,247 @@
+# The LUKS screen with the look of the Velum lock screen (henri.lock-v3). Plymouth draws no QML and
+# has no SF font here: every piece is a PNG from Generate.qml, the layout block above this line comes
+# from the same run. The time comes from the velum-clock initcpio hook as a status update.
+# No keyboard button: there is no on-screen keyboard before the root disk is open.
+
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+
+# On a screen of another size everything scales (DeviceScale=1 keeps the panel 1:1)
+global.k = Window.GetWidth() / layout.width;
+if (Window.GetHeight() / layout.height > global.k) global.k = Window.GetHeight() / layout.height;
+
+fun load(name) {
+  image = Image(name + ".png");
+  if (global.k == 1) return image;
+  return image.Scale(Math.Int(image.GetWidth() * global.k), Math.Int(image.GetHeight() * global.k));
+}
+fun sx(value) { return Math.Int(value * global.k); }
+
+global.originX = Math.Int((Window.GetWidth() - layout.width * global.k) / 2);
+global.originY = Math.Int((Window.GetHeight() - layout.height * global.k) / 2);
+
+bg.sprite = Sprite(load("bg"));
+bg.sprite.SetPosition(global.originX, global.originY, -100);
+
+#----------------------------------------- Clock and date --------------------------------
+
+clock.chars = "0123456789";
+for (i = 0; i < 10; i++) {
+  clock.image[clock.chars.CharAt(i)] = load("clock-" + clock.chars.CharAt(i));
+  clock.adv[clock.chars.CharAt(i)] = layout.advance["clock-" + clock.chars.CharAt(i)];
+}
+clock.image[":"] = load("clock-colon");
+clock.adv[":"] = layout.advance["clock-colon"];
+for (i = 0; i < 5; i++) {
+  clock.sprite[i] = Sprite();
+  clock.sprite[i].SetZ(5);
+}
+for (i = 0; i < 3; i++) {
+  date.sprite[i] = Sprite();
+  date.sprite[i].SetZ(5);
+}
+global.shown_status = "";
+
+# status: "clock HH:MM U DD MM" (date +'%H:%M %u %d %m')
+fun show_clock(status) {
+  time = status.SubString(6, 11);
+  if (time.CharAt(0) == "0") time = time.SubString(1, 5);
+
+  width = 0;
+  for (i = 0; time.CharAt(i); i++) width += clock.adv[time.CharAt(i)];
+  x = (layout.width - width) / 2;
+  y = layout.clockTop + layout.dateHeight;
+  for (i = 0; i < 5; i++) {
+    c = time.CharAt(i);
+    if (c) {
+      clock.sprite[i].SetImage(clock.image[c]);
+      clock.sprite[i].SetX(global.originX + sx(x - layout.margin));
+      clock.sprite[i].SetY(global.originY + sx(y - layout.margin));
+      clock.sprite[i].SetOpacity(1);
+      x += clock.adv[c];
+    } else {
+      clock.sprite[i].SetOpacity(0);
+    }
+  }
+
+  day = status.SubString(14, 16);
+  if (day.CharAt(0) == "0") day = day.SubString(1, 2);
+  month = status.SubString(17, 19);
+  if (month.CharAt(0) == "0") month = month.SubString(1, 2);
+  names[0] = "weekday-" + status.SubString(12, 13);
+  names[1] = "day-" + day;
+  names[2] = "month-" + month;
+  width = 2 * layout.dateSpace;
+  for (i = 0; i < 3; i++) width += layout.advance[names[i]];
+  x = (layout.width - width) / 2;
+  for (i = 0; i < 3; i++) {
+    date.sprite[i].SetImage(load(names[i]));
+    date.sprite[i].SetX(global.originX + sx(x - layout.margin));
+    date.sprite[i].SetY(global.originY + sx(layout.clockTop - layout.margin));
+    date.sprite[i].SetOpacity(1);
+    x += layout.advance[names[i]] + layout.dateSpace;
+  }
+}
+
+#----------------------------------------- The field --------------------------------
+
+field.normal = load("field");
+field.error = load("field-error");
+field.sprite = Sprite(field.normal);
+field.label = Sprite();
+field.dot = load("dot");
+field.dots = [];
+field.dotW = field.dot.GetWidth();
+field.dotH = field.dot.GetHeight();
+for (i = 0; i < 8; i++) spin.image[i] = load("spin-" + i);
+spin.sprite = Sprite(spin.image[0]);
+spin.sprite.SetPosition(global.originX + sx(layout.spinnerX), global.originY + sx(layout.spinnerY), 12);
+spin.sprite.SetOpacity(0);
+
+global.field_x = global.originX + sx(layout.fieldX);
+global.field_y = global.originY + sx(layout.fieldY);
+field.sprite.SetPosition(global.field_x - sx(layout.margin), global.field_y - sx(layout.margin), 10);
+field.label.SetPosition(global.field_x, global.field_y, 11);
+field.sprite.SetOpacity(0);
+field.label.SetOpacity(0);
+
+global.asked = 0;        # the prompt has been up
+global.checking = 0;     # a password was sent, the answer is out
+global.failed = 0;
+global.shown_dots = 0;
+global.tick = 0;
+global.shake_tick = -1;
+global.appear_tick = -1;
+
+fun place_field(offset) {
+  field.sprite.SetX(global.field_x + offset - sx(layout.margin));
+  field.label.SetX(global.field_x + offset);
+}
+
+fun set_opacity(value) {
+  field.sprite.SetOpacity(value);
+  field.label.SetOpacity(value);
+}
+
+fun show_label(name) {
+  field.label.SetImage(load(name));
+  field.label.SetOpacity(1);
+}
+
+fun show_dots(count) {
+  # the dots shrink to fit once the password outgrows the field (as passwordDotScale on the lock screen)
+  room = layout.fieldW - 2 * layout.fieldPad - 8;
+  scale = 1;
+  if (count * layout.dotAdvance > room) scale = room / (count * layout.dotAdvance);
+  width = Math.Int(field.dotW * scale);
+  height = Math.Int(field.dotH * scale);
+  if (width < 1) width = 1;
+  if (height < 1) height = 1;
+  step = layout.dotAdvance * scale;
+  image = field.dot;
+  if (scale != 1) image = field.dot.Scale(width, height);
+  x = global.field_x + (sx(layout.fieldW) - sx(step * count)) / 2;
+  y = global.field_y + (sx(layout.fieldH) - height) / 2;
+  for (i = 0; i < count; i++) {
+    if (!field.dots[i]) field.dots[i] = Sprite();
+    field.dots[i].SetImage(image);
+    field.dots[i].SetPosition(Math.Int(x + sx(step * i)), Math.Int(y), 12);
+    field.dots[i].SetOpacity(1);
+  }
+  for (i = count; field.dots[i]; i++) field.dots[i].SetOpacity(0);
+}
+
+fun display_password_callback(prompt, bullets) {
+  # back at the prompt after a password went out: that password was wrong
+  if (global.checking == 1) {
+    global.failed++;
+    global.checking = 0;
+    spin.sprite.SetOpacity(0);
+    global.shake_tick = 0;
+  }
+  if (global.asked == 0) {
+    global.asked = 1;
+    global.appear_tick = 0;
+  }
+  show_dots(bullets);
+  if (bullets > 0) {
+    # typing clears the failure, as on the lock screen
+    field.sprite.SetImage(field.normal);
+    field.label.SetOpacity(0);
+    global.failed_shown = 1;
+  } else if (global.failed > 0 && global.failed_shown != 1) {
+    field.sprite.SetImage(field.error);
+    n = global.failed;
+    if (n > 9) n = 9;
+    show_label("label-fail-" + n);
+  } else {
+    field.sprite.SetImage(field.normal);
+    show_label("label-placeholder");
+  }
+  if (bullets == 0 && global.shake_tick == 0) global.failed_shown = 0;
+}
+
+fun display_normal_callback() {
+  if (global.asked == 1 && global.checking == 0) {
+    global.checking = 1;
+    global.failed_shown = 0;
+    show_dots(0);
+    field.sprite.SetImage(field.normal);
+    show_label("label-checking");
+    spin.sprite.SetOpacity(1);
+  }
+}
+
+fun status_callback(status) {
+  if (status.SubString(0, 5) == "clock") {
+    if (status != global.shown_status && Plymouth.GetMode() != "shutdown" && Plymouth.GetMode() != "reboot") {
+      global.shown_status = status;
+      show_clock(status);
+    }
+  } else if (status == "unlocked") {
+    # the disk is open: the field goes, the wallpaper and the clock stay until the login screen
+    global.checking = 0;
+    global.asked = 0;
+    spin.sprite.SetOpacity(0);
+    set_opacity(0);
+    show_dots(0);
+  }
+}
+
+fun refresh_callback() {
+  global.tick++;
+  if (global.checking == 1) {
+    frames = Math.Int(layout.spinnerMs / 20);
+    if (frames < 1) frames = 1;
+    if (global.tick % frames == 0) spin.sprite.SetImage(spin.image[Math.Int(global.tick / frames) % 8]);
+  }
+  if (global.appear_tick >= 0) {
+    global.appear_tick++;
+    if (global.appear_tick >= 15) {
+      set_opacity(1);
+      global.appear_tick = -1;
+    } else {
+      set_opacity(global.appear_tick / 15);
+    }
+  }
+  # the shake of the lock screen: keyframes at 1, 3, 5 and 6 sixths of its length
+  if (global.shake_tick >= 0 && layout.shakeAmp > 0) {
+    global.shake_tick++;
+    part = global.shake_tick / (layout.shakeMs / 20) * 6;
+    amp = layout.shakeAmp;
+    if (part < 1) offset = -amp * part;
+    else if (part < 3) offset = -amp + 2 * amp * (part - 1) / 2;
+    else if (part < 5) offset = amp - 1.5 * amp * (part - 3) / 2;
+    else if (part < 6) offset = -amp / 2 + amp / 2 * (part - 5);
+    else {
+      offset = 0;
+      global.shake_tick = -1;
+    }
+    place_field(sx(offset));
+  }
+}
+
+Plymouth.SetRefreshFunction(refresh_callback);
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+Plymouth.SetUpdateStatusFunction(status_callback);

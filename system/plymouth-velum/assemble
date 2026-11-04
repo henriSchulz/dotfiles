@@ -1,0 +1,73 @@
+#!/bin/bash
+# Build the Plymouth theme "velum" into a directory (no root needed):
+#   assemble <outdir> [width height scale]     default: the first real monitor, device pixels
+# Generate.qml draws the pieces in a nested Hyprland on an output of its own (no window on Henri's
+# screen, no focus), with the wallpaper and settings velum-greeter-sync keeps in /var/lib/velum-greeter.
+# Needs the SF fonts of the user who runs it; the result is local and stays out of this public repo.
+# install/53-plymouth-velum.sh calls this, then installs the result.
+set -euo pipefail
+src="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+out="${1:?usage: assemble <outdir> [width height scale]}"
+w="${2:-}"; h="${3:-}"; scale="${4:-}"
+if [[ -z $w ]]; then
+  read -r w h scale < <(hyprctl monitors -j | jq -r '[.[] | select(.name | startswith("HEADLESS") | not)][0] | "\(.width) \(.height) \(.scale)"')
+fi
+data="${VELUM_GREETER_DIR:-/var/lib/velum-greeter}"
+conf() { sed -n "s/^$1=\"\?\([^\"]*\)\"\?\$/\1/p" "$data/theme.conf.user"; }
+
+work="$(mktemp -d "${XDG_CACHE_HOME:-$HOME/.cache}/velum-plymouth.XXXXXX")"
+nested=""
+cleanup() {
+  [[ -n $nested ]] && HYPRLAND_INSTANCE_SIGNATURE=$nested hyprctl dispatch 'hl.dsp.exit()' >/dev/null 2>&1 || true
+  rm -rf "$work"
+}
+trap cleanup EXIT
+
+# the Velum module as the login screen's theme has it
+USER_HOME="$HOME" "$src/../sddm-velum/assemble" "$work/theme"
+cp "$src/Generate.qml" "$work/theme/Generate.qml"
+
+cat > "$work/nested.lua" <<LUA
+hl.config({ misc = { disable_hyprland_logo = true, disable_splash_rendering = true, force_default_wallpaper = 0, disable_autoreload = true, disable_watchdog_warning = true }, animations = { enabled = false } })
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
+hl.monitor({ output = "VELUM-GEN", mode = "${w}x${h}@60", position = "0x0", scale = $scale })
+LUA
+hypr="$XDG_RUNTIME_DIR/hypr"
+before="$(ls "$hypr" | sort)"
+hyprctl eval "hl.exec_cmd('systemd-run --user --scope --quiet --slice=agents.slice -p CPUWeight=20 env HYPRLAND_NO_SD_VARS=1 HYPRLAND_NO_SD_NOTIFY=1 HYPRLAND_NO_CRASHREPORTER=1 Hyprland -c $work/nested.lua', { workspace = 'name:spare silent', float = true, size = '1160 800' })" >/dev/null
+for _ in $(seq 50); do
+  sleep 0.2
+  new="$(comm -13 <(echo "$before") <(ls "$hypr" | sort) | head -1)"
+  if [[ -n $new ]] && HYPRLAND_INSTANCE_SIGNATURE=$new hyprctl version >/dev/null 2>&1; then nested=$new; break; fi
+done
+[[ -n $nested ]] || { echo "nested Hyprland did not come up" >&2; exit 1; }
+HYPRLAND_INSTANCE_SIGNATURE=$nested hyprctl output create headless VELUM-GEN >/dev/null
+sleep 0.5
+HYPRLAND_INSTANCE_SIGNATURE=$nested hyprctl eval 'hl.monitor({ output = "WAYLAND-1", disabled = true })' >/dev/null
+sleep 0.5
+socket="$(HYPRLAND_INSTANCE_SIGNATURE= hyprctl instances -j | jq -r --arg s "$nested" '.[] | select(.instance==$s) | .wl_socket')"
+
+rm -rf "$out"; mkdir -p "$out"
+env -u HYPRLAND_INSTANCE_SIGNATURE HYPRLAND_INSTANCE_SIGNATURE="$nested" WAYLAND_DISPLAY="$socket" QT_QPA_PLATFORM=wayland QT_FORCE_STDERR_LOGGING=1 QT_LOGGING_RULES="*.debug=false;qml.debug=true" \
+  timeout 120 /usr/lib/qt6/bin/qml "$work/theme/Generate.qml" -- "$out" "$w" "$h" "$scale" "$data/background" \
+    "$(conf variant)" "$(conf dark)" "$(conf reduceTransparency)" "$(conf touch)" > "$work/log" 2>&1 || { cat "$work/log" >&2; exit 1; }
+layout="$(sed -n 's/.*VELUM-LAYOUT //p' "$work/log" | tail -1)"
+[[ -n $layout ]] || { cat "$work/log" >&2; echo "no layout from Generate.qml" >&2; exit 1; }
+
+install -m644 "$src/velum.plymouth" "$out/velum.plymouth"
+{
+  python3 - "$layout" <<'PY'
+import json, sys
+def emit(prefix, value):
+    for k, v in value.items():
+        if isinstance(v, dict):
+            for k2, v2 in v.items():
+                print(f'{prefix}.{k}["{k2}"] = {v2};')
+        else:
+            print(f'{prefix}.{k} = {v};')
+emit("layout", json.loads(sys.argv[1]))
+PY
+  cat "$src/velum.script.in"
+} > "$out/velum.script"
+chmod 644 "$out"/*
+du -sh "$out" | cut -f1

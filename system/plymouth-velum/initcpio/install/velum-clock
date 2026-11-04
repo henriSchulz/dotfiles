@@ -1,0 +1,13 @@
+#!/bin/bash
+
+build() {
+  add_binary date
+  add_file "$(readlink -f /etc/localtime)" /etc/localtime
+  add_runscript
+}
+
+help() {
+  cat <<HELPEOF
+Sends the time to the Plymouth theme velum, whose script has no clock of its own.
+HELPEOF
+}

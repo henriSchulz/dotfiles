@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Velum
+Description=The LUKS prompt with the look of the Velum lock screen.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/velum
+ScriptFile=/usr/share/plymouth/themes/velum/velum.script
