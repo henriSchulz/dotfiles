@@ -155,6 +155,7 @@ Item {
     Theme.dark = confBool("dark", true)
     Theme.reduceMotion = confBool("reduceMotion", false)
     Theme.reduceTransparency = confBool("reduceTransparency", false)
+    Theme.touch = confBool("touch", false)
     syncPasswordText()
     if (inputEnabled) Qt.callLater(forcePasswordFocus)
     appear.from(0)

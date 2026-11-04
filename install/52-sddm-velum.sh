@@ -81,3 +81,7 @@ else
 fi
 run as_user "$user_home/.local/bin/velum-greeter-sync"
 info "theme in $theme, wallpaper + settings in $data"
+# SDDM reads every file in sddm.conf.d whatever its name, so renaming a drop-in to *.off changes nothing
+if grep -qs '^\[Autologin\]' /etc/sddm.conf.d/*; then
+  warn "autologin is set in /etc/sddm.conf.d: boots skip this login screen — move that file out of the directory"
+fi
