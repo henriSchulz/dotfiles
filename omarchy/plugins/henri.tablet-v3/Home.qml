@@ -92,7 +92,7 @@ Item {
     onLoaded: home.gridAlso = home.idSet(text())
   }
   function homeHides(e, id) {
-    if (home.homeHidden[id]) return true
+    if (home.homeHidden[id] || home.localHidden[id]) return true
     var cats = []
     try { cats = e.categories || [] } catch (err) {}
     for (var i = 0; i < cats.length; i++) if (home.hiddenCategories.indexOf(String(cats[i])) >= 0) return true
@@ -146,7 +146,15 @@ Item {
   // widgets: an order entry each, the app a tap opens; one the saved order does not know yet
   // starts at the top left of the first page (iPadOS puts a new widget there)
   // `open`: the app's arguments that show the widget's item (the photo on it)
-  readonly property var widgets: ({ "widget:photos": { name: "Photos", app: "de.henri.IcloudPhotos", open: ["--open"] } })
+  readonly property var knownWidgets: ({ "widget:photos": { name: "Photos", app: "de.henri.IcloudPhotos", open: ["--open"] } })
+  // what this machine's home screen leaves out, apps and widgets (home-layout.json "hidden"): the
+  // layout belongs to the machine, home.hides to every machine. The launcher and Spotlight still find the apps.
+  property var localHidden: ({})
+  readonly property var widgets: {
+    var out = {}
+    for (var w in knownWidgets) if (!localHidden[w]) out[w] = knownWidgets[w]
+    return out
+  }
   function openWidget(id, item) {
     var w = widgets[id]
     if (!w || !entries[w.app]) return
@@ -190,12 +198,15 @@ Item {
       try { d = JSON.parse(text()) } catch (e) {}
       home.savedFolders = d.folders && typeof d.folders === "object" ? d.folders : {}
       home.savedOrder = Array.isArray(d.order) ? d.order : []
+      home.localHidden = home.idSet(Array.isArray(d.hidden) ? d.hidden.join("\n") : "")
+      home.scanApps()
     }
   }
   function saveLayout(l) {
     home.savedFolders = l.folders
     home.savedOrder = l.order.slice()
-    layoutFile.setText(JSON.stringify({ order: home.savedOrder, folders: home.savedFolders }, null, 1) + "\n")
+    var hidden = Object.keys(home.localHidden)
+    layoutFile.setText(JSON.stringify({ order: home.savedOrder, folders: home.savedFolders, hidden: hidden.length ? hidden : undefined }, null, 1) + "\n")
   }
   function saveOrder(ids) { saveLayout({ order: ids, folders: home.layout.folders }) }
   // a new folder's name, from the categories its apps share (iPadOS names it by the App Store's)

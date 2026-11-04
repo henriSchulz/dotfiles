@@ -98,6 +98,33 @@ hyprctl eval 'henri_tablet.set(false)' >/dev/null; sleep 0.3
 f=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/workspace-layouts/$wsc.lua
 want W23 "off: Omarchy's layout of that workspace again" "$(layout_of "$wsc")" "$( [[ -f $f ]] && grep -o 'layout = "[a-z]*"' "$f" | cut -d'"' -f2 || echo dwindle)"
 
+# what is on the screen, not just the state: Hyprland 0.56's monocle and the fullscreen hand-over
+# left a picked window at alpha 0 (an empty screen), and off its covered windows invisible in the tiling
+for a in $(clients | jq -r '.[].address'); do hyprctl dispatch "hl.dsp.window.close({ window = 'address:$a' })" >/dev/null; done
+sleep 0.5
+wl=$(HYPRLAND_INSTANCE_SIGNATURE= hyprctl instances -j | jq -r --arg s "$HYPRLAND_INSTANCE_SIGNATURE" '.[] | select(.instance == $s) | .wl_socket')
+pixel() { sleep 0.8; WAYLAND_DISPLAY=$wl grim -o TB - | magick - -format "%[hex:p{$1,$2}]" info:- | cut -c1-6; }
+painted() { hyprctl dispatch "hl.dsp.exec_cmd('foot --app-id $1 -o colors-light.background=$2 -o colors-dark.background=$2')" >/dev/null; sleep 1.5; }
+addr_of() { clients | jq -r --arg c "$1" '[.[] | select(.class == $c)] | sort_by(.focusHistoryID) | .['"$2"'].address'; }
+hyprctl eval 'henri_tablet.set(false)' >/dev/null; sleep 0.3
+painted r ff0000; painted r 00ff00                       # two windows of one app, tiled side by side
+hyprctl eval 'henri_tablet.set(true)' >/dev/null; sleep 0.5
+painted s 0000ff
+red=$(clients | jq -r '.[] | select(.class == "r") | .address' | head -1)
+green=$(clients | jq -r --arg x "$red" '.[] | select(.class == "r" and .address != $x) | .address')
+cx=$(hyprctl monitors -j | jq '.[] | select(.name=="TB") | .width / 2 | floor')
+hyprctl dispatch "hl.dsp.focus({ window = 'address:$red' })" >/dev/null
+want W24 "a switcher pick of the window under the top one shows it" "$(pixel $cx 300)" "FF0000"
+hyprctl dispatch "hl.dsp.focus({ window = 'address:$green' })" >/dev/null
+want W25 "and back to the other one" "$(pixel $cx 300)" "00FF00"
+hyprctl dispatch "hl.dsp.focus({ window = 'address:$(clients | jq -r '.[] | select(.class == "s") | .address')' })" >/dev/null
+hyprctl dispatch "hl.dsp.focus({ window = 'address:$red' })" >/dev/null
+want W26 "a pick from another app's workspace shows it" "$(pixel $cx 300)" "FF0000"
+hyprctl eval 'henri_tablet.set(false)' >/dev/null; sleep 0.5
+hyprctl dispatch "hl.dsp.focus({ window = 'address:$red' })" >/dev/null
+geo() { clients | jq -r --arg a "$1" '.[] | select(.address == $a) | "\(.at[0] - 2000 + .size[0] / 4 | floor) \(.at[1] + .size[1] * 3 / 4 | floor)"'; }
+want W27 "off: both windows of the app visible in the tiling" "$(pixel $(geo "$red")) $(pixel $(geo "$green"))" "FF0000 00FF00"
+
 echo "$pass passed, $fail failed${failed[*]:+: ${failed[*]}}"
 [[ -n ${KEEP:-} ]] || rig/rig.sh stop >/dev/null 2>&1
 [[ $fail == 0 ]]
