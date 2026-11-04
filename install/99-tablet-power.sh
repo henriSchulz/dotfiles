@@ -35,6 +35,10 @@ run sudo install -Dm644 "$DOTFILES_ROOT/system/acer-keys/90-acer-hawaii-keys.hwd
 run sudo rm -f /etc/udev/hwdb.d/90-acer-hawaii-no-numlock.hwdb
 run sudo systemd-hwdb update
 
+# Cover touchpad: firmware flags fingers as palms mid-swipe, the gesture cancels.
+# Hyprland reads quirks at startup.
+run sudo install -Dm644 "$DOTFILES_ROOT/system/acer-keys/local-overrides.quirks" /etc/libinput/local-overrides.quirks
+
 # apply now instead of at the next boot
 run sudo udevadm control --reload
 run sudo udevadm trigger --subsystem-match=pci --subsystem-match=usb --subsystem-match=hidraw --action=add

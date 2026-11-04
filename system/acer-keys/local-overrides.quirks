@@ -1,0 +1,8 @@
+# Acer Switch Alpha 12 cover: the firmware flags fingers as MT_TOOL_PALM during
+# multi-finger swipes, libinput drops them and the gesture cancels.
+[Chicony ACER Hawaii Keyboard Touchpad ignore tool-palm]
+MatchBus=usb
+MatchVendor=0x04F2
+MatchProduct=0x1558
+MatchUdevType=touchpad
+AttrEventCode=-ABS_MT_TOOL_TYPE
