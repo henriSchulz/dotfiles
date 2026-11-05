@@ -1,0 +1,14 @@
+#!/usr/bin/ash
+# The on-screen keyboard of the LUKS screen, for a tablet with its keyboard off (osk/velum-luks-osk.c).
+# Nothing here may stop the boot: without it the real keyboard still works. Its log ends up in /run.
+
+run_hook() {
+  modprobe -q uinput
+  /usr/share/plymouth/themes/velum/velum-luks-osk > /run/velum-osk.log 2>&1 &
+  echo $! > /run/velum-osk.pid
+}
+
+run_latehook() {
+  # the root disk is open
+  [ -f /run/velum-osk.pid ] && kill "$(cat /run/velum-osk.pid)" 2>/dev/null
+}

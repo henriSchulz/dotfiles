@@ -5,7 +5,8 @@
 #                                           machine's panel from the wallpaper and settings in
 #                                           /var/lib/velum-greeter. Local only, the PNGs hold SF glyphs.
 #   /etc/initcpio/{hooks,install}/velum-clock   sends the time to the script, which has no clock of its own
-#   /etc/mkinitcpio.conf.d/velum_clock.conf     puts that hook right after plymouth, before encrypt
+#   /etc/initcpio/{hooks,install}/velum-osk     starts velum-luks-osk (from the theme): the on-screen keyboard
+#   /etc/mkinitcpio.conf.d/velum_clock.conf     puts both hooks right after plymouth, before encrypt
 #   /etc/plymouth/plymouthd.conf            Theme=velum, DeviceScale=1 (the PNGs are in device pixels)
 #
 # The wallpaper lives in the initramfs: after a new wallpaper or a Velum change, run this again.
@@ -43,8 +44,10 @@ as_root chmod -R u=rwX,go=rX "$theme.new"
 as_root rm -rf "$theme"
 as_root mv "$theme.new" "$theme"
 
-as_root install -Dm755 "$src/initcpio/hooks/velum-clock" /etc/initcpio/hooks/velum-clock
-as_root install -Dm644 "$src/initcpio/install/velum-clock" /etc/initcpio/install/velum-clock
+for hook in velum-clock velum-osk; do
+  as_root install -Dm755 "$src/initcpio/hooks/$hook" "/etc/initcpio/hooks/$hook"
+  as_root install -Dm644 "$src/initcpio/install/$hook" "/etc/initcpio/install/$hook"
+done
 as_root install -Dm644 "$src/velum_clock.conf" /etc/mkinitcpio.conf.d/velum_clock.conf
 
 as_root plymouth-set-default-theme velum

@@ -81,7 +81,11 @@ else
 fi
 run as_user "$user_home/.local/bin/velum-greeter-sync"
 info "theme in $theme, wallpaper + settings in $data"
+if [[ $(</etc/hostname) == tablet ]]; then
+  autologin=/etc/sddm.conf.d/zz-velum-autologin.conf
+  if [[ $(id -u) == 0 ]]; then run install -m644 "$DOTFILES_ROOT/system/sddm-velum/autologin-tablet.conf" "$autologin"
+  else run sudo install -m644 "$DOTFILES_ROOT/system/sddm-velum/autologin-tablet.conf" "$autologin"; fi
 # SDDM reads every file in sddm.conf.d whatever its name, so renaming a drop-in to *.off changes nothing
-if grep -qs '^\[Autologin\]' /etc/sddm.conf.d/*; then
+elif grep -qs '^\[Autologin\]' /etc/sddm.conf.d/*; then
   warn "autologin is set in /etc/sddm.conf.d: boots skip this login screen — move that file out of the directory"
 fi

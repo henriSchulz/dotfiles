@@ -1,0 +1,15 @@
+#!/bin/bash
+
+build() {
+  add_binary /usr/share/plymouth/themes/velum/velum-luks-osk
+  # the touchscreen behind a Skylake LPSS I2C bus, and the uinput keyboard
+  add_module uinput
+  map add_module i2c_hid_acpi hid_multitouch intel_lpss_pci idma64 pinctrl_sunrisepoint
+  add_runscript
+}
+
+help() {
+  cat <<HELPEOF
+The on-screen keyboard of the Plymouth theme velum: reads the touchscreen, types through uinput.
+HELPEOF
+}

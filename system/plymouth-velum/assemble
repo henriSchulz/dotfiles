@@ -54,6 +54,10 @@ env -u HYPRLAND_INSTANCE_SIGNATURE HYPRLAND_INSTANCE_SIGNATURE="$nested" WAYLAND
 layout="$(sed -n 's/.*VELUM-LAYOUT //p' "$work/log" | tail -1)"
 [[ -n $layout ]] || { cat "$work/log" >&2; echo "no layout from Generate.qml" >&2; exit 1; }
 
+sed -n 's/.*VELUM-OSK //p' "$work/log" > "$out/osk-keys"
+[[ -s $out/osk-keys ]] || { cat "$work/log" >&2; echo "no keys from Generate.qml" >&2; exit 1; }
+gcc -O2 -Wall -o "$out/velum-luks-osk" "$src/osk/velum-luks-osk.c" -lxkbcommon
+
 install -m644 "$src/velum.plymouth" "$out/velum.plymouth"
 {
   python3 - "$layout" <<'PY'
@@ -70,4 +74,5 @@ PY
   cat "$src/velum.script.in"
 } > "$out/velum.script"
 chmod 644 "$out"/*
+chmod 755 "$out/velum-luks-osk"
 du -sh "$out" | cut -f1

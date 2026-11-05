@@ -1,15 +1,16 @@
 import QtQuick
 import QtQuick.Effects
 import "Velum"
+import "Velum/KeyboardLayout.js" as KeyLayout
 
 // Draws the pieces of the LUKS screen (Plymouth theme velum) with the Velum tokens and the look of
 // system/sddm-velum/Face.qml: Plymouth has no QML and no SF font in the initramfs, so the blurred
-// wallpaper, the field, the labels and every glyph of the clock and date become PNGs here.
+// wallpaper, the field, the labels, every glyph of the clock and date and the keyboard's pages become PNGs here.
 // Run by ./assemble, inside a compositor, as
 //   qml Generate.qml -- <outdir> <width> <height> <scale> <background> <variant> <dark> <reduceTransparency> <touch>
 // Width and height are device pixels, as the images and the layout come out (a grab already renders at
-// the output's scale, which assemble sets to <scale>). The last line of its log is the layout
-// (JSON) that ./assemble puts in front of velum.script.in.
+// the output's scale, which assemble sets to <scale>). The last lines of its log are the layout
+// (JSON) that ./assemble puts in front of velum.script.in and the keys it writes to osk-keys.
 // Keep it in step with Face.qml: a change to the lock screen's look belongs here too.
 Window {
   id: win
@@ -33,6 +34,11 @@ Window {
   readonly property real dateSize: Theme.m.type.title * 1.4
   readonly property real clockSize: Theme.m.type.title * 6.5
   readonly property real spinnerSize: Theme.layout.checkbox.size
+  readonly property var ks: Theme.core.surface.keyboard
+  readonly property real boardTop: screenHeight - board.boardHeight
+  readonly property real buttonTop: fieldTop + fieldHeight + Theme.layout.window.pad
+  // the field moves up as far as the keyboard would cover it (keyboardLift in Face.qml)
+  readonly property real fieldLift: Math.max(0, buttonTop - boardTop)
 
   readonly property var weekdays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
   readonly property var months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
@@ -152,6 +158,36 @@ Window {
       }
     }
 
+    // the round keyboard button under the field, as keyButton in Face.qml
+    Item {
+      id: buttonLayer
+      visible: stage.kind === "button"
+      width: win.ks.lockButton + 2 * win.margin
+      height: win.ks.lockButton + 2 * win.margin
+      Item {
+        x: win.margin; y: win.margin
+        width: win.ks.lockButton; height: win.ks.lockButton
+        VShadow { layers: Theme.r.popover.shadow; radius: win.ks.lockButton / 2 }
+        Rectangle {
+          anchors.fill: parent
+          radius: height / 2
+          color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+          border.width: Theme.layout.separator
+          border.color: Theme.r.line.rim
+        }
+        VIcon { anchors.centerIn: parent; name: "keyboard"; size: win.ks.lockIcon; color: Theme.r.popover.ink }
+      }
+    }
+
+    // Velum's keyboard, one image per page; a pressed key is cut out of the page with every key down
+    VKeyboard {
+      id: board
+      visible: stage.kind === "board"
+      width: win.screenWidth
+      height: boardHeight
+      noArrows: true
+    }
+
     // a piece of the date or the clock with the soft shade of the lock screen
     Item {
       id: glyphLayer
@@ -226,6 +262,45 @@ Window {
     return measure.height
   }
 
+  // A curve of the tokens as one value per 20 ms frame of the theme's refresh, ending at 1
+  function curveFrames(duration, curve) {
+    var count = Theme.reduceMotion ? 1 : Math.max(1, Math.round(duration / 20))
+    var out = {}
+    for (var f = 1; f <= count; f++) {
+      var t = f / count, lo = 0, hi = 1, u = t
+      for (var i = 0; i < 24; i++) {
+        var x = 3 * u * (1 - u) * (1 - u) * curve[0] + 3 * u * u * (1 - u) * curve[2] + u * u * u
+        if (x < t) lo = u; else hi = u
+        u = (lo + hi) / 2
+      }
+      out[String(f - 1)] = 3 * u * (1 - u) * (1 - u) * curve[1] + 3 * u * u * (1 - u) * curve[3] + u * u * u
+    }
+    return { frames: out, count: count }
+  }
+  // What velum-luks-osk needs: the keys in device pixels of the screen, one line each
+  function oskLines() {
+    var px = function (v) { return Math.round(v * scaleOut) }
+    var cardX = board.card.x, cardTop = boardTop + ks.shadowRoom
+    var lines = [
+      "screen " + Number(args[1]) + " " + Number(args[2]) + " " + px(boardTop),
+      "card " + px(cardX) + " " + px(cardTop) + " " + px(board.card.width) + " " + px(cardTop + ks.padTop),
+      "button " + px((screenWidth - ks.lockButton) / 2) + " " + px(buttonTop) + " " + px(ks.lockButton),
+      "timing " + px(ks.gap) + " " + ks.capsTap + " " + Theme.delay("repeat") + " " + Theme.delay("repeatInterval") + " " + px(ks.dismissDrag)
+    ]
+    var pages = ["letters", "numbers", "symbols"]
+    for (var p = 0; p < pages.length; p++) {
+      var keys = KeyLayout.place(pages[p], board.card.width, ks, false, false, true)
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i]
+        var kind = k.act === "delete" || k.act === "return" || k.act === "shift" || k.act === "page" || k.act === "hide" || k.act === "space" ? k.act : "char"
+        var a = k.act === "page" ? k.to : k.act === "space" || !k.out ? "-" : k.out
+        var b = k.letter ? k.out.toUpperCase() : a
+        lines.push("key " + pages[p] + " " + px(cardX + k.x) + " " + px(cardTop + k.y) + " " + px(k.w) + " " + px(k.h) + " " + kind + " " + a + " " + b)
+      }
+    }
+    return lines
+  }
+
   // ---- the job list: [file, item, setup]
   property var jobs: []
   property var layout: ({})
@@ -261,7 +336,31 @@ Window {
       for (var d = 1; d <= 31; d++) addGlyph("day-" + d, String(d), dateSize, Font.DemiBold, adv)
       for (var m = 0; m < 12; m++) addGlyph("month-" + (m + 1), months[m], dateSize, Font.DemiBold, adv)
 
+      jobs.push({ file: "kbd-button", item: buttonLayer, setup: function () { stage.kind = "button" } })
+      var pages = [["letters", "letters", false, false], ["shift", "letters", true, false], ["caps", "letters", true, true], ["numbers", "numbers", false, false], ["symbols", "symbols", false, false]]
+      for (var g = 0; g < pages.length; g++) (function (name, page, shifted, caps) {
+        jobs.push({ file: "kbd-" + name, item: board, setup: function () {
+          stage.kind = "board"; board.page = page; board.shift = shifted; board.caps = caps; board.pressedIds = ({})
+        } })
+        jobs.push({ file: "kbd-" + name + "-down", item: board, setup: function () {
+          var ids = {}, keys = board.card.keys
+          for (var i = 0; i < keys.length; i++) ids[keys[i].id] = true
+          stage.kind = "board"; board.page = page; board.shift = shifted; board.caps = caps; board.pressedIds = ids
+        } })
+      })(pages[g][0], pages[g][1], pages[g][2], pages[g][3])
+
+      var inCurve = curveFrames(Theme.dur("base"), Theme.curve("out"))
+      var outCurve = curveFrames(Theme.exit(Theme.dur("base")), Theme.curve("exit"))
       layout = {
+        boardY: Math.round(boardTop * scaleOut),
+        boardH: Math.round(board.boardHeight * scaleOut),
+        fieldLift: Math.round(fieldLift * scaleOut),
+        buttonX: Math.round((screenWidth - ks.lockButton) / 2 * scaleOut),
+        buttonY: Math.round(buttonTop * scaleOut),
+        kbdInCount: inCurve.count,
+        kbdOutCount: outCurve.count,
+        kbdIn: inCurve.frames,
+        kbdOut: outCurve.frames,
         width: Number(args[1]),
         height: Number(args[2]),
         margin: Math.round(margin * scaleOut),
@@ -289,6 +388,8 @@ Window {
   function next() {
     if (jobs.length === 0) {
       console.warn("VELUM-LAYOUT " + JSON.stringify(layout))
+      var lines = oskLines()
+      for (var i = 0; i < lines.length; i++) console.warn("VELUM-OSK " + lines[i])
       Qt.quit()
       return
     }
