@@ -1005,7 +1005,7 @@ Item {
           anchors.fill: parent
           opacity: Math.min(1, homeItem.folderShown)
           wallSource: home.wallpaperSource
-          wallRect: Qt.rect(0, 0, per.modelData.width, per.modelData.height)
+          wallRect: Qt.rect(0, 0, width, height)
         }
       }
       // the home screen itself, under the windows of an empty workspace
@@ -1054,7 +1054,7 @@ Item {
           onTurnPage: function (dir) { home.pageCount = pages; home.turnPage(dir) }
           running: home.runningApps
           wallSource: home.wallpaperSource
-          wallRect: Qt.rect(0, -per.reserved[1], per.modelData.width, per.modelData.height)
+          wallRect: Qt.rect(0, -per.reserved[1], homeAll.width, homeAll.height + per.reserved[1] + per.reserved[3])
           onTapped: function (id) { home.screenName = per.name; home.guard("openApp", function () { home.openApp(id) }) }
           onWidgetTapped: function (id, item) { home.screenName = per.name; home.openWidget(id, item) }
           menuEntries: home.menuFor
@@ -1112,15 +1112,18 @@ Item {
             clip: true
             Item {
               y: -backdropBox.stripTop
-              width: per.modelData.width
-              height: per.modelData.height
-              // the wallpaper, as the compositor draws it under the whole screen
+              width: all.width
+              height: all.height
+              // the wallpaper, as the compositor draws it under the whole screen. Sizes from what fills the
+              // window (`all`), never the ShellScreen's: on the iPad cast (HEADLESS-SPARE reshaped from
+              // portrait to landscape) that kept 768 wide and the blur ended two thirds across the
+              // switcher (Henri 2026-11-06); nor the PanelWindow's own width/height, not its real size here
               Image {
-                width: per.modelData.width
-                height: per.modelData.height
+                width: all.width
+                height: all.height
                 source: "file://" + home.wallpaperLink + (home.wallpaperTarget ? "?v=" + encodeURIComponent(home.wallpaperTarget) : "")
                 fillMode: Image.PreserveAspectCrop
-                sourceSize.width: per.modelData.width
+                sourceSize.width: per.modelData.width      // the resolution only, as below
                 sourceSize.height: per.modelData.height
                 asynchronous: false
                 cache: true
@@ -1130,6 +1133,7 @@ Item {
               // It reaches past the screen's edges by the blur's radius: a blur mixes in the transparency
               // beyond its source, and the sharp wallpaper under it showed through along the edges.
               Item {
+                id: blurBox
                 x: -home.cfg.blurMax
                 y: -home.cfg.blurMax
                 width: parent.width + 2 * home.cfg.blurMax
@@ -1137,24 +1141,36 @@ Item {
                 opacity: Math.max(0, Math.min(1, blurV.value))
                 visible: opacity > 0.002
                 layer.enabled: true
-                Image {
-                  id: wallSmall
+                // MultiEffect keeps the size its blur had when it was made: made at 0 × 0 (the window not
+                // laid out yet) it was one flat colour, made while the screen was still portrait it
+                // ended 768 px across the landscape switcher. So it is made once the size is known,
+                // and made again whenever the size changes.
+                readonly property size made: Qt.size(Math.round(width), Math.round(height))
+                onMadeChanged: { blurMaker.active = false; blurMaker.active = made.width > 2 * home.cfg.blurMax && made.height > 2 * home.cfg.blurMax }
+                Loader {
+                  id: blurMaker
                   anchors.fill: parent
-                  source: "file://" + home.wallpaperLink + (home.wallpaperTarget ? "?v=" + encodeURIComponent(home.wallpaperTarget) : "")
-                  fillMode: Image.PreserveAspectCrop
-                  // its own size, not the screen's: a size the screen had before cannot linger here
-                  sourceSize.width: Math.max(1, Math.round(width / home.cfg.blurDownscale))
-                  sourceSize.height: Math.max(1, Math.round(height / home.cfg.blurDownscale))
-                  visible: false
-                  cache: true
-                }
-                MultiEffect {
-                  anchors.fill: parent
-                  source: wallSmall
-                  blurEnabled: true
-                  blur: 1
-                  blurMax: home.cfg.blurMax
-                  saturation: home.cfg.blurSaturation
+                  active: false
+                  sourceComponent: Item {
+                    Image {
+                      id: wallSmall
+                      anchors.fill: parent
+                      source: "file://" + home.wallpaperLink + (home.wallpaperTarget ? "?v=" + encodeURIComponent(home.wallpaperTarget) : "")
+                      fillMode: Image.PreserveAspectCrop
+                      sourceSize.width: Math.max(1, Math.round(blurBox.made.width / home.cfg.blurDownscale))
+                      sourceSize.height: Math.max(1, Math.round(blurBox.made.height / home.cfg.blurDownscale))
+                      visible: false
+                      cache: true
+                    }
+                    MultiEffect {
+                      anchors.fill: parent
+                      source: wallSmall
+                      blurEnabled: true
+                      blur: 1
+                      blurMax: home.cfg.blurMax
+                      saturation: home.cfg.blurSaturation
+                    }
+                  }
                 }
               }
             }
@@ -1163,7 +1179,7 @@ Item {
             id: shadowHome
             running: home.runningApps
             wallSource: home.wallpaperSource
-            wallRect: Qt.rect(0, -per.reserved[1], per.modelData.width, per.modelData.height)
+            wallRect: Qt.rect(0, -per.reserved[1], all.width, all.height)
             x: 0
             y: per.reserved[1]
             width: overlay.width
