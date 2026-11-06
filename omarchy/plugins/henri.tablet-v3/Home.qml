@@ -684,7 +684,7 @@ Item {
   property string buttonWant: ""
   property real buttonAt: 0
   function button(screenName, kind) {
-    if (!active) return
+    if (!active || (kind !== "home" && kind !== "switcher")) return
     if (mode === "switcher") {
       if (kind === "home") switcherHome()
       else if (cards.length && !fromHome) openCard(cur, null)
