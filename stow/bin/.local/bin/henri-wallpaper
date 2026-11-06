@@ -6,7 +6,7 @@
 #   henri-wallpaper reapply       re-point the background link (theme-set hook)
 #   henri-wallpaper current       print the global wallpaper, empty in theme mode
 #   henri-wallpaper displayed     print the image on screen, as its original path
-#   henri-wallpaper list          print <image>\t<thumbnail> for the folder
+#   henri-wallpaper list          print <image>\t<thumbnail> for the folder and its subfolders
 #   henri-wallpaper prepare       build/refresh the display-size copies, drop stale ones
 #   henri-wallpaper dir           print the wallpaper folder
 #
@@ -25,6 +25,11 @@
 # `.src` sidecar next to each copy names its original, which is what
 # `displayed` and the picker use to mark the current image. Originals that
 # already fit are used as they are.
+#
+# Subfolders: the picker shows one section per folder below the wallpaper
+# folder (hidden folders are skipped). An image moved between folders keeps
+# working as the global wallpaper: when the pinned path is gone, the pin
+# follows the first image with the same name in the tree (heal_pin).
 
 set -euo pipefail
 
@@ -96,9 +101,23 @@ original_of() {
 }
 
 list_images() {
-  find -L "$WALLPAPER_DIR" -maxdepth 1 -type f \
+  find -L "$WALLPAPER_DIR" -mindepth 1 -name '.*' -prune -o -type f \
     \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.bmp' -o -iname '*.gif' \) \
-    -print0 | sort -z
+    -print0 | sort -zV
+}
+
+# The pinned image was moved (into a subfolder, or by Syncthing from the
+# other machine): point the pin at the image of the same name and put it back
+# on screen, before `prepare` drops the display copy of the old path.
+heal_pin() {
+  local image found
+  image=$(pinned)
+  [[ -n $image && ! -f $image && $image == "$WALLPAPER_DIR"/* ]] || return 0
+  found=$(find -L "$WALLPAPER_DIR" -name '.*' -prune -o -type f -name "${image##*/}" -print -quit 2>/dev/null)
+  [[ -n $found ]] || return 0
+  printf '%s\n' "$found" >"$PIN_FILE.tmp"
+  mv "$PIN_FILE.tmp" "$PIN_FILE"
+  apply_link "$found" setInstant
 }
 
 apply_link() {
@@ -121,6 +140,7 @@ case "${1:-}" in
     omarchy-theme-bg-next
     ;;
   reapply)
+    heal_pin
     image=$(pinned)
     [[ -n $image && -f $image ]] || exit 0
     apply_link "$image" setInstant
@@ -135,6 +155,7 @@ case "${1:-}" in
     # <image>\t<thumbnail> per line; thumbnails are 16:10 crops, cached by
     # path + size + mtime so replaced files get a new one.
     mkdir -p "$WALLPAPER_DIR" "$CACHE"
+    heal_pin
     list_images | while IFS= read -r -d '' image; do
       hash=$(image_hash "$image")
       thumb="$CACHE/$hash.jpg"
@@ -150,6 +171,7 @@ case "${1:-}" in
     ;;
   prepare)
     mkdir -p "$SCALED"
+    heal_pin
     declare -A keep=()
     while IFS= read -r -d '' image; do
       shown=$(scaled_for "$image")
