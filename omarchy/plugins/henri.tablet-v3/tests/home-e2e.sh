@@ -119,10 +119,11 @@ fi
 if runs H6; then
   # on the home screen: an app that is not running starts from its icon; the overlay lets go
   before=$(hyprctl clients -j | jq 'length')
-  c henri.tablet homeOpen org.gnome.Papers >/dev/null
+  r=$(c henri.tablet homeOpen org.gnome.Papers)
   sleep 0.4; mid=$(hm | jq -r .mode)
   sleep 3.5; shot H6-launched
   want H6 "launching: the card grows, then the overlay lets go" "$mid,$(hm | jq -r .mode)" "settle,idle"
+  want H6c "the card is on the icon when the overlay shows (no frame at the screen's size)" "$(awk '{print ($1 == "settle" && $2 < 0.5)}' <<<"$r")" "1"
   want H6b "the app's window is there" "$(( $(hyprctl clients -j | jq 'length') > before ))" "1"
   a=$(hyprctl clients -j | jq -r '.[] | select(.class | test("Papers"; "i")) | .address' | head -1)
   [[ $a ]] && hyprctl dispatch "hl.dsp.window.close({ window = 'address:$a' })" >/dev/null
@@ -292,6 +293,17 @@ if runs H17; then
   pt m 30 $((H / 2)) d s 40 u; sleep 1.5
   hyprctl dispatch "hl.dsp.window.close({ window = 'class:app4' })" >/dev/null
   hyprctl eval "hl.config({ general = { layout = '$layout0', gaps_in = $gin0, gaps_out = $gout0, border_size = $border0 } })" >/dev/null; sleep 0.5
+fi
+
+if runs H18; then
+  # from the home screen, a running app's icon: its card is on the icon in the overlay's first frame,
+  # and the switch to the app's workspace waits until the overlay covers the screen (sent at once,
+  # the app showed at full size for a frame, then the card grew: it seemed to open twice)
+  [[ $(hm | jq -r .mode) == home ]] || { edgePull 220 220 350; sleep 1.2; pt m 30 $((H / 2)) d s 40 u; sleep 1.5; }
+  r=$(c henri.tablet homeOpen "$(hm | jq -r '.cards[-1]')"); sleep 1.8
+  want H18 "a running app's card is on its icon when the overlay shows" "$(awk '{print ($1 == "settle" && $2 < 0.5)}' <<<"$r")" "1"
+  want H18b "its workspace comes only after the overlay's first frames" "$(c henri.tablet homeStats | jq -r '.[-1].tl | map(select(.[1] == "focus"))[0][0] >= 16')" "true"
+  want H18c "then the app is on screen" "$(hm | jq -r .mode),$(wsEmpty)" "idle,false"
 fi
 
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"

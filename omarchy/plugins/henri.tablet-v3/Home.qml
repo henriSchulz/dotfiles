@@ -332,6 +332,11 @@ Item {
   readonly property var backPreset: preset(cfg.backResponse, cfg.backDamping)
   readonly property var switcherPreset: preset(cfg.switcherResponse, cfg.switcherDamping)
   readonly property var flyInPreset: preset(cfg.flyInResponse, cfg.flyInDamping)
+  // what has no finger to follow goes on SpringBoard's critically damped spring (0.336 s, no
+  // overshoot): a Home button press (iconZoomDown, toggleAppSwitcher, switcherToHome) and an app
+  // growing to full screen (zoomUp from its icon, launchAppFromSwitcher from a card)
+  readonly property var buttonPreset: preset(cfg.buttonResponse, cfg.buttonDamping)
+  readonly property var launchPreset: preset(cfg.launchResponse, cfg.launchDamping)
   readonly property var followPreset: ({ response: cfg.followResponse / 1000 * (Theme.reduceMotion ? 0 : 1), dampingRatio: cfg.followDamping })
   property string screenName: ""
   property var cards: []            // the entries shown as cards, oldest first
@@ -361,6 +366,9 @@ Item {
     else { homeV.target = grid; blurV.target = blur; dockV.target = dock }
   }
   Spring { id: dimV; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion }
+  // in the App Switcher (1) or not: what stays of the home screen behind it (switcherHome,
+  // switcherHomeBlur, switcherTint — iPadOS: at 0.9, half seen, blurred, darkened), on the blur's spring
+  Spring { id: switchV; preset: home.preset(home.cfg.blurResponse, home.cfg.blurDamping); reduced: Theme.reduceMotion; target: home.mode === "switcher" ? 1 : 0 }
   Spring { id: labelV; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion }
   Spring { id: pageV; preset: Theme.spring("smooth"); reduced: Theme.reduceMotion }
   property int page: 0
@@ -392,7 +400,7 @@ Item {
   // drop whatever the overlay is doing (a new finger always wins over a stuck animation)
   function abort() {
     settleTick.stop(); letGo.stop(); enterLater.stop(); openLater.stop(); closeLater.stop(); relayoutLater.stop()
-    settleCheck = null; launchedId = ""; armed = false; homeSwitchAt = 0; appSwitchAt = 0
+    settleCheck = null; launchedId = ""; armed = false; homeSwitchAt = 0; appSwitchAt = 0; focusAddress = ""
     mode = emptyOn(screenName) ? "home" : "idle"
     note("abort")
     endStat("abort")
@@ -539,12 +547,12 @@ Item {
   }
 
   // ---- outcomes
-  function layoutApp(at, hand) {
+  function layoutApp(at, hand, spring) {
     for (var i = 0; i < cards.length; i++) {
       var o = card(i)
       if (!o) continue
       var here = i === at
-      var bp = home.backPreset
+      var bp = spring || home.backPreset
       o.to("x", HM.besideX(i, at, 1, 0, areaW, cfg), bp, here && hand ? hand.x : undefined)
       o.to("y", 0, bp, here && hand ? hand.y : undefined)
       o.to("s", 1, bp, here && hand ? hand.s : undefined)
@@ -558,7 +566,7 @@ Item {
     layoutApp(cur, hand)
     settleWhen(function () { var c = card(cur); return !c || c.settled(["x", "y", "s"]) }, "idle", false)
   }
-  function toHome(hand, vUp) {
+  function toHome(hand, vUp, button) {
     note("home")
     var c = card(cur), e = cards[cur]
     var r = homeScreenItem ? homeScreenItem.iconRect(e.appId, coverItem || homeScreenItem) : null
@@ -568,8 +576,8 @@ Item {
     // SpringBoard's flight into the icon: the position on its own spring with half the finger's
     // vertical speed (it carries on up, then arcs to the icon); the window turns into the icon
     // quickly on faster springs (the iPad video: an icon after ~0.12 s, landed after ~0.35 s)
-    var fly = preset(cfg.flyResponse, cfg.flyDamping)
-    var shrink = preset(cfg.scaleResponse, cfg.scaleDamping)
+    var fly = button ? buttonPreset : preset(cfg.flyResponse, cfg.flyDamping)
+    var shrink = button ? buttonPreset : preset(cfg.scaleResponse, cfg.scaleDamping)
     var morph = preset(cfg.morphResponse, cfg.morphDamping)
     // the scale is handed the finger's speed (SpringBoard: 1.5 × vy / H, capped)
     var sv = -Math.min(cfg.scaleVelocityCap, cfg.scaleVelocity * Math.max(0, vUp || 0) / areaH)
@@ -593,7 +601,7 @@ Item {
     dispatch("function() hl.dispatch(hl.dsp.focus({ monitor = \"" + mon + "\" })) hl.dispatch(hl.dsp.focus({ workspace = \"emptynm\" })) end",
              "workspace emptynm")
   }
-  function toSwitcher(hand) {
+  function toSwitcher(hand, button) {
     note("switcher")
     mode = "switcher"
     var g = HM.switcherGeo(cards.length, areaW, areaH, cfg)
@@ -604,7 +612,7 @@ Item {
       var p = HM.switcherPos(i, cards.length, swX, g, cfg), here = i === cur
       o.capture = true
       // the dragged card on SpringBoard's app-to-switcher spring, the others fly in
-      var sp = here ? switcherPreset : flyInPreset
+      var sp = here ? (button ? buttonPreset : switcherPreset) : flyInPreset
       o.to("x", p.x, sp, here && hand ? hand.x : undefined)
       o.to("y", p.y, sp, here && hand ? hand.y : undefined)
       o.to("s", g.s, sp, here && hand ? hand.s : undefined)
@@ -653,7 +661,7 @@ Item {
     note("open " + (cards[i] ? cards[i].appId : ""))
     var was = cur
     cur = i
-    layoutApp(i, i === was ? hand : null)
+    layoutApp(i, i === was ? hand : null, launchPreset)
     for (var j = 0; j < cards.length; j++) if (j !== i && card(j) && Math.abs(j - i) > 1) card(j).to("o", 0, "snappy")
     var e = cards[i]
     // another app's workspace slides in under the card: the overlay waits for that slide too
@@ -664,10 +672,51 @@ Item {
   }
   function switcherHome() {
     note("switcher home")
-    for (var i = 0; i < cards.length; i++) { var o = card(i); if (o) { o.to("o", 0, "snappy"); o.to("s", o.value("s") * cfg.dockIcon, "snappy") } }
+    for (var i = 0; i < cards.length; i++) { var o = card(i); if (o) { o.to("o", 0, buttonPreset); o.to("s", o.value("s") * cfg.dockIcon, buttonPreset) } }
     backdrop(1, 0, 1, false); dimV.target = 0; labelV.target = 0
     goHomeNow()
     settleWhen(function () { return true }, "home", true)
+  }
+  // ---- a Home button (the iPad's, through ipad-link, IPC homeButton): one press = the home screen,
+  // two = the App Switcher, each one movement. A played finger swipe could not do it: the switcher
+  // needs the finger to rest, and the app stopped half-way before it went on (Henri 2026-11-06);
+  // in the switcher the swipe is not even listened to.
+  property string buttonWant: ""
+  property real buttonAt: 0
+  function button(screenName, kind) {
+    if (!active) return
+    if (mode === "switcher") {
+      if (kind === "home") switcherHome()
+      else if (cards.length && !fromHome) openCard(cur, null)
+      return
+    }
+    if (mode !== "idle" && mode !== "home") return          // a gesture or a flight is under way
+    prepare(screenName)
+    if (mode === "home") { if (kind === "switcher") enterSwitcherFromHome(); return }   // Home on the home screen: nothing
+    if (mode !== "ready") return
+    buttonWant = kind
+    buttonAt = Date.now()
+    buttonLater.start()
+  }
+  // the app's snapshot first (prepare asked for it), then the card goes as a released finger sends it
+  Timer {
+    id: buttonLater
+    interval: Theme.dur("fast") / 4
+    repeat: true
+    onTriggered: home.guard("button", function () {
+      var c = home.card(home.cur)
+      if (home.mode !== "ready") { stop(); return }
+      if (!c || !c.hasShot) {
+        if (Date.now() - home.buttonAt < Theme.dur("slow")) return
+        stop(); home.mode = "idle"; if (home.buttonWant === "home") home.goHomeNow(); home.endStat("button, no snapshot"); return
+      }
+      stop()
+      home.stat.release = "button " + home.buttonWant
+      home.mode = "drag"
+      var still = { x: 0, y: 0, s: 0 }
+      if (home.buttonWant === "home") home.toHome(still, 0, true)
+      else home.toSwitcher(still, true)
+    })
   }
   function closeCard(i) {
     var e = cards[i]
@@ -717,6 +766,7 @@ Item {
     var at = -1
     for (var i = list.length - 1; !fresh && i >= 0; i--) if (list[i].appId === id) { at = i; break }
     note("tap " + id + (at >= 0 ? " (running)" : ""))
+    startStat(); mark("open " + id)
     var r = homeScreenItem ? homeScreenItem.iconRect(from || id, coverItem || homeScreenItem) : null
     var cmd = fresh ? fresh : args && args.length && e.command && e.command.length ? ["uwsm-app", "--"].concat(e.command, args) : null
     if (cmd && (!inRig || (Quickshell.env("VELUM_TABLET_LAUNCH") || "") !== "")) Quickshell.execDetached(cmd)
@@ -732,11 +782,23 @@ Item {
       launchStart = Date.now()
     }
     backdrop(1, 0, 1, true); jumpTo(dimV, 0); jumpTo(labelV, 0)
-    mode = "settle"
     openFrom = r
+    // the card sits on the icon before the overlay shows: shown first, it was drawn for one frame at
+    // the screen's size (an app's snapshot, or the launch card) and the app seemed to open twice
+    if (placeOnIcon()) mode = "settle"
     openLater.restart()
   }
   property var openFrom: null
+  function placeOnIcon() {
+    var c = card(cur), r = openFrom
+    if (!c) return false
+    c.capture = true
+    for (var i = 0; i < cards.length; i++) if (i !== cur && card(i)) card(i).set("o", 0)
+    c.set("x", r ? r.x + r.w / 2 - areaW / 2 : 0); c.set("y", r ? r.y + r.w / 2 - areaH / 2 : 0)
+    c.set("s", (r ? r.w : areaH * cfg.splashIcon) / areaH); c.set("m", 1); c.set("o", 1); c.set("l", 0)
+    c.z = 2
+    return true
+  }
 
   // ---- the context menu of an icon (HomeScreen → IconMenu.qml): the app's own actions, New Window,
   // Edit Home Screen. A new window lands on the home screen's empty workspace, so it is an app of its
@@ -774,26 +836,43 @@ Item {
     id: openLater
     interval: 0
     onTriggered: home.guard("openLater", function () {
-      var c = home.card(home.cur), e = home.cards[home.cur], r = home.openFrom
+      var c = home.card(home.cur), e = home.cards[home.cur]
       if (!c) return
-      c.capture = true
-      for (var i = 0; i < home.cards.length; i++) if (i !== home.cur && home.card(i)) home.card(i).set("o", 0)
-      c.set("x", r ? r.x + r.w / 2 - home.areaW / 2 : 0); c.set("y", r ? r.y + r.w / 2 - home.areaH / 2 : 0)
-      c.set("s", (r ? r.w : home.areaH * home.cfg.splashIcon) / home.areaH); c.set("m", 1); c.set("o", 1); c.set("l", 0)
-      c.z = 2
-      c.to("x", 0, "smooth"); c.to("y", 0, "smooth"); c.to("s", 1, "smooth"); c.to("m", 0, "smooth")
+      // placed by openApp already, unless the Repeater had no card for it yet
+      if (home.mode !== "settle") home.placeOnIcon()
+      var lp = home.launchPreset
+      c.to("x", 0, lp); c.to("y", 0, lp); c.to("s", 1, lp); c.to("m", 0, lp)
       backdrop(0, 0, 0, false)
       if (e.address) {
         home.appSwitchAt = Date.now()
-        home.dispatch("hl.dsp.focus({ window = \"address:" + e.address + "\" })", "focuswindow address:" + e.address)
+        home.focusAddress = e.address
       }
       home.settleWhen(function () {
         if (!c.settled(["x", "y", "s"])) return false
+        if (home.focusAddress) return false
         if (!home.launchedId) return true
         // a launched app: wait for a new window, or give up after launchTimeout
         return home.launchOpened || Date.now() - home.launchStart > home.cfg.launchTimeout
       }, "idle", !!e.address)
     })
+  }
+
+  // an app's workspace only once the overlay covers the screen: sent at once, Hyprland showed the
+  // switch (the app at full size) before the overlay's first covering frame was on screen
+  property string focusAddress: ""
+  FrameAnimation {
+    id: focusLater
+    property int frames: 0
+    running: home.focusAddress !== ""
+    onRunningChanged: frames = 0
+    onTriggered: {
+      if (++frames < home.cfg.coverFrames) return
+      var a = home.focusAddress
+      home.focusAddress = ""
+      home.appSwitchAt = Date.now()
+      home.mark("focus")
+      home.dispatch("hl.dsp.focus({ window = \"address:" + a + "\" })", "focuswindow address:" + a)
+    }
   }
 
   // ---- the overlay lets go once the condition holds and (after a workspace change) the slide is over
@@ -1047,9 +1126,14 @@ Item {
                 cache: true
               }
               // the same home screen as the bottom layer's, on the same spot (below the bar, above the home zone)
-              // the blurred wallpaper: a small copy blurred once into a cached layer, so it costs nothing per frame
+              // the blurred wallpaper: a small copy blurred once into a cached layer, so it costs nothing per frame.
+              // It reaches past the screen's edges by the blur's radius: a blur mixes in the transparency
+              // beyond its source, and the sharp wallpaper under it showed through along the edges.
               Item {
-                anchors.fill: parent
+                x: -home.cfg.blurMax
+                y: -home.cfg.blurMax
+                width: parent.width + 2 * home.cfg.blurMax
+                height: parent.height + 2 * home.cfg.blurMax
                 opacity: Math.max(0, Math.min(1, blurV.value))
                 visible: opacity > 0.002
                 layer.enabled: true
@@ -1058,8 +1142,9 @@ Item {
                   anchors.fill: parent
                   source: "file://" + home.wallpaperLink + (home.wallpaperTarget ? "?v=" + encodeURIComponent(home.wallpaperTarget) : "")
                   fillMode: Image.PreserveAspectCrop
-                  sourceSize.width: per.modelData.width / home.cfg.blurDownscale
-                  sourceSize.height: per.modelData.height / home.cfg.blurDownscale
+                  // its own size, not the screen's: a size the screen had before cannot linger here
+                  sourceSize.width: Math.max(1, Math.round(width / home.cfg.blurDownscale))
+                  sourceSize.height: Math.max(1, Math.round(height / home.cfg.blurDownscale))
                   visible: false
                   cache: true
                 }
@@ -1090,7 +1175,9 @@ Item {
             recentApps: home.recentApps
             page: home.page
             pageX: pageV.value
-            gridOpacity: Math.max(0, Math.min(1, homeV.value))
+            gridOpacity: Math.max(0, Math.min(1, Math.max(homeV.value, home.cfg.switcherHome * switchV.value)))
+            gridBlur: home.cfg.switcherHomeBlur * Math.max(0, Math.min(1, switchV.value)) * (1 - Math.max(0, Math.min(1, homeV.value)))
+            gridBlurMax: home.cfg.blurMax
             gridScale: home.cfg.homeZoom - (home.cfg.homeZoom - 1) * Math.max(0, Math.min(1, homeV.value))
             dockShift: (1 - Math.max(0, Math.min(1, dockV.value))) * (g.dockH + 2 * g.dockGap)
           }
@@ -1098,6 +1185,12 @@ Item {
             anchors.fill: parent
             color: home.cfg.dimColor
             opacity: home.cfg.dim * Math.max(0, dimV.value)   // 0 since 2026-10-28 (Henri: no grey veil)
+            visible: opacity > 0.002
+          }
+          Rectangle {
+            anchors.fill: parent
+            color: home.cfg.switcherTintColor
+            opacity: home.cfg.switcherTint * Math.max(0, Math.min(1, switchV.value))
             visible: opacity > 0.002
           }
           // the cards stay between gestures (kept by window), and so do their snapshots: a gesture

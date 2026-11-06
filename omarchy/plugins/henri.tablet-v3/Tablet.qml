@@ -441,7 +441,10 @@ Item {
     // the way out from anywhere (ssh): the overlay lets go of the screen
     function pad(phase: string, dx: real, dy: real): string { root.padEvent(phase, dx, dy); return root.pad ? root.pad.gesture.mode : "none" }
     function homeAbort(): string { homeCtl.abort(); return homeCtl.mode }
-    function homeOpen(id: string): string { homeCtl.openApp(id); return homeCtl.mode }
+    // a Home button (the iPad's through ipad-link): "home" = one press, "switcher" = two
+    function homeButton(screen: string, kind: string): string { homeCtl.guard("button", () => homeCtl.button(screen, kind)); return homeCtl.mode }
+    // the mode and, while it covers, the card's scale right after the tap (the overlay's first frame)
+    function homeOpen(id: string): string { homeCtl.openApp(id); var c = homeCtl.card(homeCtl.cur); return homeCtl.mode + (c && homeCtl.covering ? " " + c.ps.toFixed(2) : "") }
     // the rig only (VELUM_SHELL_RIG): slow every Velum motion down to look at it frame by frame
     function rigSpeed(factor: string): string {
       if (!Quickshell.env("VELUM_SHELL_RIG")) return "rig only"

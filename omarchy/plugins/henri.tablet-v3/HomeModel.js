@@ -46,8 +46,13 @@ function besideX(i, cur, s, x, W, cfg) { return x + (i - cur) * (s * W + cfg.car
 // right, older ones to the left, scrolling sideways. sx = where the newest column's centre sits.
 function switcherGeo(n, W, H, cfg) {
   var rows = n > cfg.oneRow ? 2 : 1
-  var s = rows === 2 ? cfg.switcherScale
-                     : Math.min(cfg.oneRowScale, (W - 2 * cfg.cardGap - cfg.cardGap * (n - 1)) / Math.max(1, n) / W)
+  // the dock stays at the bottom of the switcher: the cards (and the names under them) keep above
+  // it, centred in what is left — two rows at switcherScale lay over the dock on a 4:3 screen
+  var d = grid(W, H, cfg), reserve = d.dockH + 2 * d.dockGap
+  var label = cfg.labelAbove + cfg.labelIcon, room = H - reserve - 2 * cfg.cardGap
+  var s = rows === 2 ? Math.min(cfg.switcherScale, (room - cfg.rowGap - 2 * label) / (2 * H))
+                     : Math.min(cfg.oneRowScale, (W - 2 * cfg.cardGap - cfg.cardGap * (n - 1)) / Math.max(1, n) / W,
+                                (room - label) / H)
   var cw = s * W, ch = s * H
   var stepX = cw + cfg.cardGap, stepY = ch + cfg.rowGap, cols = Math.ceil(n / rows)
   var edge = W / 2 - cfg.edgeInset - cw / 2
@@ -56,12 +61,12 @@ function switcherGeo(n, W, H, cfg) {
   var fits = span + cw <= W - 2 * cfg.cardGap + 0.5
   var lo = fits ? span / 2 : edge
   var hi = fits ? span / 2 : span - edge
-  return { s: s, rows: rows, stepX: stepX, stepY: stepY, lo: lo, hi: hi, cols: cols }
+  return { s: s, rows: rows, stepX: stepX, stepY: stepY, lo: lo, hi: hi, cols: cols, yOff: -reserve / 2 }
 }
 // card i of n (0 = oldest, n-1 = newest)
 function switcherPos(i, n, sx, g, cfg) {
   var back = n - 1 - i, k = Math.floor(back / g.rows), r = back % g.rows
-  return { x: sx - k * g.stepX, y: g.rows === 1 ? cfg.rowShift : (r === 0 ? -g.stepY / 2 : g.stepY / 2) + cfg.rowShift }
+  return { x: sx - k * g.stepX, y: (g.rows === 1 ? 0 : r === 0 ? -g.stepY / 2 : g.stepY / 2) + cfg.rowShift + (g.yOff || 0) }
 }
 // where a scroll lands: momentum, then a whole column
 function switcherSnap(sx, velocity, g, cfg) {

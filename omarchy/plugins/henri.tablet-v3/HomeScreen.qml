@@ -22,6 +22,8 @@ Item {
   property string pressedId: ""
   property real gridOpacity: 1     // the pages and dots (the home gesture shows only the dock at first)
   property real gridScale: 1
+  property real gridBlur: 0        // 0..1, the pages blurred (behind the App Switcher)
+  property real gridBlurMax: 0
   property real dockShift: 0       // the dock below its place by this much
   // the wallpaper as the compositor draws it, in this item's coordinates (the dock's glass blurs it)
   property string wallSource: ""
@@ -121,118 +123,128 @@ Item {
   }
 
   // ---- pages
+  // zoomed and blurred as one screen-sized picture: the track of all pages scaled about its own
+  // middle, which from two pages on lay off the screen and the icons drifted sideways as they grew
   Item {
-    id: track
-    x: hs.pageX
+    id: zoom
+    width: hs.width
+    height: hs.height
     opacity: hs.gridOpacity * (1 - Math.min(1, hs.fv)) * hs.menuFade
     visible: opacity > 0.002
     scale: hs.gridScale
     transformOrigin: Item.Center
-    width: hs.width * hs.pages
-    height: hs.height
-    Repeater {
-      id: grid
-      model: hs.apps
-      Item {
-        id: tile
-        required property var modelData
-        required property int index
-        readonly property string appId: modelData.id
-        readonly property int slot: hs.slotOf(appId)
-        readonly property int pageOf: hs.cells[slot] ? hs.cells[slot].page : 0
-        readonly property bool isWidget: !!modelData.widget
-        readonly property var span: hs.spanOf(appId)
-        readonly property string widgetItem: isWidget && photo.current ? String(photo.current.id || "") : ""
-        readonly property bool held: hs.dragId === appId
-        readonly property bool isFolder: !!modelData.folder
-        function holds(id) { return isFolder && modelData.items.some(function (a) { return a.id === id }) }
-        // the visible body's share of the icon box: a measured icon's scale, a folder's plate
-        readonly property real body: isFolder ? Theme.core.surface.appIcon.content : isWidget ? 1 : VIconMetrics.scale(img.source)
-        property alias icon: img
-        // its slot on a spring while the order changes under a held icon; the held one is the finger's
-        Spring { id: sx; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: hs.slotX(tile.slot) }
-        Spring { id: sy; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: hs.slotY(tile.slot) }
-        Spring { id: lift; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: tile.held ? Theme.scale("lift") : 1 }
-        // lands from where the finger let go
-        onHeldChanged: if (!held) { sx.from(hs.dragX - hs.pageX); sy.from(hs.dragY) }
-        Component.onCompleted: { sx.snap(sx.target); sy.snap(sy.target) }
-        x: held ? hs.dragX - hs.pageX : sx.value
-        y: held ? hs.dragY : sy.value
-        z: held ? 2 : (sx.moving || sy.moving ? 1 : 0)
-        width: hs.cellW * span[0]
-        height: hs.cellH * span[1]
-        scale: lift.value
-        // the jiggle: every icon swings, neighbours the other way round (iPadOS)
-        property real wobble: 0
-        rotation: wobble * hs.ed.jiggleAngle * (index % 2 ? 1 : -1)
-        SequentialAnimation on wobble {
-          running: hs.editing && !tile.held && !Theme.reduceMotion
-          loops: Animation.Infinite
-          NumberAnimation { to: 1; duration: Theme.ambient("jiggle") / 2; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut") }
-          NumberAnimation { to: -1; duration: Theme.ambient("jiggle") / 2; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut") }
-          onRunningChanged: if (!running) tile.wobble = 0
-        }
+    // behind the App Switcher (gridBlur > 0, the iPadOS look): the icons blurred, once into a cached layer
+    layer.enabled: hs.gridBlur > 0.002
+    layer.effect: MultiEffect { blurEnabled: true; blur: Math.min(1, hs.gridBlur); blurMax: hs.gridBlurMax }
+    Item {
+      id: track
+      x: hs.pageX
+      width: hs.width * hs.pages
+      height: hs.height
+      Repeater {
+        id: grid
+        model: hs.apps
         Item {
-          id: img
-          readonly property string source: tile.isFolder || tile.isWidget ? "" : tile.modelData.icon
-          anchors.horizontalCenter: parent.horizontalCenter
-          y: (parent.height - height - hs.cfg.labelGap - name.height) / 2
-          // a widget reaches from its first icon's left/top edge to its last one's right/bottom edge;
-          // a square one takes the shorter of the two, centred over its columns
-          readonly property real spanW: hs.g.icon + (tile.span[0] - 1) * hs.cellW
-          readonly property real spanH: hs.g.icon + (tile.span[1] - 1) * hs.cellH
-          width: tile.isWidget && hs.wc.square ? Math.min(spanW, spanH) : spanW
-          height: tile.isWidget && hs.wc.square ? Math.min(spanW, spanH) : spanH
-          scale: hs.pressedId === tile.appId && !hs.editing ? hs.cfg.pressScale : 1
-          opacity: hs.pressedId === tile.appId && !hs.editing ? hs.lp.press : 1
-          // armed as a folder target: a plate grows behind the icon (or the folder's own grows)
-          Spring { id: aim; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: hs.mergeId === tile.appId ? 1 : 0 }
-          PhotoWidget {
-            id: photo
-            anchors.fill: parent
-            visible: tile.isWidget
-            cfg: hs.wc
-            radius: hs.g.icon * hs.cfg.iconRadius
+          id: tile
+          required property var modelData
+          required property int index
+          readonly property string appId: modelData.id
+          readonly property int slot: hs.slotOf(appId)
+          readonly property int pageOf: hs.cells[slot] ? hs.cells[slot].page : 0
+          readonly property bool isWidget: !!modelData.widget
+          readonly property var span: hs.spanOf(appId)
+          readonly property string widgetItem: isWidget && photo.current ? String(photo.current.id || "") : ""
+          readonly property bool held: hs.dragId === appId
+          readonly property bool isFolder: !!modelData.folder
+          function holds(id) { return isFolder && modelData.items.some(function (a) { return a.id === id }) }
+          // the visible body's share of the icon box: a measured icon's scale, a folder's plate
+          readonly property real body: isFolder ? Theme.core.surface.appIcon.content : isWidget ? 1 : VIconMetrics.scale(img.source)
+          property alias icon: img
+          // its slot on a spring while the order changes under a held icon; the held one is the finger's
+          Spring { id: sx; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: hs.slotX(tile.slot) }
+          Spring { id: sy; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: hs.slotY(tile.slot) }
+          Spring { id: lift; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: tile.held ? Theme.scale("lift") : 1 }
+          // lands from where the finger let go
+          onHeldChanged: if (!held) { sx.from(hs.dragX - hs.pageX); sy.from(hs.dragY) }
+          Component.onCompleted: { sx.snap(sx.target); sy.snap(sy.target) }
+          x: held ? hs.dragX - hs.pageX : sx.value
+          y: held ? hs.dragY : sy.value
+          z: held ? 2 : (sx.moving || sy.moving ? 1 : 0)
+          width: hs.cellW * span[0]
+          height: hs.cellH * span[1]
+          scale: lift.value
+          // the jiggle: every icon swings, neighbours the other way round (iPadOS)
+          property real wobble: 0
+          rotation: wobble * hs.ed.jiggleAngle * (index % 2 ? 1 : -1)
+          SequentialAnimation on wobble {
+            running: hs.editing && !tile.held && !Theme.reduceMotion
+            loops: Animation.Infinite
+            NumberAnimation { to: 1; duration: Theme.ambient("jiggle") / 2; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut") }
+            NumberAnimation { to: -1; duration: Theme.ambient("jiggle") / 2; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut") }
+            onRunningChanged: if (!running) tile.wobble = 0
           }
-          FolderPlate {
-            anchors.centerIn: parent
-            size: img.width * Theme.core.surface.appIcon.content
-            visible: tile.isFolder || aim.value > 0.01
-            opacity: tile.isFolder ? 1 : Math.min(1, aim.value)
-            scale: 1 + (hs.fc.mergeScale - 1) * aim.value
-            apps: tile.isFolder ? HM.miniApps(tile.modelData.items, hs.fc.miniCols) : []
-            cfg: hs.fc
-            iconRadius: hs.cfg.iconRadius
-            wallSource: tile.isFolder ? hs.wallSource : ""
-            wallRect: hs.wallRect
-            blurMax: hs.dk.blurMax
-            saturation: hs.dk.saturation
-            // where the plate sits on the home screen (jiggle and lift left out: too small to see)
-            origin: Qt.point(hs.pageX + tile.x + img.x + (img.width - width) / 2, tile.y + img.y + (img.height - height) / 2)
+          Item {
+            id: img
+            readonly property string source: tile.isFolder || tile.isWidget ? "" : tile.modelData.icon
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: (parent.height - height - hs.cfg.labelGap - name.height) / 2
+            // a widget reaches from its first icon's left/top edge to its last one's right/bottom edge;
+            // a square one takes the shorter of the two, centred over its columns
+            readonly property real spanW: hs.g.icon + (tile.span[0] - 1) * hs.cellW
+            readonly property real spanH: hs.g.icon + (tile.span[1] - 1) * hs.cellH
+            width: tile.isWidget && hs.wc.square ? Math.min(spanW, spanH) : spanW
+            height: tile.isWidget && hs.wc.square ? Math.min(spanW, spanH) : spanH
+            scale: hs.pressedId === tile.appId && !hs.editing ? hs.cfg.pressScale : 1
+            opacity: hs.pressedId === tile.appId && !hs.editing ? hs.lp.press : 1
+            // armed as a folder target: a plate grows behind the icon (or the folder's own grows)
+            Spring { id: aim; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: hs.mergeId === tile.appId ? 1 : 0 }
+            PhotoWidget {
+              id: photo
+              anchors.fill: parent
+              visible: tile.isWidget
+              cfg: hs.wc
+              radius: hs.g.icon * hs.cfg.iconRadius
+            }
+            FolderPlate {
+              anchors.centerIn: parent
+              size: img.width * Theme.core.surface.appIcon.content
+              visible: tile.isFolder || aim.value > 0.01
+              opacity: tile.isFolder ? 1 : Math.min(1, aim.value)
+              scale: 1 + (hs.fc.mergeScale - 1) * aim.value
+              apps: tile.isFolder ? HM.miniApps(tile.modelData.items, hs.fc.miniCols) : []
+              cfg: hs.fc
+              iconRadius: hs.cfg.iconRadius
+              wallSource: tile.isFolder ? hs.wallSource : ""
+              wallRect: hs.wallRect
+              blurMax: hs.dk.blurMax
+              saturation: hs.dk.saturation
+              // where the plate sits on the home screen (jiggle and lift left out: too small to see)
+              origin: Qt.point(hs.pageX + tile.x + img.x + (img.width - width) / 2, tile.y + img.y + (img.height - height) / 2)
+            }
+            Image {
+              visible: !tile.isFolder && !tile.isWidget && hs.menuHeld !== tile.appId
+              anchors.fill: parent
+              source: img.source
+              sourceSize.width: width * 2
+              sourceSize.height: height * 2
+              asynchronous: true
+              scale: VIconMetrics.scale(source) * (1 - (1 - 1 / hs.fc.mergeScale) * aim.value)
+            }
           }
-          Image {
-            visible: !tile.isFolder && !tile.isWidget && hs.menuHeld !== tile.appId
-            anchors.fill: parent
-            source: img.source
-            sourceSize.width: width * 2
-            sourceSize.height: height * 2
-            asynchronous: true
-            scale: VIconMetrics.scale(source) * (1 - (1 - 1 / hs.fc.mergeScale) * aim.value)
+          VText {
+            id: name
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: img.bottom
+            anchors.topMargin: hs.cfg.labelGap
+            width: Math.min(implicitWidth, hs.cellW - hs.cfg.labelGap)
+            horizontalAlignment: Text.AlignHCenter
+            text: tile.modelData.name
+            font.pixelSize: Theme.m.type.small
+            font.weight: Font.Medium
+            color: hs.lp.label
+            style: Text.Raised
+            styleColor: hs.cfg.labelShade
           }
-        }
-        VText {
-          id: name
-          anchors.horizontalCenter: parent.horizontalCenter
-          anchors.top: img.bottom
-          anchors.topMargin: hs.cfg.labelGap
-          width: Math.min(implicitWidth, hs.cellW - hs.cfg.labelGap)
-          horizontalAlignment: Text.AlignHCenter
-          text: tile.modelData.name
-          font.pixelSize: Theme.m.type.small
-          font.weight: Font.Medium
-          color: hs.lp.label
-          style: Text.Raised
-          styleColor: hs.cfg.labelShade
         }
       }
     }
