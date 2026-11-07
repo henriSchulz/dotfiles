@@ -500,7 +500,8 @@ Item {
     items = map
     syncModel(order)
     pruneSnapshots(groups)
-    if (!ready) { ready = true }
+    if (!ready) { ready = true; VBoot.release(bootKey) }
+    VBoot.poke()
     layoutDirty()
   }
 
@@ -1406,9 +1407,16 @@ Item {
   }
   property real hideOffset: 0
   readonly property real hiddenDistance: bgThickness + Style.space(2)
-  readonly property real hideDX: reduceMotion ? 0 : (position === "left" ? -hideOffset * hiddenDistance : position === "right" ? hideOffset * hiddenDistance : 0)
-  readonly property real hideDY: reduceMotion ? 0 : (position === "bottom" ? hideOffset * hiddenDistance : 0)
-  readonly property real hideOpacity: (reduceMotion ? 1 - hideOffset : 1) * handFade
+  // The shell's start (VBoot): the Dock waits for its first tiles, then rises with the menu bar
+  // (slideOffset takes the larger of the autohide offset and the entrance; reduced motion: a fade)
+  // the key it held with (the Dock can change screens before its first rebuild)
+  property string bootKey: ""
+  Spring { id: bootRise; preset: Theme.spring("gentle"); target: VBoot.chrome ? 1 : 0 }
+  readonly property real slideOffset: Math.max(hideOffset, 1 - bootRise.value)
+  onBgLengthChanged: VBoot.poke()
+  readonly property real hideDX: reduceMotion ? 0 : (position === "left" ? -slideOffset * hiddenDistance : position === "right" ? slideOffset * hiddenDistance : 0)
+  readonly property real hideDY: reduceMotion ? 0 : (position === "bottom" ? slideOffset * hiddenDistance : 0)
+  readonly property real hideOpacity: (reduceMotion ? 1 - slideOffset : 1) * handFade * bootRise.value
   // Mission Control took the finger (VGestures "handover"): the dock fades where it is instead of
   // sliding back while Mission Control opens, so only one surface moves at a time (Henri 2026-10-26)
   property real handFade: 1
@@ -1688,15 +1696,21 @@ Item {
   Process {
     id: loginCheck
     command: ["sh", "-c", "f=\"${XDG_RUNTIME_DIR:-/tmp}/henri-dock-login\"; if [ -e \"$f\" ]; then echo again; else touch \"$f\"; echo first; fi"]
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: if (String(text).trim() === "first") loginLaunch.restart() }
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: if (String(text).trim() === "first") root.loginPending = true }
   }
+  // login apps start once the entrance has played (VBoot): launching during it took the frames it needed
+  property bool loginPending: false
+  readonly property bool entranceDone: VBoot.chrome && !bootRise.moving
+  onLoginPendingChanged: if (loginPending && entranceDone) loginLaunch.restart()
+  onEntranceDoneChanged: if (loginPending && entranceDone) loginLaunch.restart()
   Timer {
     id: loginLaunch
-    interval: 1500
-    onTriggered: { var la = root.settings.loginApps || []; for (var i = 0; i < la.length; i++) { var e = root.lookupEntry(la[i]); if (e) try { e.execute() } catch (err) {} } }
+    interval: Theme.delay("settle")
+    onTriggered: { root.loginPending = false; var la = root.settings.loginApps || []; for (var i = 0; i < la.length; i++) { var e = root.lookupEntry(la[i]); if (e) try { e.execute() } catch (err) {} } }
   }
   Timer { id: startup; interval: 400; onTriggered: { Hyprland.refreshToplevels(); root.rebuild(); trashProc.running = true; trashWatch.running = true; loginCheck.running = true } }
-  Component.onCompleted: { if (autoHide && !emptySpace) { hideOffset = 1; dockHidden = true }; startup.start(); if (screen) VGestures.setOut("dock", screen.name, showingOut) }
+  Component.onCompleted: { bootKey = "dock:" + (screen ? screen.name : ""); VBoot.hold(bootKey); if (autoHide && !emptySpace) { hideOffset = 1; dockHidden = true }; startup.start(); if (screen) VGestures.setOut("dock", screen.name, showingOut) }
+  Component.onDestruction: VBoot.release(bootKey)
   onSettingsLoadedChanged: if (settingsLoaded) { position = String(settings.position || "bottom"); if (autoHide && !emptySpace) { hideOffset = 1; dockHidden = true } }
 
   // ======================================================== windows

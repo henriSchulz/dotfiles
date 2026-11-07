@@ -67,7 +67,8 @@ Item {
   property real appear: 1
   NumberAnimation { id: appearFade; target: tile; property: "appear"; from: 0; to: 1; duration: dock.mo.removeFade; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") }
   Component.onCompleted: {
-    if (!isSeparator && dock.ready) { enterSpring.snap(0); if (dock.reduceMotion) appearFade.restart() }
+    // tiles that arrive before the Dock's entrance (apps starting with the session) are simply there
+    if (!isSeparator && dock.ready && VBoot.chrome) { enterSpring.snap(0); if (dock.reduceMotion) appearFade.restart() }
     dock.layoutDirty()
   }
   onGoneChanged: if (gone) dock.layoutDirty()

@@ -235,6 +235,18 @@ Item {
 
       property bool maskReady: false
 
+      // The shell's start (VBoot): black until the shell has loaded and this picture is decoded,
+      // then it fades in from black — the first beat of the entrance. A wallpaper change later
+      // keeps its own reveal; a background reloaded on its own shows at once (VBoot.wallpaper is true).
+      readonly property string bootKey: "background:" + (modelData ? modelData.name : "")
+      property real bootOpacity: VBoot.wallpaper ? 1 : 0
+      Behavior on bootOpacity {
+        NumberAnimation { duration: Theme.dur("slower"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") }
+      }
+      Binding { target: panel.contentItem; property: "opacity"; value: panel.bootOpacity }
+      Component.onCompleted: VBoot.hold(panel.bootKey)
+      Component.onDestruction: VBoot.release(panel.bootKey)
+
       function maybeStartReveal() {
         if (!root.incomingBackground || root.revealProgress !== 0 || maskReady) return
         if (incomingFrame.status !== Image.Ready) return
@@ -258,6 +270,7 @@ Item {
         asynchronous: true
         cache: true
         onStatusChanged: {
+          if (status === Image.Ready || status === Image.Error) VBoot.release(panel.bootKey)
           if (status === Image.Ready && root.finishingTransition) {
             root.incomingBackground = ""
             root.oldBackground = ""

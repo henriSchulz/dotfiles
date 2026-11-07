@@ -1259,10 +1259,14 @@ Item {
           easing.bezierCurve: barWindow.faceShown ? Theme.curve("out") : Theme.curve("exit")
         }
       }
-      opacity: Theme.reduceMotion ? 1 - offset : 1
+      // The shell's start (VBoot): the face comes in from the edge with the Dock once the shell has
+      // loaded and the islands stopped changing width (reduced motion: a fade)
+      Spring { id: bootIn; preset: Theme.spring("gentle"); target: VBoot.chrome ? 1 : 0 }
+      readonly property real move: Math.max(offset, 1 - bootIn.value)
+      opacity: (Theme.reduceMotion ? 1 - offset : 1) * bootIn.value
       transform: Translate {
-        x: Theme.reduceMotion ? 0 : (root.position === "left" ? -slide.offset * root.barSize : root.position === "right" ? slide.offset * root.barSize : 0)
-        y: Theme.reduceMotion ? 0 : (root.position === "top" ? -slide.offset * root.barSize : root.position === "bottom" ? slide.offset * root.barSize : 0)
+        x: Theme.reduceMotion ? 0 : (root.position === "left" ? -slide.move * root.barSize : root.position === "right" ? slide.move * root.barSize : 0)
+        y: Theme.reduceMotion ? 0 : (root.position === "top" ? -slide.move * root.barSize : root.position === "bottom" ? slide.move * root.barSize : 0)
       }
 
       Rectangle {
@@ -1385,6 +1389,7 @@ Item {
 
         LeftModules {
           id: leftMods
+          onWidthChanged: VBoot.poke()   // the shell's start waits until the islands stop growing
           island: leftIsland
           anchors.left: parent.left
           anchors.leftMargin: Theme.layout.module.pad + root.mb.island.padX
@@ -1393,6 +1398,7 @@ Item {
 
         RightModules {
           id: rightMods
+          onWidthChanged: VBoot.poke()   // the shell's start waits until the islands stop growing
           island: rightIsland
           anchors.right: parent.right
           anchors.rightMargin: Theme.layout.module.pad + root.mb.island.padX
