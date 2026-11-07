@@ -153,13 +153,19 @@ end
 local function app_of(w) return w.class ~= "" and w.class or w.initial_class or "" end
 
 -- The workspace of app `app` on `monitor` (from a window other than `skip`): where a new window of it goes.
-local function app_workspace(app, monitor, skip)
+-- When the app has windows on several workspaces, `here` (the one the new window came to) wins if it
+-- holds one, else the one used last; taking the first in Hyprland's list sent a new terminal from a
+-- terminal workspace to an older one elsewhere. Named workspaces (a rig's, "spare") are not the mode's.
+local function app_workspace(app, monitor, skip, here)
+  local best
   for _, o in ipairs(hl.get_windows()) do
-    if o.address ~= skip and tiled(o) and app_of(o) == app
+    if o.address ~= skip and tiled(o) and app_of(o) == app and o.workspace.id > 0
        and (not monitor or not o.monitor or o.monitor.name == monitor.name) then
-      return o.workspace.id
+      if o.workspace.id == here then return here end
+      if not best or (o.focus_history_id or 1e9) < (best.focus_history_id or 1e9) then best = o end
     end
   end
+  return best and best.workspace.id
 end
 
 -- The window on top of a workspace: the one last used there, or else its first tiled window;
@@ -220,7 +226,7 @@ hl.on("window.open", function(w)
     if o.address ~= w.address and app_of(o) ~= app then strangers = true end
   end
   local came = w.workspace.id
-  local target = app_workspace(app, monitor, w.address)
+  local target = app_workspace(app, monitor, w.address, came)
   if not target and strangers then target = free_workspace({}, monitor) end
   if target and target ~= came then
     move_to(w, target, monitor, true)
