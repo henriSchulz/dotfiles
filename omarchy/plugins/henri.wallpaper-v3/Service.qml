@@ -1,6 +1,8 @@
 // Wallpaper -- macOS-style picker for a global desktop wallpaper (v3, Velum).
 //
-// Shows the images in ~/Pictures/Wallpaper as a grid of thumbnails. A click
+// Shows the images in ~/Pictures/Wallpaper as a grid of thumbnails, one
+// section per subfolder (as macOS's Wallpaper settings: the folder's name, one
+// row, Show All for the rest; pictures loose in the folder come first). A click
 // sets the wallpaper right away (the card stays open to try the next one),
 // Enter sets it and closes, Esc or a click beside the card closes. The chosen
 // image is kept for every theme: `henri-wallpaper set` records it in
@@ -36,7 +38,8 @@ Item {
 
   readonly property string home: Quickshell.env("HOME")
   readonly property string bin: home + "/.local/bin/henri-wallpaper"
-  readonly property string folder: home + "/Pictures/Wallpaper"
+  // henri-wallpaper's folder (HENRI_WALLPAPER_DIR: the rig shows the real one under its fake HOME)
+  readonly property string folder: Quickshell.env("HENRI_WALLPAPER_DIR") || home + "/Pictures/Wallpaper"
   readonly property string folderLabel: "~/Pictures/Wallpaper"
 
   readonly property var wp: Theme.core.surface.wallpaper
@@ -44,8 +47,12 @@ Item {
   property bool opened: false
   // Monitor the card opened on; it stays there even if focus moves.
   property string screenName: ""
-  // [{ path, thumb }] in folder order.
+  // [{ path, thumb, section }] in the order on screen: section by section.
   property var images: []
+  // [{ key, title, start, count }]: key = the folder below root.folder ("" = loose pictures).
+  property var sections: []
+  // key -> true for the sections showing all their pictures (Show All).
+  property var expanded: ({})
   property bool loaded: false
   // Image on screen right now (theme or global).
   property string displayed: ""
@@ -57,6 +64,54 @@ Item {
   property bool keyboardNav: false
 
   readonly property int columns: wp.columns
+
+  // the view scrolls to the tile with this index (cells answer it)
+  signal revealRequested(int index)
+
+  function sectionOf(index) {
+    for (let s = 0; s < sections.length; s++)
+      if (index >= sections[s].start && index < sections[s].start + sections[s].count)
+        return sections[s];
+    return null;
+  }
+
+  function shownCount(sec) {
+    return root.expanded[sec.key] ? sec.count : Math.min(sec.count, root.columns);
+  }
+
+  function setExpanded(key, on) {
+    const next = Object.assign({}, root.expanded);
+    if (on) next[key] = true;
+    else delete next[key];
+    root.expanded = next;
+    // the keyboard cursor never stays on a picture that went away
+    const sec = root.sectionOf(root.cursor);
+    if (!on && sec && sec.key === key && root.cursor >= sec.start + root.columns)
+      root.cursor = sec.start + root.columns - 1;
+  }
+
+  // the section of the picture on screen shows it (open, new listing)
+  function expandForCurrent() {
+    const i = root.indexOfPath(root.displayed);
+    const sec = root.sectionOf(i);
+    if (sec && i >= sec.start + root.columns && !root.expanded[sec.key])
+      root.setExpanded(sec.key, true);
+  }
+
+  // the tiles on screen, row by row across the sections: [[index, …], …]
+  function visibleRows() {
+    const rows = [];
+    for (let s = 0; s < sections.length; s++) {
+      const sec = sections[s], n = root.shownCount(sec);
+      for (let r = 0; r < n; r += root.columns) {
+        const row = [];
+        for (let c = r; c < Math.min(n, r + root.columns); c++)
+          row.push(sec.start + c);
+        rows.push(row);
+      }
+    }
+    return rows;
+  }
 
   function indexOfPath(path) {
     for (let i = 0; i < images.length; i++)
@@ -71,6 +126,7 @@ Item {
     const mon = Hyprland.focusedMonitor;
     root.screenName = mon ? mon.name : "";
     root.keyboardNav = false;
+    root.expandForCurrent();
     root.cursor = Math.max(0, root.indexOfPath(root.displayed));
     root.opened = true;
     root.refresh();
@@ -117,12 +173,27 @@ Item {
     root.close();
   }
 
+  // left/right (delta ±1) and Home/End (±Infinity) walk the tiles on screen in reading order
   function moveCursor(delta) {
-    const n = root.images.length;
-    if (n === 0)
+    const flat = [].concat.apply([], root.visibleRows());
+    if (flat.length === 0)
       return;
     root.keyboardNav = true;
-    root.cursor = Math.max(0, Math.min(n - 1, root.cursor + delta));
+    const at = Math.max(0, flat.indexOf(root.cursor));
+    root.cursor = flat[Math.max(0, Math.min(flat.length - 1, at + delta))];
+  }
+
+  // up/down: the same column of the next row, which may be the next section's
+  function moveRow(delta) {
+    const rows = root.visibleRows();
+    if (rows.length === 0)
+      return;
+    root.keyboardNav = true;
+    let r = rows.findIndex(row => row.indexOf(root.cursor) >= 0);
+    if (r < 0) { root.cursor = rows[0][0]; return; }
+    const c = rows[r].indexOf(root.cursor);
+    r = Math.max(0, Math.min(rows.length - 1, r + delta));
+    root.cursor = rows[r][Math.min(c, rows[r].length - 1)];
   }
 
   IpcHandler {
@@ -132,6 +203,8 @@ Item {
     function open(): string { return root.open() }
     function close(): string { return root.close() }
     function set(path: string): string { root.apply(path, false); return "ok" }
+    // Show All / Show Less of a section, by its folder ("" = the loose pictures)
+    function showAll(key: string, on: bool): string { root.setExpanded(key, on); return "ok" }
     // the rig only (VELUM_SHELL_RIG): slow every Velum motion down to look at it frame by frame
     function rigSpeed(factor: string): string {
       if (!Quickshell.env("VELUM_SHELL_RIG")) return "rig only";
@@ -140,6 +213,7 @@ Item {
     }
     function status(): string {
       return JSON.stringify({ opened: root.opened, screen: root.screenName, images: root.images.length,
+        sections: root.sections.map(s => s.key + ":" + s.count), expanded: Object.keys(root.expanded),
         displayed: root.displayed, pinned: root.pinned, cursor: root.cursor });
     }
   }
@@ -157,15 +231,30 @@ Item {
     command: [root.bin, "list"]
     stdout: StdioCollector {
       onStreamFinished: {
-        const out = [];
+        // group by folder: the loose pictures first, then the folders in natural order
+        const bySection = {};
         const lines = String(text || "").split("\n");
         for (let i = 0; i < lines.length; i++) {
           const parts = lines[i].split("\t");
-          if (parts.length === 2 && parts[0])
-            out.push({ path: parts[0], thumb: parts[1] });
+          if (parts.length !== 2 || !parts[0])
+            continue;
+          const rel = parts[0].startsWith(root.folder + "/") ? parts[0].slice(root.folder.length + 1) : parts[0];
+          const key = rel.indexOf("/") >= 0 ? rel.slice(0, rel.lastIndexOf("/")) : "";
+          (bySection[key] = bySection[key] || []).push({ path: parts[0], thumb: parts[1], section: key });
         }
+        const keys = Object.keys(bySection).sort((a, b) =>
+          a === "" ? -1 : b === "" ? 1 : a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+        const out = [], secs = [];
+        for (const key of keys) {
+          secs.push({ key: key, title: key === "" ? "Pictures" : key.split("/").join(" / "),
+                      start: out.length, count: bySection[key].length });
+          Array.prototype.push.apply(out, bySection[key]);
+        }
+        root.sections = secs;
         root.images = out;
         root.loaded = true;
+        if (root.opened && !root.keyboardNav)
+          root.expandForCurrent();
         if (!root.keyboardNav)
           root.cursor = Math.max(0, root.indexOfPath(root.displayed));
         root.cursor = Math.min(root.cursor, Math.max(0, out.length - 1));
@@ -238,10 +327,10 @@ Item {
           switch (e.key) {
           case Qt.Key_Left: root.moveCursor(-1); break;
           case Qt.Key_Right: root.moveCursor(1); break;
-          case Qt.Key_Up: root.moveCursor(-root.columns); break;
-          case Qt.Key_Down: root.moveCursor(root.columns); break;
-          case Qt.Key_Home: root.moveCursor(-root.images.length); break;
-          case Qt.Key_End: root.moveCursor(root.images.length); break;
+          case Qt.Key_Up: root.moveRow(-1); break;
+          case Qt.Key_Down: root.moveRow(1); break;
+          case Qt.Key_Home: root.moveCursor(-Infinity); break;
+          case Qt.Key_End: root.moveCursor(Infinity); break;
           case Qt.Key_Escape: root.close(); break;
           case Qt.Key_Space:
             if (root.images[root.cursor]) root.apply(root.images[root.cursor].path, false);
@@ -270,17 +359,20 @@ Item {
         pad: Theme.layout.sheet.pad
         radius: Theme.m.radius.panel
 
-        // the grid: whole thumbnails, the ring's room around them
+        // the grid: whole thumbnails, the ring's room around them; a section = its head + its rows
         readonly property real ring: root.wp.ring
         readonly property real tileW: root.wp.tile
         readonly property real tileH: Math.round(root.wp.tile * root.wp.tileAspect)
         readonly property real gap: root.wp.gap
-        readonly property int rows: Math.max(1, Math.ceil(root.images.length / root.columns))
         readonly property real gridW: root.columns * tileW + (root.columns - 1) * gap
-        readonly property real gridH: rows * tileH + (rows - 1) * gap
+        // a section's head: its folder's name and Show All, a button high
+        readonly property bool heads: root.sections.length > 1 || (root.sections.length === 1 && root.sections[0].key !== "")
+        readonly property real headH: heads ? Theme.m.control.height + Theme.layout.section.gap : 0
+        // wp.rows sections of one row fit, half a section gap of the next peeks out
+        readonly property real capH: root.wp.rows * (headH + tileH) + (root.wp.rows - 1) * root.wp.sectionGap + root.wp.sectionGap / 2
         readonly property real viewH: root.images.length === 0
           ? tileH * root.wp.empty
-          : Math.min(gridH, root.wp.rows * tileH + (root.wp.rows - 1) * gap + gap / 2) + 2 * ring
+          : Math.min(sectionsCol.height, capH) + 2 * ring
 
         Column {
           id: body
@@ -305,6 +397,7 @@ Item {
                 width: body.width - folderButton.width - 2 * card.ring - Theme.layout.list.gap
                 text: root.folderLabel + (root.loaded
                   ? "  ·  " + root.images.length + (root.images.length === 1 ? " picture" : " pictures")
+                    + (card.heads ? " in " + root.sections.length + (root.sections.length === 1 ? " folder" : " folders") : "")
                   : "")
                 tone: "secondary"
                 pixelSize: Theme.m.type.small
@@ -329,7 +422,7 @@ Item {
             height: card.viewH
             clip: true
             contentWidth: width
-            contentHeight: grid.height + 2 * card.ring
+            contentHeight: sectionsCol.height + 2 * card.ring
             interactive: contentHeight > height
             boundsBehavior: Flickable.DragAndOvershootBounds
             flickDeceleration: root.wp.flickDeceleration
@@ -341,131 +434,194 @@ Item {
               NumberAnimation { duration: Theme.move(Theme.dur("base")); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("inOut") }
             }
 
-            function reveal(index) {
-              const row = Math.floor(index / root.columns);
-              const top = row * (card.tileH + card.gap);
-              const bottom = top + card.tileH + 2 * card.ring;
+            // a tile into view, with its section's head when it sits in the first row
+            function revealItem(item, withHead) {
+              const p = item.mapToItem(flick.contentItem, 0, 0);
+              const top = p.y - card.ring - (withHead ? card.headH : 0);
+              const bottom = p.y + card.tileH + card.ring;
+              const maxY = Math.max(0, contentHeight - height);
               if (top < contentY)
-                contentY = top;
+                contentY = Math.max(0, top);
               else if (bottom > contentY + height)
-                contentY = bottom - height;
+                contentY = Math.min(maxY, bottom - height);
             }
 
             Connections {
               target: root
-              function onCursorChanged() { if (root.keyboardNav) flick.reveal(root.cursor) }
+              function onCursorChanged() { if (root.keyboardNav) root.revealRequested(root.cursor) }
               // the picture on screen is in view when the card opens (it jumps there, nothing scrolls)
-              function onOpenedChanged() { if (root.opened) flick.showCurrent() }
-              function onImagesChanged() { if (root.opened && !root.keyboardNav) flick.showCurrent() }
+              function onOpenedChanged() { if (root.opened) Qt.callLater(flick.showCurrent) }
+              function onImagesChanged() { if (root.opened && !root.keyboardNav) Qt.callLater(flick.showCurrent) }
             }
             function showCurrent() {
               const i = root.indexOfPath(root.displayed);
-              if (i >= 0) reveal(i);
+              if (i >= 0) root.revealRequested(i);
             }
 
-            Grid {
-              id: grid
+            Column {
+              id: sectionsCol
               x: card.ring
               y: card.ring
-              columns: root.columns
-              spacing: card.gap
+              width: card.gridW
+              spacing: root.wp.sectionGap
 
               Repeater {
-                model: root.images
+                model: root.sections
 
-                Item {
-                  id: cell
+                Column {
+                  id: section
                   required property var modelData
-                  required property int index
-                  width: card.tileW
-                  height: card.tileH
+                  readonly property bool all: !!root.expanded[section.modelData.key]
+                  readonly property bool more: section.modelData.count > root.columns
+                  width: sectionsCol.width
+                  spacing: Theme.layout.section.gap
 
-                  readonly property bool current: cell.modelData.path === root.displayed
-                  readonly property bool cursorHere: root.keyboardNav && root.cursor === cell.index
+                  // ---- the section's head: folder name, Show All (N) / Show Less
+                  Item {
+                    width: parent.width
+                    height: Theme.m.control.height
+                    visible: card.heads
 
-                  // the ring: accent around the picture on screen, half strength on the keyboard cursor; it jumps
-                  Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: -(card.ring - Theme.layout.separator)
-                    radius: Theme.m.radius.control + card.ring - Theme.layout.separator
-                    color: "transparent"
-                    border.width: root.wp.ringWidth
-                    border.color: Theme.r.accent.base
-                    opacity: cell.current ? 1 : cell.cursorHere ? Theme.core.alpha.focusRing : 0
+                    VText {
+                      anchors.left: parent.left
+                      anchors.right: showAll.visible ? showAll.left : parent.right
+                      anchors.rightMargin: Theme.layout.list.gap
+                      anchors.verticalCenter: parent.verticalCenter
+                      text: section.modelData.title
+                      font.weight: Font.DemiBold
+                      elide: Text.ElideRight
+                    }
+                    VButton {
+                      id: showAll
+                      anchors.right: parent.right
+                      anchors.verticalCenter: parent.verticalCenter
+                      visible: section.more
+                      kind: "plain"
+                      text: section.all ? "Show Less" : "Show All (" + section.modelData.count + ")"
+                      onClicked: {
+                        root.keyboardNav = false;
+                        root.setExpanded(section.modelData.key, !section.all);
+                      }
+                    }
                   }
 
-                  VPressable {
-                    id: tile
-                    anchors.fill: parent
-                    showFill: false
-                    activeFocusOnTab: false
-                    radius: Theme.m.radius.control
-                    Accessible.name: cell.modelData.path.split("/").pop()
-                    onClicked: {
-                      root.keyboardNav = false;
-                      root.cursor = cell.index;
-                      root.apply(cell.modelData.path, false);
-                    }
+                  Grid {
+                    columns: root.columns
+                    spacing: card.gap
 
-                    ClippingRectangle {
-                      anchors.fill: parent
-                      radius: tile.radius
-                      color: Theme.r.popover.fillHover
+                    Repeater {
+                      model: root.images.slice(section.modelData.start, section.modelData.start + section.modelData.count)
 
-                      Image {
-                        anchors.fill: parent
-                        source: Util.fileUrl(cell.modelData.thumb)
-                        sourceSize.width: Math.ceil(2 * card.tileW)
-                        fillMode: Image.PreserveAspectCrop
-                        asynchronous: true
-                        cache: true
-                        smooth: true
-                        opacity: status === Image.Ready ? 1 : 0
-                        Behavior on opacity {
-                          NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") }
+                      Item {
+                        id: cell
+                        required property var modelData
+                        required property int index
+                        readonly property int gi: section.modelData.start + cell.index
+                        width: card.tileW
+                        height: card.tileH
+                        // the first row always, the rest with Show All (it fades in; Show Less jumps)
+                        readonly property bool shown: cell.index < root.columns || section.all
+                        visible: cell.shown
+                        onShownChanged: if (cell.shown && root.opened) fadeIn.restart()
+                        NumberAnimation {
+                          id: fadeIn
+                          target: cell; property: "opacity"; from: 0; to: 1
+                          duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out")
                         }
-                      }
 
-                      // hover / press veil over the photo: in at once, out on fast
-                      Rectangle {
-                        anchors.fill: parent
-                        color: tile.tint
-                        opacity: tile.pressed ? Theme.core.alpha.pressed : tile.hovered ? Theme.core.alpha.hover : 0
-                        Behavior on opacity {
-                          NumberAnimation {
-                            duration: (tile.hovered || tile.pressed) ? Theme.dur("instant") : Theme.dur("fast")
-                            easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out")
+                        readonly property bool current: cell.modelData.path === root.displayed
+                        readonly property bool cursorHere: root.keyboardNav && root.cursor === cell.gi
+
+                        Connections {
+                          target: root
+                          function onRevealRequested(i) { if (i === cell.gi && cell.visible) flick.revealItem(cell, cell.index < root.columns) }
+                        }
+                          // the ring: accent around the picture on screen, half strength on the keyboard cursor; it jumps
+                          Rectangle {
+                            anchors.fill: parent
+                            anchors.margins: -(card.ring - Theme.layout.separator)
+                            radius: Theme.m.radius.control + card.ring - Theme.layout.separator
+                            color: "transparent"
+                            border.width: root.wp.ringWidth
+                            border.color: Theme.r.accent.base
+                            opacity: cell.current ? 1 : cell.cursorHere ? Theme.core.alpha.focusRing : 0
                           }
-                        }
+
+                          VPressable {
+                            id: tile
+                            anchors.fill: parent
+                            showFill: false
+                            activeFocusOnTab: false
+                            radius: Theme.m.radius.control
+                            Accessible.name: cell.modelData.path.split("/").pop()
+                            onClicked: {
+                              root.keyboardNav = false;
+                              root.cursor = cell.gi;
+                              root.apply(cell.modelData.path, false);
+                            }
+
+                            ClippingRectangle {
+                              anchors.fill: parent
+                              radius: tile.radius
+                              color: Theme.r.popover.fillHover
+
+                              Image {
+                                anchors.fill: parent
+                                source: Util.fileUrl(cell.modelData.thumb)
+                                sourceSize.width: Math.ceil(2 * card.tileW)
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                                cache: true
+                                smooth: true
+                                opacity: status === Image.Ready ? 1 : 0
+                                Behavior on opacity {
+                                  NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") }
+                                }
+                              }
+
+                              // hover / press veil over the photo: in at once, out on fast
+                              Rectangle {
+                                anchors.fill: parent
+                                color: tile.tint
+                                opacity: tile.pressed ? Theme.core.alpha.pressed : tile.hovered ? Theme.core.alpha.hover : 0
+                                Behavior on opacity {
+                                  NumberAnimation {
+                                    duration: (tile.hovered || tile.pressed) ? Theme.dur("instant") : Theme.dur("fast")
+                                    easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out")
+                                  }
+                                }
+                              }
+                            }
+
+                            // the check on the picture on screen
+                            Rectangle {
+                              width: root.wp.badge
+                              height: width
+                              radius: width / 2
+                              anchors.right: parent.right
+                              anchors.bottom: parent.bottom
+                              anchors.margins: root.wp.badgeInset
+                              color: Theme.r.accent.base
+                              border.width: root.wp.badgeRim
+                              border.color: Theme.r.ink.onAccent
+                              opacity: cell.current ? 1 : 0
+                              scale: badgeScale.value
+                              Behavior on opacity {
+                                NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") }
+                              }
+
+                              VIcon {
+                                anchors.centerIn: parent
+                                name: "check"
+                                weight: "bold"
+                                size: Theme.layout.icon.small
+                                color: Theme.r.ink.onAccent
+                              }
+                            }
+                            Spring { id: badgeScale; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: cell.current ? 1 : Theme.scale("iconFrom") }
+                          }
                       }
                     }
-
-                    // the check on the picture on screen
-                    Rectangle {
-                      width: root.wp.badge
-                      height: width
-                      radius: width / 2
-                      anchors.right: parent.right
-                      anchors.bottom: parent.bottom
-                      anchors.margins: root.wp.badgeInset
-                      color: Theme.r.accent.base
-                      border.width: root.wp.badgeRim
-                      border.color: Theme.r.ink.onAccent
-                      opacity: cell.current ? 1 : 0
-                      scale: badgeScale.value
-                      Behavior on opacity {
-                        NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") }
-                      }
-
-                      VIcon {
-                        anchors.centerIn: parent
-                        name: "check"
-                        weight: "bold"
-                        size: Theme.layout.icon.small
-                        color: Theme.r.ink.onAccent
-                      }
-                    }
-                    Spring { id: badgeScale; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: cell.current ? 1 : Theme.scale("iconFrom") }
                   }
                 }
               }
