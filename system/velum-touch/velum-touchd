@@ -128,14 +128,11 @@ class Hypr:
     def __init__(self):
         self.q, self.lock, self.pending = queue.Queue(), threading.Lock(), []
         self.screen = None                                # (name, width px, height px, scale, transform)
+        self.path = None                                  # the session Hyprland's socket, picked by refresh()
         threading.Thread(target=self.run, daemon=True).start()
 
-    def sock(self):
-        socks = glob.glob(f"/run/user/{UID}/hypr/*/.socket.sock")
-        return max(socks, key=os.path.getmtime) if socks else None
-
-    def request(self, msg):
-        path = self.sock()
+    def request(self, msg, path=None):
+        path = path or self.path
         if not path:
             return None
         with socket.socket(socket.AF_UNIX) as s:
@@ -148,11 +145,23 @@ class Hypr:
             return out
 
     def refresh(self):
-        """The built-in panel: its name, pixel size and scale (eDP-*, else the first real output)."""
-        try:
-            mons = [m for m in json.loads(self.request("j/monitors") or b"[]") if not m["name"].startswith("HEADLESS")]
-        except (OSError, ValueError):
+        """The session Hyprland and its built-in panel: name, pixel size and scale (eDP-*, else the first
+        real output). The session is the instance that drives eDP-*, not the newest socket: a nested test
+        rig (WAYLAND-*/HEADLESS-* outputs) started later must not get the fingers' events."""
+        socks = sorted(glob.glob(f"/run/user/{UID}/hypr/*/.socket.sock"), key=os.path.getmtime, reverse=True)
+        found = None
+        for path in socks:
+            try:
+                mons = [m for m in json.loads(self.request("j/monitors", path) or b"[]") if not m["name"].startswith("HEADLESS")]
+            except (OSError, ValueError):
+                continue
+            if any(m["name"].startswith("eDP") for m in mons):
+                found = (path, mons)
+                break
+            found = found or (path, mons)
+        if not found:
             return
+        self.path, mons = found
         mons.sort(key=lambda m: not m["name"].startswith("eDP"))
         if mons:
             m = mons[0]
