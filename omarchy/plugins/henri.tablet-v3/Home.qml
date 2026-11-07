@@ -183,10 +183,19 @@ Item {
       tiles.push({ id: "folder:" + k, name: f.name, folder: true, items: f.items.map(function (id) { return home.entries[id] }).filter(Boolean) })
     }
     var key = JSON.stringify(tiles.map(function (t) { return t.folder ? [t.id, t.name, t.items.map(function (a) { return a.id + a.icon })] : t.id + t.name + t.icon }))
+    if (layoutRead) VBoot.release("home")
     if (key === tilesKey) return
     tilesKey = key
     gridTiles = tiles
+    VBoot.poke()
   }
+  // The shell's start (VBoot): the home screen holds the entrance until its layout is read and its
+  // tiles stand, then comes in as from the home gesture — the grid zooms down from homeZoom and
+  // fades in, the dock rises (reduced motion: a fade)
+  property bool layoutRead: false
+  Spring { id: bootIn; preset: Theme.spring("gentle"); target: VBoot.chrome ? 1 : 0 }
+  onRecentAppsChanged: VBoot.poke()
+  onDockAppsChanged: VBoot.poke()
   onLayoutChanged: syncTiles()
   onOpenFolderChanged: if (openFolder && !layout.folders[HM.folderKey(openFolder)]) openFolder = ""
   FileView {
@@ -199,8 +208,10 @@ Item {
       home.savedFolders = d.folders && typeof d.folders === "object" ? d.folders : {}
       home.savedOrder = Array.isArray(d.order) ? d.order : []
       home.localHidden = home.idSet(Array.isArray(d.hidden) ? d.hidden.join("\n") : "")
+      home.layoutRead = true
       home.scanApps()
     }
+    onLoadFailed: { home.layoutRead = true; home.syncTiles() }
   }
   function saveLayout(l) {
     home.savedFolders = l.folders
@@ -965,7 +976,8 @@ Item {
   // and nothing on a machine without the iCloud Photos catalog)
   Process { id: photoPicks; command: [home.homeDir + "/.local/share/velum/bin/velum-photo-picks"] }
   Timer { interval: home.cfg.widget.refreshEvery; repeat: true; running: true; triggeredOnStart: true; onTriggered: if (!photoPicks.running) photoPicks.running = true }
-  Component.onCompleted: { wallpaperProbe.running = true; scanApps(); Hyprland.refreshMonitors(); rescan.restart() }
+  Component.onCompleted: { VBoot.hold("home"); wallpaperProbe.running = true; scanApps(); Hyprland.refreshMonitors(); rescan.restart() }
+  Component.onDestruction: VBoot.release("home")
   onModeChanged: {
     mark("mode " + mode)
     if (mode === "ready") wallpaperProbe.running = true
@@ -1037,6 +1049,9 @@ Item {
           anchors.fill: parent
           folderBackdrop: false      // folderWin draws it, under the bar and the home zone too
           opacity: homeWin.shown ? 1 : home.cfg.warmOpacity
+          gridOpacity: bootIn.value
+          gridScale: Theme.reduceMotion ? 1 : home.cfg.homeZoom - (home.cfg.homeZoom - 1) * bootIn.value
+          dockShift: Theme.reduceMotion ? 0 : (1 - bootIn.value) * (homeItem.g.dockH + 2 * homeItem.g.dockGap)
           apps: home.gridTiles
           openFolder: home.openFolder
           order: home.gridOrder

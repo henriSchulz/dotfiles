@@ -229,7 +229,8 @@ Item {
         height: root.tt.indicator.height
         radius: height / 2
         y: (zone.height - height) / 2 - lift.value
-        opacity: zone.away ? root.tt.indicator.asleep : 1
+        // the shell's start (VBoot): it fades in with the home screen and the bar
+        opacity: (zone.away ? root.tt.indicator.asleep : 1) * (VBoot.chrome ? 1 : 0)
         Behavior on opacity { NumberAnimation { duration: zone.away ? Theme.dur("slow") : Theme.dur("fast") } }
         color: Theme.dark ? root.tt.indicator.onDark : root.tt.indicator.onLight
         Rectangle {

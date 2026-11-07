@@ -161,8 +161,9 @@ Item {
           readonly property real body: isFolder ? Theme.core.surface.appIcon.content : isWidget ? 1 : VIconMetrics.scale(img.source)
           property alias icon: img
           // its slot on a spring while the order changes under a held icon; the held one is the finger's
-          Spring { id: sx; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: hs.slotX(tile.slot) }
-          Spring { id: sy; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: hs.slotY(tile.slot) }
+          // (before the shell's entrance, VBoot, it jumps: the layout still settles while the shell loads)
+          Spring { id: sx; reduced: Theme.reduceMotion || !VBoot.chrome; preset: Theme.spring("snappy"); target: hs.slotX(tile.slot) }
+          Spring { id: sy; reduced: Theme.reduceMotion || !VBoot.chrome; preset: Theme.spring("snappy"); target: hs.slotY(tile.slot) }
           Spring { id: lift; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: tile.held ? Theme.scale("lift") : 1 }
           // lands from where the finger let go
           onHeldChanged: if (!held) { sx.from(hs.dragX - hs.pageX); sy.from(hs.dragY) }
