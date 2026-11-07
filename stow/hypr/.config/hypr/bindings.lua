@@ -280,10 +280,11 @@ o.bind("SHIFT + F3", "App Exposé", hl.dsp.event("mission-control toggle app"))
 o.bind("CTRL + XF86LaunchA", "Show Desktop", hl.dsp.event("mission-control toggle desktop"))
 -- Die Seitentasten jeder Maus (auch der am Tablet, die mac-cast-usb an den Mac
 -- reicht): vordere (mouse:276, BTN_EXTRA) Mission Control, hintere (mouse:275,
--- BTN_SIDE) App Exposé. Global, also kein Zurück/Vor per Maus mehr in den Apps
--- (Henris Wahl); mit Shift o. Ä. gehalten bekommen die Apps die Taste weiter.
+-- BTN_SIDE) Kontrollzentrum (henri.control-center-v3). Global, also kein
+-- Zurück/Vor per Maus mehr in den Apps (Henris Wahl); mit Shift o. Ä. gehalten
+-- bekommen die Apps die Taste weiter.
 o.bind("mouse:276", "Mission Control", mission_control_key)
-o.bind("mouse:275", "App Exposé", hl.dsp.event("mission-control toggle app"))
+o.bind("mouse:275", "Control Center", "omarchy-shell henri.control-center-v3 toggle")
 
 -- Launchpad (henri.launchpad-v3) auf F4, ohne Fn: mit fnmode=1 sendet die
 -- Taste ihre Mac-Medienfunktion. Welches Keysym das ist, hängt am Treiber
