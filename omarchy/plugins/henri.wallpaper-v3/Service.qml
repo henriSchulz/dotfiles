@@ -428,6 +428,36 @@ Item {
             flickDeceleration: root.wp.flickDeceleration
             maximumFlickVelocity: root.wp.maxFlickVelocity
 
+            // touchpad: Omarchy scales touchpad scrolling by 0.4 for every surface (input.lua scroll_factor),
+            // so the grid takes the fingers itself — 1:1 again, and on lift a flick at the fingers' speed
+            WheelHandler {
+              acceptedDevices: PointerDevice.TouchPad
+              property var samples: []   // [{ t, dy }] of the last momentumWindow ms
+              onWheel: ev => {
+                if (!flick.interactive)
+                  return;
+                const now = Date.now();
+                const recent = samples.filter(s => now - s.t <= Theme.core.motion.scroll.momentumWindow);
+                if (ev.phase === Qt.ScrollEnd) {
+                  samples = [];
+                  if (recent.length > 1) {
+                    const span = Math.max(1, now - recent[0].t);
+                    flick.flick(0, recent.reduce((a, s) => a + s.dy, 0) / span * 1000);   // lint-ok: ms → s
+                  }
+                  return;
+                }
+                if (ev.phase === Qt.ScrollBegin) {
+                  flick.cancelFlick();
+                  recent.length = 0;
+                }
+                root.keyboardNav = false;
+                const dy = ev.pixelDelta.y * Theme.core.motion.scroll.touchpadGain;
+                recent.push({ t: now, dy: dy });
+                samples = recent;
+                flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, flick.contentY - dy));
+              }
+            }
+
             // the keyboard cursor scrolls the grid along (a visible thing moves A → B)
             Behavior on contentY {
               enabled: root.keyboardNav
