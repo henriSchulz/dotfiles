@@ -335,9 +335,12 @@ o.bind("SUPER + SHIFT + XF86AudioNext", "Screen mirror (Apple top row)", "ipadca
 -- Gerätefilter nennt nur die, also bleibt die Super-Taste der Tastatur (Chicony)
 -- unberührt. Beim Loslassen, weil Super dann sicher wieder oben ist; ignore_mods,
 -- weil Super_L beim Loslassen selbst noch als Mod zählt; dont_inhibit, weil mac-cast
--- alle anderen Kürzel sperrt (jede Taste geht an den Mac) und diese durchkommen muss.
+-- alle anderen Kürzel sperrt (jede Taste geht an den Mac) und diese durchkommen muss;
+-- locked, damit sie auch im Sperrbildschirm startet (Henris Wahl 2026-11-07: der Mac
+-- erscheint, wie er ist; nach dem Cast steht wieder die Sperre des Tablets da).
 o.bind("SUPER_L", "Toggle Mac screen (side button)", "mac-cast-mode toggle", {
   release = true,
+  locked = true,
   ignore_mods = true,
   dont_inhibit = true,
   device = { inclusive = true, list = { "intel-virtual-buttons", "at-translated-set-2-keyboard", "acer-wmi-hotkeys" } },
