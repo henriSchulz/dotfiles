@@ -13,6 +13,9 @@ import "file:///home/henri/.local/share/velum/qml/Velum/KeyboardLayout.js" as Ke
 // event "velum-keyboard toggle SCREEN"); its hide key closes it, and so does the first real key, as on
 // an iPad with a keyboard attached. Opening by itself whenever a text field had the focus brought it
 // back after every tap on a terminal, even the tap that had just closed it (Henri, 2026-10-25).
+// It goes by itself when what it typed into goes (Henri, 2026-11-08: it stayed up and was in the way):
+// another window takes the focus, its screen shows another workspace (the home gesture too), or
+// Spotlight closes when it came with Spotlight (the window bar's search; "velum-menu hidden").
 //
 // fcitx5 holds the seat's input method; the keyboard talks to it through velum-osk (bridge/, built to
 // ~/.local/lib/velum/velum-osk), which puts fcitx5 into on-screen-keyboard mode on open. Keys go to
@@ -191,7 +194,10 @@ Item {
     var e = "velum-keyboard " + (root.shown ? "shown " : "hidden ") + (root.screenName || (Quickshell.screens[0] ? Quickshell.screens[0].name : ""))
     Hyprland.dispatch(Hyprland.usingLua ? "hl.dsp.event(\"" + e + "\")" : "event " + e)
   }
-  onShownChanged: { announce(); fitFullscreen() }
+  onShownChanged: {
+    announce(); fitFullscreen()
+    if (root.shown) { root.lastWorkspace = root.screenWorkspace; root.lastScreen = root.ownScreen }
+  }
 
   // a fullscreen window ignores the exclusive zone, so the island would cover its last lines: while
   // the keyboard is up such a window on its screen is maximized (which keeps clear of the zone), and
@@ -222,13 +228,42 @@ Item {
   function open(byHand) {
     if (byHand) send("open")
     if (root.board) root.board.reset()
+    root.withMenu = false
     root.shown = true
   }
   // the board is reset on the next open, not here: the island slides away from where it is (also
   // from where the grabber pulled it)
   function close(byHand) {
     if (byHand) send("close")
+    root.withMenu = false
     root.shown = false
+  }
+
+  // ---- going by itself ------------------------------------------------------------------------------
+  property bool withMenu: false       // opened beside Spotlight: it closes with it
+  // the focused window: another one (another app, or a window of the same app) closes the keyboard.
+  // A surface with the keyboard focus (Spotlight) leaves no window active for a moment; coming back
+  // to the same window is no change.
+  property var lastWindow: null
+  readonly property var activeWindow: ToplevelManager.activeToplevel
+  onActiveWindowChanged: {
+    if (!root.activeWindow) return
+    if (root.shown && root.lastWindow && root.activeWindow !== root.lastWindow) root.close(true)
+    root.lastWindow = root.activeWindow
+  }
+  // another workspace on the keyboard's screen (also the home gesture's empty one); focus going to
+  // another screen and back is no change
+  readonly property string ownScreen: root.screenName || (Quickshell.screens[0] ? Quickshell.screens[0].name : "")
+  readonly property var ownMonitor: Hyprland.monitors.values.filter(function (m) { return m.name === root.ownScreen })[0] || null
+  readonly property int screenWorkspace: root.ownMonitor && root.ownMonitor.activeWorkspace ? root.ownMonitor.activeWorkspace.id : -1
+  property int lastWorkspace: -1
+  property string lastScreen: ""      // the screen lastWorkspace was on: following the finger elsewhere is no change
+  onScreenWorkspaceChanged: {
+    if (root.screenWorkspace === -1) return
+    if (root.shown && root.lastScreen === root.ownScreen && root.lastWorkspace !== -1
+        && root.screenWorkspace !== root.lastWorkspace) root.close(true)
+    root.lastWorkspace = root.screenWorkspace
+    root.lastScreen = root.ownScreen
   }
 
   Connections {
@@ -236,6 +271,7 @@ Item {
     // "velum-touch SCREEN" from ipadcast: a finger was lifted there — the screen the keyboard goes to.
     // "velum-keyboard toggle SCREEN": the window bar's keyboard button.
     // "velum-keyboard open SCREEN": open only (the window bar's search button, beside Spotlight).
+    // "velum-menu hidden": Spotlight closed (henri.menu-v3).
     function onRawEvent(event) {
       if (event.name !== "custom") return
       var d = String(event.data)
@@ -247,13 +283,14 @@ Item {
           root.holdAt(a[0], Number(a[1]), Number(a[2]), a[3])
         return
       }
+      if (d === "velum-menu hidden") { if (root.shown && root.withMenu) root.close(true); return }
       if (d.indexOf("velum-touch ") === 0) name = d.slice(12).trim()
       else if (d.indexOf("velum-keyboard toggle ") === 0) name = d.slice(22).trim()
       else if (d.indexOf("velum-keyboard open ") === 0) name = d.slice(20).trim()
       else return
       if (/^[A-Za-z0-9_-]+$/.test(name)) root.screenName = name
       if (d.indexOf("velum-keyboard toggle ") === 0) { if (root.shown) root.close(true); else root.open(true) }
-      else if (d.indexOf("velum-keyboard open ") === 0 && !root.shown) root.open(true)
+      else if (d.indexOf("velum-keyboard open ") === 0 && !root.shown) { root.open(true); root.withMenu = true }
     }
   }
 

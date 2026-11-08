@@ -74,9 +74,9 @@ want K08 "delete presses BackSpace" "$(sent | awk -F'|' '{print $NF}')" "key Bac
 # tab: first key of row 0
 pt m "$(python3 -c "print(int($KX + 10 + 1.3 * $unit / 2))")" "$(row 0)" d s 40 u
 want K20 "tab presses Tab" "$(sent | awk -F'|' '{print $NF}')" "key Tab"
-# the mic key: fifth of the bottom row (123 1.4, command 1.1, left 1, right 1 before it; 8 keys of 12.6 units)
-unit3=$(python3 -c "print((860 - 20 - 7 * 7) / 12.6)")
-mx=$(python3 -c "print(int($KX + 10 + 4.5 * $unit3 + 4 * 7 + $unit3 / 2))")
+# the mic key: third of the bottom row (.?123 1.4, command 1.1 before it; 6 keys of 12.6 units, as on an iPad no arrows)
+unit3=$(python3 -c "print((860 - 20 - 5 * 7) / 12.6)")
+mx=$(python3 -c "print(int($KX + 10 + 2.5 * $unit3 + 2 * 7 + $unit3 / 2))")
 calls() { tail -1 "$R/home/.cache/voxtype-stub/calls" 2>/dev/null; }
 pt m "$mx" "$(row 3)" d s 40 u; sleep 0.4
 want K21 "the mic key starts a dictation and holds the bridge" "$(calls),$(st | jq -r .voxState),$(sent | awk -F'|' '{print $NF}')" "record start,recording,hold on"

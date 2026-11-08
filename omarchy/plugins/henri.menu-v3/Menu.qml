@@ -627,6 +627,8 @@ Item {
   }
   property bool deleteConfirmOpen: false
   onOpenedChanged: if (!opened) {
+    // the on-screen keyboard that came with it (the tablet window bar's search) goes with it
+    Hyprland.dispatch(Hyprland.usingLua ? "hl.dsp.event(\"velum-menu hidden\")" : "event velum-menu hidden")
     // Nothing carries over: every open starts blank (Henri's call, replacing
     // spec §8's restored query).
     lastQuery = ""
