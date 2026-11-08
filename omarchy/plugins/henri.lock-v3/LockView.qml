@@ -1,17 +1,19 @@
 import QtQuick
-import QtQuick.Effects
+import Quickshell
+import Quickshell.Services.UPower
 import qs.Commons
 import qs.Ui
 import "file:///home/henri/.local/share/velum/qml/Velum"
+import "Tone.js" as Tone
 
-// Lock screen face, Velum (Pearl). Same API and the same password input as
-// henri.lock's LockView: every property, signal and function below the look
-// is unchanged, and the TextInput keeps its handlers line for line
-// (onTextChanged, onAccepted, Keys: Esc / Ctrl+U clear). Only the look is new:
-// the blurred wallpaper, a large clock and date as on macOS, the password
-// field on the popover material, a shake on a failed attempt and a gentle
-// spring when the screen comes up. Service.qml (session lock, PAM, fingerprint)
-// is the original, untouched.
+// Lock screen face, Velum — design 4B "Zweiton" of lab/web/lock2.html (Henri 2026-11-08), no glass:
+// the sharp wallpaper over the top fades into a flat fall between the wallpaper's two main colours
+// (Tone.js reads them from a small copy of the picture), and date, a large clock and a capsule
+// password field stand low in the middle on that fall. Tokens: surface.lock. Same API and the same
+// password input as henri.lock's LockView: every property, signal and function below the look is
+// unchanged, and the TextInput keeps its handlers line for line (onTextChanged, onAccepted, Keys:
+// Esc / Ctrl+U clear); a shake on a failed attempt and a gentle spring when the screen comes up.
+// Service.qml (session lock, PAM, fingerprint) is the original, untouched.
 //
 // On a touch screen (the tablet, a cast screen) a round keyboard button under the field slides
 // Velum's on-screen keyboard (VKeyboard) up from the bottom edge: its keys type straight into the
@@ -34,11 +36,38 @@ Item {
   property bool syncingPasswordText: false
 
   readonly property string placeholderText: "Enter Password"
-  readonly property real fieldWidth: Math.round(Theme.layout.module.width * 0.62)
-  readonly property real fieldHeight: Theme.m.control.height + Theme.layout.module.pad
-  readonly property int fieldFontSize: Theme.m.type.body
-  readonly property int passwordDotFontSize: Math.round(Theme.m.type.title * 1.1)
-  readonly property int passwordDotLetterSpacing: Math.round(Theme.m.type.title * 0.16)
+  // ---- design 4B: sizes are shares of the screen width, `unit` is the text unit
+  readonly property var face: Theme.core.surface.lock
+  readonly property var look: Theme.dark ? face.dark : face.light
+  readonly property real unit: Math.max(face.typeMin, width * face.type)
+  readonly property real fieldWidth: Math.round(width * face.field)
+  readonly property real fieldHeight: Math.round(unit * face.fieldHeight)
+  readonly property int fieldFontSize: Math.round(unit)
+  readonly property int passwordDotFontSize: Math.round(unit * 1.1)
+  readonly property int passwordDotLetterSpacing: Math.round(unit * 0.16)
+  readonly property real footSpace: Math.round(width * face.foot)
+  readonly property int clockSize: Math.round(width * face.clock)
+
+  // the two seeds of the wallpaper ([r, g, b] 0..1); until they are read, the accent stands in
+  property var seeds: null
+  readonly property var fallbackSeed: [Theme.r.accent.base.r, Theme.r.accent.base.g, Theme.r.accent.base.b]
+  readonly property var seedTop: seeds ? seeds[0] : fallbackSeed
+  readonly property var seedBottom: seeds ? seeds[1] : fallbackSeed
+  // the fall's colour at height p (0 top … 1 bottom), with alpha a
+  function fallAt(p, a) {
+    var t = toneTop, b = toneBottom
+    return Qt.rgba(t.r + (b.r - t.r) * p, t.g + (b.g - t.g) * p, t.b + (b.b - t.b) * p, a)
+  }
+  function rgb(a, alpha) { return Qt.rgba(a[0], a[1], a[2], alpha === undefined ? 1 : alpha) }
+  readonly property color toneTop: rgb(Tone.tone(seedTop, look.top.l, look.top.c))
+  readonly property color toneBottom: rgb(Tone.tone(seedBottom, look.bottom.l, look.bottom.c))
+  readonly property var inkRgb: Theme.dark ? Tone.toneAbs(seedTop, look.ink.l, look.ink.chroma) : Tone.tone(seedTop, look.ink.l, look.ink.c)
+  readonly property color ink: rgb(inkRgb)
+  readonly property color inkSecondary: rgb(inkRgb, face.alpha.secondary)
+  readonly property color inkLine: rgb(inkRgb, face.alpha.line)
+  readonly property color inkSoft: rgb(inkRgb, face.alpha.soft)
+  readonly property string userInitial: (Quickshell.env("USER") || "").charAt(0).toUpperCase()
+  readonly property var battery: UPower.displayDevice
   // Space to keep clear on each side of the field for the fingerprint icon
   // (icon width plus a gap) so the centered dots never run under it.
   readonly property real fingerprintReserve: fingerprintConfigured ? Math.round(fingerprintIcon.width + Theme.layout.list.gap) : 0
@@ -49,14 +78,12 @@ Item {
     : 1
   readonly property bool showPasswordCursor: inputEnabled && !authenticatingPassword && failureMessage.length === 0
   readonly property bool errorState: failureMessage.length > 0
-  // white text straight over the photo (clock, date, message)
-  readonly property color photoInk: Theme.r.ink.onAccent
 
   // the on-screen keyboard (the button under the field opens it, its hide key closes it)
   property bool keyboardShown: false
   readonly property real keyboardHeight: keys.boardHeight
-  // the field moves up as far as the keyboard would cover it (and the hint under it)
-  readonly property real keyboardLift: Math.max(0, fieldBox.baseBottom + Theme.layout.window.pad + (hint.visible ? hint.height + Theme.layout.module.pad : 0) - (height - keyboardHeight))
+  // the face moves up as far as the keyboard would cover the field and the hint under it
+  readonly property real keyboardLift: Math.max(0, keyboardHeight + Theme.layout.window.pad - footSpace)
 
   signal submitPassword(string password)
   signal passwordTextEdited(string password)
@@ -166,6 +193,16 @@ Item {
     anchors.fill: parent
     color: Color.background
 
+    // ---- the fall between the two tones, the whole screen
+    Rectangle {
+      anchors.fill: parent
+      gradient: Gradient {
+        GradientStop { position: 0; color: root.toneTop }
+        GradientStop { position: 1; color: root.toneBottom }
+      }
+    }
+
+    // ---- the wallpaper, sharp, over the top; a flat veil in the dark; then it fades into the fall
     Image {
       id: wallpaper
       anchors.fill: parent
@@ -175,17 +212,47 @@ Item {
       cache: false
       sourceSize.width: width
       sourceSize.height: height
+      opacity: status === Image.Ready ? 1 : 0
+      Behavior on opacity { NumberAnimation { duration: Theme.dur("base"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
+    }
+    Rectangle {
+      anchors.fill: parent
+      color: Theme.core.color.scrim
+      visible: root.look.photoDim > 0
+      opacity: root.look.photoDim * wallpaper.opacity
+    }
+    // the photo's fade: the fall's own colour at each height, clear down to `solid`, opaque from `clear`
+    Rectangle {
+      anchors.fill: parent
+      gradient: Gradient {
+        GradientStop { position: 0; color: root.fallAt(0, 0) }
+        GradientStop { position: root.face.photo.solid; color: root.fallAt(root.face.photo.solid, 0) }
+        GradientStop { position: root.face.photo.clear; color: root.fallAt(root.face.photo.clear, 1) }
+        GradientStop { position: 1; color: root.toneBottom }
+      }
     }
 
-    MultiEffect {
-      anchors.fill: wallpaper
-      source: wallpaper
-      autoPaddingEnabled: false
-      blurEnabled: root.loadBackground && wallpaper.status === Image.Ready
-      blur: 1.0
-      blurMax: 128
-      blurMultiplier: 1.25
-      contrast: -0.08
+    // reads the two seeds from a small copy of the wallpaper (once per picture)
+    Canvas {
+      id: sampler
+      width: root.face.seed.sample
+      height: root.face.seed.sample
+      opacity: 0
+      readonly property string src: root.loadBackground && root.backgroundPath ? root.fileUrl(root.backgroundPath) : ""
+      property string done: ""
+      onSrcChanged: if (src && src !== done) loadImage(src)
+      Component.onCompleted: if (src) loadImage(src)
+      onImageLoaded: requestPaint()
+      onPaint: {
+        if (!src || !isImageLoaded(src)) return
+        var ctx = getContext("2d")
+        ctx.clearRect(0, 0, width, height)
+        ctx.drawImage(src, 0, 0, width, height)
+        var found = Tone.seeds(ctx.getImageData(0, 0, width, height).data, root.face.seed)
+        if (found) root.seeds = found
+        unloadImage(src)
+        done = src
+      }
     }
 
     MouseArea {
@@ -195,65 +262,81 @@ Item {
       onPositionChanged: root.wakeRequested()
     }
 
-    // ---- clock and date, high on the screen as on macOS
+    // ---- date, clock, field and hint: one column, low in the middle, lifted by the keyboard
     Column {
-      id: clockBlock
+      id: faceColumn
       anchors.horizontalCenter: parent.horizontalCenter
-      y: Math.round(parent.height * 0.12) + (1 - appear.value) * Theme.move(-Theme.core.motion.offset.carry)
-      opacity: appear.value
+      anchors.bottom: parent.bottom
+      anchors.bottomMargin: root.footSpace
       spacing: 0
-      // a soft shade so the white clock reads on any photo
-      layer.enabled: true
-      layer.effect: MultiEffect {
-        shadowEnabled: true
-        shadowColor: (Theme.r.popover.shadow || []).length > 1 ? Theme.r.popover.shadow[1].color : "transparent"
-        shadowBlur: 1.0
-        shadowVerticalOffset: Theme.layout.separator * 2
-      }
+      transform: Translate { y: -root.fieldLift + (1 - appear.value) * Theme.move(Theme.core.motion.offset.carry) }
+      opacity: appear.value
+
       Text {
         anchors.horizontalCenter: parent.horizontalCenter
         text: Qt.formatDate(root.now, "dddd, d MMMM")
-        color: root.photoInk
+        color: root.inkSecondary
         font.family: Theme.font
-        font.pixelSize: Theme.m.type.title * 1.4
+        font.pixelSize: Math.round(root.unit * root.face.date)
         font.weight: Font.DemiBold
       }
       Text {
+        id: clockText
         anchors.horizontalCenter: parent.horizontalCenter
         text: Qt.formatTime(root.now, "H:mm")
-        color: root.photoInk
+        color: root.ink
         font.family: Theme.font
-        font.pixelSize: Theme.m.type.title * 6.5
+        font.pixelSize: root.clockSize
         font.weight: Font.Bold
+        font.letterSpacing: root.clockSize * root.face.clockTracking
       }
-    }
-    // ---- the password field on the popover material
+      // the clock's line box already holds a part of the gap under its figures
+      Item { width: 1; height: Math.max(0, Math.round(root.clockSize * root.face.clockGap) - (clockText.height - root.clockSize)) }
+
+    // ---- the password field: a flat capsule in the ink's soft share, the initial at its left
     Item {
       id: fieldBox
       width: root.fieldWidth
       height: root.fieldHeight
-      anchors.centerIn: parent
-      anchors.verticalCenterOffset: Math.round(parent.height * 0.08)
-      // where the field's bottom sits with no keyboard (the lift is measured from here)
-      readonly property real baseBottom: (parent.height + height) / 2 + Math.round(parent.height * 0.08)
-      opacity: appear.value
+      anchors.horizontalCenter: parent.horizontalCenter
       scale: Theme.scale("popoverFrom") + (1 - Theme.scale("popoverFrom")) * appear.value
-      transform: Translate { x: root.shakeX; y: -root.fieldLift }
+      transform: Translate { x: root.shakeX }
 
-      VShadow { layers: Theme.r.popover.shadow; radius: inputField.radius }
       Rectangle {
         id: inputField
         anchors.fill: parent
         radius: height / 2
-        color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
-        border.width: root.errorState ? Theme.core.size.focusRing : Theme.layout.separator
-        border.color: root.errorState ? Theme.r.danger : Theme.r.line.rim
+        color: root.inkSoft
+        border.width: root.errorState || passwordInput.activeFocus && passwordInput.text.length > 0 ? Theme.core.size.focusRing : Theme.layout.separator
+        border.color: root.errorState ? Theme.r.danger : (passwordInput.activeFocus && passwordInput.text.length > 0 ? root.ink : root.inkLine)
         Behavior on border.color { ColorAnimation { duration: Theme.dur("fast") } }
         clip: true
         readonly property real borderTop: 0
         readonly property real borderRight: 0
         readonly property real borderBottom: 0
         readonly property real borderLeft: 0
+
+        // the user's initial, a disc in the ink at the capsule's left
+        Rectangle {
+          id: avatar
+          readonly property real size: Math.round(root.unit * root.face.avatar)
+          width: size
+          height: size
+          radius: size / 2
+          anchors.left: parent.left
+          anchors.leftMargin: Math.round((parent.height - size) / 2)
+          anchors.verticalCenter: parent.verticalCenter
+          color: root.ink
+          visible: !root.authenticatingPassword && root.userInitial.length > 0
+          Text {
+            anchors.centerIn: parent
+            text: root.userInitial
+            color: root.toneBottom
+            font.family: Theme.font
+            font.pixelSize: Math.round(avatar.size * 0.5)
+            font.weight: Font.DemiBold
+          }
+        }
 
         TextInput {
           id: passwordInput
@@ -271,9 +354,9 @@ Item {
           enabled: root.inputEnabled && !root.authenticatingPassword
           readOnly: root.authenticatingPassword
           echoMode: TextInput.Password
-          passwordCharacter: "\u25CF"
+          passwordCharacter: "●"
           passwordMaskDelay: 0
-          color: Theme.r.popover.ink
+          color: root.ink
           selectionColor: Theme.r.accent.base
           selectedTextColor: Theme.r.ink.onAccent
           font.family: Theme.font
@@ -282,7 +365,7 @@ Item {
           cursorVisible: activeFocus && root.showPasswordCursor && text.length > 0
           cursorDelegate: Rectangle {
             width: Theme.layout.separator * 2
-            color: Theme.r.accent.base
+            color: root.ink
             visible: passwordInput.cursorVisible
           }
 
@@ -314,7 +397,7 @@ Item {
           anchors.fill: passwordInput
           text: root.authenticatingPassword ? "Checking…" : (root.failureMessage.length > 0 ? root.failureMessage : root.placeholderText)
           visible: passwordInput.text.length === 0
-          color: root.authenticatingPassword ? Theme.r.popover.ink : (root.failureMessage.length > 0 ? Theme.r.danger : Theme.r.popover.inkSecondary)
+          color: root.authenticatingPassword ? root.ink : (root.failureMessage.length > 0 ? Theme.r.danger : root.inkSecondary)
           font.family: Theme.font
           font.pixelSize: root.fieldFontSize
           horizontalAlignment: Text.AlignHCenter
@@ -322,13 +405,13 @@ Item {
           elide: Text.ElideRight
         }
 
-        // while the password is checked: a spinner where the dots were
+        // while the password is checked: a spinner where the initial was
         VSpinner {
           anchors.left: parent.left
           anchors.leftMargin: Theme.layout.module.pad
           anchors.verticalCenter: parent.verticalCenter
           visible: root.authenticatingPassword
-          color: Theme.r.popover.inkSecondary
+          color: root.inkSecondary
         }
 
         // Fingerprint hint pinned inside the field's right edge when a sensor is
@@ -342,7 +425,7 @@ Item {
           visible: root.fingerprintConfigured
           name: "fingerprint"
           size: Theme.layout.icon.large
-          color: Theme.r.popover.inkSecondary
+          color: root.inkSecondary
         }
       }
     }
@@ -350,43 +433,59 @@ Item {
     // with a fingerprint enrolled, a hint under the field says both ways in (macOS)
     Text {
       id: hint
-      anchors.horizontalCenter: fieldBox.horizontalCenter
-      anchors.top: fieldBox.bottom
-      anchors.topMargin: Theme.layout.module.pad
-      transform: Translate { y: -root.fieldLift }
-      visible: root.fingerprintConfigured
-      opacity: appear.value * (root.inputEnabled ? 0.85 : 0)
-      text: "Use fingerprint or enter password"
-      color: root.photoInk
+      anchors.horizontalCenter: parent.horizontalCenter
+      topPadding: Math.round(root.unit * root.face.hint)
+      visible: root.fingerprintConfigured || root.errorState
+      opacity: root.inputEnabled ? 1 : 0
+      text: root.errorState ? "Try again or use your fingerprint" : "Use fingerprint or enter password"
+      color: root.inkSecondary
       font.family: Theme.font
-      font.pixelSize: Theme.m.type.small
+      font.pixelSize: Math.round(root.unit * root.face.hint)
       font.weight: Font.Medium
     }
+    }
 
-    // the keyboard button under the field (and the hint): a finger's way in on a touch screen
+    // the keyboard button under the face: a finger's way in on a touch screen; flat, in the ink's soft share
     Item {
       id: keyButton
       readonly property real size: Theme.core.surface.keyboard.lockButton
       width: size
       height: size
-      anchors.horizontalCenter: fieldBox.horizontalCenter
-      anchors.top: hint.visible ? hint.bottom : fieldBox.bottom
-      anchors.topMargin: Theme.layout.window.pad
+      anchors.horizontalCenter: parent.horizontalCenter
+      anchors.top: faceColumn.bottom
+      anchors.topMargin: Math.round((root.footSpace - size) / 2)
       transform: Translate { y: -root.fieldLift }
       visible: root.inputEnabled
       opacity: appear.value * (1 - root.keyboardOut)
       scale: tapKey.pressed ? Theme.scale("press") : 1
       Behavior on scale { NumberAnimation { duration: Theme.dur("fast"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
-      VShadow { layers: Theme.r.popover.shadow; radius: keyButton.size / 2 }
       Rectangle {
         anchors.fill: parent
         radius: height / 2
-        color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+        color: root.inkSoft
         border.width: Theme.layout.separator
-        border.color: Theme.r.line.rim
+        border.color: root.inkLine
       }
-      VIcon { anchors.centerIn: parent; name: "keyboard"; size: Theme.core.surface.keyboard.lockIcon; color: Theme.r.popover.ink }
+      VIcon { anchors.centerIn: parent; name: "keyboard"; size: Theme.core.surface.keyboard.lockIcon; color: root.ink }
       TapHandler { id: tapKey; enabled: !root.keyboardShown; onTapped: root.setKeyboard(true) }
+    }
+
+    // the battery in the corner at the foot (only with a battery; the middle keeps the keyboard button)
+    Row {
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      anchors.margins: Math.round(root.width * root.face.status)
+      spacing: Theme.layout.list.gap
+      visible: !!root.battery && root.battery.isLaptopBattery
+      opacity: appear.value
+      VIcon { anchors.verticalCenter: parent.verticalCenter; name: "battery"; size: Math.round(root.unit * root.face.hint * 1.2); color: root.inkSecondary }
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.battery ? Math.round(root.battery.percentage * 100) + " %" : ""
+        color: root.inkSecondary
+        font.family: Theme.font
+        font.pixelSize: Math.round(root.unit * root.face.hint)
+      }
     }
 
     // Lock screen message, centred near the bottom edge as on macOS. Kept
@@ -397,16 +496,16 @@ Item {
       property string shown: ""
       textFormat: Text.PlainText
       anchors.horizontalCenter: parent.horizontalCenter
-      anchors.bottom: parent.bottom
-      anchors.bottomMargin: Math.round(parent.height * 0.08)
+      anchors.top: parent.top
+      anchors.topMargin: Math.round(parent.width * root.face.message)
       width: Math.min(parent.width - 2 * Theme.layout.window.pad, Theme.layout.module.width * 1.3)
       text: root.message.length > 0 ? root.message : shown
       onTextChanged: if (root.message.length > 0) shown = root.message
       opacity: root.message.length > 0 ? 1 : 0
       visible: opacity > 0
-      color: root.photoInk
+      color: root.ink
       font.family: Theme.font
-      font.pixelSize: Theme.m.type.title
+      font.pixelSize: Math.round(root.unit)
       font.weight: Font.Medium
       horizontalAlignment: Text.AlignHCenter
       wrapMode: Text.Wrap
