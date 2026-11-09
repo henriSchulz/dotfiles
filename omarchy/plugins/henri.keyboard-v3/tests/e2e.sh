@@ -11,6 +11,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 shell=$(cd "$here/../.." && pwd)
 cd "$shell"
 export VELUM_RIG_ID=kb VELUM_RIG_PLUGINS="henri.keyboard-v3"
+# the rig loads the live henri.tablet-v3: its own edge socket, or it takes the live shell's
+export VELUM_EDGE_SOCKET="${VELUM_EDGE_SOCKET:-$XDG_RUNTIME_DIR/velum-edge-kbrig.sock}"
 R=rig/state/kb
 W=1080 H=720                                   # the cast screen's logical size (1620 × 1080 at scale 1.5)
 vptr=$shell/henri.launchpad-v3/tests/vptr
@@ -38,7 +40,7 @@ layer() { hyprctl layers -j | jq -e '[.TB.levels[][] | select(.namespace == "vel
 pass=0 fail=0
 want() { if [[ $3 == "$4" ]]; then pass=$((pass + 1)); printf '  ok    %-4s %s\n' "$1" "$2"
          else fail=$((fail + 1)); printf '  FAIL  %-4s %s\n        got: %s  want: %s\n' "$1" "$2" "$3" "$4"; shot "FAIL-$1"; fi; }
-sent() { st | jq -r '.sent | join("|")'; }
+sent() { st | jq -r '.sent | map(select(. != "arm")) | join("|")'; }   # "arm": tablet mode, autoopen-e2e.sh
 
 # geometry as Layout.js places it on the island (tokens: 860 wide, 14 above the edge, 28 shadow room,
 # pad 10/16/10, gap 7, keys 46 high)

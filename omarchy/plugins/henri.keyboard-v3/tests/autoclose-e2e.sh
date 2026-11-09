@@ -13,6 +13,8 @@ shell=$(cd "$here/../.." && pwd)
 cd "$shell"
 export VELUM_RIG_ID=kbclose VELUM_RIG_PLUGINS="henri.keyboard-v3 henri.menu-v3"
 R=rig/state/kbclose
+# the live tablet-v3 the rig shell also loads would take the live shell's edge socket
+mkdir -p $R && export VELUM_EDGE_SOCKET=$PWD/$R/edge.sock
 
 sig() { cat $R/sig 2>/dev/null; }
 up() { [[ -n $(sig) ]] && HYPRLAND_INSTANCE_SIGNATURE=$(sig) hyprctl version >/dev/null 2>&1; }

@@ -9,13 +9,19 @@ import "file:///home/henri/.local/share/velum/qml/Velum/KeyboardLayout.js" as Ke
 // The on-screen keyboard: German keys as on an iPad along the bottom edge of the screen the tablet's
 // fingers are on (the cast screen). It never takes the keyboard focus, so the text field keeps it.
 //
-// It opens only when asked: the keyboard button of the window bar (henri.tablet-v3 sends the custom
-// event "velum-keyboard toggle SCREEN"); its hide key closes it, and so does the first real key, as on
-// an iPad with a keyboard attached. Opening by itself whenever a text field had the focus brought it
-// back after every tap on a terminal, even the tap that had just closed it (Henri, 2026-10-25).
+// It opens when asked (the keyboard button of the window bar: henri.tablet-v3 sends the custom event
+// "velum-keyboard toggle SCREEN") and, in tablet mode, by itself when a finger taps into a text field:
+// fcitx5 reports the focus ("focus in", through the bridge) and a finger was lifted ("velum-touch")
+// within autoPair of it — never in a terminal (it focuses again on every tap; opening on any focus
+// brought the keyboard back after every tap on one, even the tap that had just closed it, Henri
+// 2026-10-25), and not again in the window where it was put away by hand until another window has
+// the focus. Its hide key closes it, and so does the first real key, as on an iPad with a keyboard
+// attached: that key also ends fcitx5's on-screen-keyboard mode, so nothing opens by itself any more
+// until the keyboard is opened by hand again (a mouse click never opens it either: no finger).
 // It goes by itself when what it typed into goes (Henri, 2026-11-08: it stayed up and was in the way):
-// another window takes the focus, its screen shows another workspace (the home gesture too), or
-// Spotlight closes when it came with Spotlight (the window bar's search; "velum-menu hidden").
+// another window takes the focus, its screen shows another workspace (the home gesture too),
+// Spotlight closes when it came with Spotlight (the window bar's search; "velum-menu hidden"), or —
+// when it opened by itself — the text field lost the focus and none took it within refocus.
 //
 // fcitx5 holds the seat's input method; the keyboard talks to it through velum-osk (bridge/, built to
 // ~/.local/lib/velum/velum-osk), which puts fcitx5 into on-screen-keyboard mode on open. Keys go to
@@ -75,6 +81,7 @@ Item {
           if (parts.length > 1) root.variantName = String(JSON.parse("{" + parts[1]).str || "").split(",")[0]
         } catch (e) { root.layoutName = "de" }
         bridge.running = !root.inRig
+        if (root.inRig) root.arm()      // noted only: the rig has no bridge to start
       }
     }
   }
@@ -84,12 +91,19 @@ Item {
     stdinEnabled: true
     stdout: SplitParser {
       onRead: function (line) {
-        if (line === "show") root.open(false)
-        else if (line === "hide") root.close(false)
-        else if (line.indexOf("field ") === 0) root.fieldAnswer(parseInt(line.slice(6)))
+        root.bridgeLine(line)
       }
     }
+    onStarted: root.arm()
     onExited: function (code) { if (code !== 0) console.warn("henri.keyboard: velum-osk exited", code) }
+  }
+  function bridgeLine(line) {
+    if (line === "show") root.open(false)
+    else if (line === "hide") root.close(false)
+    else if (line === "focus in") root.focusIn()
+    else if (line === "focus out") root.focusOut()
+    else if (line === "mode osk" || line === "mode physical") root.oskMode = line === "mode osk"
+    else if (line.indexOf("field ") === 0) root.fieldAnswer(parseInt(line.slice(6)))
   }
   // ---- dictation --------------------------------------------------------------------------------
   // the rig never records the real microphone (tests/voxtype-stub, its state in the fake HOME)
@@ -226,9 +240,11 @@ Item {
   }
 
   function open(byHand) {
+    if (!byHand && root.shown) return   // the bridge's "show" after our own "open"
     if (byHand) send("open")
     if (root.board) root.board.reset()
     root.withMenu = false
+    root.autoOpened = false
     root.shown = true
   }
   // the board is reset on the next open, not here: the island slides away from where it is (also
@@ -236,7 +252,38 @@ Item {
   function close(byHand) {
     if (byHand) send("close")
     root.withMenu = false
+    root.autoOpened = false
+    refocusWait.stop()
     root.shown = false
+  }
+  // put away by hand (hide key, grabber, its button): not again by itself in this window
+  function dismiss() {
+    if (root.shown) root.dismissedWindow = root.activeWindow
+    root.close(true)
+  }
+
+  // ---- coming by itself (tablet mode) ----------------------------------------------------------------
+  property bool oskMode: false        // fcitx5 in on-screen-keyboard mode: it reports text fields' focus
+  property bool autoOpened: false     // this time it came by itself: it goes with the field
+  property var dismissedWindow: null
+  property real touchAt: 0            // when a finger was last lifted, when a field last took the focus
+  property real focusAt: 0
+  // tablet mode: fcitx5 into on-screen-keyboard mode, so a tap into a field can be told
+  function arm() { if (Theme.touch) root.send("arm") }
+  Connections { target: Theme; function onTouchChanged() { root.arm() } }
+  function focusIn() {
+    refocusWait.stop()
+    root.focusAt = Date.now()
+    root.autoOpen()
+  }
+  function focusOut() { if (root.shown && root.autoOpened) refocusWait.restart() }
+  Timer { id: refocusWait; interval: root.ks.refocus; onTriggered: if (root.shown && root.autoOpened) root.close(true) }
+  function autoOpen() {
+    if (root.shown || !Theme.touch || root.terminal) return
+    if (root.dismissedWindow && root.activeWindow === root.dismissedWindow) return
+    if (Math.abs(root.focusAt - root.touchAt) > root.ks.autoPair) return
+    root.open(true)
+    root.autoOpened = true
   }
 
   // ---- going by itself ------------------------------------------------------------------------------
@@ -248,7 +295,10 @@ Item {
   readonly property var activeWindow: ToplevelManager.activeToplevel
   onActiveWindowChanged: {
     if (!root.activeWindow) return
-    if (root.shown && root.lastWindow && root.activeWindow !== root.lastWindow) root.close(true)
+    if (root.lastWindow && root.activeWindow !== root.lastWindow) {
+      if (root.shown) root.close(true)
+      root.dismissedWindow = null
+    }
     root.lastWindow = root.activeWindow
   }
   // another workspace on the keyboard's screen (also the home gesture's empty one); focus going to
@@ -284,21 +334,24 @@ Item {
         return
       }
       if (d === "velum-menu hidden") { if (root.shown && root.withMenu) root.close(true); return }
-      if (d.indexOf("velum-touch ") === 0) name = d.slice(12).trim()
+      if (d.indexOf("velum-touch ") === 0) { name = d.slice(12).trim(); root.touchAt = Date.now() }
       else if (d.indexOf("velum-keyboard toggle ") === 0) name = d.slice(22).trim()
       else if (d.indexOf("velum-keyboard open ") === 0) name = d.slice(20).trim()
       else return
       if (/^[A-Za-z0-9_-]+$/.test(name)) root.screenName = name
-      if (d.indexOf("velum-keyboard toggle ") === 0) { if (root.shown) root.close(true); else root.open(true) }
+      if (d.indexOf("velum-keyboard toggle ") === 0) { if (root.shown) root.dismiss(); else root.open(true) }
       else if (d.indexOf("velum-keyboard open ") === 0 && !root.shown) { root.open(true); root.withMenu = true }
+      else if (d.indexOf("velum-touch ") === 0 && root.focusAt) root.autoOpen()   // the lift after the field took the focus
     }
   }
 
   IpcHandler {
     target: "omarchy.keyboard"
-    function toggle(): void { if (root.shown) root.close(true); else root.open(true) }
+    function toggle(): void { if (root.shown) root.dismiss(); else root.open(true) }
     function open(): void { root.open(true) }
-    function close(): void { root.close(true) }
+    function close(): void { root.dismiss() }
+    // rig: a line as the bridge would print it ("focus in", "focus out", "mode physical" …)
+    function bridgeSays(line: string): void { root.bridgeLine(line) }
     // rig: press the key that types `label` (or names `act`) as a finger would
     function tap(label: string): void { if (root.board) root.board.tap(label) }
     // rig: a long press at X, Y as a source would send it; FIELD = the bridge's answer (0: no text field)
@@ -310,7 +363,7 @@ Item {
       for (var i = 0; i < root.menuItems.length; i++) if (root.menuItems[i].label === label) { w.choose(i); return true }
       return false
     }
-    function state(): string { var b = root.board || {}; return JSON.stringify({ shown: root.shown, page: b.page, shift: b.shift, caps: b.caps, mods: b.mods, terminal: root.terminal, screen: root.screenName, bridge: bridge.running, sent: root.sent, voxState: root.voxState }) }
+    function state(): string { var b = root.board || {}; return JSON.stringify({ shown: root.shown, page: b.page, shift: b.shift, caps: b.caps, mods: b.mods, terminal: root.terminal, screen: root.screenName, bridge: bridge.running, sent: root.sent, voxState: root.voxState, auto: root.autoOpened, osk: root.oskMode, dismissed: !!root.dismissedWindow }) }
   }
 
   Variants {
@@ -383,7 +436,7 @@ Item {
           onComboPressed: function (line) { root.send(line) }
           shortcuts: true
           terminal: root.terminal
-          onHideRequested: root.close(true)
+          onHideRequested: root.dismiss()
           dictation: root.canDictate
           dictating: root.dictating
           onDictateRequested: root.dictate()

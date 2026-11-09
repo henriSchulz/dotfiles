@@ -7,9 +7,9 @@
  * one itself. fcitx5 has its own way for an on-screen keyboard instead, the "virtualkeyboard" UI:
  *
  *   - this process owns org.fcitx.Fcitx5.VirtualKeyboard (object /org/fcitx/virtualkeyboard/impanel);
- *     fcitx5's Show / Hide calls on focus changes are answered but not followed: the keyboard opens
- *     only when asked (the window bar's keyboard button) — following them, every tap on a terminal
- *     opened it again;
+ *     fcitx5's Show / Hide calls on focus changes (only in on-screen-keyboard mode) go to the plugin
+ *     as "focus in|out", which decides: it opens by itself only for a finger's tap into a field, never
+ *     for a terminal (following them blindly, every tap on a terminal opened it again);
  *   - "open" puts fcitx5 into on-screen-keyboard mode (show and hide at once), where fcitx5 owns
  *     org.fcitx.Fcitx5.VirtualKeyboardBackend: a key sent to its ProcessKeyEvent goes to the focused
  *     text field as a virtual key and does not end the mode;
@@ -22,11 +22,13 @@
  *     key NAME             press a key by its keysym name (BackSpace, Return, Tab, Left, …)
  *     combo MODS KEY       a key combo: MODS ctrl+alt+shift+super or "-", KEY a keysym name or one
  *                          character ("combo ctrl+shift c"); through our own virtual keyboard, see press_combo
- *     open | close         the keyboard opened or closed by hand (open enters the mode)
+ *     open | close         the keyboard opened or closed (open enters the mode)
+ *     arm                  enter the mode without opening (tablet mode: fcitx5 then reports focus)
  *     hold on|off          a dictation runs: voxtype's paste (wtype) must not close the keyboard
  *     field                is a text field focused? answered with "field N" (fcitx5's Controller1.State)
  * Lines out (stdout):
  *     show | hide          the keyboard should appear / go
+ *     focus in|out         a text field took / lost the focus (fcitx5, in on-screen-keyboard mode)
  *     mode osk|physical    fcitx5's input method mode
  *     field 0|1|2          no text field focused | one, input method off | on (the edit menu asks)
  *
@@ -99,18 +101,25 @@ static void set_shown(bool on)
 
 /* ---- fcitx5 calls on our panel object ---------------------------------------------------- */
 
-/* fcitx5's own show / hide on focus in and out are not followed: the keyboard comes only when asked
- * (the window bar's keyboard button). Following them, every tap on a terminal opened it again, also
- * the tap that had just closed it (Henri, 2026-10-25). */
+/* fcitx5's own show / hide on focus in and out go to the plugin as "focus in|out", which decides (a
+ * finger's tap into a field, no terminal). Followed blindly, every tap on a terminal opened it again,
+ * also the tap that had just closed it (Henri, 2026-10-25). The pair fcitx_vk sends to enter the mode
+ * comes back here too: that is no focus change (self_until). */
+static uint64_t self_until;
+
 static int m_show(sd_bus_message *m, void *u, sd_bus_error *e)
 {
 	(void)u, (void)e;
+	if (now_ms() >= self_until)
+		out("focus in");
 	return sd_bus_reply_method_return(m, NULL);
 }
 
 static int m_hide(sd_bus_message *m, void *u, sd_bus_error *e)
 {
 	(void)u, (void)e;
+	if (now_ms() >= self_until)
+		out("focus out");
 	return sd_bus_reply_method_return(m, NULL);
 }
 
@@ -183,8 +192,11 @@ static int fcitx_state(void)
 	return st;
 }
 
+#define SELF_ECHO_MS 300
+
 static void fcitx_vk(const char *method)
 {
+	self_until = now_ms() + SELF_ECHO_MS;
 	sd_bus_call_method(bus, FCITX, "/virtualkeyboard", "org.fcitx.Fcitx.VirtualKeyboard1", method, NULL, NULL, "");
 }
 
@@ -429,14 +441,14 @@ static void press_combo(char *spec)
 
 static void line(char *l)
 {
-	if (!strcmp(l, "open") && !osk_mode && !has_owner(BACKEND)) {
+	if ((!strcmp(l, "open") || !strcmp(l, "arm")) && !osk_mode && !has_owner(BACKEND)) {
 		/* into on-screen-keyboard mode (shown and hidden at once), so keys reach the focused field as
 		 * fcitx5's virtual keys and do not end the mode */
 		fcitx_vk("ShowVirtualKeyboard");
 		fcitx_vk("HideVirtualKeyboard");
 	}
-	if (!strcmp(l, "touch"))
-		; /* a finger on the cast screen: nothing opens by itself any more */
+	if (!strcmp(l, "touch") || !strcmp(l, "arm"))
+		; /* a finger on the cast screen: the plugin pairs it with "focus in" */
 	else if (!strncmp(l, "text ", 5))
 		type_text(l + 5);
 	else if (!strncmp(l, "key ", 4))
