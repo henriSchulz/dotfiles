@@ -16,8 +16,9 @@ import "file:///home/henri/.local/share/velum/qml/Velum/KeyboardLayout.js" as Ke
 // brought the keyboard back after every tap on one, even the tap that had just closed it, Henri
 // 2026-10-25), and not again in the window where it was put away by hand until another window has
 // the focus. Its hide key closes it, and so does the first real key, as on an iPad with a keyboard
-// attached: that key also ends fcitx5's on-screen-keyboard mode, so nothing opens by itself any more
-// until the keyboard is opened by hand again (a mouse click never opens it either: no finger).
+// attached. That key also ends fcitx5's on-screen-keyboard mode (no focus reports); the next finger
+// lift arms it again, and the bridge counts a field focused at that moment as that tap's
+// (a mouse click never opens it: no finger).
 // It goes by itself when what it typed into goes (Henri, 2026-11-08: it stayed up and was in the way):
 // another window takes the focus, its screen shows another workspace (the home gesture too),
 // Spotlight closes when it came with Spotlight (the window bar's search; "velum-menu hidden"), or —
@@ -334,7 +335,14 @@ Item {
         return
       }
       if (d === "velum-menu hidden") { if (root.shown && root.withMenu) root.close(true); return }
-      if (d.indexOf("velum-touch ") === 0) { name = d.slice(12).trim(); root.touchAt = Date.now() }
+      if (d.indexOf("velum-touch ") === 0) {
+        name = d.slice(12).trim()
+        root.touchAt = Date.now()
+        // a real key (also voxtype's paste) ended fcitx5's on-screen-keyboard mode, which reports no
+        // focus then: a finger takes it back (the M1's own keyboard is always there, so "a keyboard is
+        // attached" cannot mean "never by itself" here; Henri 2026-11-09: it never opened)
+        if (!root.oskMode && Theme.touch && !root.shown) root.send("arm")
+      }
       else if (d.indexOf("velum-keyboard toggle ") === 0) name = d.slice(22).trim()
       else if (d.indexOf("velum-keyboard open ") === 0) name = d.slice(20).trim()
       else return

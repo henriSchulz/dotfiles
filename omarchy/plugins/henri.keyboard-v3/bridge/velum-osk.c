@@ -23,7 +23,8 @@
  *     combo MODS KEY       a key combo: MODS ctrl+alt+shift+super or "-", KEY a keysym name or one
  *                          character ("combo ctrl+shift c"); through our own virtual keyboard, see press_combo
  *     open | close         the keyboard opened or closed (open enters the mode)
- *     arm                  enter the mode without opening (tablet mode: fcitx5 then reports focus)
+ *     arm                  enter the mode without opening (tablet mode: fcitx5 then reports focus);
+ *                          entered anew (after a real key) with a text field focused, that is a "focus in"
  *     hold on|off          a dictation runs: voxtype's paste (wtype) must not close the keyboard
  *     field                is a text field focused? answered with "field N" (fcitx5's Controller1.State)
  * Lines out (stdout):
@@ -446,6 +447,10 @@ static void line(char *l)
 		 * fcitx5's virtual keys and do not end the mode */
 		fcitx_vk("ShowVirtualKeyboard");
 		fcitx_vk("HideVirtualKeyboard");
+		/* the plugin arms on a finger's lift after a real key ended the mode: fcitx5 reported nothing
+		 * while the finger focused a field, so a field with the focus now is that tap's */
+		if (!strcmp(l, "arm") && fcitx_state() > 0)
+			out("focus in");
 	}
 	if (!strcmp(l, "touch") || !strcmp(l, "arm"))
 		; /* a finger on the cast screen: the plugin pairs it with "focus in" */

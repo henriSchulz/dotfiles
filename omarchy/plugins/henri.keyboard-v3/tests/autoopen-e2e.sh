@@ -78,6 +78,10 @@ tap
 want A11 "never in a terminal" "$(shown),$(st | jq -r .terminal)" "false,true"
 says "mode physical"; sleep 0.2
 want A12 "a real key: fcitx5 left on-screen-keyboard mode" "$(st | jq -r .osk)" "false"
+focusapp kab
+lift; says "focus in"; sleep 0.4      # the bridge answers "arm" at once with the field it finds focused
+want A13 "after a real key a finger arms fcitx5 again" "$(st | jq -r '.sent[-2:] | join(",")')" "arm,open"
+want A14 "and the field it found focused opens the keyboard" "$(shown)" "true"
 
 for a in kaa kab foot; do d "hl.dsp.window.close({ window = 'class:$a' })"; done
 echo "pass $pass  fail $fail"
