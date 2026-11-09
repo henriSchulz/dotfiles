@@ -18,6 +18,10 @@ Item {
   property var velum: null
   property bool spaces: false         // only the workspace miniatures instead of the pages (a click on the dots)
   signal closeRequested()
+  // detail pages only (the tablet's full-screen Control Center shows its own main page): back from the
+  // first detail page asks the host to put the pages away instead of sliding to the module grid
+  property bool detailsOnly: false
+  signal leaveRequested()
   // the miniatures sit beside the stack, not on a page: their height is a binding, so it is right
   // while the island is still closed (a hidden Column does not lay out and keeps its old height)
   implicitHeight: spaces ? spacesView.height : stack.implicitHeight
@@ -41,6 +45,7 @@ Item {
   function push(name) { stack.push(pageFor[name]); names = names.concat([name]) }
   function back() {
     if (stack.depth < 2) return false
+    if (detailsOnly && stack.depth === 2) { leaveRequested(); return true }
     stack.pop(); names = names.slice(0, -1)
     return true
   }

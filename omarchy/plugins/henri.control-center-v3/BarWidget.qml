@@ -265,8 +265,11 @@ BarWidget {
     function fullClose(): void { full.open = false }
     // drive a pull as a finger would (rig): travel in px, then end with a speed
     function fullPull(phase: string, travel: real, velocity: real): void { VGestures.pull("controlCenter", full.screen ? full.screen.name : "", phase, travel, velocity) }
-    function fullState(): string { return JSON.stringify({ open: full.open, shown: full.shown, p: full.p, pull: full.pull, columns: full.columns, colW: full.colW,
-                                                          sections: full.sections.length, screen: full.screen ? full.screen.name : "" }) }
+    function fullState(): string { return JSON.stringify({ open: full.open, shown: full.shown, p: full.p, pull: full.pull, tablet: full.tablet,
+                                                          detail: full.detailOpen ? full.detailPage : "", screen: full.screen ? full.screen.name : "" }) }
+    // a tile's detail page as a finger would open it (rig): wifi | bluetooth | sound | display | keyboard | battery | battery-history | hardware
+    function fullDetail(name: string): void { full.detail(name) }
+    function fullBack(): void { full.back() }
     function state(): string { return JSON.stringify({ open: island.open, shown: island.shown, page: pages.current, spaces: pages.spaces, from: island.from, variant: Theme.variant, dark: Theme.dark, sf: Theme.sfAvailable, height: pages.implicitHeight, maxHeight: island.maxContentHeight, screenH: island.screenH, wide: pages.wide, width: island.toWidth }) }
     function set(key: string, value: string): void { velum.set(key, value === "true" ? true : value === "false" ? false : value) }
   }
