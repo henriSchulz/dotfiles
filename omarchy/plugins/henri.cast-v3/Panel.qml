@@ -121,8 +121,8 @@ Panel {
   function watts() { return connected ? Math.abs(info.watts).toFixed(1) + " W" : "—" }
   function statusText() {
     if (!connected) return ""
-    if (charging) return "Charging"
-    if (plugged) return "On Power"
+    if (charging) return "Charging · " + watts()
+    if (plugged) return "On Power · " + watts()
     return "On Battery · " + watts()
   }
   function rate(kbit) { return kbit >= 1000 ? (kbit / 1000).toFixed(1) + " Mbit/s" : Math.round(kbit) + " kbit/s" }
@@ -256,7 +256,8 @@ Panel {
     return p && now < p.until ? p.on : reported
   }
   onInfoChanged: {
-    const r = { mac: i.macInput !== false, tablet: i.tabletInput === true, light: i.kbdlight === true }
+    const r = { mac: i.macInput !== false, tablet: i.tabletInput === true, light: i.kbdlight === true,
+      perf: i.perf === true, fast: i.fast === true, mic: i.mic === true }
     const p = {}
     let changed = false
     for (const k in pending) {
@@ -267,6 +268,37 @@ Panel {
   }
   readonly property real third: (content.width - 2 * Theme.layout.module.gap) / 3
   function goBack() { if (stack.depth > 1) stack.pop(); else root.close() }
+
+  // an on/off tile: shows its new state at the click (want), dimmed while it cannot switch
+  component ToggleTile: VTile {
+    id: tile
+    property string text
+    property string icon
+    property string key
+    property bool on
+    property bool can: true
+    signal switched(bool on)
+    width: root.third; height: Theme.m.control.height * 2
+    radius: Theme.m.radius.row + Theme.layout.module.tileInset / 2
+    VPressable {
+      id: press
+      anchors.fill: parent; radius: parent.radius
+      enabled: tile.can
+      selected: tile.on && tile.can
+      onClicked: {
+        const on = !tile.on
+        tile.switched(on)
+        root.want(tile.key, on)
+      }
+      Column {
+        anchors.centerIn: parent
+        VIcon { anchors.horizontalCenter: parent.horizontalCenter; name: tile.icon
+          weight: press.selected ? "fill" : "regular"; color: press.contentColor }
+        VText { anchors.horizontalCenter: parent.horizontalCenter; text: tile.text
+          font.weight: Font.DemiBold; color: press.contentColor }
+      }
+    }
+  }
 
   // ============================================================ first page
   Component {
@@ -304,9 +336,6 @@ Panel {
         VStatTile { width: root.third; label: "Latency"; value: root.connected ? Math.round(root.i.latency) + " ms" : "—" }
         VStatTile { width: root.third; label: "Frame Rate"; value: root.connected ? Math.round(root.i.fps) + " fps" : "—" }
         VStatTile { width: root.third; label: "Data Rate"; value: root.connected ? root.rate(root.i.kbit) : "—" }
-        VStatTile { width: root.third; label: "Connection"; value: root.i.link === "cable" ? "Cable" : "Wi-Fi" }
-        VStatTile { width: root.third; label: "Draw"; value: root.watts() }
-        VStatTile { width: root.third; label: "Screen"; value: root.i.mode === "own" ? "Own" : "Mirror" }
       }
 
       // -- its panel
@@ -324,68 +353,26 @@ Panel {
       VModuleSection { width: parent.width; text: "Keyboard & Trackpad" }
       Row {
         spacing: Theme.layout.module.gap
-        Repeater {
-          model: [
-            { text: "Mac", icon: "laptop", on: root.tileOn("mac", root.i.macInput !== false), can: true, key: "mac" },
-            { text: "Tablet", icon: "tablet", on: root.tileOn("tablet", root.i.tabletInput === true), can: typeof root.i.tabletInput === "boolean", key: "tablet" },
-            { text: "Keyboard Light", icon: "keyboard.light", on: root.tileOn("light", root.i.kbdlight === true), can: root.i.keyboard === true, key: "light" }
-          ]
-          VTile {
-            id: inputTile
-            required property var modelData
-            width: root.third; height: Theme.m.control.height * 2
-            radius: Theme.m.radius.row + Theme.layout.module.tileInset / 2
-            VPressable {
-              id: inputPress
-              anchors.fill: parent; radius: parent.radius
-              enabled: inputTile.modelData.can
-              selected: inputTile.modelData.on && inputTile.modelData.can
-              onClicked: {
-                const key = inputTile.modelData.key, on = !inputTile.modelData.on
-                if (key === "light") root.setKeyboardLight(on)
-                else root.setInput(key, on)
-                root.want(key, on)   // last: the model is rebuilt, this delegate goes
-              }
-              Column {
-                anchors.centerIn: parent
-                VIcon { anchors.horizontalCenter: parent.horizontalCenter; name: inputTile.modelData.icon
-                  weight: inputPress.selected ? "fill" : "regular"; color: inputPress.contentColor }
-                VText { anchors.horizontalCenter: parent.horizontalCenter; text: inputTile.modelData.text
-                  font.weight: Font.DemiBold; color: inputPress.contentColor }
-              }
-            }
-          }
-        }
+        ToggleTile { text: "Mac"; icon: "laptop"; key: "mac"; on: root.tileOn("mac", root.i.macInput !== false)
+          onSwitched: v => root.setInput("mac", v) }
+        ToggleTile { text: "Tablet"; icon: "tablet"; key: "tablet"; on: root.tileOn("tablet", root.i.tabletInput === true)
+          can: typeof root.i.tabletInput === "boolean"; onSwitched: v => root.setInput("tablet", v) }
+        ToggleTile { text: "Keyboard Light"; icon: "keyboard.light"; key: "light"; on: root.tileOn("light", root.i.kbdlight === true)
+          can: root.i.keyboard === true; onSwitched: v => root.setKeyboardLight(v) }
       }
 
-      // -- Power Mode: the tablet's performance profile while casting. Dimmed while the tablet's
-      // mac-cast cannot switch it (perfTablet absent: an older build)
-      VModuleRow {
-        width: parent.width; icon: "gauge"; text: "Power Mode"; clickable: false
-        dim: typeof root.i.perfTablet !== "boolean"
-        detail: root.i.perf === true ? "Smoothest, uses more battery" : ""
-        VSwitch { surface: "popover"; checked: root.i.perf === true; enabled: typeof root.i.perfTablet === "boolean"
-          onToggled: c => root.setPerf(c) }
-      }
-
-      // -- Fast Mode: a smaller stream for a few ms less latency. Dimmed while ipadcast does not
-      // offer it (fast absent: an older server)
-      VModuleRow {
-        width: parent.width; icon: "bolt"; text: "Fast Mode"; clickable: false
-        dim: typeof root.i.fast !== "boolean"
-        detail: "Lower resolution, a few ms less latency"
-        VSwitch { surface: "popover"; checked: root.i.fast === true; enabled: typeof root.i.fast === "boolean"
-          onToggled: c => root.setFast(c) }
-      }
-
-      // -- Microphone: the tablet's microphone as this Mac's input. Off, the tablet captures nothing.
-      // Dimmed while the tablet's mac-cast cannot switch it (micTablet absent: an older build)
-      VModuleRow {
-        width: parent.width; icon: "mic"; text: "Tablet Microphone"; clickable: false
-        dim: typeof root.i.micTablet !== "boolean"
-        detail: root.i.mic === true ? "Input of this Mac" : ""
-        VSwitch { surface: "popover"; checked: root.i.mic === true; enabled: typeof root.i.micTablet === "boolean"
-          onToggled: c => root.setMic(c) }
+      // -- the stream: Power Mode (the tablet's performance profile while casting, smoothest, uses
+      // more battery), Fast Mode (a smaller stream for a few ms less latency), the tablet's
+      // microphone as this Mac's input (off, the tablet captures nothing). A tile is dimmed while
+      // the other side cannot switch it (perfTablet, fast, micTablet absent: an older build)
+      Row {
+        spacing: Theme.layout.module.gap
+        ToggleTile { text: "Power Mode"; icon: "gauge"; key: "perf"; on: root.tileOn("perf", root.i.perf === true)
+          can: typeof root.i.perfTablet === "boolean"; onSwitched: v => root.setPerf(v) }
+        ToggleTile { text: "Fast Mode"; icon: "bolt"; key: "fast"; on: root.tileOn("fast", root.i.fast === true)
+          can: typeof root.i.fast === "boolean"; onSwitched: v => root.setFast(v) }
+        ToggleTile { text: "Microphone"; icon: "mic"; key: "mic"; on: root.tileOn("mic", root.i.mic === true)
+          can: typeof root.i.micTablet === "boolean"; onSwitched: v => root.setMic(v) }
       }
 
       // -- the sync with this Mac: one row, its details on their own page
@@ -400,8 +387,9 @@ Panel {
         x: Theme.layout.module.pad; width: parent.width - 2 * x
         tone: "secondary"; font.pixelSize: Theme.m.type.small; elide: Text.ElideRight
         bottomPadding: Theme.layout.module.pad - Theme.layout.module.tileInset
-        text: root.i.size ? root.i.size[0] + " × " + root.i.size[1] + " · " + root.i.hz + " Hz · "
-          + (root.i.encoder === "apple-ave" ? "Hardware Encoder" : "Software Encoder") : ""
+        text: (root.i.link === "cable" ? "Cable" : "Wi-Fi") + " · " + (root.i.mode === "own" ? "Own Screen" : "Mirror")
+          + (root.i.size ? " · " + root.i.size[0] + " × " + root.i.size[1] + " · " + root.i.hz + " Hz · "
+          + (root.i.encoder === "apple-ave" ? "Hardware Encoder" : "Software Encoder") : "")
       }
     }
   }
