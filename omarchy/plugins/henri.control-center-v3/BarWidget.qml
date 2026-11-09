@@ -11,7 +11,8 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 // (joining a network, connecting a device), and the Control Center symbol left
 // of them. A click grows the island itself into the Control Center (VIslandWindow),
 // which keeps the island's top edge: on the symbol the Control Center, on the dots
-// only the workspace miniatures.
+// only the workspace miniatures. In tablet mode the Control Center comes over the whole screen
+// instead (FullCenter.qml, pulled down from the top right as on iPadOS).
 // Backend from v2 (Backend.qml), pages in Pages.qml.
 BarWidget {
   id: root
@@ -25,7 +26,7 @@ BarWidget {
   Backend {
     id: be
     shell: root.shell
-    opened: island.open
+    opened: island.open || full.open
     onCloseRequested: island.open = false
   }
 
@@ -165,7 +166,12 @@ BarWidget {
     if (pageName) pages.show(pageName)
   }
   function close() { island.from = islandRect(); island.open = false }
-  function toggle(spaces) { if (island.open) close(); else open("", spaces) }
+  function toggle(spaces) {
+    if (Theme.touch && !spaces) { if (full.open) full.open = false; else openFull(); return }
+    if (island.open) close(); else open("", spaces)
+  }
+  // tablet mode: the Control Center over the whole screen (FullCenter.qml), never beside the island
+  function openFull() { if (island.open) close(); full.open = true }
   // Tablet mode: a finger pulls the island open from the top edge (henri.bar-v3 → VGestures);
   // the island grows with it and, let go, opens or shrinks back. "spaces" (a cast screen's top
   // edge, henri.tablet-v3) pulls only the workspace miniatures.
@@ -176,6 +182,14 @@ BarWidget {
       var w = root.QsWindow.window
       if (!w || !w.screen || w.screen.name !== screenName) return
       var dist = Theme.core.surface.tablet.pullTravel
+      // tablet mode: Control Center comes over the whole screen (iPadOS); only the miniatures stay an island
+      if (surface === "controlCenter" && Theme.touch) {
+        if (phase === "move") { if (!full.open) full.pull = Math.max(0, travel) / dist; return }
+        if (!full.pulling) return
+        if (phase === "end" && VGestures.commits(travel, dist, velocity)) root.openFull()
+        full.pull = -1
+        return
+      }
       if (phase === "move") {
         if (island.open) return
         if (!island.pulling) { island.from = root.islandRect(pw.value); if (!island.shown) pages.spaces = surface === "spaces" }
@@ -226,6 +240,14 @@ BarWidget {
     Pages { id: pages; be: be; velum: velum; width: parent.width; maxHeight: island.maxContentHeight; columnWidth: island.columnWidth; onCloseRequested: root.close() }
   }
 
+  FullCenter {
+    id: full
+    screen: pill.QsWindow.window ? pill.QsWindow.window.screen : null
+    be: be
+    velum: velum
+    onDismissed: open = false
+  }
+
   IpcHandler {
     target: "henri.control-center-v3"
     function open(): void { root.open() }
@@ -238,6 +260,13 @@ BarWidget {
     function page(name: string): void { root.open(name) }
     function togglePage(name: string): void { if (island.open && pages.current === name) root.close(); else root.open(name) }
     function back(): void { pages.back() }
+    // the tablet mode's full-screen Control Center (FullCenter.qml), in tablet mode or not
+    function full(): void { root.openFull() }
+    function fullClose(): void { full.open = false }
+    // drive a pull as a finger would (rig): travel in px, then end with a speed
+    function fullPull(phase: string, travel: real, velocity: real): void { VGestures.pull("controlCenter", full.screen ? full.screen.name : "", phase, travel, velocity) }
+    function fullState(): string { return JSON.stringify({ open: full.open, shown: full.shown, p: full.p, pull: full.pull, columns: full.columns, colW: full.colW,
+                                                          sections: full.sections.length, screen: full.screen ? full.screen.name : "" }) }
     function state(): string { return JSON.stringify({ open: island.open, shown: island.shown, page: pages.current, spaces: pages.spaces, from: island.from, variant: Theme.variant, dark: Theme.dark, sf: Theme.sfAvailable, height: pages.implicitHeight, maxHeight: island.maxContentHeight, screenH: island.screenH, wide: pages.wide, width: island.toWidth }) }
     function set(key: string, value: string): void { velum.set(key, value === "true" ? true : value === "false" ? false : value) }
   }

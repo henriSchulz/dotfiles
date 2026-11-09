@@ -1211,8 +1211,10 @@ Item {
         if (active) {
           // the item above the finger (VPullZone), else the left share the system menu, the right
           // share Control Center, the middle Notification Center
-          surface = VGestures.zoneAt(name, centroid.pressPosition.x)
           var px = centroid.pressPosition.x, tt = Theme.core.surface.tablet
+          // the right share is always Control Center (iPadOS): over the whole screen it holds the
+          // battery and the tablet too, so their items there no longer pull their own islands
+          surface = px > barWindow.width * (1 - tt.controlCenterShare) ? "controlCenter" : VGestures.zoneAt(name, px)
           if (surface === "") surface = px < barWindow.width * tt.systemMenuShare ? "systemMenu"
                                       : px > barWindow.width * (1 - tt.controlCenterShare) ? "controlCenter" : "notifications"
           cancelled = false; samples = []

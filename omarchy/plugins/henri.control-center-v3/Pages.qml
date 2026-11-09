@@ -12,6 +12,9 @@ Item {
   // the island was pulled open by a finger: the tiles are already there, the stagger would fade them
   // out and in again (Henri saw the Control Center dim when let go)
   property bool skipReveal: false
+  // the tiles come in one after the other on open (the island); the tablet's full-screen Control Center
+  // brings its sections in itself
+  property bool stagger: true
   property var velum: null
   property bool spaces: false         // only the workspace miniatures instead of the pages (a click on the dots)
   signal closeRequested()
@@ -135,7 +138,7 @@ Item {
       }
       Connections { target: cc.be; function onOpenedChanged() {
         if (cc.be.opened && cc.skipReveal) { cc.skipReveal = false; return }
-        if (cc.be.opened && cc.current === "main") mp.reveal()
+        if (cc.be.opened && cc.current === "main" && cc.stagger) mp.reveal()
       } }
 
       // -- 2+3 Mix (Henri 2026-10-29, lab/web/control-center-2.html and -3.html): the connections and

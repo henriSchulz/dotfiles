@@ -304,6 +304,8 @@ Item {
   function castSurface(screenName, x) {
     var w = 0, all = Quickshell.screens
     for (var i = 0; i < all.length; i++) if (all[i].name === screenName) w = all[i].width
+    // tablet mode: the right share is always Control Center, over the whole screen (iPadOS)
+    if (Theme.touch && w > 0 && x > w * (1 - root.tt.controlCenterShare)) return "controlCenter"
     var z = VGestures.zoneAt(screenName, x)   // the menu-bar item above the finger (VPullZone)
     if (z !== "") return z
     var c = root.tt.cast, u = w > 0 ? x / w : c.spacesFrom
