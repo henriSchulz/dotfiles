@@ -102,12 +102,15 @@ end
 -- denselben Gestenpfad fährt wie ein Finger am unteren Rand.
 local pad_phase = { start = "start", update = "move", ["end"] = "end" }
 local pad_on = false
+local function pad_send(phase, e, side)
+  local d = (phase == "update" and e.delta) or { x = 0, y = 0 }
+  local p = (phase == "end" and e.cancelled) and "cancel" or pad_phase[phase]
+  hl.dispatch(hl.dsp.event(string.format("velum-pad %s %.3f %.3f%s", p, d.x or 0, d.y or 0, side and " side" or "")))
+end
 local function mc_gesture(phase, e)
   if phase == "start" then pad_on = henri_tablet ~= nil and henri_tablet.on end
   if pad_on then
-    local d = (phase == "update" and e.delta) or { x = 0, y = 0 }
-    local p = (phase == "end" and e.cancelled) and "cancel" or pad_phase[phase]
-    hl.dispatch(hl.dsp.event(string.format("velum-pad %s %.3f %.3f", p, d.x or 0, d.y or 0)))
+    pad_send(phase, e)
     return
   end
   if hyprmc and hyprmc.available() then
@@ -135,9 +138,17 @@ hl.gesture({
 -- `hyprctl hyprswipe` / `hyprctl hyprswipe set <key> <wert>`. Fehlt das Plugin
 -- (z. B. nach einem Hyprland-Update: `~/Projects/hyprswipe/scripts/install.sh`),
 -- registriert der Helper Hyprlands eingebauten Workspace-Wisch als Fallback.
+-- Im Tablet-Modus wechselt derselbe Wisch stattdessen zwischen den Vollbild-
+-- fenstern (auch über Workspaces hinweg): er geht als "velum-pad … side" an
+-- henri.tablet-v3, die Fenster folgen dort als Karten den Fingern.
 local hyprswipe = dofile(os.getenv("HOME") .. "/Projects/hyprswipe/hyprswipe.lua")({
   fingers = 4,
   config = { gap = 40, swipeDistance = 550 }, -- 550 Gesteneinheiten = eine Seite, wie bisher
+  intercept = function(phase, e)
+    if phase == "start" and not (henri_tablet ~= nil and henri_tablet.on) then return false end
+    pad_send(phase, e, true)
+    return true
+  end,
 })
 
 -- Solange Mission Control offen ist, tauscht das Plugin diese Geste über
