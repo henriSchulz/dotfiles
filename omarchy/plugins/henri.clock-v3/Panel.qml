@@ -352,8 +352,8 @@ Panel {
                 weight: "fill"
                 // Decorative; sized so the glyph reads at the cap height of the date beside it.
                 size: 40
-                color: heroMouse.containsMouse ? root.accent : root.contentForeground
-                Behavior on color { ColorAnimation { duration: heroMouse.containsMouse ? Theme.dur("instant") : Theme.dur("fast") } }
+                color: (heroMouse.containsMouse && Theme.hover) ? root.accent : root.contentForeground
+                Behavior on color { ColorAnimation { duration: (heroMouse.containsMouse && Theme.hover) ? Theme.dur("instant") : Theme.dur("fast") } }
               }
 
               Text {
@@ -361,11 +361,11 @@ Panel {
                 textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.labelLocale.toString(root.today, "d. MMMM")
-                color: heroMouse.containsMouse ? root.accent : root.contentForeground
+                color: (heroMouse.containsMouse && Theme.hover) ? root.accent : root.contentForeground
                 font.family: root.contentFontFamily
                 font.pixelSize: 52
                 font.bold: true
-                Behavior on color { ColorAnimation { duration: heroMouse.containsMouse ? Theme.dur("instant") : Theme.dur("fast") } }
+                Behavior on color { ColorAnimation { duration: (heroMouse.containsMouse && Theme.hover) ? Theme.dur("instant") : Theme.dur("fast") } }
               }
             }
 
@@ -381,7 +381,7 @@ Panel {
               onClicked: root.goToToday()
 
               PanelToolTip {
-                visible: heroMouse.containsMouse
+                visible: (heroMouse.containsMouse && Theme.hover)
                 text: "Back to today"
                 fontFamily: root.contentFontFamily
               }
@@ -574,7 +574,7 @@ Panel {
                 acceptedButtons: Qt.NoButton
 
                 PanelToolTip {
-                  visible: lifeMouse.containsMouse
+                  visible: (lifeMouse.containsMouse && Theme.hover)
                   text: "Memento Mori"
                   fontFamily: root.contentFontFamily
                 }
@@ -618,12 +618,12 @@ Panel {
                   width: root.weekColumnWidth
                   height: Style.space(16)
                   radius: Theme.m.radius.row
-                  color: weekStartMouse.containsMouse ? root.hoverFill : "transparent"
+                  color: (weekStartMouse.containsMouse && Theme.hover) ? root.hoverFill : "transparent"
 
                   Text {
                     anchors.centerIn: parent
                     text: "W"
-                    color: weekStartMouse.containsMouse ? root.accent : root.secondaryText
+                    color: (weekStartMouse.containsMouse && Theme.hover) ? root.accent : root.secondaryText
                     font.family: root.contentFontFamily
                     font.pixelSize: Theme.m.type.small
                     font.letterSpacing: 1
@@ -639,7 +639,7 @@ Panel {
                   }
 
                   PanelToolTip {
-                    visible: weekStartMouse.containsMouse
+                    visible: (weekStartMouse.containsMouse && Theme.hover)
                     text: "Start weeks on " + root.nextWeekStartLabel
                     fontFamily: root.contentFontFamily
                   }
@@ -714,7 +714,7 @@ Panel {
                       gradient: cell.selected ? selFill : null
                       Gradient { id: selFill; GradientStop { position: 0; color: Theme.r.accent.top } GradientStop { position: 1; color: Theme.r.accent.base } }
                       // the hover fill jumps, as in a menu
-                      color: dayMouse.containsMouse ? root.hoverFill : "transparent"
+                      color: (dayMouse.containsMouse && Theme.hover) ? root.hoverFill : "transparent"
                       // Dropped under the accent fill rather than drawn over
                       // it: today and selected both want the eye, and two
                       // markers on one cell only muddle which is which.

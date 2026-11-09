@@ -15,7 +15,9 @@ import "Gesture.js" as Gesture
 //                              or the QML one without it: mc())
 //   pull up and pause          App Switcher: in tablet mode Home.qml's cards; elsewhere Mission
 //                              Control under the finger (hyprmc.gesture, or "mission-control-gesture:…")
-//   slide along the edge       next / previous app (one app per workspace in tablet mode)
+//   slide along the edge       next / previous window: in tablet mode every window, workspace after
+//                              workspace, follows the finger at full size (Home.qml); elsewhere
+//                              the next / previous workspace
 //   tap                        the window bar above the indicator (WindowBar.qml)
 //   double tap                 back to the previous app
 //   press and hold             Spotlight (henri.menu-v3)
@@ -60,7 +62,12 @@ Item {
     for (var i = 0; i < actions.length; i++) {
       var a = actions[i]
       note(a.do + (a.phase ? ":" + a.phase : "") + (a.step ? ":" + a.step : ""))
-      if (root.active && (a.do === "tap" || a.do === "longpress" || a.do === "down" || (a.do === "slide" && a.phase === "end"))) homeCtl.guard("other", () => homeCtl.other(a.do))
+      if (root.active && (a.do === "tap" || a.do === "longpress" || a.do === "down")) homeCtl.guard("other", () => homeCtl.other(a.do))
+      // tablet mode: the windows slide along with the finger, Home.qml takes the step on release
+      if (root.active && a.do === "slide") {
+        if (a.phase === "end") homeCtl.guard("slideEnd", () => homeCtl.slideEnd(a.step || 0))
+        else homeCtl.guard("slide", () => homeCtl.slide(a.dx))
+      }
       if (root.active && (a.do === "lift" || a.do === "home" || a.do === "switcher")) {
         // tablet mode: the home screen and App Switcher of Home.qml follow the finger
         if (a.do === "lift") {
@@ -78,6 +85,7 @@ Item {
         else mc("gesture(\"" + a.phase + "\", " + a.delta.toFixed(3) + ", " + t + ")",
                 "mission-control-gesture:" + a.phase + ":" + (a.delta * root.mcUnits).toFixed(3) + ":" + t)
       } else if (a.do === "app") {
+        if (root.active) continue
         var ws = a.step > 0 ? "m+1" : "m-1"
         dispatch("hl.dsp.focus({ workspace = \"" + ws + "\" })", "workspace " + ws)
       } else if (a.do === "tap") {
@@ -131,7 +139,7 @@ Item {
   property string slideScreen: ""
   property real slideDx: 0
   property var neighbours: ({ prev: "", next: "" })   // icon paths of the apps before / after
-  onSlideScreenChanged: if (slideScreen !== "") neighbours = neighboursOn(slideScreen)
+  onSlideScreenChanged: if (slideScreen !== "") neighbours = active ? homeCtl.sideNeighbours(slideScreen) : neighboursOn(slideScreen)
   function appIcon(cls) {
     if (!cls) return ""
     var e = null
@@ -361,20 +369,25 @@ Item {
   // (input.lua sends it here instead of to Mission Control while tablet mode is on) moves a virtual
   // finger from the middle of the focused screen's home zone, so the app follows it as a card,
   // goes home, or opens the App Switcher on a pause, exactly as the finger on the edge does.
-  //   "velum-pad start|move|end|cancel <dx> <dy>"   (touchpad units since the last event)
+  // Four fingers sideways (input.lua, instead of hyprswipe's workspaces) come with "side": the
+  // virtual finger slides along the zone, padSlidePage touchpad units to a screen's width (as one
+  // workspace page of hyprswipe), and the windows follow it.
+  //   "velum-pad start|move|end|cancel <dx> <dy> [side]"   (touchpad units since the last event)
   // Tap, press and hold and push down have no touchpad meaning: they are dropped.
-  property var pad: null           // { gesture, screen, x, y }
+  property var pad: null           // { gesture, screen, x, y, sx }
   function padRun(actions, screenName) {
     root.run(actions.filter(a => a.do !== "tap" && a.do !== "longpress" && a.do !== "down"), screenName)
   }
-  function padEvent(phase, dx, dy) {
+  function padEvent(phase, dx, dy, side) {
     var t = Date.now()
     if (phase === "start") {
       if (root.pad) { padTicker.stop(); padRun(root.pad.gesture.cancel(), root.pad.screen); root.pad = null }
       var m = Hyprland.focusedMonitor
       if (!root.active || root.homePaused || !m) return
       root.wake()
-      var p0 = { gesture: Gesture.create(root.tt), screen: m.name, x: 0, y: 0 }
+      // sideways: a screen's width per page; the screen's own width in logical px
+      var sx = side ? m.width / m.scale / root.tt.padSlidePage : root.tt.padScale
+      var p0 = { gesture: Gesture.create(root.tt), screen: m.name, x: 0, y: 0, sx: sx }
       root.pad = p0
       homeCtl.guard("prepare", () => homeCtl.prepare(p0.screen))
       padRun(p0.gesture.down(t, 0, 0), p0.screen)
@@ -384,7 +397,7 @@ Item {
     var p = root.pad
     if (!p) return
     if (phase === "move") {
-      p.x += dx * root.tt.padScale; p.y += dy * root.tt.padScale
+      p.x += dx * p.sx; p.y += dy * root.tt.padScale
       padRun(p.gesture.move(t, p.x, p.y), p.screen)
       return
     }
@@ -401,9 +414,9 @@ Item {
   }
   function padLine(d) {
     var f = d.split(" "), dx = Number(f[2]), dy = Number(f[3])
-    if (d.length > 64 || f.length !== 4 || !isFinite(dx) || !isFinite(dy)) return
+    if (d.length > 64 || (f.length !== 4 && !(f.length === 5 && f[4] === "side")) || !isFinite(dx) || !isFinite(dy)) return
     if (["start", "move", "end", "cancel"].indexOf(f[1]) < 0) return
-    root.padEvent(f[1], dx, dy)
+    root.padEvent(f[1], dx, dy, f.length === 5)
   }
 
   function edgeLine(d) {
@@ -442,7 +455,10 @@ Item {
     function home(): string { return JSON.stringify({ empty: homeCtl.emptyOn(homeCtl.screenName), mode: homeCtl.mode, screen: homeCtl.screenName, cards: homeCtl.cards.map(c => c.appId), at: homeCtl.cards.map((c, i) => { var k = homeCtl.card(i); return k ? [Math.round(k.px), Math.round(k.py), +k.ps.toFixed(2), +k.po.toFixed(2)] : null }), zoneFinger: homeCtl.zoneFinger,  cur: homeCtl.cur, armed: homeCtl.armed, fromHome: homeCtl.fromHome, area: [homeCtl.areaW, homeCtl.areaH], apps: homeCtl.gridApps.length, pages: homeCtl.gridPages, editing: homeCtl.editing, dock: homeCtl.dockApps.map(a => a.id), recent: homeCtl.recentApps.map(a => a.id), page: homeCtl.page, menu: homeCtl.menuOpenId, log: homeCtl.log }) }
     function homeStats(): string { return JSON.stringify(homeCtl.stats) }
     // the way out from anywhere (ssh): the overlay lets go of the screen
-    function pad(phase: string, dx: real, dy: real): string { root.padEvent(phase, dx, dy); return root.pad ? root.pad.gesture.mode : "none" }
+    function pad(phase: string, dx: real, dy: real): string { root.padEvent(phase, dx, dy, false); return root.pad ? root.pad.gesture.mode : "none" }
+    function padSide(phase: string, dx: real): string { root.padEvent(phase, dx, 0, true); return root.pad ? root.pad.gesture.mode : "none" }
+    // a tap on the switcher's card i (the rig has no finger on the overlay)
+    function homeCard(i: int): string { if (homeCtl.mode === "switcher") homeCtl.guard("homeCard", () => homeCtl.openCard(i, null)); return homeCtl.mode }
     function homeAbort(): string { homeCtl.abort(); return homeCtl.mode }
     // a Home button (the iPad's through ipad-link): "home" = one press, "switcher" = two
     function homeButton(screen: string, kind: string): string { homeCtl.guard("button", () => homeCtl.button(screen, kind)); return homeCtl.mode }

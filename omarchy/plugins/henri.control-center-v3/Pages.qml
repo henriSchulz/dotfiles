@@ -253,7 +253,7 @@ Item {
     color: Theme.r.popover.badgeOff
     border.width: well ? 0 : Theme.layout.separator; border.color: Theme.r.line.base
     VLens { visible: chip.well; layers: Theme.r.popover.shadow; radius: chip.radius; shade: false }
-    Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.r.popover.fillHover; visible: chipMouse.containsMouse }
+    Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.r.popover.fillHover; visible: chipMouse.containsMouse && Theme.hover }
     Row {
       id: chipRow
       anchors.centerIn: parent; spacing: Theme.layout.list.gap / 2

@@ -3120,7 +3120,7 @@ Item {
               Rectangle {
                 anchors.fill: parent
                 radius: height / 2
-                color: capsule.active ? root.capsuleSelectedFill : press.hovered ? root.capsuleHoverFill : root.capsuleFill
+                color: capsule.active ? root.capsuleSelectedFill : press.hovered && Theme.hover ? root.capsuleHoverFill : root.capsuleFill
                 border.width: 1
                 border.color: root.glassBorder
               }

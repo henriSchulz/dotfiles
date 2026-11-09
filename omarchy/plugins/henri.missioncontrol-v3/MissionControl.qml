@@ -3020,7 +3020,7 @@ Item {
                 }
               }
               // Hover (and held): scale 1.02 and a 2 px lift, `instant` both ways.
-              readonly property bool lit: deskHover.hovered || deskCell.held
+              readonly property bool lit: (deskHover.hovered && V.Theme.hover) || deskCell.held
               property real lift: deskCell.lit ? -Motion.px(Motion.hoverLift) : 0
               Behavior on lift {
                 NumberAnimation { duration: Motion.instant; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.easeOut }
@@ -3186,7 +3186,7 @@ Item {
                   border.width: Math.max(1, Math.round(2 * panel.uiScale))
                   border.color: deskCell.dropHover ? V.Theme.r.accent.base
                               : deskCell.isFocused ? V.Theme.r.accent.base
-                              : deskHover.hovered || deskCell.held ? Util.alpha(panel.stripInk, 0.55)
+                              : (deskHover.hovered && V.Theme.hover) || deskCell.held ? Util.alpha(panel.stripInk, 0.55)
                               : Util.alpha(panel.stripInk, 0.16)
                   Behavior on border.color {
                     ColorAnimation {
@@ -3211,7 +3211,7 @@ Item {
                   y: -Math.round(width * 0.35)
                   z: 3
                   // Velum: the popover material, opaque (it sits on a live thumbnail), and the strong line
-                  color: badgeArea.pressed ? V.Theme.r.popover.tile : badgeArea.containsMouse ? V.Theme.r.popover.bgOpaque : V.Theme.r.popover.bg
+                  color: badgeArea.pressed ? V.Theme.r.popover.tile : badgeArea.containsMouse && V.Theme.hover ? V.Theme.r.popover.bgOpaque : V.Theme.r.popover.bg
                   border.width: 1
                   border.color: V.Theme.r.line.strong
                   opacity: closeBadge.wanted ? 1 : 0
@@ -3313,7 +3313,7 @@ Item {
           Rectangle {
             id: plusTile
             readonly property bool dropHover: panel.dragWindow >= 0 && panel.dropSlot === -1
-            readonly property bool lit: plusHover.hovered || plusTile.dropHover
+            readonly property bool lit: (plusHover.hovered && V.Theme.hover) || plusTile.dropHover
             // Unfolds with the thumbnails, last in the row.
             property real unfold: panel.stripExpanded ? 1 : 0
             Behavior on unfold {

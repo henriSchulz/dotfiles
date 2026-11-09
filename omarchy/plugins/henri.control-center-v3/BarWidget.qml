@@ -97,7 +97,7 @@ BarWidget {
   MouseArea {
       anchors.fill: parent
       hoverEnabled: true
-      onContainsMouseChanged: root.hover = containsMouse
+      onContainsMouseChanged: root.hover = containsMouse && Theme.hover
       onClicked: function (m) { root.toggle(m.x >= root.splitX) }
       onWheel: function (w) {
         var i = root.wsIds.indexOf(root.focusedWs), n = i + (w.angleDelta.y < 0 ? 1 : -1)

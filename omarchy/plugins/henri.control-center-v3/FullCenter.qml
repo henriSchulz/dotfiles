@@ -325,7 +325,7 @@ PanelWindow {
               // as tall as the toggles and the power mode beside it leave over the numbers: no hole in the box
               width: parent.width; height: Math.max(0, macLeft.height - nums.height - macRight.spacing)
               visible: power.historyBars.length > 0
-              Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.r.popover.fillHover; visible: chartMouse.containsMouse }
+              Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.r.popover.fillHover; visible: chartMouse.containsMouse && Theme.hover }
               MouseArea { id: chartMouse; anchors.fill: parent; hoverEnabled: true; onClicked: win.detail("battery-history") }
               Column {
                 id: chartCol
@@ -546,7 +546,7 @@ PanelWindow {
     border.color: md.selected ? Theme.r.accent.base : Theme.r.line.rim
     Spring { id: mdPress; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: mdMouse.pressed ? Theme.scale("press") : 1 }
     scale: mdPress.value
-    Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.r.popover.fillHover; visible: mdMouse.containsMouse && !md.selected }
+    Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.r.popover.fillHover; visible: mdMouse.containsMouse && Theme.hover && !md.selected }
     Row {
       anchors.centerIn: parent; spacing: Theme.layout.list.gap
       VIcon { anchors.verticalCenter: parent.verticalCenter; name: md.icon; weight: "fill"; color: md.selected ? Theme.r.accent.text : Theme.r.popover.inkSecondary }

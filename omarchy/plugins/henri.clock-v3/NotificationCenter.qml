@@ -682,7 +682,7 @@ Panel {
     implicitHeight: Theme.layout.capsule.height
     implicitWidth: label === "" ? implicitHeight : capText.implicitWidth + 2 * Theme.layout.capsule.padX
     width: implicitWidth; height: implicitHeight
-    VFloatingCard { anchors.fill: parent; radius: height / 2; tint: capMouse.containsMouse ? Theme.r.popover.bgOpaque : (Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg) }
+    VFloatingCard { anchors.fill: parent; radius: height / 2; tint: capMouse.containsMouse && Theme.hover ? Theme.r.popover.bgOpaque : (Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg) }
     VText { id: capText; visible: cap.label !== ""; anchors.centerIn: parent; text: cap.label; font.pixelSize: Theme.m.type.small; font.weight: Font.Medium; color: Theme.r.popover.ink }
     VIcon { visible: cap.label === ""; anchors.centerIn: parent; name: cap.icon; weight: "bold"; size: Theme.layout.icon.small * 0.75; color: Theme.r.popover.ink }
     scale: capMouse.pressed ? Theme.scale("press") : 1

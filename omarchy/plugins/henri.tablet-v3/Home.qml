@@ -139,7 +139,9 @@ Item {
   Connections { target: DesktopEntries.applications; function onValuesChanged() { appsDebounce.restart() } }
   Timer { id: appsDebounce; interval: Theme.delay("settle"); onTriggered: home.scanApps() }
   readonly property var dockApps: pinnedIds.map(function (id) { return entries[id] }).filter(Boolean)
-  readonly property var gridApps: appIds.filter(function (id) { return pinnedIds.indexOf(id) < 0 || gridAlso[id] }).map(function (id) { return entries[id] })
+  // filter(Boolean): scanApps sets entries before appIds, so for one evaluation an id of the old
+  // list can miss in the new map (an app removed, a rescan) — "Value is undefined" at layout
+  readonly property var gridApps: appIds.filter(function (id) { return pinnedIds.indexOf(id) < 0 || gridAlso[id] }).map(function (id) { return entries[id] }).filter(Boolean)
   // the grid: what edit mode saved (order + folders), new apps after it (HM.arrangeLayout)
   property var savedOrder: []
   property var savedFolders: ({})
@@ -281,7 +283,7 @@ Item {
       if (!o || !o.workspace || String(o.workspace.name || "").indexOf("special:") === 0 || o.floating || !o.mapped) continue
       if (mon && o.monitor !== mon.id) continue
       var id = appIdOf(o.class), e = entries[id]
-      out.push({ key: String(o.address), address: String(o.address), toplevel: t, workspace: o.workspace.id, appId: id,
+      out.push({ key: String(o.address), address: String(o.address), toplevel: t, workspace: o.workspace.id, appId: id, order: i,
                  icon: e ? e.icon : iconOf(o.class), name: e ? e.name : String(o.title || o.class || ""),
                  focus: typeof o.focusHistoryID === "number" ? o.focusHistoryID : 1000 })
     }
@@ -413,7 +415,7 @@ Item {
     settleTick.stop(); letGo.stop(); enterLater.stop(); openLater.stop(); closeLater.stop(); relayoutLater.stop()
     // the app that was chosen still gets its workspace (a finger landing mid-flight dropped it)
     if (focusAddress) focusNow()
-    settleCheck = null; launchedId = ""; armed = false; homeSwitchAt = 0; appSwitchAt = 0
+    settleCheck = null; launchedId = ""; armed = false; sliding = false; homeSwitchAt = 0; appSwitchAt = 0
     mode = emptyOn(screenName) ? "home" : "idle"
     note("abort")
     endStat("abort")
@@ -429,6 +431,7 @@ Item {
     Hyprland.refreshWorkspaces()
     fromHome = mode === "home" || emptyOn(screenName)
     armed = false
+    sliding = false
     Hyprland.refreshToplevels()
     var list = scanWindows(screenName)
     var m = monitorOf(screenName), at = -1
@@ -687,6 +690,86 @@ Item {
     var c = card(i)
     settleWhen(function () { return (!c || c.settled(["x", "y", "s"])) && !focusAddress }, "idle", i !== was)
   }
+  // ---- a finger sliding along the home zone, or four fingers sideways on a touchpad (Tablet.qml):
+  // the windows of the screen side by side at full size, following it 1:1, in screen order —
+  // workspace by workspace, an app's windows on its workspace in the order they opened. So an
+  // app's second window is one step away too, and the swipe carries on across workspaces (Henri
+  // 2026-11-09: switch between the fullscreen windows, not the workspaces).
+  function sideOrder(list) {
+    return list.slice().sort(function (a, b) { return a.workspace - b.workspace || a.order - b.order })
+  }
+  // the window on screen: the focused one on the screen's workspace, else the one used last there;
+  // -1 on an empty workspace (the home screen)
+  function sideAt(list, screenName) {
+    var m = monitorOf(screenName)
+    if (!m || !m.activeWorkspace) return -1
+    var ws = m.activeWorkspace.id, act = Hyprland.activeToplevel
+    var a = act && act.lastIpcObject ? String(act.lastIpcObject.address) : "", best = -1
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].workspace !== ws) continue
+      if (list[i].address === a) return i
+      if (best < 0 || list[i].focus < list[best].focus) best = i
+    }
+    return best
+  }
+  // the window `step` places from what the screen shows (from the home screen: the first window on
+  // a later workspace, or the last on an earlier one)
+  function sideStep(screenName, step) {
+    var list = sideOrder(scanWindows(screenName)), at = sideAt(list, screenName)
+    if (at >= 0) return list[at + step] || null
+    var m = monitorOf(screenName), ws = m && m.activeWorkspace ? m.activeWorkspace.id : 0
+    if (step > 0) { for (var i = 0; i < list.length; i++) if (list[i].workspace > ws) return list[i] }
+    else for (var j = list.length - 1; j >= 0; j--) if (list[j].workspace < ws) return list[j]
+    return null
+  }
+  // the icons beside the indicator while a finger slides
+  function sideNeighbours(screenName) {
+    var p = sideStep(screenName, -1), n = sideStep(screenName, 1)
+    return { prev: p ? String(p.icon || "") : "", next: n ? String(n.icon || "") : "" }
+  }
+  property bool sliding: false
+  function slide(dx) {
+    if (fromHome || (mode !== "ready" && mode !== "drag")) return
+    var fp = followPreset
+    if (!sliding) {
+      var c0 = card(cur)
+      if (!c0 || !c0.hasShot) return             // the overlay stays clear until the snapshot is there
+      var list = sideOrder(cards), at = sideAt(list, screenName)
+      if (at < 0) return
+      sliding = true
+      if (list.map(e => e.key).join() !== cards.map(e => e.key).join()) cards = list
+      cur = at
+      for (var j = 0; j < cards.length; j++) {
+        var o0 = card(j)
+        if (!o0) continue
+        o0.set("x", HM.besideX(j, cur, 1, 0, areaW, cfg)); o0.set("y", 0); o0.set("s", 1); o0.set("m", 0); o0.set("l", 0); o0.set("o", 1)
+        o0.capture = true
+        o0.z = j === cur ? 2 : 1
+      }
+      if (stat.shot < 0 && stat.t0) stat.shot = Date.now() - stat.t0
+      mode = "drag"
+      backdrop(0, 1, 0, false)
+      note("slide " + cards[cur].appId)
+    }
+    var f = HM.follow(0, dx, areaW, areaH, cfg, { left: cur <= 0, right: cur >= cards.length - 1 }, 0)
+    for (var i = 0; i < cards.length; i++) { var o = card(i); if (o) o.to("x", HM.besideX(i, cur, 1, f.x, areaW, cfg), fp) }
+    stat.lifts = (stat.lifts || 0) + 1
+  }
+  // the finger let go: step +1 / -1 to the window beside it, 0 back. Without cards (no snapshot
+  // yet, the home screen) the window still gets the focus, only without the slide.
+  function slideEnd(step) {
+    if (!sliding) {
+      other("slide")
+      var e = step ? sideStep(screenName, step) : null
+      if (e) { note("side " + e.appId); dispatch("hl.dsp.focus({ window = \"address:" + e.address + "\" })", "focuswindow address:" + e.address) }
+      return
+    }
+    sliding = false
+    stat.release = "slide"
+    var to = cur + step
+    if (step && to >= 0 && to < cards.length) { stat.decided = step > 0 ? "next" : "prev"; openCard(to, null) }
+    else { stat.decided = "back"; back(null) }
+  }
   function switcherHome() {
     note("switcher home")
     for (var i = 0; i < cards.length; i++) { var o = card(i); if (o) { o.to("o", 0, buttonPreset); o.to("s", o.value("s") * cfg.dockIcon, buttonPreset) } }
@@ -888,6 +971,15 @@ Item {
     mark("focus")
     dispatch("hl.dsp.focus({ window = \"address:" + a + "\" })", "focuswindow address:" + a)
   }
+  // nothing on the overlay still visibly moving: the landed card alone was not enough, the
+  // neighbours sliding off and the backdrop fading caught the switch's slow frame (homeStats on
+  // the M1, 2026-11-09: a 42-47 ms frame ~40 ms after the focus, in the switcher's tail)
+  function stillAll() {
+    for (var i = 0; i < cards.length; i++) { var k = card(i); if (k && !k.near(["x", "y", "s", "o"])) return false }
+    var sp = [homeV, blurV, dockV, dimV, labelV]
+    for (var j = 0; j < sp.length; j++) if (Math.abs(sp[j].value - sp[j].target) > cfg.nearScale) return false
+    return true
+  }
   FrameAnimation {
     id: focusLater
     property int frames: 0
@@ -895,8 +987,7 @@ Item {
     onRunningChanged: frames = 0
     onTriggered: home.guard("focusLater", function () {
       if (++focusLater.frames < home.cfg.coverFrames) return
-      var c = home.card(home.cur)
-      if (home.focusNear && c && !c.near(["x", "y", "s"]) && Date.now() - home.settleStart < home.cfg.launchTimeout) return
+      if (home.focusNear && !home.stillAll() && Date.now() - home.settleStart < home.cfg.launchTimeout) return
       home.focusNow()
     })
   }

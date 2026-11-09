@@ -109,7 +109,7 @@ Item {
           text: "Last " + ov.s.historyRange.label; font.weight: Font.DemiBold; color: Theme.r.popover.ink }
         VIcon { anchors.right: parent.right; anchors.rightMargin: Theme.layout.module.pad; y: (Theme.layout.module.section - height) / 2
           name: "chevron.right"; weight: "bold"; size: Theme.layout.icon.small; color: Theme.r.popover.inkSecondary }
-        Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.r.popover.fillHover; visible: histMouse.containsMouse }
+        Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.r.popover.fillHover; visible: histMouse.containsMouse && Theme.hover }
         MouseArea { id: histMouse; anchors.fill: parent; hoverEnabled: true; onClicked: pp.pushRequested("battery-history") }
         Column {
           id: histCol
@@ -422,7 +422,7 @@ Item {
     implicitHeight: Theme.m.control.height - Theme.layout.module.tileInset
     width: implicitWidth; height: implicitHeight
     radius: Theme.m.radius.control
-    color: popMouse.pressed || pop.open || popMouse.containsMouse ? Theme.r.popover.fillHover : Theme.r.popover.tile
+    color: popMouse.pressed || pop.open || (popMouse.containsMouse && Theme.hover) ? Theme.r.popover.fillHover : Theme.r.popover.tile
     border.width: Theme.layout.separator; border.color: Theme.r.line.base
     TextMetrics { id: widest; font.family: Theme.font; font.pixelSize: Theme.m.type.small; font.weight: Font.DemiBold; text: "30 min" }
     Row {

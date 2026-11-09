@@ -127,9 +127,9 @@ Item {
         }
       }
       HoverHandler { id: feHover; enabled: stack.open }
-      Rectangle { anchors.fill: parent; anchors.margins: -Style.space(3); radius: Style.space(8); color: dock.accent; opacity: feHover.hovered ? 0.18 : 0; z: -1
+      Rectangle { anchors.fill: parent; anchors.margins: -Style.space(3); radius: Style.space(8); color: dock.accent; opacity: (feHover.hovered && Theme.hover) ? 0.18 : 0; z: -1
         Behavior on opacity { NumberAnimation { duration: Theme.dur("instant") } } }
-      Rectangle { anchors.fill: pill; radius: pill.radius; color: dock.accent; opacity: feHover.hovered ? 0.18 : 0
+      Rectangle { anchors.fill: pill; radius: pill.radius; color: dock.accent; opacity: (feHover.hovered && Theme.hover) ? 0.18 : 0
         Behavior on opacity { NumberAnimation { duration: Theme.dur("instant") } } }
       TapHandler {
         enabled: stack.open
@@ -197,7 +197,7 @@ Item {
           required property var modelData
           width: stack.cell; height: stack.cellH
           HoverHandler { id: geHover }
-          Rectangle { anchors.fill: parent; anchors.margins: Style.space(2); radius: Style.space(8); color: dock.accent; opacity: geHover.hovered ? 0.18 : 0
+          Rectangle { anchors.fill: parent; anchors.margins: Style.space(2); radius: Style.space(8); color: dock.accent; opacity: (geHover.hovered && Theme.hover) ? 0.18 : 0
             Behavior on opacity { NumberAnimation { duration: Theme.dur("instant") } } }
           Image {
             id: gIcon
@@ -248,7 +248,7 @@ Item {
               implicitWidth: lText.implicitWidth + Style.space(Theme.core.surface.dock.shape.listIcon) + Style.space(30)
               height: stack.listRow
               radius: Style.space(Theme.core.surface.dock.shape.menuHighlightRadius)
-              color: leHover.hovered ? dock.accent : "transparent"
+              color: (leHover.hovered && Theme.hover) ? dock.accent : "transparent"
               HoverHandler { id: leHover }
               Image {
                 x: Style.space(6); anchors.verticalCenter: parent.verticalCenter
@@ -263,7 +263,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width - x - Style.space(20)
                 text: le.modelData.name
-                color: leHover.hovered ? "#ffffffff" : stack.pal.menuText
+                color: (leHover.hovered && Theme.hover) ? "#ffffffff" : stack.pal.menuText
                 font.family: Theme.font
                 font.pixelSize: Style.space(Theme.core.surface.dock.shape.menuFont)
                 elide: Text.ElideMiddle
@@ -296,12 +296,12 @@ Item {
           width: parent.width - Theme.m.menu.pad * 2
           height: stack.listRow
           radius: Style.space(Theme.core.surface.dock.shape.menuHighlightRadius)
-          color: fHover.hovered ? dock.accent : "transparent"
+          color: (fHover.hovered && Theme.hover) ? dock.accent : "transparent"
           HoverHandler { id: fHover }
           Text {
             anchors.centerIn: parent
             text: stack.entries.length + (stack.entries.length === 1 ? " item" : " items") + " — Open in File Manager"
-            color: fHover.hovered ? "#ffffffff" : stack.pal.menuText
+            color: (fHover.hovered && Theme.hover) ? "#ffffffff" : stack.pal.menuText
             font.family: Theme.font
             font.pixelSize: Style.space(Theme.core.surface.dock.shape.menuFont)
           }

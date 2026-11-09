@@ -14,8 +14,9 @@
 //             up from here (Henri, 2026-10-28: iPadOS-like home gesture instead)
 //   switcher  Mission Control under the finger (switcher start / update / end, deltas in px,
 //             negative = up)
-//   slide     sideways along the edge: the next or previous app (workspace) on release;
-//             the indicator follows the finger meanwhile (slide move / end)
+//   slide     sideways along the edge: the next or previous app on release (in tablet mode the
+//             next or previous window, Home.qml; else the workspace); the indicator follows
+//             the finger meanwhile (slide move / end)
 //   held      the finger rested below the slop for `longPress`: Spotlight (longpress)
 //   down      pushed down past `downSlop`: the app shrinks to a floating window (down)
 //
@@ -26,7 +27,8 @@
 //          { do: "app", step: +1|-1 }
 //          { do: "tap" }   released before the slop (the window bar above the indicator;
 //                          a second one within `doubleTap` is the previous app, Tablet.qml)
-//          { do: "slide", phase: "move"|"end", dx }   the indicator follows a sideways finger
+//          { do: "slide", phase: "move"|"end", dx, vx, step }   the indicator follows a sideways
+//                          finger; step (end only): +1 / -1 / 0 as the "app" that follows it
 //          { do: "longpress" }   { do: "down" }
 
 function create(cfg) {
@@ -122,9 +124,10 @@ function create(cfg) {
       } else if (was === "switcher") {
         out.push({ do: "switcher", phase: "end", cancelled: false, dx: dx, travel: travelUp(), velocity: v.up, vx: v.x })
       } else if (was === "slide") {
-        out.push({ do: "slide", phase: "end", dx: dx })
         var flick = Math.abs(v.x) >= cfg.slideFlick && (v.x > 0) === (dx > 0)
-        if (Math.abs(dx) >= cfg.slideCommit || flick) out.push({ do: "app", step: dx > 0 ? -1 : 1 })
+        var step = Math.abs(dx) >= cfg.slideCommit || flick ? (dx > 0 ? -1 : 1) : 0
+        out.push({ do: "slide", phase: "end", dx: dx, vx: v.x, step: step })
+        if (step) out.push({ do: "app", step: step })
       } else if (was === "pending") {
         out.push({ do: "tap" })   // never past the slop: the window bar above the indicator (WindowBar.qml)
       }

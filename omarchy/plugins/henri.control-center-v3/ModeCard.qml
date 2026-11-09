@@ -13,7 +13,7 @@ VTile {
   Behavior on border.color { ColorAnimation { duration: Theme.dur("fast") } }
   Spring { id: mcPress; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion; target: mcMouse.pressed ? Theme.scale("press") : 1 }
   scale: mcPress.value
-  Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.r.popover.fillHover; visible: mcMouse.containsMouse && !mc.selected }
+  Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.r.popover.fillHover; visible: mcMouse.containsMouse && Theme.hover && !mc.selected }
   Column {
     anchors.centerIn: parent; spacing: Theme.layout.list.gap / 2
     VBadge { anchors.horizontalCenter: parent.horizontalCenter; icon: mc.icon; on: mc.selected; onTapped: mc.chosen() }

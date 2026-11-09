@@ -134,7 +134,7 @@ BarWidget {
             anchors.fill: parent
             radius: Theme.m.radius.menuRow
             color: Theme.r.popover.fillHover
-            visible: hover.containsMouse
+            visible: hover.containsMouse && Theme.hover
           }
           Rectangle {
             id: dot

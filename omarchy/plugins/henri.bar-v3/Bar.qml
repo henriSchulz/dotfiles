@@ -1864,7 +1864,7 @@ Item {
       if (qmlCustom) return qmlLoader.item
       return componentLoader.item
     }
-    readonly property bool hovered: moduleHover.hovered
+    readonly property bool hovered: moduleHover.hovered && Theme.hover
     readonly property bool dragSource: root.barDragSource === slot
     readonly property bool panelOpen: root.activePopout === slot.activeItem
     // Modules bigger than the mark they want (a text label in a padded slot,
