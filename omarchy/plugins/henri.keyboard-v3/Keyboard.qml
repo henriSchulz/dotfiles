@@ -40,8 +40,11 @@ import "file:///home/henri/.local/share/velum/qml/Velum/KeyboardLayout.js" as Ke
 // A long press (custom event "velum-hold SCREEN X Y touch|pointer" from velum-touchd or ipadcast) in a
 // focused text field opens the edit menu (EditMenu.qml, iPadOS's): Cut, Copy, Paste (when the clipboard
 // has something), Select All — a terminal gets Copy and Paste with Shift. The bridge says whether a text
-// field has the focus ("field" → "field N", fcitx5). A real finger in an app with a long-press menu of
-// its own (Chromium, GTK, Firefox: ownMenu) is left to that app; a pointer hold (the iPad's viewer) is not.
+// field has the focus ("field" → "field N", fcitx5), and the hyprcaret plugin (~/Projects/hyprcaret,
+// `hyprctl -j caret`) where its caret is: the finger has to be near it (surface.editMenu.reachX/Y), not
+// anywhere in that window (Henri 2026-11-09: it opened beside the text). Without the plugin (not built
+// for this Hyprland) only the window counts. A real finger in an app with a long-press menu of its own
+// (Chromium, GTK, Firefox, mdview: ownMenu) is left to that app; a pointer hold (the iPad's viewer) is not.
 // IPC: omarchy.keyboard toggle | open | close | state | hold SCREEN X Y KIND FIELD | menuState | menuTap LABEL
 Item {
   id: root
@@ -134,8 +137,9 @@ Item {
   Timer { id: voxRetry; interval: Theme.delay("hudHold") * 10; onTriggered: voxFollow.running = true }
 
   // ---- the edit menu ------------------------------------------------------------------------------
-  // apps whose text fields answer a finger held on them with a menu of their own
-  readonly property var ownMenu: /^(chromium|google-chrome|brave-browser|chrome-.*|firefox|org\.gnome\..*|code|code-oss|electron.*|obsidian|signal)$/i
+  // apps whose text fields answer a finger held on them with a menu of their own (mdview: WebKit2GTK
+  // tells the compositor its caret only with the next focus change, so hyprcaret cannot follow it)
+  readonly property var ownMenu: /^(chromium|google-chrome|brave-browser|chrome-.*|firefox|org\.gnome\..*|code|code-oss|electron.*|obsidian|signal|dev\.henri\.MdView)$/i
   property var menuAt: null           // { screen, x, y } of the menu, kept while it fades out
   property bool menuOpen: false
   property var pendingHold: null      // a hold waiting for the clipboard and the bridge's answer
@@ -157,10 +161,10 @@ Item {
   }
   // fcitx5 keeps the last text field focused when the screen shows no window (the tablet's home
   // screen, an empty workspace) or the finger is on the bar: the menu opens only on the focused
-  // window, on the workspace its screen shows (Henri 2026-11-01: only on text)
+  // window, on the workspace its screen shows (Henri 2026-11-01: only on text), near its caret
   Process {
     id: where
-    command: ["sh", "-c", "hyprctl -j monitors; echo; echo --; hyprctl -j activewindow"]
+    command: ["sh", "-c", "hyprctl -j monitors; echo; echo --; hyprctl -j activewindow; echo; echo --; hyprctl -j caret"]
     stdout: StdioCollector {}
     onExited: function (code) {
       if (root.pendingHold && root.onFocusedWindow(String(where.stdout.text), root.pendingHold)) clip.running = true
@@ -175,7 +179,17 @@ Item {
     var shown = w.workspace.id === m.activeWorkspace.id || (m.specialWorkspace && w.workspace.id === m.specialWorkspace.id)
     if (!shown) return false
     var gx = m.x + h.x, gy = m.y + h.y
-    return gx >= w.at[0] && gx <= w.at[0] + w.size[0] && gy >= w.at[1] && gy <= w.at[1] + w.size[1]
+    if (!(gx >= w.at[0] && gx <= w.at[0] + w.size[0] && gy >= w.at[1] && gy <= w.at[1] + w.size[1])) return false
+    return root.nearCaret(parts[2], gx, gy)
+  }
+  // the caret of the focused text field (layout px) against the finger; no answer = no plugin = yes
+  function nearCaret(text, gx, gy) {
+    var c = null
+    try { c = JSON.parse(text) } catch (e) { return true }
+    if (!c || c.enabled === undefined) return true
+    if (!c.enabled || !c.rect) return false
+    var es = Theme.core.surface.editMenu
+    return gx >= c.x - es.reachX && gx <= c.x + c.w + es.reachX && gy >= c.y - es.reachY && gy <= c.y + c.h + es.reachY
   }
   Process {
     id: clip

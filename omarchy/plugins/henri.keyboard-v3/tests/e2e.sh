@@ -163,6 +163,34 @@ hyprctl dispatch "hl.dsp.focus({ workspace = 'emptynm' })" >/dev/null; sleep 0.5
 c omarchy.keyboard hold TB 500 400 touch 1 >/dev/null; sleep 0.6
 want M11 "no window under the finger (empty workspace): no menu, whatever fcitx5 says" "$(ms | jq .open),$(menuLayer)" "false,false"
 
+# ---- only near the caret: hyprcaret (~/Projects/hyprcaret) in this rig's Hyprland and an input method of its
+# own (fcitx5 in a session bus of its own, a fake HOME: never the session's), so foot reports its cursor
+caretso=$HOME/Projects/hyprcaret/build/hyprcaret.so
+if [[ -f $caretso ]] && hyprctl plugin load "$caretso" >/dev/null 2>&1; then
+  im=$R/imhome; mkdir -p "$im"
+  WAYLAND_DISPLAY=$NWL HOME=$im XDG_CONFIG_HOME=$im/.config XDG_DATA_HOME=$im/.local/share XDG_CACHE_HOME=$im/.cache \
+    setsid -f dbus-run-session -- fcitx5 --disable=all --enable=wayland,waylandim,keyboard >/dev/null 2>&1
+  sleep 2
+  # loading a plugin reloads the config: TB back to the cast screen's size
+  hyprctl eval "hl.monitor({ output = 'TB', mode = '${W}x${H}@60', position = '2000x0', scale = 1 })" >/dev/null; sleep 0.5
+  hyprctl dispatch "hl.dsp.focus({ monitor = 'TB' })" >/dev/null
+  hyprctl dispatch "hl.dsp.exec_cmd('foot --app-id velum-text', { workspace = '$(hyprctl monitors -j | jq '.[] | select(.name=="TB") | .activeWorkspace.id')' })" >/dev/null; sleep 1.5
+  tb=$(hyprctl monitors -j | jq -c '.[] | select(.name=="TB") | [.x, .y]')
+  car=$(hyprctl -j caret)
+  cx=$(jq -n --argjson c "$car" --argjson m "$tb" '($c.x - $m[0] + $c.w / 2) | floor')
+  cy=$(jq -n --argjson c "$car" --argjson m "$tb" '($c.y - $m[1] + $c.h / 2) | floor')
+  want M12 "the plugin names foot's cursor" "$(jq -r '.enabled and .rect' <<<"$car")" "true"
+  c omarchy.keyboard hold TB 700 500 touch 1 >/dev/null; sleep 0.6
+  want M13 "a finger held in the window but away from the caret: no menu" "$(ms | jq .open),$(menuLayer)" "false,false"
+  c omarchy.keyboard hold TB $((cx + 40)) $cy touch 1 >/dev/null; sleep 0.6
+  want M14 "held beside the caret, on its line: the menu" "$(ms | jq .open),$(menuLayer)" "true,true"
+  pt m 900 650 d s 40 u; sleep 0.6
+  hyprctl dispatch 'hl.dsp.window.close()' >/dev/null; sleep 0.5
+  hyprctl plugin unload "$caretso" >/dev/null 2>&1
+else
+  echo "skip M12-M14: no hyprcaret build for this Hyprland ($caretso)"
+fi
+
 echo "keyboard e2e: $pass ok, $fail failed"
 [[ -n ${KEEP:-} ]] || rig/rig.sh stop >/dev/null
 [[ $fail == 0 ]]
