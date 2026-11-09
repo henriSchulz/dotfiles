@@ -10,10 +10,7 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 // what it reports — battery, draw, latency, connection — and what the stream does, with a
 // brightness slider for its panel (the tablet follows this Mac's backlight while casting).
 // ipadcast writes it all to $XDG_RUNTIME_DIR/ipadcast/cast.json every 2 s and removes the
-// file when the tablet goes. Below that, how the sync between this Mac and the tablet stands
-// (Syncthing over the cable, dotfiles, settings), from $XDG_RUNTIME_DIR/henri/sync.json, which
-// sync-status (dotfiles) writes every 5 min and at once when the panel opens — one row on the first page, the details on a page
-// of their own (VPageStack).
+// file when the tablet goes.
 Panel {
   id: root
   moduleName: "henri.cast"
@@ -57,62 +54,7 @@ Panel {
     onTriggered: {
       root.now = Date.now() / 1000
       if (infoFile.missing || !root.connected) infoFile.reload()
-      if (syncFile.missing || !root.syncFresh) syncFile.reload()
     }
-  }
-
-  // ---- the sync with the tablet
-  property var sync: null
-  readonly property bool syncFresh: !!sync && now - sync.time < 330
-  FileView {
-    id: syncFile
-    property bool missing: true
-    path: Quickshell.env("XDG_RUNTIME_DIR") + "/henri/sync.json"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: reload()
-    onLoaded: {
-      try { root.sync = JSON.parse(text() || "null") } catch (e) { root.sync = null }
-      missing = false
-    }
-    onLoadFailed: { root.sync = null; missing = true }
-  }
-  function filesText() {
-    if (!syncFresh) return "—"
-    const f = sync.files
-    if (!sync.peer) return "Not Connected"
-    if (f.errors > 0) return f.errors + (f.errors === 1 ? " Error" : " Errors")
-    if (f.peerPercent !== null && f.peerPercent < 100) return "Syncing · " + Math.floor(f.peerPercent) + " %"
-    if (f.syncing > 0) return "Syncing"
-    return "Up to Date"
-  }
-  function dotfilesText() {
-    if (!syncFresh) return "—"
-    if (sync.dotfiles.length === 0) return "Up to Date"
-    return sync.dotfiles.some(l => l.indexOf("by hand") >= 0) ? "Merge by Hand" : "Needs Attention"
-  }
-  function filesBusy() {
-    return syncFresh && sync.peer && sync.files.errors === 0
-      && (sync.files.syncing > 0 || (sync.files.peerPercent !== null && sync.files.peerPercent < 100))
-  }
-  // the one line on the first page: the worst of files, conflicts, settings and dotfiles
-  function syncSummary() {
-    if (!syncFresh) return "—"
-    const files = filesText()
-    if (files !== "Up to Date") return files
-    if (sync.conflicts.count > 0) return sync.conflicts.count + (sync.conflicts.count === 1 ? " Conflict" : " Conflicts")
-    if (sync.dotfiles.length > 0 || sync.settings.length > 0) return "Needs Attention"
-    return "Up to Date"
-  }
-  function settingsText() {
-    if (!syncFresh) return "—"
-    return sync.settings.length === 0 ? "Up to Date" : sync.settings.length + " Differ"
-  }
-  // the newest conflict copy, selected in Finder
-  function showConflict() {
-    if (!syncFresh || sync.conflicts.count === 0) return
-    Quickshell.execDetached(["finder", "--select", sync.conflicts.newest[0]])
-    root.close()
   }
 
   readonly property real batteryFraction: connected && info.battery !== null ? Math.max(0, Math.min(1, info.battery / 100)) : 0
@@ -156,11 +98,9 @@ Panel {
     function open() { root.open() }
     function close() { root.close() }
     function toggle() { root.toggle() }
-    // straight onto the Sync page
-    function sync() { root.open(); if (stack.depth < 2) stack.push(syncPage) }
     function state(): string { return JSON.stringify({ connected: root.connected, opened: root.opened, depth: stack.depth,
-                                                       summary: root.syncSummary(), height: content.height, pulling: panel.pulling,
-                                                       from: [panel.from.x, panel.from.y, panel.from.width, panel.from.height], info: root.info, sync: root.sync }) }
+                                                       height: content.height, pulling: panel.pulling,
+                                                       from: [panel.from.x, panel.from.y, panel.from.width, panel.from.height], info: root.info }) }
   }
 
   onConnectedChanged: if (!connected) close()
@@ -168,9 +108,6 @@ Panel {
     if (opened && !connected) { close(); return }
     if (!opened) return
     if (latest) info = latest
-    // sync-status runs every 5 min (a find over the home folders, P-cores at full clock each
-    // time): fresh numbers when somebody looks
-    Quickshell.execDetached(["systemctl", "--user", "start", "--no-block", "sync-status.service"])
   }
   visible: connected
   implicitWidth: connected ? button.implicitWidth : 0
@@ -375,14 +312,6 @@ Panel {
           can: typeof root.i.micTablet === "boolean"; onSwitched: v => root.setMic(v) }
       }
 
-      // -- the sync with this Mac: one row, its details on their own page
-      VModuleRow {
-        width: parent.width; icon: "sync"; text: "Sync"
-        busy: root.filesBusy(); detail: root.syncSummary()
-        onClicked: stack.push(syncPage)
-        VIcon { name: "chevron.right"; weight: "bold"; size: Theme.layout.icon.small; color: Theme.r.popover.inkSecondary }
-      }
-
       VText {
         x: Theme.layout.module.pad; width: parent.width - 2 * x
         tone: "secondary"; font.pixelSize: Theme.m.type.small; elide: Text.ElideRight
@@ -391,28 +320,6 @@ Panel {
           + (root.i.size ? " · " + root.i.size[0] + " × " + root.i.size[1] + " · " + root.i.hz + " Hz · "
           + (root.i.encoder === "apple-ave" ? "Hardware Encoder" : "Software Encoder") : "")
       }
-    }
-  }
-
-  // ============================================================ sync page
-  Component {
-    id: syncPage
-    Column {
-      spacing: Theme.layout.module.gap
-      VPageHead { width: parent.width; title: "Sync"; onBack: stack.pop() }
-      VModuleRow {
-        width: parent.width; clickable: false; icon: "folder"; text: "Files"
-        busy: root.filesBusy(); detail: root.filesText()
-      }
-      VModuleRow {
-        width: parent.width; visible: root.syncFresh && root.sync.conflicts.count > 0
-        icon: "duplicate"; text: "Conflicts"
-        detail: root.syncFresh ? root.sync.conflicts.count + (root.sync.conflicts.count === 1 ? " File" : " Files") : ""
-        onClicked: root.showConflict()
-      }
-      VModuleRow { width: parent.width; clickable: false; icon: "settings"; text: "Settings"; detail: root.settingsText() }
-      VModuleRow { width: parent.width; clickable: false; icon: "code"; text: "Dotfiles"; detail: root.dotfilesText() }
-      Item { width: parent.width; height: Theme.layout.module.pad - Theme.layout.module.tileInset }
     }
   }
 }
