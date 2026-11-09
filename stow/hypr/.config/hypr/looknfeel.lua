@@ -298,6 +298,14 @@ do
     so:close()
     pcall(hl.plugin.load, shape)
   end
+  -- hyprcaret (~/Projects/hyprcaret) answers `hyprctl caret`: the on-screen keyboard's edit menu opens
+  -- only near the focused text field's caret; only when it is built for this Hyprland
+  local caret = os.getenv("HOME") .. "/.local/lib/hyprcaret/hyprcaret.so"
+  local cso = io.open(caret, "r")
+  if cso then
+    cso:close()
+    pcall(hl.plugin.load, caret)
+  end
   -- hyprphase (~/Projects/hyprphase) lets ipadcast move the frame phase of HEADLESS-SPARE onto the
   -- tablet's vblank; it needs the patched aquamarine (~/Projects/aquamarine-phase), so not while this
   -- Hyprland still runs a replaced (deleted) libaquamarine
