@@ -294,6 +294,9 @@ local function layout_rules(on, before)
   end
 end
 
+-- seconds a resting pointer stays visible in tablet mode
+local TABLET_CURSOR_IDLE = 3
+
 local function apply_config()
   local panel = internal_output()
   if panel then hl.config({ input = { touchdevice = { output = panel } } }) end
@@ -302,7 +305,8 @@ local function apply_config()
       saved = { gaps_in = hl.get_config("general.gaps_in"), gaps_out = hl.get_config("general.gaps_out"),
                 layout = hl.get_config("general.layout"), border = hl.get_config("general.border_size"),
                 under_fs = hl.get_config("misc.on_focus_under_fullscreen"),
-                aspect = hl.get_config("layout.single_window_aspect_ratio") }
+                aspect = hl.get_config("layout.single_window_aspect_ratio"),
+                cursor_idle = hl.get_config("cursor.inactive_timeout") }
     end
     -- every app fills its screen: no gaps or borders, no square single window (Omarchy's toggle),
     -- an app's windows stacked (monocle), and the one focused takes over the fullscreen. Switching
@@ -310,6 +314,9 @@ local function apply_config()
     hl.config({ general = { gaps_in = 0, gaps_out = 0, border_size = 0, layout = "monocle" },
                 misc = { on_focus_under_fullscreen = 1 },
                 layout = { single_window_aspect_ratio = { 0, 0 } } })
+    -- a finger hides the pointer already (cursor:hide_on_touch, on by default); the touchpad's
+    -- pointer goes too once it rests, as on an iPad with a Magic Keyboard
+    hl.config({ cursor = { hide_on_touch = true, inactive_timeout = TABLET_CURSOR_IDLE } })
     layout_rules(true)
   elseif saved then
     layout_rules(false, saved.layout or "dwindle")
@@ -317,6 +324,7 @@ local function apply_config()
                             layout = saved.layout or "dwindle" } })
     if saved.under_fs ~= nil then hl.config({ misc = { on_focus_under_fullscreen = saved.under_fs } }) end
     if saved.aspect then hl.config({ layout = { single_window_aspect_ratio = saved.aspect } }) end
+    hl.config({ cursor = { inactive_timeout = saved.cursor_idle or 0 } })
     saved = nil
   end
 end
