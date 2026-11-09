@@ -35,7 +35,7 @@
           "format": "ddd d. MMM HH:mm",
           "formatAlt": "d. MMMM 'KW'ww yyyy",
           "id": "henri.clock-v3",
-          "verticalFormat": "HH\n—\nmm"
+          "verticalFormat": "HH\n\u2014\nmm"
         }
       ]
     },
@@ -60,7 +60,8 @@
     "omarchy.notifications",
     "omadock",
     "omarchy.lock",
-    "omarchy.polkit"
+    "omarchy.polkit",
+    "henri.notifications-v3"
   ],
   "idle": {
     "displayOffBattery": 120,
