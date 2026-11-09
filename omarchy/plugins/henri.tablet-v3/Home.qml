@@ -411,7 +411,9 @@ Item {
   // drop whatever the overlay is doing (a new finger always wins over a stuck animation)
   function abort() {
     settleTick.stop(); letGo.stop(); enterLater.stop(); openLater.stop(); closeLater.stop(); relayoutLater.stop()
-    settleCheck = null; launchedId = ""; armed = false; homeSwitchAt = 0; appSwitchAt = 0; focusAddress = ""
+    // the app that was chosen still gets its workspace (a finger landing mid-flight dropped it)
+    if (focusAddress) focusNow()
+    settleCheck = null; launchedId = ""; armed = false; homeSwitchAt = 0; appSwitchAt = 0
     mode = emptyOn(screenName) ? "home" : "idle"
     note("abort")
     endStat("abort")
@@ -670,16 +672,20 @@ Item {
   // an app from the switcher, or the neighbour a sideways finger brought: full size, then its workspace
   function openCard(i, hand) {
     note("open " + (cards[i] ? cards[i].appId : ""))
+    mark("open")
     var was = cur
     cur = i
     layoutApp(i, i === was ? hand : null, launchPreset)
     for (var j = 0; j < cards.length; j++) if (j !== i && card(j) && Math.abs(j - i) > 1) card(j).to("o", 0, "snappy")
     var e = cards[i]
-    // another app's workspace slides in under the card: the overlay waits for that slide too
-    if (i !== was) appSwitchAt = Date.now()
-    dispatch("hl.dsp.focus({ window = \"address:" + e.address + "\" })", "focuswindow address:" + e.address)
+    // another app's workspace only once the card stands (focusLater): the switch costs the shell a
+    // frame of 50-130 ms (homeStats on the M1, 2026-11-09), which sent at the tap held the card in
+    // the switcher before it moved; on a standing card nothing shows it. The overlay then waits for
+    // Hyprland's slide too.
+    if (i !== was) { focusNear = true; focusAddress = e.address }
+    else dispatch("hl.dsp.focus({ window = \"address:" + e.address + "\" })", "focuswindow address:" + e.address)
     var c = card(i)
-    settleWhen(function () { return !c || c.settled(["x", "y", "s"]) }, "idle", i !== was)
+    settleWhen(function () { return (!c || c.settled(["x", "y", "s"])) && !focusAddress }, "idle", i !== was)
   }
   function switcherHome() {
     note("switcher home")
@@ -854,8 +860,9 @@ Item {
       var lp = home.launchPreset
       c.to("x", 0, lp); c.to("y", 0, lp); c.to("s", 1, lp); c.to("m", 0, lp)
       backdrop(0, 0, 0, false)
+      // a running app's workspace once its card stands (focusNear, as from the switcher)
       if (e.address) {
-        home.appSwitchAt = Date.now()
+        home.focusNear = true
         home.focusAddress = e.address
       }
       home.settleWhen(function () {
@@ -869,21 +876,29 @@ Item {
   }
 
   // an app's workspace only once the overlay covers the screen: sent at once, Hyprland showed the
-  // switch (the app at full size) before the overlay's first covering frame was on screen
+  // switch (the app at full size) before the overlay's first covering frame was on screen.
+  // focusNear (every card that grows to an app): only once that card has landed
   property string focusAddress: ""
+  property bool focusNear: false
+  function focusNow() {
+    var a = focusAddress
+    focusAddress = ""
+    focusNear = false
+    appSwitchAt = Date.now()
+    mark("focus")
+    dispatch("hl.dsp.focus({ window = \"address:" + a + "\" })", "focuswindow address:" + a)
+  }
   FrameAnimation {
     id: focusLater
     property int frames: 0
     running: home.focusAddress !== ""
     onRunningChanged: frames = 0
-    onTriggered: {
-      if (++frames < home.cfg.coverFrames) return
-      var a = home.focusAddress
-      home.focusAddress = ""
-      home.appSwitchAt = Date.now()
-      home.mark("focus")
-      home.dispatch("hl.dsp.focus({ window = \"address:" + a + "\" })", "focuswindow address:" + a)
-    }
+    onTriggered: home.guard("focusLater", function () {
+      if (++focusLater.frames < home.cfg.coverFrames) return
+      var c = home.card(home.cur)
+      if (home.focusNear && c && !c.near(["x", "y", "s"]) && Date.now() - home.settleStart < home.cfg.launchTimeout) return
+      home.focusNow()
+    })
   }
 
   // ---- the overlay lets go once the condition holds and (after a workspace change) the slide is over
@@ -1242,11 +1257,14 @@ Item {
           }
         }
 
-        // the App Switcher's fingers: scroll sideways, swipe a card up to close it, tap to open
-        MouseArea {
+        // the App Switcher's fingers: scroll sideways, swipe a card up to close it, tap to open.
+        // Real touch through a MultiPointTouchArea: Qt's mouse stand-in for touch never reached the
+        // MouseArea here, so on the cast a tap on a card opened nothing and swipes stuck (Henri
+        // 2026-11-07, as the home zone found 2026-10-28); a pointer (the rig) through the MouseArea.
+        Item {
+          id: switcherFinger
           anchors.fill: parent
-          enabled: home.mode === "switcher" && !home.zoneFinger
-          preventStealing: true
+          readonly property bool on: home.mode === "switcher" && !home.zoneFinger
           property real x0: 0
           property real y0: 0
           property real sx0: 0
@@ -1262,12 +1280,12 @@ Item {
             }
             return -1
           }
-          onPressed: function (m) { x0 = m.x; y0 = m.y; sx0 = home.swX; axis = ""; hit = cardAt(m.x, m.y); samples = [[Date.now(), m.x, m.y]] }
-          onPositionChanged: function (m) { home.guard("switcher onPositionChanged", function () {
-            var t = Date.now(), list = samples.concat([[t, m.x, m.y]])
+          function down(mx, my) { x0 = mx; y0 = my; sx0 = home.swX; axis = ""; hit = cardAt(mx, my); samples = [[Date.now(), mx, my]] }
+          function move(mx, my) { home.guard("switcher move", function () {
+            var t = Date.now(), list = samples.concat([[t, mx, my]])
             while (list.length > 2 && t - list[0][0] > home.tt.sampleWindow) list.shift()
             samples = list
-            var dx = m.x - x0, dy = m.y - y0
+            var dx = mx - x0, dy = my - y0
             if (!axis && Math.hypot(dx, dy) > home.tt.slop) axis = Math.abs(dy) > Math.abs(dx) && hit >= 0 ? "y" : "x"
             if (axis === "x") {
               var g = HM.switcherGeo(home.cards.length, overlay.width, overlay.height, home.cfg)
@@ -1278,7 +1296,7 @@ Item {
               if (c) c.set("l", dy < 0 ? dy : HM.rubber(dy, home.cfg.pushDown))
             }
           }) }
-          onReleased: function (m) { home.guard("switcher onReleased", function () {
+          function up() { home.guard("switcher up", function () {
             var a = samples[0], b = samples[samples.length - 1], dt = (b[0] - a[0]) / 1000
             var vx = dt > 0 ? (b[1] - a[1]) / dt : 0, vup = dt > 0 ? (a[2] - b[2]) / dt : 0
             if (!axis) { if (hit >= 0) home.openCard(hit, null); else home.switcherHome(); return }
@@ -1293,7 +1311,26 @@ Item {
             if (-c.pl > overlay.height * home.cfg.closeTravel || vup > home.cfg.closeFlick) home.closeCard(hit)
             else c.to("l", 0, "snappy")
           }) }
-          onCanceled: { if (axis === "x") home.layoutSwitcher(home.swX, false) }
+          function cancel() { if (axis === "x") home.layoutSwitcher(home.swX, false) }
+          MultiPointTouchArea {
+            anchors.fill: parent
+            enabled: switcherFinger.on
+            maximumTouchPoints: 1
+            mouseEnabled: false
+            onPressed: function (pts) { switcherFinger.down(pts[0].x, pts[0].y) }
+            onUpdated: function (pts) { switcherFinger.move(pts[0].x, pts[0].y) }
+            onReleased: function (pts) { switcherFinger.up() }
+            onCanceled: switcherFinger.cancel()
+          }
+          MouseArea {
+            anchors.fill: parent
+            enabled: switcherFinger.on
+            preventStealing: true
+            onPressed: function (m) { switcherFinger.down(m.x, m.y) }
+            onPositionChanged: function (m) { switcherFinger.move(m.x, m.y) }
+            onReleased: function (m) { switcherFinger.up() }
+            onCanceled: switcherFinger.cancel()
+          }
         }
       }
     }
