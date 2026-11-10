@@ -306,6 +306,64 @@ if runs H18; then
   want H18c "then the app is on screen" "$(hm | jq -r .mode),$(wsEmpty)" "idle,false"
 fi
 
+if runs H19; then
+  # sideways along the indicator, and four fingers sideways on the touchpad: window after window,
+  # an app's second window on its workspace too, on across workspaces (not workspace after workspace)
+  [[ $(hm | jq -r .mode) == home ]] && { a=$(hyprctl clients -j | jq -r '.[0].address'); hyprctl dispatch "hl.dsp.focus({ window = 'address:$a' })" >/dev/null; sleep 1.2; }
+  layout0=$(hyprctl getoption general:layout -j | jq -r .str)
+  ufs0=$(hyprctl getoption misc:on_focus_under_fullscreen -j | jq -r .int)
+  hyprctl eval "hl.config({ general = { layout = 'monocle' }, misc = { on_focus_under_fullscreen = 1 } })" >/dev/null
+  ws=$(hyprctl clients -j | jq '[.[] | select(.workspace.id > 10) | .workspace.id] | sort | .[length / 2 | floor]')
+  hyprctl dispatch "hl.dsp.exec_cmd('foot -T side2')" >/dev/null; sleep 1.5
+  hyprctl dispatch "hl.dsp.window.move({ workspace = '$ws', follow = false, window = 'title:side2' })" >/dev/null; sleep 0.5
+  # the order the swipe should take: workspace by workspace, a workspace's windows as they opened
+  tb=$(hyprctl monitors -j | jq '.[] | select(.name=="TB") | .id')
+  order=$(hyprctl clients -j | jq -r --argjson m "$tb" '[.[] | select(.monitor == $m and .workspace.id > 0 and .floating == false)] | sort_by(.workspace.id) | .[].address' | tr '\n' ' ')
+  first=${order%% *}
+  hyprctl dispatch "hl.dsp.focus({ window = 'address:$first' })" >/dev/null; sleep 1.2
+  c henri.tablet clearLog >/dev/null
+  got="$(hyprctl activewindow -j | jq -r .address)"
+  n=$(wc -w <<<"$order")
+  for ((k = 1; k < n; k++)); do
+    pt m $((X + 200)) $B d s 60 g $((X - 200)) $B 16 12 u
+    sleep 1.6
+    got="$got $(hyprctl activewindow -j | jq -r .address)"
+  done
+  shot H19-last
+  want H19 "sliding left: every window in screen order, across workspaces" "$got" "${order% }"
+  # (the first slide after the focus moved may come before the window's snapshot: then it only switches)
+  want H19b "the windows followed the finger as cards" "$(c henri.tablet home | jq -r --argjson n "$n" '[.log[] | select(startswith("slide "))] | length >= $n - 2')" "true"
+  # one step back on the touchpad: four fingers to the right
+  c henri.tablet padSide start 0 >/dev/null
+  for k in $(seq 12); do c henri.tablet padSide move 30 >/dev/null; sleep 0.016; done
+  c henri.tablet padSide end 0 >/dev/null
+  sleep 1.6
+  prev=$(awk '{print $(NF-1)}' <<<"$order")
+  want H19c "four fingers to the right: the window before" "$(hyprctl activewindow -j | jq -r .address)" "$prev"
+  # at the first window a slide to the right goes nowhere
+  hyprctl dispatch "hl.dsp.focus({ window = 'address:$first' })" >/dev/null; sleep 1.2
+  pt m $((X - 200)) $B d s 60 g $((X + 200)) $B 16 12 u
+  sleep 1.6
+  want H19d "past the first window: it springs back" "$(hyprctl activewindow -j | jq -r .address),$(hm | jq -r .mode)" "$first,idle"
+  hyprctl dispatch "hl.dsp.window.close({ window = 'title:side2' })" >/dev/null
+  hyprctl eval "hl.config({ general = { layout = '$layout0' }, misc = { on_focus_under_fullscreen = $ufs0 } })" >/dev/null; sleep 0.5
+fi
+
+if runs H20; then
+  # two fingers on a touchpad turn pages too (scroll right = next page, as a flick to the left)
+  [[ $(hm | jq -r .mode) == home ]] || { edgePull 360 120 0; sleep 1.5; }
+  pt m 700 450 f 600 0 20 12; sleep 1
+  p1=$(hm | jq -r .page)
+  pt m 700 450 f 0 600 20 12; sleep 1
+  pv=$(hm | jq -r .page)
+  pt m 700 450 f 120 0 10 40; sleep 1
+  ps=$(hm | jq -r .page)
+  pt m 700 450 f -600 0 20 12; sleep 1
+  if [[ $(hm | jq -r .pages) -gt 1 ]]; then
+    want H20 "two fingers sideways turn the page and back; up/down and a short slow one leave it" "$p1,$pv,$ps,$(hm | jq -r .page)" "1,1,1,0"
+  else want H20 "one page: two fingers leave the page where it is" "$p1,$(hm | jq -r .page)" "0,0"; fi
+fi
+
 echo "passed $pass, failed $fail${failed:+ (${failed[*]})}"
 [[ ${KEEP:-} ]] || rig/rig.sh stop >/dev/null 2>&1
 [[ $fail == 0 ]]

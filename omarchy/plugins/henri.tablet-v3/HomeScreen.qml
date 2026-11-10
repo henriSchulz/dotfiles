@@ -68,7 +68,7 @@ Item {
   readonly property var mc: cfg.menu
   // the rest of the home screen goes under the blurred wallpaper while a menu is open
   readonly property real menuFade: 1 - mc.gridFade * iconMenu.shown
-  onInteractiveChanged: if (!interactive) menuId = ""
+  onInteractiveChanged: if (!interactive) { menuId = ""; scroll.release() }
   onEditingChanged: if (editing) menuId = ""
 
   function slotOf(id) { var i = hs.shown.indexOf(id); return i < 0 ? 0 : i }
@@ -731,6 +731,57 @@ Item {
       hs.pressedId = ""; if (moved) hs.pageReleased(0)
     }
   }
+  // two fingers on a touchpad turn pages as one on the screen does (iPadOS with a trackpad): the
+  // pages follow the scroll 1:1 — with natural scrolling that is the fingers — and settle on the
+  // speed at the lift. A gesture that starts up or down is left alone. Hyprland names the lift
+  // (axis stop → ScrollEnd); without phases a quiet moment ends it.
+  QtObject {
+    id: scroll
+    property bool on: false        // this gesture turns pages
+    property bool other: false     // it went up or down first
+    property real x: 0             // the scroll so far
+    property real y: 0
+    property real from: 0          // where the pages stood when it began, from the current page
+    property var samples: []
+    // atLast: no lift was named (the quiet timer), so the fingers left with the last event
+    function release(atLast) {
+      quiet.stop()
+      if (on) {
+        var a = samples[0], b = samples[samples.length - 1]
+        var fresh = atLast || Date.now() - b[0] < Theme.core.surface.tablet.sampleWindow
+        hs.pageReleased(fresh && b[0] > a[0] ? (b[1] - a[1]) * 1000 / (b[0] - a[0]) : 0)
+      }
+      on = false; other = false; x = 0; y = 0; samples = []
+    }
+  }
+  Timer { id: quiet; interval: hs.cfg.scrollQuiet; onTriggered: scroll.release(true) }
+  function wheel(w) {
+    if (w.phase === Qt.ScrollBegin || w.phase === Qt.ScrollEnd) scroll.release()
+    if (w.phase === Qt.ScrollEnd) return
+    // the scroll in px: Qt's pixels, or its eighths of a degree where the compositor named no finger
+    // (a virtual pointer); a mouse wheel's notches leave the pages alone
+    var px = w.pixelDelta.x !== 0 || w.pixelDelta.y !== 0
+    if (!px && !(w.device && w.device.type === PointerDevice.TouchPad)) return
+    var dx = px ? w.pixelDelta.x : w.angleDelta.x / 8, dy = px ? w.pixelDelta.y : w.angleDelta.y / 8   // lint-ok: Qt's 120 per 15 px
+    if (dx === 0 && dy === 0) return
+    if (w.phase === Qt.NoScrollPhase) quiet.restart()
+    if (scroll.other) return
+    if (!scroll.on) {
+      // a finger down, a held icon, an open folder or menu keep the pages where they are
+      if (finger.down0 || hs.dragId || hs.openFolder || hs.menuId) return
+      scroll.x += dx
+      scroll.y += dy
+      if (Math.hypot(scroll.x, scroll.y) <= Theme.core.surface.tablet.slop) return
+      if (Math.abs(scroll.y) > Math.abs(scroll.x)) { scroll.other = true; return }
+      scroll.on = true
+      scroll.from = hs.pageX + hs.page * hs.width   // a page still settling goes on from where it is
+      hs.pressedId = ""
+    } else scroll.x += dx
+    var t = Date.now(), list = scroll.samples.concat([[t, scroll.from + scroll.x]])
+    while (list.length > 2 && t - list[0][0] > Theme.core.surface.tablet.sampleWindow) list.shift()
+    scroll.samples = list
+    hs.pageMoved(scroll.from + scroll.x, t)
+  }
   MultiPointTouchArea {
     anchors.fill: parent
     enabled: hs.interactive
@@ -749,6 +800,7 @@ Item {
     onPositionChanged: function (m) { finger.move(m.x, m.y) }
     onReleased: function (m) { finger.up() }
     onCanceled: finger.cancel()
+    onWheel: function (w) { hs.wheel(w) }
   }
 
   // ---- the context menu of an app's icon
