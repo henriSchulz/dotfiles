@@ -293,7 +293,12 @@ Item {
   }
   function focusOut() { if (root.shown && root.autoOpened) refocusWait.restart() }
   Timer { id: refocusWait; interval: root.ks.refocus; onTriggered: if (root.shown && root.autoOpened) root.close(true) }
+  // Opening by itself on a tapped text field is off (Henri 2026-11-10): the keyboard comes only from
+  // the window bar's keyboard button. The iPhone's screen view sends real touches too, and a tap
+  // into a field there kept bringing it up on the cast.
+  readonly property bool autoShow: false
   function autoOpen() {
+    if (!root.autoShow) return
     if (root.shown || !Theme.touch || root.terminal) return
     if (root.dismissedWindow && root.activeWindow === root.dismissedWindow) return
     if (Math.abs(root.focusAt - root.touchAt) > root.ks.autoPair) return
