@@ -51,14 +51,22 @@ Item {
     prefsFile.setText(JSON.stringify(p, null, 2) + "\n")
   }
 
-  // ---- history (the akku-test logger writes one CSV a day, a line every 30 s)
-  property var historyPoints: []
-  property var historyStats: null
-  property var historyBars: []
-  property real historyNow: 0
-  property var historyFiles: []
-  property var historyTexts: ({})
-  property var historyParsed: ({})
+  // ---- history (the akku-test logger writes one CSV a day, a line every 30 s; ipad-link
+  //      writes the casting iPad's beside it). historyPoints/Stats/Bars/Now are always this
+  //      machine's (the overview's chart, FullCenter); the History page shows `historyLog`.
+  HistoryLog { id: macLog; prefix: "akku"; dir: root.historyDir; hours: root.historyHours; barCount: root.historyBarCount; active: true }
+  HistoryLog { id: ipadLog; prefix: "ipad"; dir: root.historyDir; hours: root.historyHours; barCount: root.historyBarCount
+    active: root.opened && root.ipadLogged }
+  readonly property var historyPoints: macLog.points
+  readonly property var historyStats: macLog.stats
+  readonly property var historyBars: macLog.bars
+  readonly property real historyNow: macLog.now
+  // the iPad's switch shows once ipad-link has written a file (never on a machine without the iPad)
+  property bool ipadLogged: false
+  readonly property var historySources: ipadLogged ? Model.HISTORY_SOURCES : []
+  readonly property var historySource: (ipadLogged && Model.historySource(pref("historySource", ""))) || Model.historySource(Model.HISTORY_DEFAULT_SOURCE)
+  readonly property var historyLog: historySource.key === "ipad" ? ipadLog : macLog
+  function setHistorySource(key) { var src = Model.historySource(key); if (src && src.key !== historySource.key) savePref("historySource", src.key) }
   readonly property var historyRanges: Model.HISTORY_RANGES
   readonly property var historyRange: Model.historyRange(pref("historyRange", "")) || Model.historyRange(Model.HISTORY_DEFAULT_RANGE)
   readonly property real historyHours: historyRange.hours
@@ -235,36 +243,20 @@ Item {
 
   // ---- history
   function refreshHistory() {
-    var days = Model.historyDays(new Date(), historyHours)
-    var names = days.map(function (d) { return d.name }).join(",")
-    if (names !== historyFiles.map(function (d) { return d.name }).join(",")) { historyFiles = days; return }
-    for (var i = Math.max(0, historyFileViews.count - 2); i < historyFileViews.count; i++) {
-      var fv = historyFileViews.objectAt(i)
-      if (fv) fv.reload()
-    }
+    macLog.refresh()
+    if (ipadLog.active) ipadLog.refresh()
+    if (!ipadProbe.running) ipadProbe.running = true
   }
-  function setHistoryText(name, text) {
-    var t = Object.assign({}, historyTexts); t[name] = text; historyTexts = t
-    Qt.callLater(rebuildHistory)
-  }
-  function rebuildHistory() {
-    var now = new Date(), samples = [], cache = {}
-    for (var i = 0; i < historyFiles.length; i++) {
-      var f = historyFiles[i], text = historyTexts[f.name] || "", c = historyParsed[f.name]
-      if (!c || c.len !== text.length) c = { len: text.length, samples: Model.parseHistoryCsv(text, f.day) }
-      cache[f.name] = c
-      samples = samples.concat(c.samples)
-    }
-    historyParsed = cache
-    historyNow = now.getTime()
-    historyPoints = Model.historyWindow(samples, historyNow, historyHours)
-    historyStats = Model.historyStats(historyPoints)
-    historyBars = Model.historyBuckets(historyPoints, historyNow, historyHours, historyBarCount)
-  }
+  function rebuildHistory() { macLog.rebuild(); if (ipadLog.active) ipadLog.rebuild() }
   function setHistoryRange(key) { var r = Model.historyRange(key); if (r && r !== historyRange) savePref("historyRange", r.key) }
   function setHistoryMetric(key) { var m = Model.historyMetric(key); if (m && m.key !== historyMetric.key) savePref("historyMetric", m.key) }
   // a longer range may need older files first; refreshHistory rebuilds once they are in
   onHistoryRangeChanged: { if (historyStats !== null) refreshHistory(); Qt.callLater(rebuildHistory) }
+  Process {
+    id: ipadProbe
+    command: ["/usr/bin/find", root.historyDir, "-maxdepth", "1", "-name", "ipad-*.csv", "-print", "-quit"]
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.ipadLogged = text.trim() !== "" }
+  }
   function historyWatt(w) { return w === null || w === undefined || !isFinite(w) ? "—" : w.toFixed(1) + " W" }
   function historyValue(v, m) { return v === null || v === undefined || !isFinite(v) ? "—" : v.toFixed(m.decimals) + " " + m.unit }
   function historyAxisLabel(v, m) {
@@ -275,16 +267,16 @@ Item {
   function historyWh(wh) { return wh === null || wh === undefined || !isFinite(wh) ? "—" : wh.toFixed(1) + " Wh" }
   function clockText(t) { return Qt.formatTime(new Date(t), "HH:mm") }
   function durationText(h) { return Model.durationText(h) }
-  readonly property string historyDischargeText: {
-    var st = historyStats
+  function dischargeText(st) {
     if (!st || !st.discharging || st.cycleWh === null || st.cycleStart === null) return ""
     return "This discharge: " + historyWh(st.cycleWh) + " since " + clockText(st.cycleStart)
   }
-  readonly property string historyChargeText: {
-    var st = historyStats
+  function chargeText(st) {
     if (!st || !st.samples || !(st.chargingH > 0)) return ""
     return "Charged " + historyWh(st.chargedWh) + " in " + Model.durationText(st.chargingH)
   }
+  readonly property string historyDischargeText: dischargeText(historyStats)
+  readonly property string historyChargeText: chargeText(historyStats)
 
   // health from the kernel (full / design capacity; UPower leaves it out on some batteries)
   property var kernelInfo: ({})
@@ -368,15 +360,61 @@ Item {
     command: ["/usr/bin/timeout", "-k", "5", "20", "/usr/bin/sudo", "-n", root.helperPath, "status"]
     stdout: CappedCollector { proc: dellRootRefreshProc; onFinished: t => root.updateDellStatus(t) }
   }
-  Instantiator {
-    id: historyFileViews
-    model: root.historyFiles
-    delegate: FileView {
-      required property var modelData
-      path: root.historyDir + "/" + modelData.name
-      printErrors: false
-      onLoaded: root.setHistoryText(modelData.name, text())
-      onLoadFailed: root.setHistoryText(modelData.name, "")
+  // One logger's daily CSVs (`prefix`-<date>.csv in `dir`), cut to the range and bucketed for the bars.
+  // Inactive it reads nothing. Its last two files are read again on every refresh (today grows).
+  component HistoryLog: Item {
+    id: hlog
+    property string prefix: "akku"
+    property string dir: ""
+    property real hours: 6
+    property int barCount: 72
+    property bool active: true
+    property var points: []
+    property var stats: null
+    property var bars: []
+    property real now: 0
+    property var files: []
+    property var texts: ({})
+    property var parsed: ({})
+    function refresh() {
+      if (!active) return
+      var days = Model.historyDays(new Date(), hours, prefix)
+      var names = days.map(function (d) { return d.name }).join(",")
+      if (names !== files.map(function (d) { return d.name }).join(",")) { files = days; return }
+      for (var i = Math.max(0, views.count - 2); i < views.count; i++) {
+        var fv = views.objectAt(i)
+        if (fv) fv.reload()
+      }
+    }
+    function setText(name, text) {
+      var t = Object.assign({}, texts); t[name] = text; texts = t
+      Qt.callLater(rebuild)
+    }
+    function rebuild() {
+      var at = new Date(), samples = [], cache = {}
+      for (var i = 0; i < files.length; i++) {
+        var f = files[i], text = texts[f.name] || "", c = parsed[f.name]
+        if (!c || c.len !== text.length) c = { len: text.length, samples: Model.parseHistoryCsv(text, f.day) }
+        cache[f.name] = c
+        samples = samples.concat(c.samples)
+      }
+      parsed = cache
+      now = at.getTime()
+      points = Model.historyWindow(samples, now, hours)
+      stats = Model.historyStats(points)
+      bars = Model.historyBuckets(points, now, hours, barCount)
+    }
+    onActiveChanged: if (active) refresh()
+    Instantiator {
+      id: views
+      model: hlog.active ? hlog.files : []
+      delegate: FileView {
+        required property var modelData
+        path: hlog.dir + "/" + modelData.name
+        printErrors: false
+        onLoaded: hlog.setText(modelData.name, text())
+        onLoadFailed: hlog.setText(modelData.name, "")
+      }
     }
   }
 

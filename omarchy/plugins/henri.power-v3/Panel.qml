@@ -83,6 +83,8 @@ Panel {
     // history range (15m 30m 1h 3h 6h 12h 24h 3d 7d) and metric (percent watts volts amps)
     function historyRange(key: string): void { if (root.svc) root.svc.setHistoryRange(key) }
     function historyMetric(metric: string): void { if (root.svc) root.svc.setHistoryMetric(metric) }
+    // whose battery the History page shows: mac, or ipad once ipad-link has written its log
+    function historySource(key: string): void { if (root.svc) root.svc.setHistorySource(key) }
     function rangeMenu(open: bool): void { if (open) root.openOn("battery-history"); if (root.pages) root.pages.rangeOpen = open }
     function state(): string {
       return JSON.stringify({ opened: root.opened, page: root.current, depth: stack.depth, loaded: !!root.pages,

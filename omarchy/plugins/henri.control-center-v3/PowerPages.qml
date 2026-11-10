@@ -172,6 +172,7 @@ Item {
     Item {
       id: hp
       readonly property var s: pp.svc
+      readonly property var log: s.historyLog   // this machine's or the casting iPad's
       implicitHeight: hcol.height
       Column {
         id: hcol
@@ -182,31 +183,36 @@ Item {
           PopUpButton { text: hp.s.historyRange.short; open: pp.rangeOpen; onClicked: pp.rangeOpen = !pp.rangeOpen }
         }
         Group {
+          // whose battery: only once the iPad has a log (ipad-link writes it while it casts)
+          Segmented { visible: hp.s.historySources.length > 1
+            options: hp.s.historySources.map(x => x.key); labels: hp.s.historySources.map(x => x.label); current: hp.s.historySource.key
+            onPicked: v => hp.s.setHistorySource(v) }
           // what the bars show: charge, power, voltage or current
           Segmented { options: hp.s.historyMetricKeys; labels: hp.s.historyMetricLabels; current: hp.s.historyMetric.key
             onPicked: v => hp.s.setHistoryMetric(v) }
           VCrossfadeText { x: Theme.layout.module.pad; width: parent.width - 2 * x; height: implicitHeight + Theme.layout.list.gap
             text: graph.readout; tone: "secondary"; color: Theme.r.popover.inkSecondary; pixelSize: Theme.m.type.small }
-          HistoryGraph { id: graph; x: Theme.layout.module.pad; width: parent.width - 2 * x; svc: hp.s }
+          HistoryGraph { id: graph; x: Theme.layout.module.pad; width: parent.width - 2 * x; svc: hp.s; log: hp.log
+            live: hp.s.historySource.key === "mac" }
           Item { width: 1; height: Theme.layout.module.pad }
         }
         Grid {
           id: hgrid
-          visible: hp.s.historyStats !== null && hp.s.historyStats.samples
+          visible: hp.log.stats !== null && hp.log.stats.samples
           columns: 2; spacing: Theme.layout.module.gap
           readonly property real cell: (hcol.width - spacing) / 2
-          VStatTile { width: hgrid.cell; label: "Time on Battery"; value: hp.s.historyStats ? hp.s.durationText(hp.s.historyStats.onBatteryH) : "—" }
-          VStatTile { width: hgrid.cell; label: "Used on Battery"; value: hp.s.historyStats ? hp.s.historyWh(hp.s.historyStats.usedWh) : "—" }
-          VStatTile { width: hgrid.cell; label: "Average Draw"; value: hp.s.historyStats ? hp.s.historyWatt(hp.s.historyStats.avgDrawW) : "—" }
+          VStatTile { width: hgrid.cell; label: "Time on Battery"; value: hp.log.stats ? hp.s.durationText(hp.log.stats.onBatteryH) : "—" }
+          VStatTile { width: hgrid.cell; label: "Used on Battery"; value: hp.log.stats ? hp.s.historyWh(hp.log.stats.usedWh) : "—" }
+          VStatTile { width: hgrid.cell; label: "Average Draw"; value: hp.log.stats ? hp.s.historyWatt(hp.log.stats.avgDrawW) : "—" }
           VStatTile { width: hgrid.cell; label: "A Full Charge Lasts"
-            value: hp.s.historyStats && hp.s.historyStats.runtimeH !== null ? "≈ " + hp.s.durationText(hp.s.historyStats.runtimeH) : "—" }
+            value: hp.log.stats && hp.log.stats.runtimeH !== null ? "≈ " + hp.s.durationText(hp.log.stats.runtimeH) : "—" }
         }
         Group {
           visible: dis.text !== "" || chg.text !== "" || empty.visible
-          Caption { id: dis; visible: text !== ""; topPadding: Theme.layout.list.gap; text: hp.s.historyDischargeText }
-          Caption { id: chg; visible: text !== ""; topPadding: Theme.layout.list.gap; text: hp.s.historyChargeText }
-          Caption { id: empty; visible: hp.s.historyStats !== null && !hp.s.historyStats.samples; topPadding: Theme.layout.list.gap
-            text: "No samples in " + hp.s.historyDir }
+          Caption { id: dis; visible: text !== ""; topPadding: Theme.layout.list.gap; text: hp.s.dischargeText(hp.log.stats) }
+          Caption { id: chg; visible: text !== ""; topPadding: Theme.layout.list.gap; text: hp.s.chargeText(hp.log.stats) }
+          Caption { id: empty; visible: hp.log.stats !== null && !hp.log.stats.samples; topPadding: Theme.layout.list.gap
+            text: graph.live ? "No samples in " + hp.s.historyDir : "No samples in this range. The iPad logs its battery only while it casts." }
         }
       }
       // the range menu drops out of the head's button; a click beside it only closes it
@@ -310,38 +316,42 @@ Item {
   component HistoryGraph: Item {
     id: graph
     property var svc: null
+    property var log: null        // a PowerService HistoryLog: bars, stats, now
+    property bool live: true      // this machine: "Now" is its battery; a logged device reads its last sample
     readonly property real gutter: gutterMetrics.advanceWidth + Theme.layout.list.gap
     readonly property real plotW: Math.max(1, width - gutter)
     readonly property real plotH: Theme.layout.meter.chart * 1.5
-    readonly property real from: svc.historyNow - svc.historyHours * 3600000
+    readonly property real from: log.now - svc.historyHours * 3600000
     readonly property var metric: svc.historyMetric
-    readonly property var axis: Model.historyAxis(svc.historyBars, metric.key)
+    readonly property var axis: Model.historyAxis(log.bars, metric.key)
     readonly property real axisSpan: Math.max(1e-9, axis.max - axis.min)
     readonly property bool multiDay: svc.historyHours > 24
     function barValue(b) { return b ? b[metric.field] : null }
     function valueOf(b) { var v = barValue(b); return v === null || v === undefined || !isFinite(v) ? 0 : Math.max(0, Math.min(1, (v - axis.min) / axisSpan)) }
     function stamp(t) { return multiDay ? Qt.formatDateTime(new Date(t), "ddd HH:mm") : svc.clockText(t) }
-    readonly property int barCount: Math.max(1, svc.historyBars.length)
+    readonly property int barCount: Math.max(1, log.bars.length)
     readonly property real slotW: plotW / barCount
     readonly property real barGap: Math.max(1, Math.round(slotW * 0.3))   // a third of a slot between bars
     property bool grown: false
     Component.onCompleted: Qt.callLater(function () { graph.grown = true })
     property int hoverIndex: -1
-    readonly property var hoverBar: hoverIndex >= 0 ? svc.historyBars[hoverIndex] || null : null
+    readonly property var hoverBar: hoverIndex >= 0 ? log.bars[hoverIndex] || null : null
     readonly property string readout: {
       var b = hoverBar
       if (b) return stamp(b.t0) + " · " + svc.historyValue(barValue(b), metric)
-      var st = svc.historyStats
+      var st = log.stats
       if (!st || !st.samples) return ""
-      if (metric.key === "percent") return "Now " + Math.round(svc.batteryFraction * 100) + " %"
-      return "Now " + svc.historyValue(metric.key === "watts" ? st.lastW : metric.key === "volts" ? st.lastV : st.lastA, metric)
+      // a logged device that stopped logging (the iPad off the cast) says when its last sample was
+      var head = live || log.now - st.lastT <= Model.HISTORY_GAP_MS ? "Now " : stamp(st.lastT) + " · "
+      if (metric.key === "percent") return head + Math.round(live ? svc.batteryFraction * 100 : st.lastPct) + " %"
+      return head + svc.historyValue(metric.key === "watts" ? st.lastW : metric.key === "volts" ? st.lastV : st.lastA, metric)
     }
     implicitHeight: plotH + timeRow.height + Theme.layout.module.pad + legend.height
     height: implicitHeight
     TextMetrics { id: gutterMetrics; font.family: Theme.font; font.pixelSize: Theme.m.type.small; text: "888 W" }
     function xOf(t) { return (t - from) / (svc.historyHours * 3600000) * plotW }
     function yOf(pct) { return plotH - Math.max(0, Math.min(100, pct)) / 100 * plotH }
-    readonly property var ticks: Model.historyTicks(graph.from, svc.historyNow, graph.multiDay ? 7 : 6).ticks
+    readonly property var ticks: Model.historyTicks(graph.from, log.now, graph.multiDay ? 7 : 6).ticks
     function tickText(t) { var d = new Date(t); return multiDay && d.getHours() === 0 && d.getMinutes() === 0 ? Qt.formatDate(d, "ddd") : svc.clockText(t) }
 
     Repeater {
@@ -357,11 +367,11 @@ Item {
     }
     // full-height bars scaled from the baseline: changes animate as a transform
     Repeater {
-      model: graph.svc.historyBars.length
+      model: graph.log.bars.length
       Rectangle {
         id: bar
         required property int index
-        readonly property var bucket: graph.svc.historyBars[index] || null
+        readonly property var bucket: graph.log.bars[index] || null
         readonly property bool low: !!bucket && graph.metric.key === "percent" && bucket.pct <= 20
         x: Math.round(index * graph.slotW + graph.barGap / 2)
         width: Math.max(1, Math.round(graph.slotW - graph.barGap)); height: graph.plotH
@@ -383,7 +393,7 @@ Item {
       width: graph.plotW; height: graph.plotH
       hoverEnabled: true; acceptedButtons: Qt.NoButton
       onExited: graph.hoverIndex = -1
-      onPositionChanged: m => { var i = Math.max(0, Math.min(graph.barCount - 1, Math.floor(m.x / graph.slotW))); graph.hoverIndex = graph.svc.historyBars[i] ? i : -1 }
+      onPositionChanged: m => { var i = Math.max(0, Math.min(graph.barCount - 1, Math.floor(m.x / graph.slotW))); graph.hoverIndex = graph.log.bars[i] ? i : -1 }
     }
     Item {
       id: timeRow

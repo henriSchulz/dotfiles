@@ -377,9 +377,23 @@ function parseDellStatus(raw) {
 // restarting at boot writes no marker) counts as one too.
 var HISTORY_GAP_MS = 150 * 1000
 
-function historyFileName(date) {
+function historyFileName(date, prefix) {
   function pad(n) { return (n < 10 ? "0" : "") + n }
-  return "akku-" + date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate()) + ".csv"
+  return (prefix || "akku") + "-" + date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate()) + ".csv"
+}
+
+// Whose battery the History page shows. The iPad's log comes from ipad-link
+// (~/Projects/ipad-cast) in the same folder and columns, only while it casts.
+var HISTORY_SOURCES = [
+  { key: "mac", label: "MacBook Air", prefix: "akku" },
+  { key: "ipad", label: "iPad", prefix: "ipad" }
+]
+var HISTORY_DEFAULT_SOURCE = "mac"
+
+function historySource(key) {
+  for (var i = 0; i < HISTORY_SOURCES.length; i++)
+    if (HISTORY_SOURCES[i].key === String(key).toLowerCase()) return HISTORY_SOURCES[i]
+  return null
 }
 
 // One day's CSV → samples. `day` is any Date on that day.
@@ -493,6 +507,8 @@ function historyStats(points) {
     discharging: !!last && last.status === "Discharging",
     cycleWh: last && last.status === "Discharging" ? last.cycleWh : null,
     cycleStart: cycleStart,
+    lastT: last ? last.t : null,
+    lastPct: last ? last.pct : null,
     lastW: last ? last.w : null,
     lastV: last ? last.v : null,
     lastA: last ? last.a : null
@@ -617,12 +633,12 @@ function historyRange(key) {
 }
 
 // The daily files a window ending at `now` can touch, oldest first.
-function historyDays(now, hours) {
+function historyDays(now, hours, prefix) {
   var n = Math.min(9, Math.ceil(hours / 24) + 1)
   var out = []
   for (var i = n - 1; i >= 0; i--) {
     var day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i, 12)
-    out.push({ name: historyFileName(day), day: day })
+    out.push({ name: historyFileName(day, prefix), day: day })
   }
   return out
 }
@@ -722,6 +738,9 @@ if (typeof module !== "undefined") {
     HISTORY_DEFAULT_RANGE: HISTORY_DEFAULT_RANGE,
     historyRange: historyRange,
     historyDays: historyDays,
+    HISTORY_SOURCES: HISTORY_SOURCES,
+    HISTORY_DEFAULT_SOURCE: HISTORY_DEFAULT_SOURCE,
+    historySource: historySource,
     historyWattScale: historyWattScale,
     historyAxis: historyAxis,
     HISTORY_METRICS: HISTORY_METRICS,
