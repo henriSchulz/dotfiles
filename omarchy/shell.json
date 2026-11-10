@@ -35,13 +35,13 @@
           "format": "ddd d. MMM HH:mm",
           "formatAlt": "d. MMMM 'KW'ww yyyy",
           "id": "henri.clock-v3",
-          "verticalFormat": "HH\n\u2014\nmm"
+          "verticalFormat": "HH\n—\nmm"
         }
       ]
     },
     "lockLayout": true,
     "position": "top",
-    "transparent": false
+    "transparent": true
   },
   "cloneSourceRestores": [
     "henri.menu",
