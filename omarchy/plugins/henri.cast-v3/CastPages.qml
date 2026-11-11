@@ -124,6 +124,11 @@ Item {
           can: typeof mp.s.i.fast === "boolean"; onSwitched: v => mp.s.setFast(v) }
         ToggleTile { width: mp.third; text: "Microphone"; icon: "mic"; key: "mic"; on: mp.s.tileOn("mic", mp.s.i.mic === true)
           can: typeof mp.s.i.micTablet === "boolean"; visible: can; onSwitched: v => mp.s.setMic(v) }
+        // the iPad's counterpart of its own Use Wi-Fi button: ends a Wi-Fi cast, dimmed over the cable
+        // (mac-cast has its own switches, so not for it)
+        ToggleTile { width: mp.third; text: "End Wi-Fi"; icon: "wifi.slash"; key: "wifiend"; on: false
+          visible: typeof mp.s.i.perfTablet !== "boolean"; can: mp.s.connected && mp.s.i.link === "wifi"
+          onSwitched: mp.s.endWifi() }
       }
 
       VText {

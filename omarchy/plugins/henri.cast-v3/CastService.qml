@@ -85,6 +85,10 @@ Item {
   function setPerf(on) {
     Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.event(\"ipadcast perf " + (on ? "on" : "off") + "\")"])
   }
+  // the iPad's Wi-Fi session ends (ipad-link: SIGUSR1); the iPad's own home offers it again
+  function endWifi() {
+    Quickshell.execDetached(["systemctl", "--user", "kill", "--kill-whom=main", "-s", "USR1", "ipad-link.service"])
+  }
   // Fast Mode: a smaller stream (the tablet scales it up), a few ms less latency (ipadcast, "fast" in cast.json)
   function setFast(on) {
     Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.event(\"ipadcast fast " + (on ? "on" : "off") + "\")"])

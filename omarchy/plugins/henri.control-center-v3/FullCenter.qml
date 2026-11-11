@@ -376,7 +376,8 @@ PanelWindow {
           readonly property bool light: win.ci.kbdlight !== null && win.ci.kbdlight !== undefined
           readonly property bool perf: typeof win.ci.perfTablet === "boolean"
           readonly property bool mic: typeof win.ci.micTablet === "boolean"
-          readonly property int count: 2 + (keys ? 1 : 0) + (light ? 1 : 0) + (perf ? 1 : 0) + (mic ? 1 : 0)
+          readonly property bool wifiEnd: !perf                // the iPad: its Wi-Fi cast ends here
+          readonly property int count: 2 + (keys ? 1 : 0) + (light ? 1 : 0) + (perf ? 1 : 0) + (mic ? 1 : 0) + (wifiEnd ? 1 : 0)
           readonly property real cell: (parent.width - 2 * win.cfg.pad - (count - 1) * spacing) / count
           // a tile shows its new state at the click: the tablet answers only in its next report (want)
           Toggle { width: padTiles.cell; icon: "laptop"; text: "Mac Keys"
@@ -397,6 +398,9 @@ PanelWindow {
           Toggle { width: padTiles.cell; icon: "mic"; text: "Microphone"
             on: !!win.cast && win.cast.tileOn("mic", win.ci.mic === true); can: typeof win.ci.micTablet === "boolean"; visible: padTiles.mic
             onTapped: { var v = !on; win.cast.setMic(v); win.cast.want("mic", v) } }
+          Toggle { width: padTiles.cell; icon: "wifi.slash"; text: "End Wi-Fi"; on: false
+            can: !!win.cast && win.cast.connected && win.ci.link === "wifi"; visible: padTiles.wifiEnd
+            onTapped: win.cast.endWifi() }
         }
       }
     }
