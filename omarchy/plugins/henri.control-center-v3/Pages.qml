@@ -160,6 +160,8 @@ Item {
             width: parent.width; height: connCol.height + 2 * Theme.layout.module.tileInset
             Column {
               id: connCol; x: Theme.layout.module.tileInset; y: Theme.layout.module.tileInset; width: parent.width - 2 * x
+              // two lit rows next to each other keep a gap: their accent washes never touch
+              spacing: Theme.layout.module.tileInset
               VToggleTile { tinted: true; width: parent.width; icon: "wifi"; title: "Wi-Fi"; on: cc.be.wifiOn
                 glyph: cc.be.wifiOn && cc.be.wifiName ? wifiGlyph : null
                 subtitle: !cc.be.wifiOn ? "Off" : cc.be.wifiPending || cc.be.wifiName || "Not Connected"

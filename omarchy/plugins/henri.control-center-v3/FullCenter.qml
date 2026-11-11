@@ -1,11 +1,10 @@
 import QtQuick
-import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import "file:///home/henri/.local/share/velum/qml/Velum"
 
 // Control Center in tablet mode (iPadOS): a finger pulls it down from the top right and it covers
-// the whole screen over a blurred picture of it. Layout = option 1 of lab/web/control-center-full3.html
+// the whole screen on an opaque ground. Layout = option 1 of lab/web/control-center-full3.html
 // (Henri 2026-11-09), every value once:
 //   status line   this machine's battery · the casting tablet's battery · the network · the stream
 //   band          the network as a list | Display and Sound, stretched to the list's height
@@ -13,10 +12,10 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 //   iPad          the tablet's six switches (henri.cast-v3 CastService), only while it is connected
 // A tile that has more opens the island's detail page (Pages, detailsOnly) as a card over it.
 //
-// The picture behind is one capture of the screen per open (ScreencopyView, blurred from a smaller
-// copy): Hyprland's blur is off while a tablet casts, and one capture costs nothing per frame. Under
-// the finger only transform and opacity change: the picture is fully there within backdropBy of the
-// pull, the boxes grow out of the top right corner, one after the other.
+// Behind it an opaque ground (the popover's opaque material), no picture of the screen: the blurred,
+// see-through capture was too busy (Henri 2026-11-11). Under the finger only transform and opacity
+// change: the ground is fully there within backdropBy of the pull, the boxes grow out of the top
+// right corner, one after the other.
 // Closed by a tap beside the boxes, a swipe up (the boxes follow the finger) or Esc.
 //
 //   FullCenter { screen: …; be: be; velum: velum; onDismissed: open = false }
@@ -45,18 +44,8 @@ PanelWindow {
   }
   readonly property real p: Math.max(0, Math.min(1, prog.value))
   readonly property bool shown: open || pulling || prog.moving || prog.value > 0
-  // the user's own Reduce Transparency (Theme's is also on while Hyprland has no blur, as during a
-  // cast — this picture is the shell's own, so it stays)
-  readonly property bool opaque: !!velum && !!velum.values.reduceTransparency
-
-  // ---- the picture behind: taken as the surface comes up, before it covers anything
   onShownChanged: {
-    if (shown) {
-      shot.captureSource = win.screen
-      shot.captureFrame()
-      return
-    }
-    shot.captureSource = null
+    if (shown) return
     detailOpen = false
     details.reset()
   }
@@ -69,7 +58,7 @@ PanelWindow {
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
   anchors { top: true; bottom: true; left: true; right: true }
-  // no compositor blur (the picture is blurred here), no layer animation
+  // no compositor blur (the ground is opaque), no layer animation
   WlrLayershell.namespace: "velum-surface-dismiss"
   WlrLayershell.layer: WlrLayer.Overlay
   property bool focusPrimed: false
@@ -83,37 +72,12 @@ PanelWindow {
   Item {
     id: back
     anchors.fill: parent
-    // the blur is all there within the first share of the pull; the boxes come after it, so the sharp
+    // the ground is all there within the first share of the pull; the boxes come after it, so the
     // screen never shows through half-faded tiles
     opacity: Math.min(1, win.p / win.cfg.backdropBy)
-    ScreencopyView {
-      id: shot
-      anchors.fill: parent
-      live: false
-      paintCursor: false
-    }
-    ShaderEffectSource {
-      id: small
-      anchors.fill: parent
-      sourceItem: shot
-      hideSource: true
-      visible: false
-      textureSize: Qt.size(Math.max(1, Math.round(width / win.cfg.blurDownscale)), Math.max(1, Math.round(height / win.cfg.blurDownscale)))
-    }
-    MultiEffect {
-      anchors.fill: parent
-      source: small
-      visible: shot.hasContent && !win.opaque
-      blurEnabled: true
-      blur: 1
-      blurMax: win.cfg.blur
-      // darker as on iPadOS, so a light app behind does not wash out the tiles
-      brightness: -win.cfg.dim
-    }
-    // the material over it: the island's own, so every tile reads as it does there
     Rectangle {
       anchors.fill: parent
-      color: win.opaque || !shot.hasContent ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+      color: Theme.r.popover.bgOpaque
     }
   }
 
@@ -226,6 +190,8 @@ PanelWindow {
           Column {
             id: connCol
             x: Theme.layout.module.tileInset; y: Theme.layout.module.tileInset; width: parent.width - 2 * x
+            // two lit rows next to each other keep a gap: their accent washes never touch
+            spacing: Theme.layout.module.tileInset
             VToggleTile { tinted: true; width: parent.width; icon: "wifi"; title: "Wi-Fi"; on: !!win.be && win.be.wifiOn
               subtitle: !win.be ? "" : !win.be.wifiOn ? "Off" : win.be.wifiPending || win.be.wifiName || "Not Connected"
               onToggled: win.be.toggleWifi(); onOpened: win.detail("wifi") }
@@ -377,7 +343,7 @@ PanelWindow {
           readonly property bool perf: typeof win.ci.perfTablet === "boolean"
           readonly property bool mic: typeof win.ci.micTablet === "boolean"
           readonly property bool wifiEnd: !perf                // the iPad: its Wi-Fi cast ends here
-          readonly property int count: 2 + (keys ? 1 : 0) + (light ? 1 : 0) + (perf ? 1 : 0) + (mic ? 1 : 0) + (wifiEnd ? 1 : 0)
+          readonly property int count: Math.max(1, visibleChildren.length)
           readonly property real cell: (parent.width - 2 * win.cfg.pad - (count - 1) * spacing) / count
           // a tile shows its new state at the click: the tablet answers only in its next report (want)
           Toggle { width: padTiles.cell; icon: "laptop"; text: "Mac Keys"
