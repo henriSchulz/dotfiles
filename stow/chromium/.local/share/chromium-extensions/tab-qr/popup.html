@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en" data-velum="pearl" data-appearance="auto">
+<head>
+<meta charset="utf-8">
+<title>Tab QR Code</title>
+<link rel="stylesheet" href="velum.css">
+<link rel="stylesheet" href="velum-web.css">
+<link rel="stylesheet" href="popup.css">
+<script type="module" src="popup.js"></script>
+</head>
+<body class="v-root">
+  <!-- Always light: phone cameras want dark modules on a light ground. -->
+  <div class="plate" data-velum="pearl" data-appearance="light">
+    <svg id="code" shape-rendering="crispEdges" aria-hidden="true"><path id="modules"/></svg>
+  </div>
+  <p class="title" id="title"></p>
+  <p class="host" id="host"></p>
+</body>
+</html>

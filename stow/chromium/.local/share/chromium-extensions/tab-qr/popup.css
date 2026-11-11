@@ -1,0 +1,45 @@
+/* Colours, type, radii and spacing come from Velum (velum.css and
+ * velum-web.css link to ~/Projects/velum); only the code's size is drawing
+ * geometry. */
+:root { --qr-size: 216px; /* velum-lint: drawing */ }
+
+/* v-root sits on body: Chromium gives extension pages their own body font. */
+body.v-root {
+  margin: 0;
+  background: var(--v-popover-bg-opaque);
+  width: var(--qr-size);
+  padding: var(--v-space-16);
+  color: var(--v-popover-ink);
+  cursor: default;
+  user-select: none;
+}
+
+.plate {
+  overflow: hidden;
+  border-radius: var(--v-radius-popover);
+  background: var(--v-bg-raised);
+  box-shadow: var(--v-card-shadow);
+}
+.plate svg { display: block; width: 100%; height: auto; aspect-ratio: 1; }
+.plate path { fill: var(--v-ink-primary); }
+body.empty .plate { display: none; }
+
+.title, .host { margin: 0; text-align: center; }
+.title {
+  margin-top: var(--v-space-12);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-weight: var(--v-weight-semibold);
+}
+body.empty .title { margin-top: 0; }
+.host {
+  margin-top: var(--v-space-2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--v-type-small);
+  color: var(--v-popover-ink-secondary);
+}
