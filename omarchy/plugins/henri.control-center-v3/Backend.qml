@@ -513,7 +513,7 @@ Item {
 
   // ---- Hardware (system/henri-hwstat, 2 s while open)
   readonly property string hwStatPath: String(Qt.resolvedUrl("system/henri-hwstat")).replace(/^file:\/\//, "")
-  property var hw: ({ temp: -1, fans: [], freqAvg: 0, freqPeak: 0, freqMax: 0, threads: 0, cores: 0, model: "",
+  property var hw: ({ temp: -1, freqAvg: 0, freqPeak: 0, freqMax: 0, threads: 0, cores: 0, model: "",
                       load1: 0, memTotal: 0, memAvail: 0, swapTotal: 0, swapFree: 0, diskTotal: 0, diskUsed: 0, uptime: 0 })
   property var hwPrev: null
   property int cpuLoad: -1

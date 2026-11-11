@@ -39,7 +39,7 @@ libheif
 
 # Audio. rtkit lets PipeWire run with realtime priority (without it the
 # sound crackles under load); EasyEffects with the LSP and Calf plugins
-# makes up for the missing Waves MaxxAudio on the XPS 13 9310 speakers.
+# for output presets (the M1's speaker DSP comes from asahi-audio).
 rtkit
 easyeffects
 lsp-plugins-lv2

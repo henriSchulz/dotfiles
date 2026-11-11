@@ -51,19 +51,6 @@ if [[ -n $core ]]; then
   (( t >= 0 )) && temp=$(( t / 1000 ))
 fi
 
-fans=""
-dell=$(hwmon_by_name dell_smm || true)
-ddv=$(hwmon_by_name dell_ddv || true)
-if [[ -n $dell ]]; then
-  for i in 1 2 3; do
-    [[ -r $dell/fan${i}_input ]] || continue
-    # dell_smm refuses fan*_label on some models; dell_ddv names the same fans.
-    label=$(cat "$dell/fan${i}_label" "$ddv/fan${i}_label" 2>/dev/null | head -n1)
-    [[ -n $label ]] || label="Fan $i"
-    fans+="${fans:+,}{\"label\":\"${label//\"/}\",\"rpm\":$(read_int "$dell/fan${i}_input")}"
-  done
-fi
-
 mem() { awk -v k="$1:" '$1 == k { print $2; found = 1 } END { if (!found) print 0 }' /proc/meminfo; }
 read -r disk_total disk_used < <(df -B1 --output=size,used / 2>/dev/null | tail -n1)
 read -r load1 _ < /proc/loadavg
@@ -71,8 +58,8 @@ read -r up _ < /proc/uptime
 
 printf '{"cpuTotal":%d,"cpuIdle":%d,"freqAvg":%d,"freqPeak":%d,"freqMax":%d,' \
   "$total" "$idle_all" $(( avg / 1000 )) $(( peak / 1000 )) $(( max / 1000 ))
-printf '"threads":%d,"cores":%d,"model":"%s","temp":%d,"load1":%s,"fans":[%s],' \
-  "$threads" "$cores" "$model" "$temp" "$load1" "$fans"
+printf '"threads":%d,"cores":%d,"model":"%s","temp":%d,"load1":%s,' \
+  "$threads" "$cores" "$model" "$temp" "$load1"
 printf '"memTotal":%d,"memAvail":%d,"swapTotal":%d,"swapFree":%d,' \
   "$(mem MemTotal)" "$(mem MemAvailable)" "$(mem SwapTotal)" "$(mem SwapFree)"
 printf '"diskTotal":%d,"diskUsed":%d,"uptime":%d}\n' "${disk_total:-0}" "${disk_used:-0}" "${up%.*}"

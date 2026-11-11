@@ -4,7 +4,7 @@
   "name": "Power (v3, Velum)",
   "version": "2.0.0",
   "author": "henri",
-  "description": "The battery in the menu bar on Velum: \"84 %\" + the drawn battery; a click grows the right island into the battery menu, the same pages as the Control Center's Battery (henri.control-center-v3 PowerService/PowerPages): overview, charge limit, history from 15 min to 7 days, power profiles, fans, power flow, charge mode and USB",
+  "description": "The battery in the menu bar on Velum: \"84 %\" + the drawn battery; a click grows the right island into the battery menu, the same pages as the Control Center's Battery (henri.control-center-v3 PowerService/PowerPages): overview, history from 15 min to 7 days, power profiles",
   "kinds": [
     "bar-widget"
   ],

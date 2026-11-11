@@ -1,7 +1,7 @@
 #!/bin/bash
 # Continuous battery logging: one CSV per day under ~/Projects/akku-test/verlauf,
-# a line every 30 s. The henri.power plugin's Battery History page and the
-# settings backend both read that folder.
+# a line every 30 s. The Battery History page (henri.control-center-v3, also
+# shown by henri.power-v3) and the settings backend both read that folder.
 #
 #   unit     akku-aufzeichnung.service — stowed by 20-stow.sh
 #   enable   here

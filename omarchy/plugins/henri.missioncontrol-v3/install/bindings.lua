@@ -6,7 +6,7 @@
 -- press, so the overview is on screen the frame the key goes down. Pressing
 -- the same key again closes; another mode's key switches the mode in place.
 -- F8 is only what was free on the machine this was written on -- any key
--- works. On a Dell XPS the F8 key doubles as the display-switch key, so its
+-- works. On laptops whose F8 doubles as the display-switch key, its
 -- XF86Display keysym is bound too, whichever way Fn-Lock is set.
 
 o.bind("F8", "Mission Control", hl.dsp.event("mission-control toggle"))

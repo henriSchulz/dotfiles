@@ -224,8 +224,7 @@ do
   end
 end
 
--- Ziehen ohne Drücken (eingeführt für die Wippen-Mechanik des XPS-Trackpads,
--- oben schwer bis gar nicht klickbar; bleibt auf dem M1, wie am Mac).
+-- Ziehen ohne Drücken, wie am Mac.
 --   * 3 Finger auflegen und bewegen = gedrückt halten und ziehen
 --     (greift dank gepatchtem libinput auch bei schnellem Losziehen,
 --     siehe ~/Projects/dotfiles/packages/libinput-3fg-drag)
@@ -233,11 +232,9 @@ end
 --     Kurz absetzen und weiterziehen geht; losgelassen wird nach ~0,7 s.
 --   * Doppeltippen und beim zweiten Tipp liegen lassen = ziehen; mit
 --     drag_lock darf der Finger kurz hoch, um nachzusetzen.
--- Keine eigene Beschleunigungskurve: die des XPS (custom 1 0 0.7 1.8 3.3 5.2
--- 7.5 10.2) war auf dessen Touchpad abgestimmt und macht den Zeiger auf dem
--- M1-Trackpad viel zu schnell. libinputs Standard (adaptive) gilt.
+-- Keine eigene Beschleunigungskurve: libinputs Standard (adaptive) gilt.
 for _, name in ipairs({
-  "apple-spi-trackpad",                     -- M1 MacBook Air (the XPS was dll0945:00-06cb:cde6-touchpad)
+  "apple-spi-trackpad",                     -- M1 MacBook Air
   "chicony-acer-hawaii-keyboard-touchpad",  -- Acer Switch Alpha 12, keyboard cover
   "ipadcast-touchpad",                      -- that cover's touchpad on the Mac while the tablet casts (ztouch)
 }) do

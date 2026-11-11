@@ -608,7 +608,7 @@ Item {
 
   // ================================================================ Hardware
   // Three rings (CPU, memory, disk) that sweep in when the page shows, the CPU
-  // load as a live strip chart, the programs using the most CPU (btop shows all); fans turn with their speed.
+  // load as a live strip chart, the programs using the most CPU (btop shows all).
   component RingCell: Column {
     id: rcell
     property real value: 0
@@ -702,19 +702,11 @@ Item {
         }
       }
 
-      // -- fans, swap, uptime
+      // -- swap, uptime
       VTile {
         width: parent.width; height: sensors.height + 2 * Theme.layout.module.tileInset
         Column {
           id: sensors; y: Theme.layout.module.tileInset; width: parent.width
-          Repeater {
-            model: hp.hw.fans || []
-            MeterRow {
-              required property var modelData; required property int index
-              text: modelData.label || "Fan " + (index + 1); detail: modelData.rpm + " rpm"; value: modelData.rpm / 6000
-              VFan { anchors.centerIn: parent; size: Theme.layout.icon.regular; rpm: modelData.rpm }
-            }
-          }
           MeterRow { visible: hp.hw.swapTotal > 0; icon: "memory"; text: "Swap"; detail: Math.round(cc.be.swapUsedFrac * 100) + " %"; value: cc.be.swapUsedFrac }
           MRow { clickable: false; icon: "clock"; text: "Uptime"; detail: cc.be.formatUptime(hp.hw.uptime) }
         }

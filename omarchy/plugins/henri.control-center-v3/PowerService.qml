@@ -6,9 +6,8 @@ import "Model.js" as Model
 import "file:///home/henri/.local/share/velum/qml/Velum"
 
 // Everything the battery menu knows, without a face: UPower, the omarchy tools
-// (battery status, power profiles, system stats), the root helper
-// /usr/local/bin/dell-charge-limit (charge thresholds, power flow) and the
-// akku-test history log. Taken over from henri.power-v3
+// (battery status, power profiles, system stats), the kernel's battery uevent
+// and the akku-test history log. Taken over from henri.power-v3
 // (a fork of io.github.nipsen.dell-power, MIT); the Control Center's battery
 // pages (PowerPages.qml) show it, and the right island of the bar shows the
 // same pages through henri.power-v3. `opened` = a battery page is on screen:
@@ -21,19 +20,9 @@ Item {
   property var systemInfo: ({})
   property var profiles: []
   property string activeProfile: ""
-  property var dellStatus: null
-  property bool dellBusy: false
-  property bool dellProbed: false
-  property string dellError: ""
-  property string dellActionOutput: ""
-  property string dellActionError: ""
-  property var dellActionArgs: []
-  property bool dellTriedPkexec: false
-  property bool dellActionHandled: false
-  property var powerChain: null
 
   // ---- settings shared by every instance (Control Center and the bar island):
-  //      ~/.local/state/velum/power.json { historyRange, historyMetric, chargeLimitStep, historyDir }
+  //      ~/.local/state/velum/power.json { historyRange, historyMetric, historySource, historyDir }
   readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/velum/power.json"
   property var prefs: ({})
   FileView {
@@ -77,18 +66,8 @@ Item {
   readonly property string historyDir: String(pref("historyDir", "")) || Quickshell.env("HOME") + "/Projects/akku-test/verlauf"
 
   // Every spawned process runs with absolute executables and a closed, minimal
-  // environment, so a shadowed binary earlier in PATH never runs; the helper
-  // only by its fixed installed path.
-  readonly property string helperPath: "/usr/local/bin/dell-charge-limit"
+  // environment, so a shadowed binary earlier in PATH never runs.
   readonly property var procEnv: ({ "PATH": "/usr/share/omarchy/bin:/usr/bin:/bin" })
-  readonly property int chargeLimitStep: { var s = Number(pref("chargeLimitStep", 5)); return isFinite(s) && s > 0 ? Math.min(60, Math.round(s)) : 5 }
-  readonly property bool dellSupported: dellStatus !== null && dellStatus.ok === true && dellStatus.dell === true
-  readonly property bool dellThresholdsReady: dellSupported && dellStatus.hasThresholds
-  readonly property bool dellWmiReady: dellSupported && dellStatus.hasWmi
-  property bool draggingStart: false
-  property bool draggingStop: false
-  property int previewStart: -1
-  property int previewEnd: -1
 
   readonly property var device: UPower.displayDevice
   readonly property bool batteryPresent: !!(device && device.isPresent)
@@ -124,18 +103,14 @@ Item {
   // ---- overview values
   readonly property string sizeText: {
     var s = String(batteryInfo.size || "").replace(/(\d)([A-Za-z])/, "$1 $2")
-    if (s === "") return "—"
-    return s + (powerChain && powerChain.nominalWh !== null ? " / " + powerChain.nominalWh + " Wh" : "")
+    return s === "" ? "—" : s
   }
-  readonly property string timeLabel: chargeThresholdActive ? "Charge Limit"
-    : discharging ? "Time Left" : charging && timeToLimitText() !== "" ? "Time to Limit" : "Time to Full"
-  readonly property string timeText: chargeThresholdActive
-    ? (dellThresholdsReady ? dellStatus.start + "–" + dellStatus.end + " %" : (batteryInfo.threshold || "—"))
-    : batteryFlowIdle ? "—" : charging && timeToLimitText() !== "" ? timeToLimitText() : (batteryInfo.time || "—")
+  readonly property string timeLabel: chargeThresholdActive ? "Charge Limit" : discharging ? "Time Left" : "Time to Full"
+  readonly property string timeText: chargeThresholdActive ? (batteryInfo.threshold || "—")
+    : batteryFlowIdle ? "—" : (batteryInfo.time || "—")
   readonly property string flowLabel: chargeThresholdActive ? "Battery" : discharging ? "Draw" : "Charging At"
   readonly property string flowText: chargeThresholdActive ? "Holding"
     : batteryFull ? "—"
-    : powerChain && powerChain.batteryW !== null ? signedWatt(powerChain.batteryW)
     : device && Math.abs(device.changeRate) > 0.05 ? Math.abs(device.changeRate).toFixed(1) + " W" : (batteryInfo.rate || "—")
 
   function profileLabel(name) {
@@ -169,76 +144,6 @@ Item {
     activeProfile = profile          // optimistic: the card lights at once, the poll confirms
     actionProc.command = ["/usr/bin/timeout", "-k", "5", "15", "/usr/share/omarchy/bin/omarchy-powerprofiles-set", root.discharging ? "battery" : "ac", profile]
     actionProc.running = true
-  }
-
-  // ---- Dell charge controls
-  function refreshDell() { if (!dellProc.running && !dellBusy) dellProc.running = true }
-  function updateDellStatus(raw) { var parsed = Model.parseDellStatus(raw); if (parsed) dellStatus = parsed }
-  function dellRun(args) {
-    if (dellBusy) return
-    dellError = ""; dellActionOutput = ""; dellActionError = ""
-    dellActionArgs = args; dellTriedPkexec = false; dellActionHandled = false
-    dellBusy = true
-    // sudo -n first (silent with the helper's sudoers rule); without the rule, pkexec once (dialog)
-    dellActionProc.command = ["/usr/bin/timeout", "-k", "5", "120", "/usr/bin/sudo", "-n", root.helperPath].concat(args)
-    dellActionProc.running = true
-  }
-  function onDellActionFinished() {
-    if (dellActionHandled) return
-    dellActionHandled = true
-    if (String(dellActionOutput).trim() === "") {
-      if (!dellTriedPkexec) {
-        dellTriedPkexec = true; dellActionHandled = false; dellActionOutput = ""; dellActionError = ""
-        dellActionProc.command = ["/usr/bin/timeout", "-k", "5", "300", "/usr/bin/pkexec", root.helperPath].concat(dellActionArgs)
-        dellActionProc.running = true
-        return
-      }
-      dellBusy = false
-      var detail = String(dellActionError || "").trim()
-      dellError = "Action cancelled" + (detail !== "" ? " — " + detail : "")
-      refreshDell()
-      return
-    }
-    dellBusy = false
-    var parsed = Model.parseDellStatus(dellActionOutput)
-    if (parsed) {
-      dellStatus = parsed
-      var rawObj = null
-      try { rawObj = JSON.parse(dellActionOutput) } catch (e) { rawObj = null }
-      if (rawObj && rawObj.applied === false) dellError = "Refused by the firmware (read back: " + String(rawObj.readback || "") + ")"
-      refreshDell()
-      return
-    }
-    var msg = ""
-    try { var obj = JSON.parse(dellActionOutput); msg = typeof obj === "string" ? obj : String(obj.error || "") } catch (e) { msg = "" }
-    dellError = msg !== "" ? msg : "Privileged action failed"
-    refreshDell()
-  }
-  // a released threshold marker keeps its preview until the helper has answered
-  onDellBusyChanged: { if (dellBusy) return; if (!draggingStart) previewStart = -1; if (!draggingStop) previewEnd = -1 }
-  function effStart() { return previewStart >= 0 ? previewStart : (dellThresholdsReady ? dellStatus.start : 50) }
-  function effEnd() { return previewEnd >= 0 ? previewEnd : (dellThresholdsReady ? dellStatus.end : 80) }
-  readonly property bool thresholdsLive: dellStatus !== null && dellStatus.mode === "Custom"
-  function applyDellStart(value) { dellRun(["set-start", String(value)]) }
-  function applyDellEnd(value) { dellRun(["set-end", String(value)]) }
-  function thresholdTickText() {
-    var txt = "Charge limit: " + effStart() + " % → " + effEnd() + " %"
-    if (!thresholdsLive) txt += " — inactive (mode " + (dellStatus ? dellStatus.mode : "?") + "). Drag a marker to apply."
-    return txt
-  }
-  function timeToLimitText() {
-    if (!dellThresholdsReady || dellStatus === null || dellStatus.mode !== "Custom") return ""
-    var rate = powerChain && powerChain.batteryW !== null ? powerChain.batteryW : parseFloat(batteryInfo.rate || "")
-    return Model.timeToThresholdText(dellStatus.end, batteryFraction, parseFloat(batteryInfo.size || ""), rate)
-  }
-
-  // ---- power flow
-  function refreshPowerChain() { if (!powerChainProc.running) powerChainProc.running = true }
-  function signedWatt(w) {
-    if (w === null || w === undefined || !isFinite(w)) return "—"
-    var abs = Math.abs(w)
-    if (abs < 0.05) return "0.0 W"
-    return (w > 0 ? "+" : "−") + abs.toFixed(1) + " W"
   }
 
   // ---- history
@@ -300,14 +205,13 @@ Item {
     if (!opened) return
     if (!kernelProc.running) kernelProc.running = true
     historySettle.restart()
-    refresh(); refreshDell(); refreshPowerChain()
-    if (dellStatus === null || !dellWmiReady) dellRootRefreshProc.running = true
+    refresh()
   }
   // reading a day of samples waits until the surface has settled (never a frame of the opening)
   Timer { id: historySettle; interval: Theme.dur("slow") + Theme.delay("settle"); onTriggered: if (root.opened) root.refreshHistory() }
   Component.onCompleted: Qt.callLater(refresh)
 
-  Timer { interval: 5000; running: root.opened; repeat: true; onTriggered: { root.refresh(); root.refreshDell(); root.refreshPowerChain() } }
+  Timer { interval: 5000; running: root.opened; repeat: true; onTriggered: root.refresh() }
   Timer { interval: 30000; running: root.opened; repeat: true; onTriggered: root.refreshHistory() }
 
   Process {
@@ -329,37 +233,6 @@ Item {
     stdout: CappedCollector { proc: systemProc; onFinished: t => root.updateKeyValue(t, "system") }
   }
   Process { id: actionProc; clearEnvironment: true; environment: root.procEnv; onExited: root.refresh() }
-  Process {
-    id: dellProc
-    clearEnvironment: true; environment: root.procEnv
-    // the timeout keeps the probe observable: without the helper the command never starts
-    command: ["/usr/bin/timeout", "-k", "5", "20", root.helperPath, "status"]
-    onExited: root.dellProbed = true
-    stdout: CappedCollector { proc: dellProc; onFinished: t => { root.dellProbed = true; root.updateDellStatus(t) } }
-  }
-  Process {
-    id: dellActionProc
-    clearEnvironment: true; environment: root.procEnv
-    // decided when stdout ends (onExited may come before the output); the timer is the safety net
-    onExited: dellActionDoneTimer.start()
-    stdout: CappedCollector { proc: dellActionProc; onFinished: t => { root.dellActionOutput = t; root.onDellActionFinished() } }
-    stderr: CappedCollector { proc: dellActionProc; onFinished: t => root.dellActionError = t }
-  }
-  Timer { id: dellActionDoneTimer; interval: 150; onTriggered: root.onDellActionFinished() }
-  Process {
-    id: powerChainProc
-    clearEnvironment: true; environment: root.procEnv
-    // RAPL counters are root-only: through the allowlisted helper (sudo -n); without it the flow stays hidden
-    command: ["/usr/bin/timeout", "-k", "5", "20", "/usr/bin/sudo", "-n", root.helperPath, "power-chain"]
-    stdout: CappedCollector { proc: powerChainProc; onFinished: t => { var p = Model.parsePowerChain(t); if (p) root.powerChain = p } }
-  }
-  // silent self-heal of a stale WMI cache (null values written before dell-wmi-sysman was ready)
-  Process {
-    id: dellRootRefreshProc
-    clearEnvironment: true; environment: root.procEnv
-    command: ["/usr/bin/timeout", "-k", "5", "20", "/usr/bin/sudo", "-n", root.helperPath, "status"]
-    stdout: CappedCollector { proc: dellRootRefreshProc; onFinished: t => root.updateDellStatus(t) }
-  }
   // One logger's daily CSVs (`prefix`-<date>.csv in `dir`), cut to the range and bucketed for the bars.
   // Inactive it reads nothing. Its last two files are read again on every refresh (today grows).
   component HistoryLog: Item {

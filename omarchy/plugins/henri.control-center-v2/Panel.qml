@@ -515,7 +515,7 @@ Panel {
 
   // ---- Hardware (system/henri-hwstat, 2 s while open)
   readonly property string hwStatPath: String(Qt.resolvedUrl("system/henri-hwstat")).replace(/^file:\/\//, "")
-  property var hw: ({ temp: -1, fans: [], freqAvg: 0, freqPeak: 0, freqMax: 0, threads: 0, cores: 0, model: "",
+  property var hw: ({ temp: -1, freqAvg: 0, freqPeak: 0, freqMax: 0, threads: 0, cores: 0, model: "",
                       load1: 0, memTotal: 0, memAvail: 0, swapTotal: 0, swapFree: 0, diskTotal: 0, diskUsed: 0, uptime: 0 })
   property var hwPrev: null
   property int cpuLoad: -1
@@ -2380,15 +2380,6 @@ Panel {
             AUi.Stat { width: hwPage.cellWidth; label: "Max clock"; value: root.formatGHz(root.hw.freqMax) }
             AUi.Stat { width: hwPage.cellWidth; label: "Load (1 min)"; value: Number(root.hw.load1).toFixed(2) }
             AUi.Stat { width: hwPage.cellWidth; label: "Temperature"; value: root.hw.temp >= 0 ? root.hw.temp + " °C" : "--" }
-            Repeater {
-              model: root.hw.fans
-              delegate: AUi.Stat {
-                required property var modelData
-                width: hwPage.cellWidth
-                label: modelData.label
-                value: modelData.rpm > 0 ? modelData.rpm + " rpm" : "Idle"
-              }
-            }
           }
           AUi.Separator { width: hwPage.innerWidth }
           AUi.UsageHeader {

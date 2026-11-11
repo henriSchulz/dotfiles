@@ -23,7 +23,7 @@ log "Dictation (voxtype)"
 need_cmd voxtype "run install/10-packages.sh first"
 
 # aarch64 ships a single ONNX build; x86_64 ships one per CPU level
-# (voxtype-onnx-avx512 on the XPS, -avx2 on the Acer tablet). The service's
+# (-avx512 where the CPU has it, -avx2 on the Acer tablet). The service's
 # drop-in runs ~/.local/lib/voxtype/voxtype-onnx, linked here to the right one.
 model=parakeet-tdt-0.6b-v3-int8
 onnx=

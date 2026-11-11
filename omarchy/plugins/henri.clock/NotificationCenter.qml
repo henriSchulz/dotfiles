@@ -329,9 +329,9 @@ Panel {
   // full-res copy when cached, else its thumbnail. Loaded once the Center
   // has settled after opening, never during the slide.
   readonly property string photosDb: Quickshell.env("HOME") + "/.local/share/icloud-photos/catalog.sqlite"
-  // The app: its own install under ~/.local/share where there is one (the XPS), else the
-  // packaged one on PATH (the M1: /usr/bin/icloud-photos). The old fixed path did not exist
-  // here, so a click on the photo did nothing.
+  // The app: its own build under ~/.local/share where there is one, else the packaged
+  // one on PATH (/usr/bin/icloud-photos). The old fixed path alone did not exist on every
+  // machine, so a click on the photo did nothing.
   readonly property string photosApp: 'app="$HOME/.local/share/icloud-photos/bin/icloud-photos"; [ -x "$app" ] || app=icloud-photos; '
 
   property var photo: null

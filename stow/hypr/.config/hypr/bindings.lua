@@ -168,8 +168,8 @@ end)
 --
 -- Warum hier und nicht in voxtypes eigener Hotkey-Erkennung: die liest
 -- /dev/input direkt und braucht dafür Mitgliedschaft in der Gruppe "input".
--- Die fehlt, deshalb hat voxtypes Standard-Hotkey (SCROLLLOCK, den das
--- XPS 13 ohnehin nicht hat) nie ausgelöst. Über Hyprland geht es ohne root.
+-- Die fehlt, deshalb hat voxtypes Standard-Hotkey (SCROLLLOCK, den die
+-- MacBook-Tastatur ohnehin nicht hat) nie ausgelöst. Über Hyprland geht es ohne root.
 --
 -- Nebenwirkung: Hyprland verbraucht den Tastendruck, die rechte Strg wirkt
 -- also nicht mehr als Modifikator. Linke Strg ist unberührt.
@@ -219,12 +219,6 @@ end)
 -- (misc:on_focus_under_fullscreen = 1). Andere Workspaces = Super+Tab.
 -- Früher ein App-Switcher wie ⌘+Tab (Apps über alle Workspaces).
 --
--- Warum Alt und nicht Fn: Fn wird auf dem XPS im Tastatur-Controller selbst
--- verarbeitet und erreicht den Kernel nie als eigene Taste (nachgemessen: Fn+Tab
--- sendet exakt denselben Code wie Tab allein), ist für Hyprland also nicht
--- bindbar. Alt liegt dafür genau dort, wo am Mac ⌘ liegt — links neben der
--- Leertaste.
---
 -- Die Tasten gehen als Hyprland-Ereignis (custom>>app-switcher …) direkt an das
 -- Plugin: kein Prozess pro Taste, also keine Latenz und immer in Reihenfolge.
 hl.unbind("ALT + TAB")
@@ -243,11 +237,9 @@ hl.on("input.keyboard.key", function(keycode, _, state)
 end)
 
 -- Mission Control (henri.missioncontrol) auf F8: die einzige noch freie Taste.
--- Weder Omarchy noch diese Datei hatten F8 belegt, und auch die Medienfunktion
--- der Taste auf dem XPS 13 (Display umschalten, Keysym XF86Display) war ohne
--- Binding -- je nach Fn-Lock kommt das eine oder das andere Keysym an, deshalb
--- beide. F9 (und Shift+F8) = App Exposé (nur die Fenster der aktiven App, über
--- alle Desktops), Ctrl+F8 = Schreibtisch anzeigen. Nochmal drücken schließt,
+-- Weder Omarchy noch diese Datei hatten F8 belegt. F9 (und Shift+F8) = App
+-- Exposé (nur die Fenster der aktiven App, über alle Desktops), Ctrl+F8 =
+-- Schreibtisch anzeigen. Nochmal drücken schließt,
 -- eine andere Variante wechselt den Modus, ohne zu schließen. Als
 -- Hyprland-Ereignis direkt ans Plugin, wie Spotlight und die Switcher: kein
 -- Prozess pro Taste. F9 hatte Omarchy mit voxtype-Push-to-Talk belegt
@@ -267,9 +259,6 @@ hl.unbind("F9")
 o.bind("F9", "App Exposé", hl.dsp.event("mission-control toggle app"))
 o.bind("SHIFT + F8", "App Exposé", hl.dsp.event("mission-control toggle app"))
 o.bind("CTRL + F8", "Show Desktop", hl.dsp.event("mission-control toggle desktop"))
-o.bind("XF86Display", "Mission Control", mission_control_key)
-o.bind("SHIFT + XF86Display", "App Exposé", hl.dsp.event("mission-control toggle app"))
-o.bind("CTRL + XF86Display", "Show Desktop", hl.dsp.event("mission-control toggle desktop"))
 -- Die F3-Taste des M1 (Apple-Tastatur, fnmode=1): ohne Fn schickt sie die
 -- Mission-Control-Taste (KEY_SCALE = XF86LaunchA), mit Fn F3. Beides öffnet
 -- Mission Control wie F8. Ctrl+F3 bleibt „Focus the Dock" (Omarchy).
@@ -295,13 +284,11 @@ o.bind("XF86LaunchB", "Launchpad", hl.dsp.event("launchpad toggle"))
 o.bind("XF86Search", "Launchpad", hl.dsp.event("launchpad toggle"))
 o.bind("F4", "Launchpad", hl.dsp.event("launchpad toggle"))
 
--- Die F8-Taste selbst (ohne Fn) ist auf dem XPS 13 9310 in der Firmware als
--- Windows+P verdrahtet (Dells "Display umschalten") -- per evdev gemessen:
--- Scancode 0xdb (LEFTMETA) + 0x19 (P), von einem echten Super+P nicht zu
--- unterscheiden; nur Fn+F8 sendet F8. Also bekommt Super+P Mission Control
--- (Omarchys "Pseudo window" darauf entfällt) und Super+Shift+P App Exposé
--- (Omarchys "Google Photos"-Webapp entfällt). Super+Ctrl+P bleibt Omarchys
--- Power-Menü; Schreibtisch anzeigen liegt daher nur auf Ctrl+Fn+F8.
+-- Die Display-Taste der Acer-Tastaturhülle (Fn+F5) ist in der Firmware als
+-- Super+P verdrahtet (gemessen in ~/Projects/fkeys), von einem echten Super+P
+-- nicht zu unterscheiden. Also bekommt Super+P Mission Control (Omarchys
+-- "Pseudo window" darauf entfällt) und Super+Shift+P App Exposé (Omarchys
+-- "Google Photos"-Webapp entfällt). Super+Ctrl+P bleibt Omarchys Power-Menü.
 hl.unbind("SUPER + P")
 hl.unbind("SUPER + SHIFT + P")
 o.bind("SUPER + P", "Mission Control", hl.dsp.event("mission-control toggle"))

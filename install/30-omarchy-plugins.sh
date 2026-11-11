@@ -70,8 +70,6 @@ done
 #   henri.dock  — own plugin, the macOS Dock (magnification, bounce, stacks,
 #                 genie minimize, auto-hide) on apple-ui + henri-ui; replaces
 #                 omadock, which stays installed but disabled in shell.json
-#   io.github.nipsen.dell-power — NIPSEN/omarchy-dell-power (MIT) with the
-#                 bar glyph swapped for the macOS battery (HUi.BatteryGlyph)
 for src in "$DOTFILES_ROOT"/omarchy/plugins/*/; do
   [[ -d $src ]] || continue
   id="$(basename "$src")"

@@ -89,17 +89,6 @@ Item {
         }
       }
 
-      // -- the charge limit: the level on a track with the thresholds (drag a marker to change it)
-      Group {
-        visible: ov.s.dellThresholdsReady || ov.s.dellError !== ""
-        title: ov.s.dellThresholdsReady ? "Charge Limit" : ""
-        titleDetail: ov.s.dellThresholdsReady ? ov.s.effStart() + " – " + ov.s.effEnd() + " %" : ""
-        ChargeBar { visible: ov.s.dellThresholdsReady; x: Theme.layout.module.pad; width: parent.width - 2 * x }
-        Caption { visible: ov.s.dellThresholdsReady && !ov.s.thresholdsLive
-          text: "Inactive (mode " + (ov.s.dellStatus ? ov.s.dellStatus.mode : "?") + "). Drag a marker to apply." }
-        Caption { visible: ov.s.dellError !== ""; text: ov.s.dellError; color: Theme.r.danger; topPadding: Theme.layout.list.gap }
-      }
-
       // -- the last hours (opens History)
       VTile {
         id: hist
@@ -143,8 +132,7 @@ Item {
         VStatTile { width: ov.third; label: "Health"; value: ov.s.health >= 0 ? Math.round(ov.s.health * 100) + " %" : "—" }
         VStatTile { width: ov.third; label: "Capacity"; value: ov.s.sizeText }
         VStatTile { width: ov.third; label: "Cycles"; value: ov.s.batteryInfo.cycles || "—" }
-        VStatTile { width: ov.third; label: "Power Source"; value: ov.s.discharging ? "Battery"
-          : ov.s.powerChain && ov.s.powerChain.source === "typec" ? "USB-C" : "Adapter" }
+        VStatTile { width: ov.third; label: "Power Source"; value: ov.s.discharging ? "Battery" : "Adapter" }
       }
 
       // -- power profile as cards
@@ -238,77 +226,6 @@ Item {
   }
 
   // ================================================================ components
-
-  // The charge level on a track, the thresholds drawn onto it: an accent zone between start
-  // and stop, a marker at each end. Drag a marker to change it (the helper switches the mode
-  // to Custom, so an inactive zone comes alive on the first drag).
-  component ChargeBar: Item {
-    id: chargeBar
-    readonly property var s: pp.svc
-    readonly property real trackH: Theme.layout.list.gap
-    readonly property bool low: s.batteryFraction <= 0.2 && s.discharging
-    height: Theme.layout.icon.large + Theme.layout.module.pad
-    Rectangle { id: barTrack; anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-      height: chargeBar.trackH; radius: height / 2; color: Theme.r.popover.switchOff }
-    Rectangle {
-      x: barTrack.width * chargeBar.s.effStart() / 100
-      width: Math.max(0, barTrack.width * (chargeBar.s.effEnd() - chargeBar.s.effStart()) / 100)
-      anchors.verticalCenter: barTrack.verticalCenter; height: barTrack.height; radius: barTrack.radius
-      color: Theme.r.fill.selected
-      opacity: chargeBar.s.thresholdsLive ? 1 : Theme.core.alpha.disabled
-    }
-    VMeter { anchors.left: barTrack.left; anchors.right: barTrack.right; anchors.verticalCenter: barTrack.verticalCenter; height: barTrack.height
-      track: "transparent"; value: chargeBar.s.batteryFraction
-      color: chargeBar.low ? Theme.r.danger : Theme.r.accent.base; colorTop: chargeBar.low ? Theme.r.danger : Theme.r.accent.top }
-    ThresholdMarker { percent: chargeBar.s.effStart(); dragging: chargeBar.s.draggingStart }
-    ThresholdMarker { percent: chargeBar.s.effEnd(); dragging: chargeBar.s.draggingStop }
-    MouseArea {
-      id: barMouse
-      anchors.fill: parent
-      hoverEnabled: true
-      readonly property real grab: Theme.layout.module.pad
-      function tickNear(x) {
-        var sx = barTrack.width * chargeBar.s.effStart() / 100, ex = barTrack.width * chargeBar.s.effEnd() / 100
-        return Math.abs(x - ex) <= grab ? "end" : Math.abs(x - sx) <= grab ? "start" : ""
-      }
-      cursorShape: tickNear(mouseX) !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onPressed: m => {
-        var s = chargeBar.s
-        if (s.dellBusy) return
-        var t = tickNear(m.x)
-        if (t === "end") { s.previewEnd = s.effEnd(); s.draggingStop = true }
-        else if (t === "start") { s.previewStart = s.effStart(); s.draggingStart = true }
-      }
-      onPositionChanged: m => {
-        var s = chargeBar.s
-        if (!s.draggingStart && !s.draggingStop) return
-        var pct = Math.max(0, Math.min(100, m.x / barTrack.width * 100))
-        var snapped = Math.round(pct / s.chargeLimitStep) * s.chargeLimitStep
-        if (s.draggingStop) s.previewEnd = Model.dellClampEnd(snapped, s.effStart())
-        else s.previewStart = Model.dellClampStart(Math.min(snapped, s.effEnd() - Model.DELL_GAP))
-      }
-      // the preview stays until the helper answers
-      onReleased: {
-        var s = chargeBar.s
-        if (s.draggingStop) { s.draggingStop = false; if (s.previewEnd !== s.dellStatus.end) s.applyDellEnd(s.previewEnd); else s.previewEnd = -1 }
-        if (s.draggingStart) { s.draggingStart = false; if (s.previewStart !== s.dellStatus.start) s.applyDellStart(s.previewStart); else s.previewStart = -1 }
-      }
-    }
-  }
-  // start/stop marker: follows the pointer while dragged, glides otherwise
-  component ThresholdMarker: Rectangle {
-    id: marker
-    property int percent: 0
-    property bool dragging: false
-    width: Theme.layout.module.tileInset; height: Theme.layout.icon.large - Theme.layout.separator * 2; radius: width / 2
-    anchors.verticalCenter: parent.verticalCenter
-    color: Theme.r.accent.base
-    x: parent.width * percent / 100 - width / 2
-    opacity: pp.svc.thresholdsLive ? 1 : Theme.core.alpha.disabled
-    scale: dragging ? Theme.scale("lift") : 1
-    Behavior on x { enabled: !marker.dragging; NumberAnimation { duration: Theme.move(Theme.dur("base")); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
-    Behavior on scale { NumberAnimation { duration: Theme.dur("instant"); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curve("out") } }
-  }
 
   // The chosen metric over the window as bars, like the macOS battery graph: accent on
   // battery, green while plugged in, danger at 20 % and below on the charge view; empty

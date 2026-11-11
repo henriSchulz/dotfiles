@@ -10,15 +10,8 @@ same muscle memory as Cmd+Tab on a Mac.
 
 ## Why Alt
 
-Fn is not bindable on this machine. The keyboard controller handles it
-internally and it never reaches the kernel as a key of its own: measured on the
-XPS 13, Fn+Tab sends exactly the same code as Tab alone (`code=15 TAB`, no
-event on `Dell WMI hotkeys` or `Intel HID events`), so Hyprland cannot tell the
-two apart.
-
-Alt is the better key anyway. On a Mac keyboard, Command sits directly left of
-the space bar — on this keyboard that key is Alt. Cmd+Tab and Alt+Tab are the
-same hand movement.
+On a Mac keyboard, Command sits directly left of the space bar — on a PC
+keyboard that key is Alt. Cmd+Tab and Alt+Tab are the same hand movement.
 
 ## Apps, not windows
 

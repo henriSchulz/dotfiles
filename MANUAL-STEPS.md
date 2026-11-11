@@ -58,8 +58,7 @@ do not have to be, because they are a free download:
 ## 3. Fingerprint reader
 
 None on this machine: Touch ID on the M1 MacBook Air has no Linux driver
-under Asahi. The Goodix setup for the XPS 13 9310 (libfprint-tod, the Dell
-blob, PAM lines) is in this file's git history before the M1 move.
+under Asahi.
 
 ## 4. Claude Code
 
@@ -73,7 +72,7 @@ Logging in (`claude` → browser) is per machine.
 | File | Why it is not restored |
 |---|---|
 | `~/.config/omarchy/omasettings.json` | pins a monitor profile by model name. OmaSettings writes it per machine. |
-| `stow/hypr/.config/hypr/monitors.lua` | `gdk_scale` / `monitor_scale` were measured for the XPS 13's 16:10 panel. Set them for the new panel and commit that change. |
+| `stow/hypr/.config/hypr/monitors.lua` | `gdk_scale` / `monitor_scale` are set for the M1 (its panel and the external monitor); the tablet's panel rule is in `hosts/tablet`. On new hardware, set them for its panel and commit that change. |
 | `~/.config/hypr/hyprsunset.conf`, `.luarc.json` | Omarchy generates them. |
 
 An `omarchy update` can reset `~/.config/hypr/*.lua` to stock defaults — it
