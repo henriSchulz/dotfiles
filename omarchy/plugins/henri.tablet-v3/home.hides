@@ -20,9 +20,6 @@ aether
 # Henri, 2026-10-28: Tensaku off the home screen
 dev.tensaku.Tensaku
 
-# Henri, 2026-11-07: the native YouTube app (Tube) off the home screen
-de.henri.Tube
-
 # file handlers — opened from files, never on their own
 imv
 mpv
