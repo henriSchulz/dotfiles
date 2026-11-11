@@ -198,7 +198,8 @@ Item {
   Spring { id: bootIn; preset: Theme.spring("gentle"); target: VBoot.chrome ? 1 : 0 }
   onRecentAppsChanged: VBoot.poke()
   onDockAppsChanged: VBoot.poke()
-  onLayoutChanged: syncTiles()
+  // a folder whose last app went (removed from the home screen) closes
+  onLayoutChanged: { syncTiles(); if (openFolder && !layout.folders[HM.folderKey(openFolder)]) openFolder = "" }
   onOpenFolderChanged: if (openFolder && !layout.folders[HM.folderKey(openFolder)]) openFolder = ""
   FileView {
     id: layoutFile
@@ -222,6 +223,44 @@ Item {
     layoutFile.setText(JSON.stringify({ order: home.savedOrder, folders: home.savedFolders, hidden: hidden.length ? hidden : undefined }, null, 1) + "\n")
   }
   function saveOrder(ids) { saveLayout({ order: ids, folders: home.layout.folders }) }
+  // Removed from this machine's home screen (HomeScreen: the minus badge in edit mode, or Remove from
+  // Home Screen in an icon's menu): an app, a widget, or a folder with all its apps. Saved in
+  // home-layout.json "hidden"; the saved order and folders stay as they were, so the add button puts
+  // an item back in its old place (until the next drop saves the order anew). The launcher and
+  // Spotlight still find the apps.
+  function hideTile(id) {
+    var ids = HM.isFolder(id) ? ((layout.folders[HM.folderKey(id)] || {}).items || []) : [id]
+    if (!ids.length) return
+    var next = Object.assign({}, localHidden)
+    for (var i = 0; i < ids.length; i++) next[ids[i]] = true
+    note("remove " + id)
+    localHidden = next
+    saveLayout({ order: savedOrder, folders: savedFolders })
+    scanApps()
+  }
+  function showTile(id) {
+    if (!localHidden[id]) return
+    var next = Object.assign({}, localHidden)
+    delete next[id]
+    note("restore " + id)
+    localHidden = next
+    saveLayout({ order: savedOrder, folders: savedFolders })
+    scanApps()
+  }
+  // what the add button offers: hidden items that would show again — not apps home.hides, a hidden
+  // category or the dock keep off the grid anyway
+  readonly property var hiddenTiles: {
+    var out = []
+    for (var id in localHidden) {
+      if (knownWidgets[id]) { out.push({ id: id, name: knownWidgets[id].name + " Widget" }); continue }
+      var e = entries[id]
+      if (!e || homeHidden[id] || (pinnedIds.indexOf(id) >= 0 && !gridAlso[id])) continue
+      if (e.cats.some(function (c) { return home.hiddenCategories.indexOf(c) >= 0 })) continue
+      out.push({ id: id, name: e.name })
+    }
+    out.sort(function (a, b) { return a.name.localeCompare(b.name) })
+    return out
+  }
   // a new folder's name, from the categories its apps share (iPadOS names it by the App Store's)
   readonly property var folderNames: [["Office", "Office"], ["Graphics", "Creativity"], ["AudioVideo", "Entertainment"],
     ["Game", "Games"], ["Education", "Education"], ["Network", "Social"], ["Utility", "Utilities"], ["System", "Utilities"]]
@@ -906,7 +945,7 @@ Item {
   property var screenHomes: ({})        // screen name → its interactive home screen (IPC homeIcon)
   property string menuOpenId: ""         // the app whose context menu is open (IPC home: "menu")
   function isNewWindow(a) { return /^new[-_ ]?window$/i.test(a.id || "") }
-  function menuFor(id) {
+  function menuFor(id, onGrid) {
     var e = entries[id]
     if (!e) return []
     var out = []
@@ -916,11 +955,14 @@ Item {
     out.push({ text: "New Window", icon: "plus", action: "new" })
     out.push({ separator: true })
     out.push({ text: "Edit Home Screen", icon: "apps", action: "edit" })
+    // HomeScreen removes it once the lifted icon is back (removed → hideTile)
+    if (onGrid) out.push({ text: "Remove from Home Screen", icon: "minus", danger: true, action: "remove" })
     return out
   }
   function menuChosen(id, entry) {
     note("menu " + id + " " + entry.action + (entry.actionId ? " " + entry.actionId : ""))
     if (entry.action === "edit") { editing = true; return }
+    if (entry.action === "remove") return
     var e = entries[id]
     if (!e) return
     // New Window: the entry's own new-window action when it has one (browsers), else the app again
@@ -1171,6 +1213,9 @@ Item {
           onReordered: function (ids) { home.saveOrder(ids) }
           onFolded: function (id, target) { home.foldApps(id, target) }
           onUnfolded: function (id) { home.saveLayout(HM.unfold(home.layout, id, -1)) }
+          hiddenTiles: home.hiddenTiles
+          onRemoved: function (id) { home.guard("hideTile", function () { home.hideTile(id) }) }
+          onRestored: function (id) { home.guard("showTile", function () { home.showTile(id) }) }
           onFolderRequested: function (id) { home.openFolder = id }
           onTurnPage: function (dir) { home.pageCount = pages; home.turnPage(dir) }
           running: home.runningApps

@@ -2,16 +2,19 @@
 # A tablet rig for the home screen's folders, with its own state: the fake HOME gets its own
 # ~/.local/state/velum (a copy of home-layout.json, never the live one) and ~/.local/share/velum
 # points at THIS checkout (a worktree's tokens, not the main repo's). Then IPC and screenshots.
-#   tests/folders-rig.sh up | shot NAME | call ARGS… | ptr ARGS… | down
+#   tests/folders-rig.sh up | shell | shot NAME | call ARGS… | ptr ARGS… | log | down
+#   RIG=NAME …   another rig with its own state (tests/remove-e2e.sh); NO_LAUNCH=1 starts no app
 set -u
 here=$(cd "$(dirname "$0")" && pwd); shell=$(cd "$here/../.." && pwd); repo=$(dirname "$shell")
 cd "$shell"
-export VELUM_RIG_ID=folders VELUM_TOUCH=1 VELUM_TABLET_LAUNCH=1
+ID=${RIG:-folders}
+export VELUM_RIG_ID=$ID VELUM_TOUCH=1 VELUM_TABLET_LAUNCH=1
+[[ -n ${NO_LAUNCH:-} ]] && unset VELUM_TABLET_LAUNCH
 # its own state: XDG_STATE_HOME is set in the session and would point the shell at the live file
-export XDG_STATE_HOME=$PWD/rig/state/folders/home/.local/state
-export VELUM_EDGE_SOCKET=$PWD/rig/state/folders/edge.sock
+export XDG_STATE_HOME=$PWD/rig/state/$ID/home/.local/state
+export VELUM_EDGE_SOCKET=$PWD/rig/state/$ID/edge.sock
 export VELUM_RIG_PLUGINS="henri.bar-v3 henri.control-center-v3 henri.clock-v3 henri.power-v3 henri.dock-v3 henri.tablet-v3 henri.menu-v3"
-R=rig/state/folders F=$R/home W=1440 H=960
+R=rig/state/$ID F=$R/home W=1440 H=960
 vptr=$shell/henri.launchpad-v3/tests/vptr
 sig() { cat $R/sig 2>/dev/null; }
 nwl() { HYPRLAND_INSTANCE_SIGNATURE= hyprctl instances -j | jq -r --arg s "$(sig)" '.[] | select(.instance==$s) | .wl_socket'; }
@@ -42,6 +45,10 @@ case "${1:-}" in
     rig/rig.sh shell >/dev/null
     for _ in $(seq 20); do sleep 0.5; [[ $(rig/rig.sh call henri.tablet state 2>/dev/null) == *'"active":true'* ]] && break; done
     rig/rig.sh call henri.tablet state | head -c 200; echo ;;
+  # a new shell with this rig's own state (rig.sh alone would take the session's XDG_STATE_HOME)
+  shell)
+    rig/rig.sh shell >/dev/null
+    for _ in $(seq 20); do sleep 0.5; [[ $(rig/rig.sh call henri.tablet state 2>/dev/null) == *'"active":true'* ]] && break; done ;;
   shot) WAYLAND_DISPLAY=$(nwl) timeout 5 grim -o TB "$R/$2.png" && echo "$R/$2.png" ;;
   call) shift; rig/rig.sh call "$@" ;;
   ptr) shift; WAYLAND_DISPLAY=$(nwl) "$vptr/vptr" TB $W $H "$@" ;;

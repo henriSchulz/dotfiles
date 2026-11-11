@@ -473,7 +473,11 @@ Item {
     // where an app's icon sits on a screen's home screen, in screen coordinates (tests aim the finger there)
     function homeIcon(screen: string, id: string): string { var h = homeCtl.screenHomes[screen], r = h ? h.item.iconRect(id, h.item) : null; if (r) r.y += h.top(); return JSON.stringify(r) }
     // folders: the saved layout, the tiles on the grid, the open folder; homeFolder opens one ("" closes)
-    function homeLayout(): string { return JSON.stringify({ order: homeCtl.layout.order, folders: homeCtl.layout.folders, tiles: homeCtl.gridTiles.map(t => t.id), open: homeCtl.openFolder }) }
+    function homeLayout(): string { return JSON.stringify({ order: homeCtl.layout.order, folders: homeCtl.layout.folders, tiles: homeCtl.gridTiles.map(t => t.id), open: homeCtl.openFolder, hidden: Object.keys(homeCtl.localHidden), offer: homeCtl.hiddenTiles, removing: Object.keys(homeCtl.screenHomes).map(k => homeCtl.screenHomes[k].item.removing).filter(Boolean) }) }
+    // edit mode: an item's remove badge and the add button on a screen's home screen, in screen coordinates (null: not there)
+    function homeBadge(screen: string, id: string): string { var h = homeCtl.screenHomes[screen], r = h ? h.item.badgePoint(id) : null; if (r) r.y += h.top(); return JSON.stringify(r) }
+    function homeMenuRow(screen: string, text: string): string { var h = homeCtl.screenHomes[screen], r = h ? h.item.menuRowPoint(text) : null; if (r) r.y += h.top(); return JSON.stringify(r) }
+    function homeAdd(screen: string): string { var h = homeCtl.screenHomes[screen], r = h ? h.item.addPoint() : null; if (r) r.y += h.top(); return JSON.stringify(r) }
     function homeFolder(id: string): string { homeCtl.openFolder = id; return homeCtl.openFolder }
     function homeFold(id: string, target: string): string { homeCtl.foldApps(id, target); return JSON.stringify(homeCtl.layout.folders) }
     function pauseHome(on: string): string { root.homePaused = on === "toggle" ? !root.homePaused : on === "on" || on === "true"; return String(root.homePaused) }

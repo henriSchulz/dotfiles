@@ -41,7 +41,20 @@ Item {
   property real dragX: 0           // its top left corner, in this item's coordinates
   property real dragY: 0
   property int dropIndex: -1       // where it would land
-  readonly property var shown: dragId && dropIndex >= 0 ? HM.moveTo(order, dragId, dropIndex) : order
+  // removing (iPadOS: the minus badge in edit mode, or Remove from Home Screen in an icon's menu):
+  // the item shrinks and fades where it stands, the others close the gap, then `removed` lets
+  // Home.qml hide it — the tiles are rebuilt where they already stand
+  property string removing: ""
+  property string removeAfterMenu: ""   // chosen in the context menu: once the lifted icon is back
+  property string arriving: ""          // put back with the add button: it grows in (only while the tiles are rebuilt)
+  property var hiddenTiles: []          // [{ id, name }] removed from this home screen: the add button's menu
+  property bool addOpen: false
+  property var addRows: []
+  onAddOpenChanged: if (addOpen) addRows = hiddenTiles.map(function (t) { return { text: t.name, icon: "plus", tileId: t.id } })
+  signal removed(string id)
+  signal restored(string id)
+  readonly property var kept: removing ? order.filter(function (id) { return id !== hs.removing }) : order
+  readonly property var shown: dragId && dropIndex >= 0 ? HM.moveTo(kept, dragId, dropIndex) : kept
   // folders: the open one (its id, from Home.qml), the icon a held one would make a folder with
   readonly property var fc: cfg.folder
   property string openFolder: ""
@@ -63,13 +76,16 @@ Item {
   // the one it still lifts while it closes, and its rows (Home.qml)
   property string menuId: ""
   property string menuHeld: ""
-  property var menuEntries: function (id) { return [] }
+  property var menuEntries: function (id, onGrid) { return [] }
   signal menuChosen(string id, var entry)
   readonly property var mc: cfg.menu
   // the rest of the home screen goes under the blurred wallpaper while a menu is open
   readonly property real menuFade: 1 - mc.gridFade * iconMenu.shown
-  onInteractiveChanged: if (!interactive) { menuId = ""; scroll.release() }
-  onEditingChanged: if (editing) menuId = ""
+  onInteractiveChanged: if (!interactive) { menuId = ""; addOpen = false; scroll.release() }
+  onEditingChanged: { if (editing) menuId = ""; else addOpen = false }
+  onHiddenTilesChanged: if (!hiddenTiles.length) addOpen = false
+  // the last page emptied (an item removed): back to the one before
+  onPagesChanged: if (interactive && page > pages - 1) turnPage(pages - 1 - page)
 
   function slotOf(id) { var i = hs.shown.indexOf(id); return i < 0 ? 0 : i }
   // cells: a widget spans several, icons flow around it (HM.place)
@@ -155,25 +171,48 @@ Item {
           readonly property var span: hs.spanOf(appId)
           readonly property string widgetItem: isWidget && photo.current ? String(photo.current.id || "") : ""
           readonly property bool held: hs.dragId === appId
+          readonly property bool gone: hs.removing === appId
           readonly property bool isFolder: !!modelData.folder
           function holds(id) { return isFolder && modelData.items.some(function (a) { return a.id === id }) }
           // the visible body's share of the icon box: a measured icon's scale, a folder's plate
           readonly property real body: isFolder ? Theme.core.surface.appIcon.content : isWidget ? 1 : VIconMetrics.scale(img.source)
           property alias icon: img
+          property alias badge: badge
           // its slot on a spring while the order changes under a held icon; the held one is the finger's
           // (before the shell's entrance, VBoot, it jumps: the layout still settles while the shell loads)
           Spring { id: sx; reduced: Theme.reduceMotion || !VBoot.chrome; preset: Theme.spring("snappy"); target: hs.slotX(tile.slot) }
           Spring { id: sy; reduced: Theme.reduceMotion || !VBoot.chrome; preset: Theme.spring("snappy"); target: hs.slotY(tile.slot) }
           Spring { id: lift; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: tile.held ? Theme.scale("lift") : 1 }
+          // removed: it shrinks and fades where it stood (reduced motion: the fade only); put back: it grows in
+          Spring { id: vanish; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: tile.gone ? 1 : 0 }
+          property real fade: gone ? 0 : 1
+          Behavior on fade { NumberAnimation { duration: Theme.exit(Theme.dur("fast")) } }
+          Spring { id: appear; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: 1 }
+          property bool waiting: false
+          property real keepX: 0
+          property real keepY: 0
+          onGoneChanged: if (gone) { keepX = sx.value; keepY = sy.value }
+          readonly property bool moving: sx.moving || sy.moving || vanish.moving || (gone && fade > 0)
           // lands from where the finger let go
           onHeldChanged: if (!held) { sx.from(hs.dragX - hs.pageX); sy.from(hs.dragY) }
-          Component.onCompleted: { sx.snap(sx.target); sy.snap(sy.target) }
-          x: held ? hs.dragX - hs.pageX : sx.value
-          y: held ? hs.dragY : sy.value
+          Component.onCompleted: {
+            sx.snap(sx.target); sy.snap(sy.target)
+            if (!hs.arriving || (appId !== hs.arriving && !holds(hs.arriving))) return
+            // put back with the add button: it grows in, on its own page
+            waiting = true
+            Qt.callLater(function () {
+              tile.waiting = false
+              appear.from(0)
+              if (tile.pageOf !== hs.page) hs.turnPage(tile.pageOf - hs.page)
+            })
+          }
+          x: held ? hs.dragX - hs.pageX : gone ? keepX : sx.value
+          y: held ? hs.dragY : gone ? keepY : sy.value
           z: held ? 2 : (sx.moving || sy.moving ? 1 : 0)
           width: hs.cellW * span[0]
           height: hs.cellH * span[1]
-          scale: lift.value
+          scale: lift.value * (1 - (1 - hs.ed.removeScale) * vanish.value) * (Theme.scale("iconFrom") + (1 - Theme.scale("iconFrom")) * appear.value)
+          opacity: waiting ? 0 : fade * Math.max(0, Math.min(1, appear.value))
           // the jiggle: every icon swings, neighbours the other way round (iPadOS)
           property real wobble: 0
           rotation: wobble * hs.ed.jiggleAngle * (index % 2 ? 1 : -1)
@@ -245,6 +284,15 @@ Item {
             color: hs.lp.label
             style: Text.Raised
             styleColor: hs.cfg.labelShade
+          }
+          // edit mode: the remove badge on the visible body's top left corner (iPadOS); it pops in
+          // as the jiggle starts, the held icon carries none
+          RemoveBadge {
+            id: badge
+            x: img.x + img.width * (1 - tile.body) / 2 + hs.g.icon * hs.ed.badgeOffset
+            y: img.y + img.height * (1 - tile.body) / 2 + hs.g.icon * hs.ed.badgeOffset
+            size: hs.g.icon * hs.ed.badgeSize
+            shown: hs.editing && !tile.held && !tile.gone
           }
         }
       }
@@ -454,10 +502,23 @@ Item {
           required property int index
           readonly property string appId: modelData.id
           property alias icon: fimg
-          x: hs.fc.panelPad + (index % hs.fc.panelCols) * hs.fcellW
-          y: hs.fc.panelPad + Math.floor(index / hs.fc.panelCols) * hs.cellH
+          property alias badge: fbadge
+          // removing one: it shrinks and fades in its cell, the ones after it close the gap on springs
+          readonly property bool gone: hs.removing === appId
+          readonly property int at: index - (hs.removing && !gone && index > hs.folderIndex(hs.removing) && hs.folderIndex(hs.removing) >= 0 ? 1 : 0)
+          Spring { id: fsx; reduced: Theme.reduceMotion || !hs.removing; preset: Theme.spring("snappy"); target: hs.fc.panelPad + (fcell.at % hs.fc.panelCols) * hs.fcellW }
+          Spring { id: fsy; reduced: Theme.reduceMotion || !hs.removing; preset: Theme.spring("snappy"); target: hs.fc.panelPad + Math.floor(fcell.at / hs.fc.panelCols) * hs.cellH }
+          Spring { id: fvanish; reduced: Theme.reduceMotion; preset: Theme.spring("snappy"); target: fcell.gone ? 1 : 0 }
+          property real fade: gone ? 0 : 1
+          Behavior on fade { NumberAnimation { duration: Theme.exit(Theme.dur("fast")) } }
+          readonly property bool moving: fsx.moving || fsy.moving || fvanish.moving || (gone && fade > 0)
+          Component.onCompleted: { fsx.snap(fsx.target); fsy.snap(fsy.target) }
+          x: fsx.value
+          y: fsy.value
           width: hs.fcellW
           height: hs.cellH
+          scale: 1 - (1 - hs.ed.removeScale) * fvanish.value
+          opacity: fade
           property real wobble: 0
           rotation: wobble * hs.ed.jiggleAngle * (index % 2 ? 1 : -1)
           SequentialAnimation on wobble {
@@ -494,9 +555,21 @@ Item {
             style: Text.Raised
             styleColor: hs.cfg.labelShade
           }
+          RemoveBadge {
+            id: fbadge
+            x: fimg.x + fimg.width * (1 - VIconMetrics.scale(fimg.source)) / 2 + hs.g.icon * hs.ed.badgeOffset
+            y: fimg.y + fimg.height * (1 - VIconMetrics.scale(fimg.source)) / 2 + hs.g.icon * hs.ed.badgeOffset
+            size: hs.g.icon * hs.ed.badgeSize
+            shown: hs.editing && hs.openFolder !== "" && !fcell.gone
+          }
         }
       }
     }
+  }
+  function folderIndex(id) {
+    var items = hs.folderTile ? hs.folderTile.items : []
+    for (var i = 0; i < items.length; i++) if (items[i].id === id) return i
+    return -1
   }
   function folderAppAt(x, y) {
     for (var j = 0; j < folderGrid.count; j++) {
@@ -530,6 +603,70 @@ Item {
   function tileOf(id) {
     for (var j = 0; j < grid.count; j++) { var t = grid.itemAt(j); if (t && t.appId === id) return t }
     return null
+  }
+  // edit mode: the item whose remove badge is under the finger (the open folder's apps, else this page's tiles)
+  function badgeAt(x, y) {
+    if (!hs.editing || hs.removing) return ""
+    var list = hs.openFolder ? folderGrid : grid
+    for (var j = 0; j < list.count; j++) {
+      var t = list.itemAt(j)
+      if (!t || (!hs.openFolder && t.pageOf !== hs.page)) continue
+      if (t.badge.hit(hs, x, y)) return t.appId
+    }
+    return ""
+  }
+  // ---- removing: shrink and fade where it stands, the others close the gap, then Home.qml hides it
+  function remove(id) {
+    if (!id || hs.removing) return
+    hs.removing = id
+    removeWait.restart()
+  }
+  function settling() {
+    for (var j = 0; j < grid.count; j++) { var t = grid.itemAt(j); if (t && t.moving) return true }
+    for (var f = 0; f < folderGrid.count; f++) { var c = folderGrid.itemAt(f); if (c && c.moving) return true }
+    return false
+  }
+  Timer {
+    id: removeWait
+    interval: Theme.delay("settle")
+    repeat: true
+    onTriggered: {
+      if (hs.settling()) return
+      stop()
+      // the tiles are rebuilt without it while `removing` still leaves it out: nothing comes back for a frame
+      var id = hs.removing
+      hs.removed(id)
+      hs.removing = ""
+    }
+  }
+  // where an item's remove badge and the add button sit (centres, in this item's coordinates; IPC for tests)
+  function badgePoint(id) {
+    var list = hs.openFolder ? folderGrid : grid
+    for (var j = 0; j < list.count; j++) {
+      var t = list.itemAt(j)
+      if (!t || t.appId !== id) continue
+      var c = t.badge.mapToItem(hs, t.badge.width / 2, t.badge.height / 2)
+      return { x: c.x, y: c.y, shown: t.badge.shown }
+    }
+    return null
+  }
+  // the centre of the open menu's row named `text` (the context menu or the add menu)
+  function menuRowPoint(text) {
+    var m = hs.addOpen ? addMenu : iconMenu.touchMenu
+    if (!m.open) return null
+    var i = -1
+    for (var k = 0; k < m.rows.length; k++) if (m.rows[k] && m.rows[k].text === text) { i = k; break }
+    if (i < 0) return null
+    var x = m.mx + m.pw / 2, top = -1, bottom = -1
+    for (var y = m.my; y < m.my + m.heightOf(m.rows); y++) if (m.rowAt(x, y) === i) { if (top < 0) top = y; bottom = y }
+    return top < 0 ? null : { x: x, y: (top + bottom) / 2 }
+  }
+  function addPoint() { return addButton.visible ? { x: addButton.x + addButton.width / 2, y: addButton.y + addButton.height / 2 } : null }
+  function openAdd() { if (hs.editing && hs.hiddenTiles.length) hs.addOpen = true }
+  function inAddButton(x, y) {
+    if (!addButton.visible) return false
+    var q = addButton.mapFromItem(hs, x, y)
+    return q.x >= 0 && q.y >= 0 && q.x <= addButton.width && q.y <= addButton.height
   }
   function gridTileAt(x, y) {
     for (var j = 0; j < grid.count; j++) {
@@ -647,15 +784,28 @@ Item {
     property bool menuHold: false      // the press opened the context menu and is still down
     property bool inMenu: false        // the press began on the open context menu
     property bool swallow: false       // the press closed the context menu: nothing else
+    property bool inAdd: false         // the press began on the add menu
+    property bool atAdd: false         // the press began on the add button
+    property string badge: ""          // the press began on this item's remove badge
     property var samples: []
     function down(x, y) {
       x0 = x; y0 = y; lastX = x; moved = false; dragging = false; down0 = true; samples = [[Date.now(), x]]
-      menuHold = false; inMenu = false; swallow = false
+      menuHold = false; inMenu = false; swallow = false; inAdd = false; atAdd = false; badge = ""
       if (hs.menuId) {
         if (iconMenu.contains(x, y)) { inMenu = true; iconMenu.hot = iconMenu.rowAt(x, y) }
         else { swallow = true; hs.menuId = "" }   // a tap beside the menu closes it (iPadOS)
         return
       }
+      if (hs.addOpen) {
+        if (addMenu.contains(x, y)) { inAdd = true; addMenu.hot = addMenu.rowAt(x, y) }
+        else { swallow = true; hs.addOpen = false }
+        return
+      }
+      if (hs.removing) { swallow = true; return }   // one at a time
+      if (hs.inAddButton(x, y)) { atAdd = true; return }
+      // a lift on the badge removes; a finger that moves on lets it be
+      badge = hs.badgeAt(x, y)
+      if (badge) { hs.pressedId = ""; return }
       inFolder = hs.openFolder !== ""
       if (inFolder) { hs.pressedId = hs.folderAppAt(x, y); if (hs.pressedId) hold.restart(); return }
       hs.pressedId = hs.appAt(x, y)
@@ -664,6 +814,9 @@ Item {
     function move(x, y) {
       if (dragging) { hs.dragTo(x, y); return }
       if (swallow) return
+      if (inAdd) { addMenu.hot = addMenu.rowAt(x, y); return }
+      if ((badge || atAdd) && Math.hypot(x - x0, y - y0) > Theme.core.surface.tablet.slop) { badge = ""; atAdd = false; swallow = true }
+      if (badge || atAdd) return
       if (inMenu || menuHold) {
         // a finger slides over the rows; a held icon moved off the menu goes into edit mode in the hand
         iconMenu.hot = iconMenu.rowAt(x, y)
@@ -700,6 +853,9 @@ Item {
       hold.stop(); down0 = false
       if (dragging) { dragging = false; hs.drop(); return }
       if (swallow) { swallow = false; return }
+      if (inAdd) { inAdd = false; var pick = addMenu.hot; if (pick >= 0) addMenu.choose(pick); return }
+      if (atAdd) { atAdd = false; hs.openAdd(); return }
+      if (badge) { var gone = badge; badge = ""; hs.remove(gone); return }
       // lifted on a row chooses it; anywhere else the menu stays open (iPadOS)
       if (inMenu || menuHold) { inMenu = false; menuHold = false; var row = iconMenu.hot; if (row >= 0) iconMenu.choose(row); else iconMenu.hot = -1; return }
       var id = hs.pressedId
@@ -725,7 +881,8 @@ Item {
       hs.pageReleased(fresh && b[0] > a[0] ? (b[1] - a[1]) * 1000 / (b[0] - a[0]) : 0)
     }
     function cancel() {
-      hold.stop(); down0 = false; inFolder = false
+      hold.stop(); down0 = false; inFolder = false; badge = ""; atAdd = false
+      if (inAdd) { inAdd = false; if (!addMenu.busy) addMenu.hot = -1; return }
       if (swallow || inMenu || menuHold) { swallow = false; inMenu = false; menuHold = false; if (!iconMenu.busy) iconMenu.hot = -1; return }
       if (dragging) { dragging = false; hs.drop(); return }
       hs.pressedId = ""; if (moved) hs.pageReleased(0)
@@ -808,14 +965,15 @@ Item {
   function iconBox(id) {
     for (var i = 0; i < dockRow.children.length; i++) {
       var d = dockRow.children[i]
-      if (d.appId === id) { var p = d.mapToItem(hs, 0, 0); return { x: p.x, y: p.y + hs.dockShift, w: d.width, icon: d.modelData.icon } }
+      if (d.appId === id) { var p = d.mapToItem(hs, 0, 0); return { x: p.x, y: p.y + hs.dockShift, w: d.width, icon: d.modelData.icon, dock: true } }
     }
     var t = gridTileAt(finger.x0, finger.y0)
     if (t && t.appId === id) { var q = t.mapToItem(hs, t.icon.x, t.icon.y); return { x: q.x, y: q.y, w: t.icon.width, icon: t.modelData.icon } }
     return null
   }
   function openMenu(id) {
-    var box = iconBox(id), list = hs.menuEntries(id) || []
+    // from the grid it also offers Remove from Home Screen (the dock's apps stay where they are)
+    var box = iconBox(id), list = box ? hs.menuEntries(id, !box.dock) || [] : []
     if (!box || !list.length) return false
     iconMenu.entries = list
     iconMenu.from = box
@@ -830,9 +988,48 @@ Item {
     id: iconMenu
     anchors.fill: parent
     open: hs.menuId !== ""
-    onActiveChanged: if (!active) hs.menuHeld = ""
+    // Remove from Home Screen: the lifted icon goes back first, then it shrinks away in its place
+    onActiveChanged: if (!active) {
+      hs.menuHeld = ""
+      var r = hs.removeAfterMenu
+      hs.removeAfterMenu = ""
+      if (r) hs.remove(r)
+    }
     onCloseRequested: hs.menuId = ""
-    onChosen: function (entry) { hs.menuChosen(hs.menuHeld, entry) }
+    onChosen: function (entry) {
+      if (entry.action === "remove") hs.removeAfterMenu = hs.menuHeld
+      hs.menuChosen(hs.menuHeld, entry)
+    }
+  }
+
+  // edit mode: the add button (iPadOS, top left) puts back what was removed from this home screen;
+  // its menu grows out of it, the finger reaches it through `finger` as the context menu's
+  VButton {
+    id: addButton
+    visible: hs.editing && hs.interactive && hs.hiddenTiles.length > 0
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.topMargin: hs.ed.doneInset
+    anchors.leftMargin: hs.ed.doneInset
+    icon: "plus"
+    kind: "primary"                   // as Done: a normal button vanishes on a light wallpaper
+    onClicked: hs.openAdd()
+  }
+  VTouchMenu {
+    id: addMenu
+    anchors.fill: parent
+    catchOutside: false               // `finger` takes every finger and asks it
+    // taken when it opens: the chosen row leaves hiddenTiles while the menu still closes
+    model: hs.addRows
+    from: ({ x: addButton.x, y: addButton.y, w: addButton.width, h: addButton.height })
+    open: hs.addOpen
+    // the tiles are rebuilt with it while `arriving` names it: it grows in on its page
+    onTriggered: function (entry) {
+      hs.addOpen = false
+      hs.arriving = entry.tileId
+      hs.restored(entry.tileId)
+      hs.arriving = ""
+    }
   }
 
   // edit mode ends with Done (iPadOS, top right), as with a tap on an empty spot

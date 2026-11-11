@@ -15,6 +15,7 @@ Item {
   property string iconSource: ""
   property real pressScale: 1       // the icon's scale under the finger when the menu opens
   property alias hot: menu.hot
+  property alias touchMenu: menu
   readonly property bool busy: menu.busy
   signal chosen(var entry)
   signal closeRequested()
