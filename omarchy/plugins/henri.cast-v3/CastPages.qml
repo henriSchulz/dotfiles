@@ -83,12 +83,14 @@ Item {
       Grid {
         columns: 3; spacing: Theme.layout.module.gap
         VStatTile { width: mp.third; label: "Latency"; value: mp.s.connected ? Math.round(mp.s.i.latency) + " ms" : "—" }
-        VStatTile { width: mp.third; label: "Frame Rate"; value: mp.s.connected ? Math.round(mp.s.i.fps) + " fps" : "—" }
+        VStatTile { width: mp.third; label: "Power Draw"; value: mp.s.watts() }
         VStatTile { width: mp.third; label: "Data Rate"; value: mp.s.connected ? mp.s.rate(mp.s.i.kbit) : "—" }
       }
 
-      // -- its panel
+      // -- its panel, only for a tablet with its own brightness switches (mac-cast); the iPad follows
+      // this Mac's backlight, set in Control Center (Henri 2026-11-11)
       Item {
+        visible: typeof mp.s.i.perfTablet === "boolean"
         width: parent.width; height: Theme.layout.meter.slider
         VFillSlider { width: parent.width; icon: "brightness"
           value: mp.s.i.brightness >= 0 ? mp.s.i.brightness : 0
@@ -96,28 +98,28 @@ Item {
           onMoved: v => mp.s.setBrightness(v) }
       }
 
-      // -- three on/off tiles: this Mac's keyboard and trackpad, the tablet's cover, the cover's light.
+      // -- on/off tiles: this Mac's keyboard and trackpad, the tablet's cover, the cover's light.
       // Input is switched off only until the connection starts over; a tile is dimmed while the
-      // tablet cannot switch it (no cover attached, an old mac-cast)
+      // tablet cannot switch it (no cover attached). The tablet's cover, its light and Power Mode
+      // are left out for a tablet that has none of them (the iPad: null in cast.json, Henri
+      // 2026-11-11); the Grid closes the gaps
       VModuleSection { width: parent.width; text: "Keyboard & Trackpad" }
-      Row {
-        spacing: Theme.layout.module.gap
+      Grid {
+        columns: 3; spacing: Theme.layout.module.gap
         ToggleTile { width: mp.third; text: "Mac"; icon: "laptop"; key: "mac"; on: mp.s.tileOn("mac", mp.s.i.macInput !== false)
           onSwitched: v => mp.s.setInput("mac", v) }
         ToggleTile { width: mp.third; text: "Tablet"; icon: "tablet"; key: "tablet"; on: mp.s.tileOn("tablet", mp.s.i.tabletInput === true)
-          can: typeof mp.s.i.tabletInput === "boolean"; onSwitched: v => mp.s.setInput("tablet", v) }
+          can: typeof mp.s.i.tabletInput === "boolean"; visible: can; onSwitched: v => mp.s.setInput("tablet", v) }
         ToggleTile { width: mp.third; text: "Keyboard Light"; icon: "keyboard.light"; key: "light"; on: mp.s.tileOn("light", mp.s.i.kbdlight === true)
-          can: mp.s.i.keyboard === true; onSwitched: v => mp.s.setKeyboardLight(v) }
-      }
+          can: mp.s.i.keyboard === true; visible: mp.s.i.kbdlight !== null && mp.s.i.kbdlight !== undefined
+          onSwitched: v => mp.s.setKeyboardLight(v) }
 
-      // -- the stream: Power Mode (the tablet's performance profile while casting, smoothest, uses
-      // more battery), Fast Mode (a smaller stream for a few ms less latency), the tablet's
-      // microphone as this Mac's input (off, the tablet captures nothing). A tile is dimmed while
-      // the other side cannot switch it (perfTablet, fast, micTablet absent: an older build)
-      Row {
-        spacing: Theme.layout.module.gap
+        // -- the stream: Power Mode (the tablet's performance profile while casting, smoothest, uses
+        // more battery), Fast Mode (a smaller stream for a few ms less latency), the tablet's
+        // microphone as this Mac's input (off, the tablet captures nothing). A tile is dimmed while
+        // the other side cannot switch it (perfTablet, fast, micTablet absent: an older build)
         ToggleTile { width: mp.third; text: "Power Mode"; icon: "gauge"; key: "perf"; on: mp.s.tileOn("perf", mp.s.i.perf === true)
-          can: typeof mp.s.i.perfTablet === "boolean"; onSwitched: v => mp.s.setPerf(v) }
+          can: typeof mp.s.i.perfTablet === "boolean"; visible: can; onSwitched: v => mp.s.setPerf(v) }
         ToggleTile { width: mp.third; text: "Fast Mode"; icon: "bolt"; key: "fast"; on: mp.s.tileOn("fast", mp.s.i.fast === true)
           can: typeof mp.s.i.fast === "boolean"; onSwitched: v => mp.s.setFast(v) }
         ToggleTile { width: mp.third; text: "Microphone"; icon: "mic"; key: "mic"; on: mp.s.tileOn("mic", mp.s.i.mic === true)

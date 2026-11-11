@@ -205,7 +205,7 @@ PanelWindow {
         Column {
           visible: win.tablet
           anchors.right: parent.right; anchors.rightMargin: win.cfg.pad; anchors.verticalCenter: parent.verticalCenter
-          VText { anchors.right: parent.right; text: win.tablet ? Math.round(win.ci.latency) + " ms · " + Math.round(win.ci.fps) + " fps" : ""
+          VText { anchors.right: parent.right; text: win.tablet ? Math.round(win.ci.latency) + " ms · " + (win.cast ? win.cast.watts() : "") : ""
             color: Theme.r.popover.ink; font.weight: Font.DemiBold }
           VText { anchors.right: parent.right; tone: "secondary"; font.pixelSize: Theme.m.type.small
             text: win.tablet ? win.cast.rate(win.ci.kbit) + " · " + (win.ci.link === "cable" ? "Cable" : "Wi-Fi") : "" }
@@ -370,19 +370,25 @@ PanelWindow {
           id: padTiles
           x: win.cfg.pad; y: padHead.y + padHead.height + win.cfg.inner
           spacing: win.cfg.tileGap
-          readonly property real cell: (parent.width - 2 * win.cfg.pad - 5 * spacing) / 6
+          // the cover's keys, its light and Power Mode only for a tablet that has them (the iPad: null
+          // in cast.json, Henri 2026-11-11); the others share the row
+          readonly property bool keys: typeof win.ci.tabletInput === "boolean"
+          readonly property bool light: win.ci.kbdlight !== null && win.ci.kbdlight !== undefined
+          readonly property bool perf: typeof win.ci.perfTablet === "boolean"
+          readonly property int count: 3 + (keys ? 1 : 0) + (light ? 1 : 0) + (perf ? 1 : 0)
+          readonly property real cell: (parent.width - 2 * win.cfg.pad - (count - 1) * spacing) / count
           // a tile shows its new state at the click: the tablet answers only in its next report (want)
           Toggle { width: padTiles.cell; icon: "laptop"; text: "Mac Keys"
             on: !!win.cast && win.cast.tileOn("mac", win.ci.macInput !== false)
             onTapped: { var v = !on; win.cast.setInput("mac", v); win.cast.want("mac", v) } }
           Toggle { width: padTiles.cell; icon: "tablet"; text: "iPad Keys"
-            on: !!win.cast && win.cast.tileOn("tablet", win.ci.tabletInput === true); can: typeof win.ci.tabletInput === "boolean"
+            on: !!win.cast && win.cast.tileOn("tablet", win.ci.tabletInput === true); can: typeof win.ci.tabletInput === "boolean"; visible: padTiles.keys
             onTapped: { var v = !on; win.cast.setInput("tablet", v); win.cast.want("tablet", v) } }
           Toggle { width: padTiles.cell; icon: "keyboard.light"; text: "Cover Light"
-            on: !!win.cast && win.cast.tileOn("light", win.ci.kbdlight === true); can: win.ci.keyboard === true
+            on: !!win.cast && win.cast.tileOn("light", win.ci.kbdlight === true); can: win.ci.keyboard === true; visible: padTiles.light
             onTapped: { var v = !on; win.cast.setKeyboardLight(v); win.cast.want("light", v) } }
           Toggle { width: padTiles.cell; icon: "gauge"; text: "Power Mode"
-            on: !!win.cast && win.cast.tileOn("perf", win.ci.perf === true); can: typeof win.ci.perfTablet === "boolean"
+            on: !!win.cast && win.cast.tileOn("perf", win.ci.perf === true); can: typeof win.ci.perfTablet === "boolean"; visible: padTiles.perf
             onTapped: { var v = !on; win.cast.setPerf(v); win.cast.want("perf", v) } }
           Toggle { width: padTiles.cell; icon: "bolt"; text: "Fast Mode"
             on: !!win.cast && win.cast.tileOn("fast", win.ci.fast === true); can: typeof win.ci.fast === "boolean"
