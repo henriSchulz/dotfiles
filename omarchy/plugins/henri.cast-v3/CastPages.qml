@@ -100,8 +100,8 @@ Item {
 
       // -- on/off tiles: this Mac's keyboard and trackpad, the tablet's cover, the cover's light.
       // Input is switched off only until the connection starts over; a tile is dimmed while the
-      // tablet cannot switch it (no cover attached). The tablet's cover, its light and Power Mode
-      // are left out for a tablet that has none of them (the iPad: null in cast.json, Henri
+      // tablet cannot switch it (no cover attached). The tablet's cover, its light, Power Mode and
+      // the microphone are left out for a tablet that has none of them (the iPad: null in cast.json, Henri
       // 2026-11-11); the Grid closes the gaps
       VModuleSection { width: parent.width; text: "Keyboard & Trackpad" }
       Grid {
@@ -123,7 +123,7 @@ Item {
         ToggleTile { width: mp.third; text: "Fast Mode"; icon: "bolt"; key: "fast"; on: mp.s.tileOn("fast", mp.s.i.fast === true)
           can: typeof mp.s.i.fast === "boolean"; onSwitched: v => mp.s.setFast(v) }
         ToggleTile { width: mp.third; text: "Microphone"; icon: "mic"; key: "mic"; on: mp.s.tileOn("mic", mp.s.i.mic === true)
-          can: typeof mp.s.i.micTablet === "boolean"; onSwitched: v => mp.s.setMic(v) }
+          can: typeof mp.s.i.micTablet === "boolean"; visible: can; onSwitched: v => mp.s.setMic(v) }
       }
 
       VText {

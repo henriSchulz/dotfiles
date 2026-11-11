@@ -370,12 +370,13 @@ PanelWindow {
           id: padTiles
           x: win.cfg.pad; y: padHead.y + padHead.height + win.cfg.inner
           spacing: win.cfg.tileGap
-          // the cover's keys, its light and Power Mode only for a tablet that has them (the iPad: null
+          // the cover's keys, its light, Power Mode and the microphone only for a tablet that has them (the iPad: null
           // in cast.json, Henri 2026-11-11); the others share the row
           readonly property bool keys: typeof win.ci.tabletInput === "boolean"
           readonly property bool light: win.ci.kbdlight !== null && win.ci.kbdlight !== undefined
           readonly property bool perf: typeof win.ci.perfTablet === "boolean"
-          readonly property int count: 3 + (keys ? 1 : 0) + (light ? 1 : 0) + (perf ? 1 : 0)
+          readonly property bool mic: typeof win.ci.micTablet === "boolean"
+          readonly property int count: 2 + (keys ? 1 : 0) + (light ? 1 : 0) + (perf ? 1 : 0) + (mic ? 1 : 0)
           readonly property real cell: (parent.width - 2 * win.cfg.pad - (count - 1) * spacing) / count
           // a tile shows its new state at the click: the tablet answers only in its next report (want)
           Toggle { width: padTiles.cell; icon: "laptop"; text: "Mac Keys"
@@ -394,7 +395,7 @@ PanelWindow {
             on: !!win.cast && win.cast.tileOn("fast", win.ci.fast === true); can: typeof win.ci.fast === "boolean"
             onTapped: { var v = !on; win.cast.setFast(v); win.cast.want("fast", v) } }
           Toggle { width: padTiles.cell; icon: "mic"; text: "Microphone"
-            on: !!win.cast && win.cast.tileOn("mic", win.ci.mic === true); can: typeof win.ci.micTablet === "boolean"
+            on: !!win.cast && win.cast.tileOn("mic", win.ci.mic === true); can: typeof win.ci.micTablet === "boolean"; visible: padTiles.mic
             onTapped: { var v = !on; win.cast.setMic(v); win.cast.want("mic", v) } }
         }
       }
