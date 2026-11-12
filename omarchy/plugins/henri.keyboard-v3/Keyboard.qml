@@ -38,6 +38,14 @@ import "file:///home/henri/.local/share/velum/qml/Velum/KeyboardLayout.js" as Ke
 // grows into the board's toolbar while the keys slide up under it. Its toolbar's ⌘ opens the shortcuts
 // page; combos go to velum-osk as "combo MODS KEY" (wtype, the only path that keeps the modifiers).
 //
+// Its toolbar's screenshot button (left of the mic, Henri 2026-11-12) takes the screen without the
+// board: the board slides away and the lifted app back down (`away`; fcitx5 stays in on-screen-keyboard
+// mode), after surface.keyboard.dock.shotDelay grim takes that screen into $OMARCHY_SCREENSHOT_DIR
+// (as Omarchy names it), the picture goes to the clipboard, a white flash goes over the screen (as iOS;
+// notifications are off on this desktop — a notification is still sent for when they come back), and the
+// board comes back. Not through omarchy-capture-screenshot: it sets the cursor option with `hyprctl eval
+// hl.config(...)`, which on this machine drops the Lua keybind callbacks (Spotlight stopped working).
+//
 // Its mic key dictates (voxtype record start / stop; lit while voxtype records or transcribes). voxtype
 // pastes with wtype, which fcitx5 takes for a real key: while any dictation runs (also one from the
 // window bar or the hotkey) the bridge is told "hold on", so that key does not close the keyboard.
@@ -246,11 +254,47 @@ Item {
   function lift() {
     var a = ["off"]
     var sc = Quickshell.screens.filter(function (s) { return s.name === root.ownScreen })[0]
-    if (root.shown && sc) a = [String(Math.round(sc.y + sc.height - root.kbHeight)), String(root.kd.caretMargin)]
+    if (root.shown && !root.away && sc) a = [String(Math.round(sc.y + sc.height - root.kbHeight)), String(root.kd.caretMargin)]
     var l = root.lifts.slice(-9); l.push(a.join(" ")); root.lifts = l
     Quickshell.execDetached(["hyprctl", "caretlift"].concat(a))
   }
   onScreenNameChanged: if (root.shown) { announce(); lift() }
+
+  // ---- the toolbar's screenshot ----------------------------------------------------------------------
+  property bool away: false           // the board is out of the picture for a screenshot (still open)
+  onAwayChanged: if (root.shown) lift()
+  property var shots: []              // for tests: the files taken (the rig takes none)
+  property bool flashing: false       // the shot's flash is on screen
+  function shoot() {
+    if (root.away || !root.shown) return
+    root.away = true
+    shotWait.restart()
+  }
+  Timer {
+    id: shotWait
+    interval: root.kd.shotDelay
+    onTriggered: {
+      var dir = Quickshell.env("OMARCHY_SCREENSHOT_DIR") || (Quickshell.env("HOME") + "/Pictures/Screenshot")
+      var file = dir + "/screenshot-" + Qt.formatDateTime(new Date(), "yyyy-MM-dd_HH-mm-ss") + ".png"
+      var l = root.shots.slice(-9); l.push(file); root.shots = l
+      if (root.inRig) { root.away = false; root.flashing = true; return }
+      shot.file = file
+      shot.command = ["sh", "-c", "mkdir -p \"$(dirname \"$1\")\" && grim -o \"$0\" \"$1\"", root.ownScreen, file]
+      shot.running = true
+    }
+  }
+  Process {
+    id: shot
+    property string file: ""
+    onExited: function (code) {
+      root.away = false
+      if (code !== 0) { console.warn("henri.keyboard: screenshot failed", code); return }
+      root.flashing = true
+      Quickshell.execDetached(["sh", "-c", "wl-copy --type image/png < \"$0\"", shot.file])
+      Quickshell.execDetached(["omarchy-notification-send", "--image", shot.file, "Screenshot saved to clipboard and file",
+                               "Tap to edit", "--exec", "tensaku-edit", shot.file])
+    }
+  }
 
   function send(line) {
     if (root.inRig) { var l = root.sent.slice(-19); l.push(line); root.sent = l }
@@ -394,6 +438,9 @@ Item {
     // rig: a toolbar button by name (esc, tab, ctrl, shortcuts, left, up, down, right, undo, redo, paste, mic, hide)
     function tool(name: string): bool { return root.board ? root.board.tool(name) : false }
     function lifts(): string { return JSON.stringify(root.lifts) }
+    // the toolbar's screenshot button; `shots` = the files it took (the rig takes none, only notes the name)
+    function screenshot(): void { root.shoot() }
+    function shots(): string { return JSON.stringify({ away: root.away, flashing: root.flashing, files: root.shots }) }
     function close(): void { root.dismiss() }
     // rig: a line as the bridge would print it ("focus in", "focus out", "mode physical" …)
     function bridgeSays(line: string): void { root.bridgeLine(line) }
@@ -428,6 +475,28 @@ Item {
   }
 
   // ---- the surface ------------------------------------------------------------------------------
+  // the shot taken: a white flash over that screen fades out, no input
+  Variants {
+    model: Quickshell.screens.filter(function (s) { return root.flashing && s.name === root.ownScreen })
+    PanelWindow {
+      required property var modelData
+      screen: modelData
+      anchors { top: true; bottom: true; left: true; right: true }
+      exclusionMode: ExclusionMode.Ignore
+      color: "transparent"
+      mask: Region {}
+      WlrLayershell.namespace: "velum-shot-flash"
+      WlrLayershell.layer: WlrLayer.Overlay
+      WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+      Rectangle {
+        anchors.fill: parent
+        color: root.kd.flashColor
+        opacity: root.kd.flashOpacity
+        NumberAnimation on opacity { to: 0; duration: Theme.reduceMotion ? 0 : root.kd.flash; onFinished: root.flashing = false }
+      }
+    }
+  }
+
   // one window per screen; the board shows on the screen the last finger was on (ownScreen). In tablet
   // mode the windows stay mapped, empty and without input while the board is away: mapping one costs
   // 100–200 ms, and the window bar's plate must be drawn on in the very next frame.
@@ -439,7 +508,7 @@ Item {
       required property var modelData
       screen: modelData
       readonly property bool mine: modelData.name === root.ownScreen
-      readonly property bool up: mine && root.shown
+      readonly property bool up: mine && root.shown && !root.away
       onMineChanged: if (mine) root.board = keys
       anchors { bottom: true; left: true; right: true }
       implicitHeight: root.kbHeight
@@ -481,6 +550,8 @@ Item {
           id: keys
           anchors.fill: parent
           dock: true
+          screenshot: true
+          onScreenshotRequested: root.shoot()
           title: root.appTitle
           // the toolbar's buttons come only once the plate has landed (and are out while the board is away)
           toolsShown: win.up && !plate.visible && !root.morphFrom

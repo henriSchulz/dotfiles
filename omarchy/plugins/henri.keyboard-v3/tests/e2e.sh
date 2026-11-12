@@ -96,6 +96,12 @@ want K21 "the toolbar's mic starts a dictation and holds the bridge" "$(calls),$
 shot K21-dictating
 pt m "$(rtool 1)" "$TY" d s 40 u; sleep 1
 want K22 "tapped again it stops; idle lets the bridge go" "$(calls),$(st | jq -r .voxState),$(sent | awk -F'|' '{print $NF}'),$(st | jq .shown)" "record stop,idle,hold off,true"
+# the camera left of the mic: the board leaves the picture (and the lift goes), the shot is taken (the rig
+# only notes its name), the board comes back
+pt m "$(rtool 2)" "$TY" d s 40 u                  # pt waits 0.25 s: the shot comes after shotDelay
+want K30 "the toolbar's camera takes the board out of the picture" "$(c omarchy.keyboard shots | jq .away),$(c omarchy.keyboard lifts | jq -r '.[-1]')" "true,off"
+sleep 1
+want K31 "then the shot is taken and the board comes back" "$(c omarchy.keyboard shots | jq '.files | length'),$(c omarchy.keyboard shots | jq .away),$(st | jq .shown),$(c omarchy.keyboard lifts | jq -r '.[-1]')" "1,false,true,$(( $(hyprctl monitors -j | jq '.[] | select(.name == "TB") | .y') + top )) 12"
 # .?123: first key of the bottom row (2 columns)
 pt m "$(col 0 2)" "$(row 4)" d s 40 u
 want K09 ".?123 turns the page" "$(st | jq -r .page)" "symbols"
