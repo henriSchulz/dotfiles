@@ -230,10 +230,12 @@ Item {
         return Math.max(lo, Math.min(hi, cy - height / 2))
       }
       Spring { id: handS; preset: sw.cfg.enterSpring; reduced: Theme.reduceMotion; target: 0 }
-      readonly property real hand: takenOver ? handS.value : 0
       // a hand-over waiting for its card's picture: nothing of the switcher shows yet, the backdrop neither (it
-      // rose over the owner's card meanwhile and showed through it for a frame before the card came, 2026-11-12)
+      // rose over the owner's card meanwhile and showed through it for a frame before the card came, 2026-11-12).
+      // The hand stands at 1 by itself meanwhile, not by handS: in a row made for this open the Spring's own
+      // onCompleted (after this item's) set it back to 0, and the row stood small with icon placeholders
       readonly property bool waiting: takenOver && handAddress === ""
+      readonly property real hand: takenOver ? (waiting ? 1 : handS.value) : 0
       Connections { target: sw; function onProgressChanged() { if (sw.progress <= 0) root.takenOver = false } }
       // its card and its picture first (the Home button warms nothing: an icon placeholder stood
       // full screen for a moment); at most handWait, then it goes as it is

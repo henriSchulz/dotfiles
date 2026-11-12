@@ -3,14 +3,19 @@
 # QS 1440 × 960, the backend never live) with a real pointer — the virtual pointer of
 # henri.launchpad-v3/tests/vptr. A finger reaches Quickshell as a mouse here; real touch only on the device.
 # Positions are the landscape layout at 1440 × 960 (panel at 24,24, 480 wide); the S cases restart the harness at
-# 1024 × 768 (the iPad cast) and find everything by name.
+# 1024 × 768 (the iPad cast) and find everything by name. The A cases (sound) read the real volume and default
+# devices before and after (wpctl get-volume, pactl get-default-sink|source) and expect them unchanged.
 #   tests/qs-harness/e2e.sh [CASE-PREFIX]      KEEP=1 leaves the harness running; QS_RIG_ID=x a rig of its own
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 H="$here/harness.sh"
 FILTER=${1:-}
-"$H" up light >/dev/null || { echo "harness did not come up"; exit 1; }
 STATE=$here/../../../rig/state/${QS_RIG_ID:-v4qs}/state/velum/tablet-qs.json
+# a tile order saved before the Sound tile existed (version 1, no `known`): read at the start below (V01)
+mkdir -p "$(dirname "$STATE")"
+printf '{ "version": 1, "tiles": ["dnd", "wifi", "bluetooth", "night", "cast"] }\n' > "$STATE"
+"$H" up light >/dev/null || { echo "harness did not come up"; exit 1; }
+v1tiles=$("$H" call tiles 2>/dev/null)
 "$H" call setTiles "wifi bluetooth dnd dark night airplane saver rotate cast" >/dev/null
 sleep 0.5
 
@@ -186,6 +191,68 @@ if runs T01; then opened; settle
     want T01 "the Tablet page names the casting tablet (ipad-link's journal)" "$(st .tabletName)" "${name:-Tablet}"
     [[ -n $name ]] && want T02 "its history is the file named after it" "$(st .tabletLog)" "$(tr 'A-Z ' 'a-z-' <<<"$name")"
   else echo "  skip  T01   no tablet casts right now"; fi
+fi
+
+# ---- sound: the volume slider under brightness, the Sound tile (mute, its details), outputs / inputs / Sound
+# settings in the details — all dry: Henri's volume, mute and default devices stay as they are
+if runs V01; then
+  want V01 "a version-1 tile order gets the new Sound tile after Bluetooth" "$v1tiles" '["dnd","wifi","bluetooth","sound","night","cast"]'
+fi
+if runs A01; then
+  real() { echo "$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null)|$(pactl get-default-sink 2>/dev/null)|$(pactl get-default-source 2>/dev/null)"; }
+  sound() { c sound | jq -r "$1"; }
+  before=$(real)
+  c setTiles "wifi bluetooth sound dnd dark night airplane saver rotate cast" >/dev/null
+  opened; c tab 0 >/dev/null; settle
+  read -r bx by <<<"$(at slider)"; read -r vx vy <<<"$(at volume)"
+  want A01 "the volume slider stands under the brightness slider" "$([[ -n $vy && $vy -gt $by && $vx == "$bx" ]] && echo below)" "below"
+  want A02 "it shows the default output's volume" "$(st .volume)" "$(sound '.reported * 100 | round')"
+  n=$(logs | grep -c 'wpctl set-volume')
+  pt m $((vx + 120)) "$vy" d g $((vx - 120)) "$vy" 8 16 u; settle 0.4
+  want A03 "a finger drags it lower; logged once, on release (dry wpctl set-volume)" \
+    "$([[ $(st .volume) -lt $(sound '.reported * 100 | round') ]] && echo lower),$(( $(logs | grep -c '^dry wpctl set-volume ') - n ))" "lower,1"
+  read -r x y <<<"$(at tile-sound)"
+  tap "$x" "$y"; settle 0.4
+  want A04 "a tap on the Sound tile mutes (dry wpctl set-mute … 1), the slider shows the muted symbol" \
+    "$(st .muted),$(logs | tail -1 | sed 's/set-mute [^ ]* /set-mute ID /'),$(sound .icon)" "true,dry wpctl set-mute ID 1,sound.mute"
+  pt m $((vx - 100)) "$vy" d g $((vx + 60)) "$vy" 6 16 u; settle 0.4
+  want A05 "moving the slider up unmutes" "$(st .muted),$(logs | grep -c 'set-mute [^ ]* 0$')" "false,1"
+  scans=$(logs | grep -c 'wifi rescan')
+  tap $((x + 85)) "$y"; settle
+  want A06 "the chevron on Sound opens its details (and nothing of Wi-Fi's: no scan)" "$(st .detail),$(logs | grep -c 'wifi rescan')" "sound,$scans"
+  rows=$(c sound)
+  if pactl list sinks short 2>/dev/null | grep -q ipad_speakers; then
+    want A07 "the casting iPad's speakers are an output, with the tablet symbol" \
+      "$(jq -r '.outputs[] | select(.name == "ipad_speakers") | .icon' <<<"$rows"),$([[ -n $(at output-ipad_speakers) ]] && echo shown)" "tablet,shown"
+  else echo "  skip  A07   no ipad_speakers sink (no cast)"; fi
+  # unplugged outputs (every port "not available") and virtual ones stay out unless they are the default
+  gone=$(pactl -f json list sinks | jq -r --arg d "$(pactl get-default-sink)" '.[] | select(.name != $d) | select(((.ports | length) > 0 and all(.ports[]; .availability == "not available")) or .properties["node.virtual"] == "true") | .name' | sort)
+  shown=$(jq -r '.outputs[].name' <<<"$rows" | sort)
+  want A08 "unplugged and virtual outputs are not listed (Easy Effects, the mic chain)" "$(comm -12 <(echo "$gone") <(echo "$shown") | wc -l)" "0"
+  want A09 "the default output and input are marked" "$(jq -r '[.outputs[] | select(.active)] | length' <<<"$rows"),$(jq -r '[.inputs[] | select(.active)] | length' <<<"$rows")" "1,1"
+  other=$(jq -r '[.outputs[] | select(.active | not)][0] | "\(.id) \(.name)"' <<<"$rows")
+  if [[ $other != "null null" ]]; then
+    tapAt "output-${other#* }"; settle 0.4
+    want A10 "a tap on another output picks it (dry omarchy-audio-output-set-default ID NAME)" \
+      "$(logs | tail -1),$(sound .sink)" "dry omarchy-audio-output-set-default $other,${other#* }"
+  else echo "  skip  A10   one output only"; fi
+  inrow=$(jq -c '[.inputs[] | select(.active | not)][0]' <<<"$rows")
+  if [[ $inrow != null ]]; then
+    name=$(jq -r .name <<<"$inrow"); mon=$(jq -r 'if .monitor then .name + ".monitor" else .name end' <<<"$inrow")
+    tapAt "input-$name"; settle 0.4
+    want A11 "a tap on another input picks it (dry pactl set-default-source)" "$(logs | tail -1),$(sound .source)" "dry pactl set-default-source $mon,$name"
+  else echo "  skip  A11   one input only"; fi
+  tapAt sound-switch; settle 0.4
+  want A12 "the switch in the details mutes" "$(st .muted),$(logs | tail -1 | sed 's/set-mute [^ ]* /set-mute ID /')" "true,dry wpctl set-mute ID 1"
+  tapAt sound-settings; settle
+  want A13 "Sound settings: System Settings on its Sound page (dry), the shade closes" \
+    "$(logs | tail -1),$(st .open)" "dry uwsm-app -- omarchy-settings open sound,false"
+  opened; c tab 0 >/dev/null; settle
+  read -r x y <<<"$(at tile-sound)"; pt m "$x" "$y" d s 700 u; settle
+  want A14 "holding the Sound tile opens its details" "$(st .detail)" "sound"
+  c detail "" >/dev/null; c close >/dev/null; settle
+  want A15 "nothing reached the system: volume, mute, default output and input as before" "$(real)" "$before"
+  c setTiles "wifi bluetooth dnd dark night airplane saver rotate cast" >/dev/null
 fi
 
 # ---- the dry run: nothing reached the system (reads asked for something, they changed nothing)

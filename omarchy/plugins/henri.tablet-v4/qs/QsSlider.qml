@@ -1,7 +1,7 @@
 import QtQuick
 import "file:///home/henri/.local/share/velum/qml/Velum"
 
-// The brightness slider (Android 12+, lab QuickSettings.jsx): a thick full-round track, the accent fill with
+// A Quick Settings slider — brightness, volume (Android 12+, lab QuickSettings.jsx): a thick full-round track, the accent fill with
 // the symbol inside it; a finger sets the value where it lands and drags it. The fill never changes size: a
 // fixed round cap at the left and a full-width round bar that slides (transform only), clipped at the cap's
 // middle, so nothing is laid out while the finger moves. `preventStealing`: the shade's swipes never take it.

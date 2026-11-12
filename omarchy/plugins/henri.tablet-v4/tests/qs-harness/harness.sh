@@ -1,6 +1,6 @@
 #!/bin/bash
 # The Quick Settings harness (henri.tablet-v4/qs) in a nested Hyprland, never on Henri's screen:
-#   - the nested compositor of shell/rig/rig.sh (VELUM_RIG_ID=v4qs, hidden on the live workspace name:spare),
+#   - the nested compositor of shell/rig/rig.sh (VELUM_RIG_ID=v4qs, hidden on the live workspace name:velum-rig),
 #   - a headless output QS inside it (QS_W × QS_H, default the Acer's 1440 × 960) for grim,
 #   - a plain Quickshell running tests/qs-harness/shell.qml with a copy of qs/ whose Velum import points at
 #     THIS checkout, its own XDG_STATE_HOME (tablet-qs.json) and XDG_CACHE_HOME,
@@ -17,6 +17,8 @@
 set -u
 here=$(cd "$(dirname "$0")" && pwd); plugin=$(cd "$here/../.." && pwd); shell=$(dirname "$plugin"); repo=$(dirname "$shell")
 export VELUM_RIG_ID=${QS_RIG_ID:-v4qs}
+# a hidden workspace of its own (as material-rig.sh): name:spare, rig.sh's default, can be the screen Henri looks at
+export VELUM_RIG_WS=${VELUM_RIG_WS:-name:velum-rig}
 R=$shell/rig/state/$VELUM_RIG_ID; RUN=$R/qs-run; SHOTS=${SHOTS:-$R/shots}
 W=${QS_W:-1440} H=${QS_H:-960}
 MARK="qs-harness-$VELUM_RIG_ID"

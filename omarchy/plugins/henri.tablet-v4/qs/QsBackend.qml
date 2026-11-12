@@ -4,6 +4,7 @@ import Quickshell.Io
 import Quickshell.Bluetooth
 import Quickshell.Hyprland
 import Quickshell.Networking
+import Quickshell.Services.Pipewire
 import Quickshell.Services.UPower
 import "file:///home/henri/.local/share/velum/qml/Velum"
 
@@ -13,7 +14,8 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 //   QsBackend { id: qsb; live: true; active: shade.shown; velum: <the owner's VelumSettings> }
 //
 // live     false (the default): every command that would change the system — Wi-Fi, Bluetooth,
-//          brightness, Night Light, power, the casting tablet's switches, Wi-Fi / Bluetooth connections —
+//          brightness, volume, mute, the default output / input, Night Light, power, the casting tablet's
+//          switches, Wi-Fi / Bluetooth connections —
 //          is only logged (`log`, console "qs dry-run: …") and its new state kept here, so the shade
 //          behaves the same. The harness and every rig leave it false; only the live plugin sets it.
 // active   the shade is on screen: system values are read every surface.material.qs.pages.poll, the
@@ -37,6 +39,11 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 //                 the 16 normal ones) and goes to the OSD service as hyprctl dispatch hl.dsp.event("osd set G")
 //                 (live: Hyprland.dispatch, no process); else omarchy-brightness-display --no-osd N%
 //   Wi-Fi scan    nmcli device wifi rescan when the details open (a read: it runs in a dry run too)
+//   Volume, mute  the default sink's audio.volume / audio.muted through Quickshell's PipeWire (live: no process,
+//                 every move while a finger drags), logged as wpctl set-volume|set-mute ID …
+//   Output        omarchy-audio-output-set-default ID NAME (default sink + the apps' streams move along)
+//   Input         pactl set-default-source NAME (only the default: Easy Effects' own capture stays put)
+//   Sound settings  uwsm-app -- omarchy-settings open sound (System Settings → Sound)
 //   Tablet        hyprctl dispatch hl.dsp.event("ipadcast macinput|perf|fast|mic on|off")   (henri.cast-v3)
 //   Power         omarchy-system-lock, systemctl suspend, omarchy-system-logout, omarchy-system-reboot,
 //                 omarchy-system-shutdown
@@ -356,6 +363,174 @@ Item {
     onExited: if (root.queued >= 0) { const v = root.queued; root.queued = -1; root.setBrightness(v, false) }
   }
 
+  // ---- Sound (PipeWire through Quickshell, as control-center-v3's Backend): the default sink's volume and mute,
+  // the outputs and inputs to pick from. PipeWire gives names and descriptions of every node, but its properties
+  // only for the nodes it is told to track; what a row needs beyond that (unplugged ports, virtual sinks, the
+  // kind of device) comes from pactl's lists, read with the other values while the shade stands open.
+  readonly property var sink: Pipewire.defaultAudioSink
+  readonly property var source: Pipewire.defaultAudioSource
+  PwObjectTracker { objects: root.sink ? [root.sink] : [] }
+  readonly property real volumeReported: sink && sink.audio ? Math.max(0, Math.min(1, sink.audio.volume)) : 0
+  property real volume: volumeReported      // the slider's value (a finger's while it drags; a dry run keeps it)
+  property bool volumeHeld: false           // a finger on a volume slider: the system's value waits
+  onVolumeReportedChanged: if (!volumeHeld) volume = volumeReported
+  readonly property bool mutedReported: sink && sink.audio ? sink.audio.muted : false
+  readonly property bool muted: shown("mute", mutedReported)
+  onMutedReportedChanged: settle("mute", mutedReported)
+  readonly property bool hasSink: !!sink
+  readonly property string volumeIcon: muted || volume <= 0 ? "sound.mute"
+    : volume < k.sound.lowShare ? "sound.low" : volume < k.sound.midShare ? "sound.mid" : "sound"
+  // what a log line names: the sink's id (wpctl's own words for the same change)
+  function sinkTarget() { return sink ? String(sink.id) : "@DEFAULT_AUDIO_SINK@" }
+  function setMuted(on) {
+    if (on === muted) return
+    want("mute", on)
+    const argv = ["wpctl", "set-mute", sinkTarget(), on ? "1" : "0"]
+    if (!root.live) { run(argv); return }
+    if (sink && sink.audio) sink.audio.muted = on
+    remember({ at: Date.now(), argv: argv, live: true })
+  }
+  // every move while live (a property write, no process), logged once on release; moving it up unmutes
+  function setVolume(v, final) {
+    volume = Math.max(0, Math.min(1, v))
+    if (muted && volume > 0) setMuted(false)
+    const argv = ["wpctl", "set-volume", sinkTarget(), volume.toFixed(2)]
+    if (!root.live) { if (final) run(argv); return }
+    if (sink && sink.audio) sink.audio.volume = volume
+    if (final) remember({ at: Date.now(), argv: argv, live: true })
+  }
+
+  // the default output and input by name; a pick shows at once (want), the system's answer settles it
+  readonly property string sinkReported: sink ? sink.name : ""
+  readonly property string sinkName: shown("sink", sinkReported)
+  onSinkReportedChanged: settle("sink", sinkReported)
+  readonly property string sourceReported: source ? source.name : ""
+  readonly property string sourceName: shown("source", sourceReported)
+  onSourceReportedChanged: settle("source", sourceReported)
+
+  // pactl's sinks / sources by name: unplugged (every port "not available", control-center-v3's `unplugged`),
+  // virtual (a null sink: Easy Effects, loopbacks), a microphone chain (a null sink whose monitor is a
+  // microphone: Omarchy's Asahi mic), and the words that tell the kind of device
+  property var sinkInfo: ({})
+  property var sourceInfo: ({})
+  function soundInfo(text) {
+    const out = {}
+    try {
+      const list = JSON.parse(String(text || "[]"))
+      for (let i = 0; i < list.length; i++) {
+        const d = list[i], p = d.properties || {}, ports = d.ports || []
+        out[d.name] = {
+          unplugged: ports.length > 0 && ports.every(x => String(x.availability || "") === "not available"),
+          virtual: String(p["node.virtual"]) === "true" || p["factory.name"] === "support.null-audio-sink",
+          micChain: !!p["omarchy.asahi-mic.owner"],
+          api: String(p["device.api"] || ""), bus: String(p["device.bus"] || ""),
+          words: [p["device.icon_name"], p["device.form_factor"], p["application.name"]].join(" ").toLowerCase()
+        }
+      }
+    } catch (e) {}
+    return out
+  }
+  Process {
+    id: sinkInfoProc
+    command: ["pactl", "-f", "json", "list", "sinks"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: { const i = root.soundInfo(text); if (JSON.stringify(i) !== JSON.stringify(root.sinkInfo)) root.sinkInfo = i }
+    }
+  }
+  Process {
+    id: sourceInfoProc
+    command: ["pactl", "-f", "json", "list", "sources"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: { const i = root.soundInfo(text); if (JSON.stringify(i) !== JSON.stringify(root.sourceInfo)) root.sourceInfo = i }
+    }
+  }
+  function readSound() {
+    if (!sinkInfoProc.running) sinkInfoProc.running = true
+    if (!sourceInfoProc.running) sourceInfoProc.running = true
+  }
+
+  // a row's name as System Settings shows it: the nickname (else the description) without a board code
+  // ("MacBook Air J313 Speakers" → "MacBook Air Speakers"), one run-together word split ("AsahiMicrophone")
+  function soundLabel(n) {
+    if (n.name === "easyeffects_source") return "Easy Effects"
+    let d = String(n.nickname || n.description || n.name || "")
+    d = d.replace(/\s*\b[JT]\d{3,4}[a-z]?\b/gi, "")
+    if (d.indexOf(" ") < 0) d = d.replace(/([a-z])(?=[A-Z][a-z])/g, "$1 ")
+    return d.replace(/\s+/g, " ").trim() || String(n.name)
+  }
+  // its kind (the row's second line) and symbol: a tablet (the casting iPad's ipad_speakers, "iPad Air"),
+  // Bluetooth, headphones, a display, USB, else the machine's own
+  function soundKind(n, info, output) {
+    const w = [n.name, n.description, n.nickname, info ? info.words : ""].join(" ").toLowerCase()
+    const plain = output ? "speaker" : "mic"
+    const head = /head(phone|set)/.test(w)
+    if (w.indexOf("ipad") >= 0 || w.indexOf("tablet") >= 0) return { kind: "Tablet", icon: "tablet" }
+    if (String(n.name).indexOf("easyeffects") === 0) return { kind: "Audio effects", icon: plain }
+    if ((info && info.api === "bluez5") || String(n.name).indexOf("bluez") === 0) return { kind: "Bluetooth", icon: head ? "headphones" : plain }
+    if (head) return { kind: "Headphones", icon: "headphones" }
+    if (/hdmi|displayport|video-display/.test(w)) return { kind: "Display", icon: output ? "display" : plain }
+    if (info && info.bus === "usb") return { kind: "USB", icon: plain }
+    if (info && info.virtual) return { kind: "Virtual", icon: plain }
+    return { kind: "Built-in", icon: plain }
+  }
+  function micChain(n, info) {
+    return n.isSink && ((!!source && n.id === source.id) || n.name === sourceName || (!!info && info.micChain))
+  }
+  // outputs: the sinks that are no stream (the casting iPad's ipad_speakers is one), not Easy Effects' own, no
+  // microphone chain, no virtual or unplugged one unless it is the default
+  readonly property var sinkRows: {
+    const rows = []
+    const nodes = Pipewire.nodes ? Pipewire.nodes.values : []
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i]
+      if (!n || !n.isSink || n.isStream || !n.audio || n.name === "easyeffects_sink") continue
+      const info = sinkInfo[n.name]
+      const current = n.name === sinkName
+      if (micChain(n, info) || (!current && !!info && (info.unplugged || info.virtual))) continue
+      const kind = soundKind(n, info, true)
+      rows.push({ id: n.id, name: n.name, label: soundLabel(n), kind: kind.kind, icon: kind.icon, active: current })
+    }
+    rows.sort((a, b) => a.label.localeCompare(b.label))
+    return rows
+  }
+  // inputs: the sources that are no stream (Easy Effects' own stays: it is the processed microphone — Quickshell
+  // gives its Audio/Source/Virtual node no type, pactl lists it), unplugged ones only while they are the default,
+  // and a microphone chain (picked by its monitor)
+  readonly property var sourceRows: {
+    const rows = []
+    const nodes = Pipewire.nodes ? Pipewire.nodes.values : []
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i]
+      const info = !n ? null : n.isSink ? sinkInfo[n.name] : sourceInfo[n.name]
+      if (!n || n.isStream || !(n.audio || (!n.isSink && !!info))) continue
+      if (n.isSink && !micChain(n, info)) continue
+      const current = n.name === sourceName
+      if (!current && !n.isSink && !!info && info.unplugged) continue
+      const kind = n.isSink ? { kind: "Built-in", icon: "mic" } : soundKind(n, info, false)
+      rows.push({ id: n.id, name: n.name, label: soundLabel(n), kind: kind.kind, icon: kind.icon, active: current, monitor: n.isSink })
+    }
+    rows.sort((a, b) => a.label.localeCompare(b.label))
+    return rows
+  }
+  readonly property string sinkLabel: {
+    for (let i = 0; i < sinkRows.length; i++) if (sinkRows[i].active) return sinkRows[i].label
+    return sink ? soundLabel(sink) : ""
+  }
+  function setSink(row) {
+    if (row.name === sinkName) return
+    want("sink", row.name)
+    run(["omarchy-audio-output-set-default", String(row.id), row.name])
+  }
+  function setSource(row) {
+    if (row.name === sourceName) return
+    want("source", row.name)
+    run(["pactl", "set-default-source", row.monitor ? row.name + ".monitor" : row.name])
+  }
+  // System Settings on its Sound page (omarchy-settings open AREA: one instance, asked over its IPC)
+  function openSoundSettings() { run(["uwsm-app", "--", "omarchy-settings", "open", "sound"]) }
+
   Process {
     id: stateProc
     stdout: StdioCollector {
@@ -374,6 +549,7 @@ Item {
   function refresh() {
     root.now = Date.now()
     readState()
+    readSound()
     if (!notifProc.running) notifProc.running = true
     castFile.reload()
   }
@@ -467,9 +643,22 @@ Item {
   // (Henri 2026-11-12: the gear opened Omarchy's menu)
   function openSettings() { run(["uwsm-app", "--", "gtk-launch", "omarchy-settings.desktop"]) }
 
-  // ---- the tiles in their order (Controls), kept in $XDG_STATE_HOME/velum/tablet-qs.json
-  readonly property var allTiles: ["wifi", "bluetooth", "dnd", "dark", "night", "airplane", "saver", "rotate", "cast"]
+  // ---- the tiles in their order (Controls), kept in $XDG_STATE_HOME/velum/tablet-qs.json with the tiles that
+  // existed when it was written (`known`): a tile added since joins a saved order after its neighbour in allTiles
+  readonly property var allTiles: ["wifi", "bluetooth", "sound", "dnd", "dark", "night", "airplane", "saver", "rotate", "cast"]
+  readonly property var v1Tiles: ["wifi", "bluetooth", "dnd", "dark", "night", "airplane", "saver", "rotate", "cast"]   // version 1 had no `known`
   property var tiles: allTiles
+  function withNew(order, known) {
+    const out = order.filter(x => allTiles.indexOf(x) >= 0)
+    for (let i = 0; i < allTiles.length; i++) {
+      const t = allTiles[i]
+      if (known.indexOf(t) >= 0 || out.indexOf(t) >= 0) continue
+      let at = 0
+      for (let j = i - 1; j >= 0; j--) if (out.indexOf(allTiles[j]) >= 0) { at = out.indexOf(allTiles[j]) + 1; break }
+      out.splice(at, 0, t)
+    }
+    return out
+  }
   readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/velum"
   FileView {
     id: tileFile
@@ -478,8 +667,8 @@ Item {
     atomicWrites: true
     onLoaded: {
       try {
-        const t = JSON.parse(text() || "{}").tiles
-        if (Array.isArray(t)) root.tiles = t.filter(x => root.allTiles.indexOf(x) >= 0)
+        const j = JSON.parse(text() || "{}")
+        if (Array.isArray(j.tiles)) root.tiles = root.withNew(j.tiles, Array.isArray(j.known) ? j.known : root.v1Tiles)
       } catch (e) {}
     }
   }
@@ -487,6 +676,6 @@ Item {
   Component.onCompleted: mkdir.running = true
   function setTiles(order) {
     tiles = order.slice()
-    tileFile.setText(JSON.stringify({ version: 1, tiles: tiles }, null, 2) + "\n")
+    tileFile.setText(JSON.stringify({ version: 2, tiles: tiles, known: allTiles }, null, 2) + "\n")
   }
 }

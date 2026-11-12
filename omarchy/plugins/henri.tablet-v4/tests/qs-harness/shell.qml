@@ -15,7 +15,8 @@ import "qs"
 // IPC (qs ipc call qs …): state, open, close, pull PHASE Y [VELOCITY], tab N, detail wifi|bluetooth|"",
 // edit true|false, toggle KEY, longPress KEY, power KEY, accept, cancel, dark true|false, esc, log, tiles,
 // setTiles "KEY KEY …", speed N, inset PX (the owner's topInset), scroll (the Controls page's and the details
-// list's scroll), brightCmd PATH V (the command a brightness path would run), rescan (the details' refresh)
+// list's scroll), brightCmd PATH V (the command a brightness path would run), rescan (the details' refresh),
+// sound (volume, mute, the default output / input and the rows the Sound details list)
 ShellRoot {
   id: root
   readonly property string outputName: Quickshell.env("QS_OUTPUT") || ""
@@ -98,7 +99,8 @@ ShellRoot {
         brightness: Math.round(qsb.brightness * 100), mode: qsb.powerMode, dnd: qsb.dnd, night: qsb.night,
         airplane: qsb.airplane, battery: qsb.battery ? qsb.battery.capacity : null, history: qsb.history.length,
         log: qsb.log.length, scanning: qsb.wifiScanning, networks: qsb.wifiRows.length, scanned: qsb.wifiScanned.length,
-        brightPath: qsb.brightPath, tabletName: qsb.tabletName, tabletLog: qsb.tabletLog, hasBattery: qsb.hasBattery, level: qsb.level, upType: qsb.upower ? qsb.upower.type : -1, upLaptop: qsb.upower ? qsb.upower.isLaptopBattery : null })
+        brightPath: qsb.brightPath, volume: Math.round(qsb.volume * 100), muted: qsb.muted, sink: qsb.sinkName, source: qsb.sourceName,
+        tabletName: qsb.tabletName, tabletLog: qsb.tabletLog, hasBattery: qsb.hasBattery, level: qsb.level, upType: qsb.upower ? qsb.upower.type : -1, upLaptop: qsb.upower ? qsb.upower.isLaptopBattery : null })
     }
     function log(): string { return JSON.stringify(qsb.log.map(e => (e.read ? "read " : e.live ? "LIVE " : "dry ") + e.argv.join(" "))) }
     function inset(px: real): string { shade.topInset = px; return String(shade.topInset) }
@@ -108,6 +110,11 @@ ShellRoot {
       if (c) out.now = { y: Math.round(c.contentY), max: Math.round(Math.max(0, c.contentHeight - c.height)), h: Math.round(c.height) }
       out.pagesMax = Math.round(shade.pagesMax)
       return JSON.stringify(out)
+    }
+    function sound(): string {
+      return JSON.stringify({ volume: +qsb.volume.toFixed(3), reported: +qsb.volumeReported.toFixed(3), muted: qsb.muted, icon: qsb.volumeIcon,
+        sink: qsb.sinkName, sinkReported: qsb.sinkReported, source: qsb.sourceName, sourceReported: qsb.sourceReported, label: qsb.sinkLabel,
+        outputs: qsb.sinkRows, inputs: qsb.sourceRows })
     }
     function brightCmd(path: string, v: real): string { return qsb.brightCommand(path, v).join(" ") }
     function rescan(): string { qsb.wifiRescan(); return String(qsb.wifiScanning) }

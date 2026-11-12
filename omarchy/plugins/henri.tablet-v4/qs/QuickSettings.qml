@@ -6,7 +6,7 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 // Quick Settings — Android's notification shade on the tablet (henri.tablet-v4, phase 4 of
 // docs/TABLET-V4-PLAN.md; look and behaviour: lab/mui-material src/QuickSettings.jsx + src/QsPages.jsx).
 // A split shade: Quick Settings left (header with clock, date, edit / power / settings; tabs Controls /
-// Battery / Tablet / Power; tile details for Internet and Bluetooth; tile editing), the notification history
+// Battery / Tablet / Power; tile details for Internet, Bluetooth and Sound; tile editing), the notification history
 // right (below it in portrait). Values: surface.material.qs (tokens/surfaces/material-qs.tokens.json).
 //
 // ---- API for the owner (the top-edge pull in tablet mode routes here instead of FullCenter) -------------
@@ -114,7 +114,7 @@ FocusScope {
 
   // ---- page state
   property int tab: 0
-  property string detail: ""               // "wifi" | "bluetooth": its list instead of the pages
+  property string detail: ""               // "wifi" | "bluetooth" | "sound": its list instead of the pages
   property bool editing: false
   property var seen: [true, false, false, false]   // pages loaded since the shade opened
   function markSeen(i) {
@@ -162,6 +162,7 @@ FocusScope {
       return
     }
     case "bluetooth": b.setBluetooth(!b.btOn); return
+    case "sound": if (b.hasSink) b.setMuted(!b.muted); return
     case "dnd": b.setDnd(!b.dnd); return
     case "dark": b.setDark(!b.dark); return
     case "night": b.setNight(!b.night); return
@@ -176,7 +177,7 @@ FocusScope {
     }
   }
   function longPressTile(key) {
-    if (key === "wifi" || key === "bluetooth") showDetail(key)
+    if (key === "wifi" || key === "bluetooth" || key === "sound") showDetail(key)
     else if (key === "cast") goTab(2)
     else if (key === "saver") goTab(1)
     else tileLongPressed(key)
@@ -222,19 +223,24 @@ FocusScope {
     Rectangle { anchors.fill: parent; color: qs.k.shade.scrim }
   }
 
-  // a tap beside the panels closes; the press is taken either way (nothing reaches the home screen)
+  // a tap beside the panels closes; the press is taken either way (nothing reaches the home screen). Beside is
+  // decided at the press: a tap on a tile that opens shorter details (Bluetooth's chevron) shrinks the panel
+  // before this tap ends, and the lifted finger then stood beside it
   TapHandler {
     enabled: qs.shown
-    onTapped: point => {
+    property bool beside: false
+    onPressedChanged: if (pressed) {
       const p = point.position
       const inside = (it) => { const r = it.mapToItem(qs, 0, 0); return p.x >= r.x && p.x <= r.x + it.width && p.y >= r.y && p.y <= r.y + it.height }
-      if (!inside(qsPanel) && !inside(notifPanel)) qs.close()
+      beside = !inside(qsPanel) && !inside(notifPanel)
     }
+    onTapped: if (beside) qs.close()
   }
 
   // the Controls page and the details list do not take a finger themselves (their Flickables are not
   // interactive): the shade's finger scrolls the one under it when it can move that way, else carries the shade
   readonly property real pagesMax: panels.height - 2 * k.panel.pad - header.height - k.header.bottom - tabs.height - k.tabs.bottom
+  readonly property real detailMax: pagesMax + tabs.height + k.tabs.bottom   // the details stand where tabs and pages were
   function scroller() {
     if (detail !== "") return detailLoader.item ? detailLoader.item.scroller : null
     const c = tab === 0 ? pageRep.itemAt(0) : null
@@ -449,7 +455,9 @@ FocusScope {
           y: header.height + qs.k.header.bottom
           width: parent.width
           height: item ? item.implicitHeight : 0
-          sourceComponent: QsDetail { backend: qs.backend; kind: qs.detail; onBack: qs.detail = "" }
+          // none while no details show: `active` may turn true before this follows a new kind, and a stale
+          // component would stand for a frame (the Wi-Fi details' scan ran when Sound opened)
+          sourceComponent: qs.detail === "sound" ? soundDetail : qs.detail !== "" ? netDetail : null
         }
       }
       QsConfirm {
@@ -489,6 +497,9 @@ FocusScope {
 
   Component { id: ctlPage; QsControls { backend: qs.backend; editing: qs.editing; maxHeight: qs.pagesMax
     onToggleRequested: key => qs.toggleTile(key); onDetailRequested: key => qs.showDetail(key); onLongPressed: key => qs.longPressTile(key) } }
+  Component { id: netDetail; QsDetail { backend: qs.backend; kind: qs.detail; onBack: qs.detail = "" } }
+  Component { id: soundDetail; QsSound { backend: qs.backend; maxHeight: qs.detailMax; onBack: qs.detail = ""
+    onSettingsRequested: { if (qs.backend) qs.backend.openSoundSettings(); qs.close() } } }
   Component { id: batteryPage; QsBattery { backend: qs.backend } }
   Component { id: tabletPage; QsTablet { backend: qs.backend } }
   Component { id: powerPage; QsPower { onChosen: (key, text) => qs.choosePower(key) } }

@@ -1,9 +1,9 @@
 import QtQuick
 import "file:///home/henri/.local/share/velum/qml/Velum"
 
-// The Controls page (lab QuickSettings.jsx `controls`): the brightness slider and the tiles, two per row, in
-// the order kept in tablet-qs.json. Editing: every tile carries a remove badge, a held tile goes to the slot
-// under the finger (the others make room on a spring, transform only), and the tiles taken off wait below
+// The Controls page (lab QuickSettings.jsx `controls`): the brightness and volume sliders (Android 12+ stacks
+// them at the top) and the tiles, two per row, in the order kept in tablet-qs.json. Editing: every tile carries
+// a remove badge, a held tile goes to the slot under the finger (the others make room on a spring, transform only), and the tiles taken off wait below
 // under "Add tiles" (a tap puts one back at the end). The tiles exist once each and are never rebuilt.
 // Taller than `maxHeight` (editing on a small screen, 1024 × 768): the page scrolls inside it. The Flickable
 // takes no finger itself — the shade's finger carries it (QuickSettings `scroller`: a vertical swipe on the page
@@ -33,7 +33,7 @@ Item {
   readonly property real gridH: rows > 0 ? rows * rowH - k.tile.gap : 0
   readonly property real spareH: editing ? caption.height + k.tile.captionTop + k.tile.captionBottom
     + (spare.length ? Math.ceil(spare.length / cols) * rowH - k.tile.gap : 0) : 0
-  readonly property real contentH: slider.height + k.slider.bottom + gridH + spareH
+  readonly property real contentH: grid.y + gridH + spareH
   implicitHeight: maxHeight > 0 ? Math.min(contentH, maxHeight) : contentH
   // the content got shorter (editing ended): back inside at once, no animation
   onContentHChanged: if (view.contentY > Math.max(0, contentH - height)) view.contentY = Math.max(0, contentH - height)
@@ -49,6 +49,8 @@ Item {
     }
     case "bluetooth": return { label: "Bluetooth", icon: "bluetooth", lit: b.btOn, chevron: true,
                                sub: b.btOn ? (b.btConnectedName !== "" ? b.btConnectedName : "On") : "Off" }
+    case "sound": return { label: "Sound", icon: b.muted ? "sound.mute" : "sound", lit: b.hasSink && !b.muted, chevron: true,
+                           sub: !b.hasSink ? "No output" : b.muted ? "Muted" : b.sinkLabel }
     case "dnd": return { label: "Do Not Disturb", icon: "minus.circle", lit: b.dnd, sub: b.dnd ? "On" : "Off" }
     case "dark": return { label: "Dark theme", icon: "moon", lit: b.dark, sub: b.dark ? "On" : "Off" }
     case "night": return { label: "Night Light", icon: "night-shift", lit: b.night, sub: b.night ? "On" : "Off" }
@@ -119,11 +121,23 @@ Item {
     onHeld: down => { if (ctl.backend) ctl.backend.brightnessHeld = down }
     onMoved: (v, final) => { if (ctl.backend) ctl.backend.setBrightness(v, final) }
   }
+  // the default output's volume (0 while muted; a finger that moves it up unmutes)
+  QsSlider {
+    id: volume
+    transform: Translate { y: -view.contentY }
+    objectName: "volume"
+    y: slider.height + ctl.k.slider.gap
+    width: ctl.width
+    icon: ctl.backend ? ctl.backend.volumeIcon : "sound"
+    value: ctl.backend && !ctl.backend.muted ? ctl.backend.volume : 0
+    onHeld: down => { if (ctl.backend) ctl.backend.volumeHeld = down }
+    onMoved: (v, final) => { if (ctl.backend) ctl.backend.setVolume(v, final) }
+  }
 
   Item {
     id: grid
     transform: Translate { y: -view.contentY }
-    y: slider.height + ctl.k.slider.bottom
+    y: volume.y + volume.height + ctl.k.slider.bottom
     width: ctl.width
     height: ctl.gridH
     Repeater {
