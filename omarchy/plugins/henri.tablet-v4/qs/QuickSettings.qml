@@ -282,12 +282,13 @@ FocusScope {
     }
     onActiveChanged: {
       if (active) {
+        samples = []
         qs.swipe = "pending"
         if (translation.x !== 0 || translation.y !== 0) decide(translation)
         return
       }
       if (qs.swipe === "shade") {
-        const v = centroid.velocity.y
+        const v = flickSpeed()
         const p = qs.ownProgress
         qs.ownDrag = false
         qs.settleFrom(p, v, v > qs.k.shade.flick ? true : v < -qs.k.shade.flick ? false : p > 1 - qs.k.shade.commit)
@@ -306,8 +307,21 @@ FocusScope {
       }
       qs.swipe = ""
     }
+    // the release speed from the finger's own points over sampleWindow, not Qt's estimate: points from a
+    // cast come in clumps after a pause (2026-11-12), and a clump read as a flick closed the shade on a tap
+    property var samples: []
+    function flickSpeed() {
+      const l = samples, t = Date.now()
+      samples = []
+      if (l.length < 2 || Math.abs(qs.ownProgress - qs.pressProgress) * qs.travel < qs.k.shade.flickTravel) return 0
+      let i = 0
+      while (i < l.length - 2 && t - l[i][0] > Theme.core.surface.tablet.sampleWindow) i++
+      return (l[l.length - 1][1] - l[i][1]) * 1000 / Math.max(Theme.core.surface.tablet.sampleWindow, t - l[i][0])
+    }
     onTranslationChanged: {
       if (!active) return
+      const now = Date.now()
+      samples = samples.filter(e => now - e[0] <= 2 * Theme.core.surface.tablet.sampleWindow).concat([[now, translation.y]])
       if (qs.swipe === "pending") decide(translation)
       if (qs.swipe === "shade") qs.ownProgress = Math.max(0, Math.min(1, qs.pressProgress + translation.y / Math.max(1, qs.travel)))
       else if (qs.swipe === "scroll" && qs.scrolling) {

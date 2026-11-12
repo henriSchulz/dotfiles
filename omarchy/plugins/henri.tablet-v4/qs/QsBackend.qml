@@ -40,7 +40,7 @@ import "file:///home/henri/.local/share/velum/qml/Velum"
 //   Tablet        hyprctl dispatch hl.dsp.event("ipadcast macinput|perf|fast|mic on|off")   (henri.cast-v3)
 //   Power         omarchy-system-lock, systemctl suspend, omarchy-system-logout, omarchy-system-reboot,
 //                 omarchy-system-shutdown
-//   Settings      omarchy-menu toggle root
+//   Settings      uwsm-app -- gtk-launch omarchy-settings.desktop (System Settings)
 Item {
   id: root
   visible: false
@@ -463,7 +463,9 @@ Item {
     lock: ["omarchy-system-lock"], sleep: ["systemctl", "suspend"], logout: ["omarchy-system-logout"],
     restart: ["omarchy-system-reboot"], off: ["omarchy-system-shutdown"] })
   function power(key) { if (powerCommands[key]) run(powerCommands[key]) }
-  function openSettings() { run(["omarchy-menu", "toggle", "root"]) }
+  // System Settings (~/Projects/settings, the dock's omarchy-settings), as the home screen launches an app
+  // (Henri 2026-11-12: the gear opened Omarchy's menu)
+  function openSettings() { run(["uwsm-app", "--", "gtk-launch", "omarchy-settings.desktop"]) }
 
   // ---- the tiles in their order (Controls), kept in $XDG_STATE_HOME/velum/tablet-qs.json
   readonly property var allTiles: ["wifi", "bluetooth", "dnd", "dark", "night", "airplane", "saver", "rotate", "cast"]

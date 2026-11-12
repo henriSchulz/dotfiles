@@ -160,6 +160,9 @@ Item {
       var t = tl[i], o = t.lastIpcObject
       if (!o || !o.address || o.mapped === false || o.hidden) continue
       if (o.workspace && String(o.workspace.name || "").indexOf("special:") === 0) continue
+      // a test rig's nested Hyprland (class aquamarine, parked on name:velum-rig) is no app: as a card it
+      // took Henri's screen to the rig's workspace (2026-11-12)
+      if (String(o.class) === "aquamarine" || (o.workspace && String(o.workspace.name || "").indexOf("velum-rig") === 0)) continue
       if (sw.screenName && monitorName(o.monitor) !== sw.screenName) continue
       var app = appOf(o.class, o.title)
       out.push({ address: String(o.address), toplevel: t, name: app.name, icon: app.icon, place: placeOf(o),
