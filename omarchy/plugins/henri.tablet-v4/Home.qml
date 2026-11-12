@@ -392,6 +392,32 @@ Item {
   property bool swDragging: false
   property var switcherItem: null        // the gesture screen's MaterialSwitcher
   readonly property bool swOpen: swProgress > 0 || (switcherItem !== null && switcherItem.open)
+  // The overlay holds the keyboard while the Material switcher is open (Escape). When it lets go,
+  // Hyprland focuses the window under the hidden pointer (follow_mouse), and in tablet mode's monocle
+  // stack that was the same window every time: a pick jumped back to it ~1 s later, when the hand-over
+  // ended (Henri 2026-11-12: "springt immer zurück auf dieselbe App"). So the window that should keep
+  // the focus — the picked one, else the app the switcher opened over — is asked for again once the
+  // switcher is gone, if Hyprland gave the focus elsewhere.
+  property string swKeep: ""
+  onSwOpenChanged: {
+    if (swOpen) {
+      var act = Hyprland.activeToplevel
+      if (!swKeep && !emptyOn(screenName)) swKeep = act && act.lastIpcObject ? String(act.lastIpcObject.address || "") : ""
+    } else keepLater.restart()
+  }
+  Timer {
+    id: keepLater
+    interval: Theme.delay("settle")
+    onTriggered: home.guard("keep", function () {
+      var want = home.swKeep
+      home.swKeep = ""
+      if (!want || home.swOpen || home.mode === "home" || home.emptyOn(home.screenName)) return
+      var act = Hyprland.activeToplevel, now = act && act.lastIpcObject ? String(act.lastIpcObject.address || "") : ""
+      if (now === want || !home.scanWindows(home.screenName).some(function (w) { return w.address === want })) return
+      home.note("keep " + want + " (had " + now + ")")
+      home.dispatch("hl.dsp.focus({ window = \"address:" + want + "\" })", "focuswindow address:" + want)
+    })
+  }
   NavGesture {
     id: navG
     visible: false
@@ -460,6 +486,7 @@ Item {
   }
   function switchToWindow(address) {
     note("switch " + address)
+    swKeep = address
     swDragging = false
     swProgress = 0
     appSwitchAt = Date.now()
@@ -1635,7 +1662,9 @@ Item {
         WlrLayershell.layer: WlrLayer.Overlay
         // the Material App Switcher takes Escape once it stands (never under a finger that still drives
         // it: taking the keyboard ends the pointer's grab)
-        WlrLayershell.keyboardFocus: matSwitcher.open && !home.swDragging && !home.zoneFinger ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        // not while a picked card hands over (holding): letting go of the keyboard refocuses by the pointer,
+        // which must happen before the pick's own focus, not after it (swKeep)
+        WlrLayershell.keyboardFocus: matSwitcher.open && !matSwitcher.holding && !home.swDragging && !home.zoneFinger ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         mask: Region { item: home.mode === "switcher" || matSwitcher.open ? all : none }
         // the app area's size (a surface being mapped reports 0 for a moment: keep the last real one)
         function measure() { if (width > 0 && height > 0) { home.areaW = width; home.areaH = height } }
