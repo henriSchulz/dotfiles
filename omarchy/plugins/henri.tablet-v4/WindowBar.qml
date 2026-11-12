@@ -135,11 +135,10 @@ Item {
   function keyboard(screenName) {
     if (dispatch) dispatch("hl.dsp.event(\"velum-keyboard toggle " + screenName + "\")", "event velum-keyboard toggle " + screenName)
   }
-  // Spotlight, with the keyboard to type into it (henri.menu-v3, henri.keyboard-v3)
+  // Spotlight (henri.menu-v3). The keyboard never comes by itself, only from its own button (Henri 2026-11-12)
   function search(screenName) {
     if (!dispatch) return
     dispatch("hl.dsp.event(\"menu summon root\")", "event menu summon root")
-    dispatch("hl.dsp.event(\"velum-keyboard open " + screenName + "\")", "event velum-keyboard open " + screenName)
   }
 
   // ---- dictation: voxtype records until the next tap on this screen, then types what it heard

@@ -362,15 +362,14 @@ Item {
   }
 
   // ---- the search view (SearchView.qml on the home screen's window): the search bar, or a key typed
-  // while the home screen shows (initial = that key). A tap also asks for the on-screen keyboard, as
-  // the window bar's search does.
+  // while the home screen shows (initial = that key). The on-screen keyboard never comes by itself, only
+  // from its own button (Henri 2026-11-12).
   function search(screenName, initial) {
     var h = screenHomes[screenName]
     if (!h) return
     note("search" + (initial ? " " + initial : ""))
     if (h.drawer.active) h.drawer.close()
     h.search.open(initial || "", h.barRect())
-    if (!initial) dispatch("hl.dsp.event(\"velum-keyboard open " + screenName + "\")", "event velum-keyboard open " + screenName)
   }
   function launches() { return !inRig || (Quickshell.env("VELUM_TABLET_LAUNCH") || "") !== "" }
   function searchAction(id, action) {
@@ -660,7 +659,8 @@ Item {
   // growing to full screen (zoomUp from its icon, launchAppFromSwitcher from a card)
   readonly property var buttonPreset: preset(cfg.buttonResponse, cfg.buttonDamping)
   readonly property var launchPreset: preset(cfg.launchResponse, cfg.launchDamping)
-  readonly property var followPreset: ({ response: cfg.followResponse / 1000 * (Theme.reduceMotion ? 0 : 1), dampingRatio: cfg.followDamping })
+  // v4: tight, the edge fingers come resampled one per frame (Tablet.qml castFeed)
+  readonly property var followPreset: ({ response: mt.switcher.cardFollow.response * (Theme.reduceMotion ? 0 : 1), dampingRatio: mt.switcher.cardFollow.dampingRatio })
   property string screenName: ""
   property var cards: []            // the entries shown as cards, oldest first
   property int cur: -1              // the card that was on screen
@@ -905,8 +905,10 @@ Item {
     // SpringBoard's flight into the icon: the position on its own spring with half the finger's
     // vertical speed (it carries on up, then arcs to the icon); the window turns into the icon
     // quickly on faster springs (the iPad video: an icon after ~0.12 s, landed after ~0.35 s)
-    var fly = button ? buttonPreset : preset(cfg.flyResponse, cfg.flyDamping)
-    var shrink = button ? buttonPreset : preset(cfg.scaleResponse, cfg.scaleDamping)
+    // v4: one critically damped spring for place and size, landing sooner (mt.switcher.homeFly)
+    var hf = { response: mt.switcher.homeFly.response * (Theme.reduceMotion ? 0 : 1), dampingRatio: mt.switcher.homeFly.dampingRatio }
+    var fly = button ? buttonPreset : hf
+    var shrink = button ? buttonPreset : hf
     var morph = preset(cfg.morphResponse, cfg.morphDamping)
     // the scale is handed the finger's speed (SpringBoard: 1.5 × vy / H, capped)
     var sv = -Math.min(cfg.scaleVelocityCap, cfg.scaleVelocity * Math.max(0, vUp || 0) / areaH)
@@ -917,7 +919,9 @@ Item {
     backdrop(1, 0, 1, false); dimV.target = 0; labelV.target = 0
     // the workspace changes once the card has landed (settleTick → goHomeNow): sent during the flight,
     // the switch's slow frame stopped the card just before the icon (Henri 2026-11-12)
-    settleWhen(function () { return c.near(["x", "y", "s"]) }, "home", true)
+    // landed for the switch once it is within a few px of the icon: the critically damped flight creeps
+    // over its last pixel for ~250 ms, and the home screen under it is the same picture
+    settleWhen(function () { return c.within(["x", "y", "s"], mt.switcher.homeLandPx, mt.switcher.homeLandShare) }, "home", true)
   }
   // the first empty workspace on the gesture's screen (not just any empty one: another monitor's
   // would leave this screen on its app)

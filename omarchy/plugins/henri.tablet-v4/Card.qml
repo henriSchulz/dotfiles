@@ -81,6 +81,14 @@ Item {
     }
     return true
   }
+  // close enough by the given tolerances (px for x/y, a share for scale, shape and opacity), speed aside
+  function within(keys, px, share) {
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i], tol = k === "s" || k === "m" || k === "o" ? share : px
+      if (Math.abs(value(k) - _t[k]) > tol) return false
+    }
+    return true
+  }
   function settled(keys) {
     for (var i = 0; i < keys.length; i++) if (_live[keys[i]]) return false
     return true

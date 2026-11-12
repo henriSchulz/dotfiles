@@ -204,7 +204,7 @@ Item {
         windows = sw.scan()
         rowX.snap(0)
         launching = -1; handed = false; launchS.snap(0)
-        takenOver = false; handAddress = ""; handOthers = ({})
+        takenOver = false; handAddress = ""; handOthers = ({}); rowY = 0
         for (var i = 0; i < n; i++) { var c = cardItem(i); if (c) { c.launch = 0; c.lifted = false; c.refresh() } }
         forceActiveFocus()
       }
@@ -212,6 +212,15 @@ Item {
       property bool takenOver: false
       property string handAddress: ""
       property var handOthers: ({})          // address → true: neighbours handed over with it
+      // the row's height on screen: a handed card stays at the height the finger left it (it only grows
+      // to the row's size about its own middle). Moving it to the middle of the screen took it down
+      // again after the finger had brought it up (Henri 2026-11-12). Within the screen: header to Clear all
+      property real rowY: 0
+      function rowYFor(cy) {
+        var lo = -(height / 2 - cardH / 2 - sw.cfg.headerHeight - sw.cfg.headerGap)
+        var hi = height / 2 - cardH / 2 - sw.cfg.clearTop - sw.cfg.clearHeight
+        return Math.max(lo, Math.min(hi, cy - height / 2))
+      }
       Spring { id: handS; preset: sw.cfg.enterSpring; reduced: Theme.reduceMotion; target: 0 }
       readonly property real hand: takenOver ? handS.value : 0
       Connections { target: sw; function onProgressChanged() { if (sw.progress <= 0) root.takenOver = false } }
@@ -233,6 +242,7 @@ Item {
         var at = -1
         for (var j = 0; j < n; j++) if (windows[j].address === h.address) at = j
         rowX.snap(at >= 0 ? -Nav.slot(at, n, step) : 0)
+        rowY = rowYFor(h.rect.y + h.rect.height / 2)
         handAddress = h.address
         takenOver = true
         if (c) {
@@ -433,7 +443,7 @@ Item {
         readonly property real others: 1 - launchS.value
         transform: [
           Scale { origin.x: stage.width / 2; origin.y: stage.height / 2; xScale: sw.cfg.enterScale + (1 - sw.cfg.enterScale) * stage.rise; yScale: xScale },
-          Translate { y: (1 - stage.rise) * stage.height * sw.cfg.enterRise }
+          Translate { y: (1 - stage.rise) * stage.height * sw.cfg.enterRise + root.rowY }
         ]
         Item {
           id: row

@@ -340,7 +340,8 @@ Item {
     target: Hyprland
     // "velum-touch SCREEN" from ipadcast: a finger was lifted there — the screen the keyboard goes to.
     // "velum-keyboard toggle SCREEN": the window bar's keyboard button.
-    // "velum-keyboard open SCREEN": open only (the window bar's search button, beside Spotlight).
+    // "velum-keyboard open SCREEN": ignored — the keyboard never comes by itself, only from its own
+    //   button (toggle) (Henri 2026-11-12: not with the search bar, nowhere).
     // "velum-menu hidden": Spotlight closed (henri.menu-v3).
     function onRawEvent(event) {
       if (event.name !== "custom") return
@@ -363,11 +364,9 @@ Item {
         if (!root.oskMode && Theme.touch && !root.shown) root.send("arm")
       }
       else if (d.indexOf("velum-keyboard toggle ") === 0) name = d.slice(22).trim()
-      else if (d.indexOf("velum-keyboard open ") === 0) name = d.slice(20).trim()
       else return
       if (/^[A-Za-z0-9_-]+$/.test(name)) root.screenName = name
       if (d.indexOf("velum-keyboard toggle ") === 0) { if (root.shown) root.dismiss(); else root.open(true) }
-      else if (d.indexOf("velum-keyboard open ") === 0 && !root.shown) { root.open(true); root.withMenu = true }
       else if (d.indexOf("velum-touch ") === 0 && root.focusAt) root.autoOpen()   // the lift after the field took the focus
     }
   }
