@@ -35,6 +35,12 @@ Item {
   // evenly to the window's width; its picture turns from "cover" to the window's own shape meanwhile
   readonly property rect goal: entry.place ? entry.place : Qt.rect(0, 0, areaW, areaH)
   readonly property real grow: goal.width / Math.max(1, cardW)
+  // taken over from the app's own card (henri.tablet-v3's pull over an app): 1 … 0 from `handRect`
+  // (that card on screen, the switcher's coordinates) into its place in the row; `handFrom` = its
+  // top left in the row at the take. Only transform changes
+  property real hand: 0
+  property rect handRect: Qt.rect(0, 0, 0, 0)
+  property point handFrom: Qt.point(0, 0)
   readonly property var cfg: Theme.core.surface.material.switcher
   readonly property string family: Theme.core.surface.material.widgets.font[0]
   readonly property bool hasPicture: shot.hasContent
@@ -52,7 +58,9 @@ Item {
   z: launch > 0 ? 1 : 0
   transform: [
     Scale { xScale: 1 + (card.grow - 1) * card.launch; yScale: xScale },
-    Translate { x: (card.goal.x - card.from.x) * card.launch; y: (card.goal.y - card.from.y) * card.launch }
+    Translate { x: (card.goal.x - card.from.x) * card.launch; y: (card.goal.y - card.from.y) * card.launch },
+    Scale { xScale: 1 + (card.handRect.width / Math.max(1, card.cardW) - 1) * card.hand; yScale: xScale },
+    Translate { x: (card.handRect.x - card.handFrom.x) * card.hand; y: (card.handRect.y - card.handFrom.y) * card.hand }
   ]
 
   // its place in the row; a closed neighbour's gap closes on a spring
@@ -78,7 +86,7 @@ Item {
     y: -(card.cfg.headerHeight + card.cfg.headerGap)
     height: card.cfg.headerHeight
     spacing: card.cfg.headerGap
-    opacity: card.lifted || card.away ? 0 : 1 - Math.min(1, card.launch * card.cfg.launchFade)
+    opacity: card.lifted || card.away ? 0 : (1 - Math.min(1, card.launch * card.cfg.launchFade)) * (1 - card.hand)
     Image {
       anchors.verticalCenter: parent.verticalCenter
       width: card.cfg.headerIcon

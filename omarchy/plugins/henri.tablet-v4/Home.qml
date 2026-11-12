@@ -435,10 +435,15 @@ Item {
   // the card, the card fades under its backdrop, then the overlay lets go of the card
   function toMaterialSwitcher(hand) {
     note("material switcher")
-    for (var i = 0; i < cards.length; i++) { var o = card(i); if (o) o.to("o", 0, "snappy") }
+    // the app's card hands itself to the Material switcher where it rests (one movement into the row);
+    // the others fade
+    var c = card(cur), e = cards[cur]
+    for (var i = 0; i < cards.length; i++) { var o = card(i); if (o && i !== cur) o.to("o", 0, "snappy") }
     dimV.target = 0; labelV.target = 0
     swDragging = false
     swProgress = 1
+    if (c && e && switcherItem) switcherItem.takeHand(c.mapToItem(switcherItem, 0, 0, c.width, c.height), e.address)
+    else if (c) c.to("o", 0, "snappy")
     settleWhen(function () { var c = home.card(home.cur); return (!c || c.near(["o"])) && (!home.switcherItem || home.switcherItem.shown >= 1 - home.cfg.nearScale) }, "idle", false)
   }
   function openMaterialSwitcher(screenName) {
@@ -1840,6 +1845,8 @@ Item {
           onSwitchTo: function (address) { home.guard("switchTo", function () { home.switchToWindow(address) }) }
           onCloseWindow: function (address) { home.guard("closeWindow", function () { home.closeWindow(address) }) }
           onClosed: { home.swDragging = false; home.swProgress = 0 }
+          // its card stands where the app's card rests: that one goes at once
+          onHandTaken: { var c = home.card(home.cur); if (c) c.set("o", 0) }
         }
       }
     }

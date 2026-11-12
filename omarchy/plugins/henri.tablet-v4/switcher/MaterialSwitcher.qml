@@ -34,6 +34,10 @@ import "Nav.js" as Nav
 //                           ~80 ms); warm alone shows nothing and takes no input
 //   open (read only)        content is shown (progress > 0 or still settling); closed = a Loader
 //                           with nothing in it (or only warm), no frames
+//   takeHand(rect, address) over an app the owner's own card was pulled up and rests at `rect` (this
+//                           item's coordinates): the switcher stands at once, that window's card flies
+//                           from there into its place, the rest fades in — one movement, no second
+//                           entrance. signal handTaken() once its card is there: hide the owner's
 //   info()                  state for tests: { open, n, offset, centred, windows: [{address, name}] }
 Item {
   id: sw
@@ -48,6 +52,7 @@ Item {
   signal switchTo(string address)
   signal closeWindow(string address)
   signal closed()
+  signal handTaken()
 
   readonly property var cfg: Theme.core.surface.material.switcher
   readonly property string family: Theme.core.surface.material.widgets.font[0]
@@ -57,7 +62,10 @@ Item {
   property bool holding: false
   // …and then goes at once (the window stands where the card was): no sinking back over it
   property bool handedOff: false
-  onProgressChanged: if (progress > 0 && !holding) handedOff = false
+  onProgressChanged: {
+    if (progress > 0 && !holding) handedOff = false
+    if (progress <= 0) pendingHand = null
+  }
   // warm lingers a moment: the finger's lift ends it just before the owner opens the switcher
   onWarmChanged: { if (warm && !holding) handedOff = false; if (!warm) warmLinger.restart() }
   Timer { id: warmLinger; interval: Theme.dur("fast") }
@@ -76,6 +84,12 @@ Item {
   function lift() { if (body.item) body.item.release() }
   function cancel() { if (body.item) body.item.cancel() }
   function info() { return body.item ? body.item.info() : { open: false, n: 0 } }
+  // a hand-over waiting for the content (the Loader builds asynchronously)
+  property var pendingHand: null
+  function takeHand(rect, address) {
+    pendingHand = { rect: rect, address: String(address || "") }
+    if (body.item && body.status === Loader.Ready) body.item.takeHand()
+  }
 
   // ---- the windows: Hyprland's toplevels, refreshed on its events (their IPC objects carry the
   // focus history, workspace and monitor)
@@ -146,13 +160,36 @@ Item {
 
       // taken once per open: the row never reorders under a finger
       property var windows: []
-      Component.onCompleted: { windows = sw.scan(); forceActiveFocus() }
+      Component.onCompleted: { windows = sw.scan(); forceActiveFocus(); if (sw.pendingHand) Qt.callLater(takeHand) }
       readonly property int n: windows.length
       readonly property real cardH: height * sw.cfg.cardShare
       readonly property real cardW: cardH * (width / Math.max(1, height))
       readonly property real step: cardW + sw.cfg.cardGap
       readonly property var range: Nav.bounds(n, step)
       readonly property real p: sw.shown
+      // ---- taken over from the owner's card: the row stands (no rise), that card flies into its place
+      property bool takenOver: false
+      property string handAddress: ""
+      Spring { id: handS; preset: sw.cfg.enterSpring; reduced: Theme.reduceMotion; target: 0 }
+      readonly property real hand: takenOver ? handS.value : 0
+      Connections { target: sw; function onProgressChanged() { if (sw.progress <= 0) root.takenOver = false } }
+      function takeHand() {
+        var h = sw.pendingHand
+        sw.pendingHand = null
+        if (!h) return
+        rowX.snap(0)
+        handAddress = h.address
+        takenOver = true
+        handS.snap(0)                                    // the row's places as they stand, no hand yet
+        for (var i = 0; i < n; i++) {
+          var c = cardItem(i)
+          if (!c || windows[i].address !== h.address) continue
+          c.handFrom = c.mapToItem(root, 0, 0)
+          c.handRect = h.rect
+        }
+        handS.from(1)
+        sw.handTaken()
+      }
 
       // the row's offset: 1:1 under a finger, a spring after it
       Spring { id: rowX; preset: sw.cfg.rowSpring; reduced: Theme.reduceMotion; target: 0 }
@@ -324,11 +361,13 @@ Item {
       Item {
         id: stage
         anchors.fill: parent
-        opacity: root.p
+        // risen with the finger, or standing at once when taken over from the owner's card
+        readonly property real rise: root.takenOver ? 1 : root.p
+        opacity: rise
         readonly property real others: 1 - launchS.value
         transform: [
-          Scale { origin.x: stage.width / 2; origin.y: stage.height / 2; xScale: sw.cfg.enterScale + (1 - sw.cfg.enterScale) * root.p; yScale: xScale },
-          Translate { y: (1 - root.p) * stage.height * sw.cfg.enterRise }
+          Scale { origin.x: stage.width / 2; origin.y: stage.height / 2; xScale: sw.cfg.enterScale + (1 - sw.cfg.enterScale) * stage.rise; yScale: xScale },
+          Translate { y: (1 - stage.rise) * stage.height * sw.cfg.enterRise }
         ]
         Item {
           id: row
@@ -340,7 +379,8 @@ Item {
             SwitcherCard {
               required property var modelData
               entry: modelData
-              dim: root.launching >= 0 && index !== root.launching ? stage.others : 1
+              dim: (root.launching >= 0 && index !== root.launching ? stage.others : 1) * (modelData.address === root.handAddress ? 1 : 1 - root.hand)
+              hand: modelData.address === root.handAddress ? root.hand : 0
               count: root.n
               cardW: root.cardW
               cardH: root.cardH
@@ -357,7 +397,7 @@ Item {
           anchors.horizontalCenter: parent.horizontalCenter
           y: parent.height / 2 + root.cardH / 2 + sw.cfg.clearTop
           visible: root.n > 0
-          opacity: stage.others
+          opacity: stage.others * (1 - root.hand)
           width: clearText.implicitWidth + 2 * sw.cfg.clearPad
           height: sw.cfg.clearHeight
           radius: height / 2
