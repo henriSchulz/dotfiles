@@ -435,15 +435,23 @@ Item {
   // the card, the card fades under its backdrop, then the overlay lets go of the card
   function toMaterialSwitcher(hand) {
     note("material switcher")
-    // the app's card hands itself to the Material switcher where it rests (one movement into the row);
-    // the others fade
+    // the app's card and its neighbours hand themselves to the Material switcher where they rest (one
+    // movement into the row); windows without a card fade in there
     var c = card(cur), e = cards[cur]
-    for (var i = 0; i < cards.length; i++) { var o = card(i); if (o && i !== cur) o.to("o", 0, "snappy") }
     dimV.target = 0; labelV.target = 0
     swDragging = false
     swProgress = 1
-    if (c && e && switcherItem) switcherItem.takeHand(c.mapToItem(switcherItem, 0, 0, c.width, c.height), e.address)
-    else if (c) c.to("o", 0, "snappy")
+    if (c && e && switcherItem) {
+      // the neighbour cards still showing go along, each from where it stands
+      var others = []
+      for (var j = 0; j < cards.length; j++) {
+        var n = card(j)
+        if (j === cur || !n || n.po < cfg.nearScale) continue
+        others.push({ address: cards[j].address, rect: n.mapToItem(switcherItem, 0, 0, n.width, n.height) })
+      }
+      switcherItem.takeHand(c.mapToItem(switcherItem, 0, 0, c.width, c.height), e.address, others)
+    }
+    else for (var i = 0; i < cards.length; i++) { var o = card(i); if (o) o.to("o", 0, "snappy") }
     settleWhen(function () { var c = home.card(home.cur); return (!c || c.near(["o"])) && (!home.switcherItem || home.switcherItem.shown >= 1 - home.cfg.nearScale) }, "idle", false)
   }
   function openMaterialSwitcher(screenName) {
@@ -674,7 +682,9 @@ Item {
   // card goes home; behind a dragged card and in the switcher lies the blurred wallpaper (blurV);
   // the dock slides up when a gesture starts and stays through the switcher (dockV).
   Spring { id: homeV; preset: home.preset(home.cfg.homeScreenResponse, home.cfg.homeScreenDamping); reduced: Theme.reduceMotion }
-  Spring { id: blurV; preset: home.preset(home.cfg.blurResponse, home.cfg.blurDamping); reduced: Theme.reduceMotion }
+  // the Material switcher's entrance spring: the backdrop stands by the time a pause hands the card over
+  // (v3's 0.574 s blur was still coming when the switcher took over, Henri 2026-11-12)
+  Spring { id: blurV; preset: home.mt.switcher.enterSpring; reduced: Theme.reduceMotion }
   Spring { id: dockV; preset: Theme.spring("snappy"); reduced: Theme.reduceMotion }
   // a spring sits at v and stays there: Spring.snap() keeps the old target, so the next same
   // target would not move it (the dock stayed down after a gesture that had snapped it)
@@ -791,7 +801,8 @@ Item {
       var o = card(i)
       if (o) { o.to("x", HM.besideX(i, cur, f.s, f.x, areaW, cfg), fp); o.to("y", f.y, fp); o.to("s", f.s, fp); o.set("o", 1) }
     }
-    if (blurV.target !== 1) backdrop(0, 1, 1, false)
+    // no dock coming up under the card: the Material switcher it leads to has none (Henri 2026-11-12)
+    if (blurV.target !== 1) backdrop(0, 1, 0, false)
   }
   function arm() {
     if (armed || swZone) return
@@ -1658,49 +1669,24 @@ Item {
                 cache: true
               }
               // the same home screen as the bottom layer's, on the same spot (below the bar, above the home zone)
-              // the blurred wallpaper: a small copy blurred once into a cached layer, so it costs nothing per frame.
-              // It reaches past the screen's edges by the blur's radius: a blur mixes in the transparency
-              // beyond its source, and the sharp wallpaper under it showed through along the edges.
+              // behind a dragged card: the Material App Switcher's own backdrop (the blurred wallpaper under its
+              // tint and scrim), so the hand-over to it changes nothing on screen — the v3 look (sharp, its
+              // own blur) stood first and the switcher's blur came over it after the pause (Henri 2026-11-12).
+              // Made once into a cached layer: only its opacity changes per frame
               Item {
                 id: blurBox
-                x: -home.cfg.blurMax
-                y: -home.cfg.blurMax
-                width: parent.width + 2 * home.cfg.blurMax
-                height: parent.height + 2 * home.cfg.blurMax
+                width: all.width
+                height: all.height
                 opacity: Math.max(0, Math.min(1, blurV.value))
                 visible: opacity > 0.002
                 layer.enabled: true
-                // MultiEffect keeps the size its blur had when it was made: made at 0 × 0 (the window not
-                // laid out yet) it was one flat colour, made while the screen was still portrait it
-                // ended 768 px across the landscape switcher. So it is made once the size is known,
-                // and made again whenever the size changes.
-                readonly property size made: Qt.size(Math.round(width), Math.round(height))
-                onMadeChanged: { blurMaker.active = false; blurMaker.active = made.width > 2 * home.cfg.blurMax && made.height > 2 * home.cfg.blurMax }
-                Loader {
-                  id: blurMaker
+                FolderBackdrop {
                   anchors.fill: parent
-                  active: false
-                  sourceComponent: Item {
-                    Image {
-                      id: wallSmall
-                      anchors.fill: parent
-                      source: "file://" + home.wallpaperLink + (home.wallpaperTarget ? "?v=" + encodeURIComponent(home.wallpaperTarget) : "")
-                      fillMode: Image.PreserveAspectCrop
-                      sourceSize.width: Math.max(1, Math.round(blurBox.made.width / home.cfg.blurDownscale))
-                      sourceSize.height: Math.max(1, Math.round(blurBox.made.height / home.cfg.blurDownscale))
-                      visible: false
-                      cache: true
-                    }
-                    MultiEffect {
-                      anchors.fill: parent
-                      source: wallSmall
-                      blurEnabled: true
-                      blur: 1
-                      blurMax: home.cfg.blurMax
-                      saturation: home.cfg.blurSaturation
-                    }
-                  }
+                  wallSource: home.wallpaperSource
+                  wallRect: Qt.rect(0, 0, width, height)
+                  tint: home.mt.switcher.backdropTint
                 }
+                Rectangle { anchors.fill: parent; color: home.mt.switcher.scrim }
               }
             }
           }
@@ -1855,7 +1841,7 @@ Item {
           onCloseWindow: function (address) { home.guard("closeWindow", function () { home.closeWindow(address) }) }
           onClosed: { home.swDragging = false; home.swProgress = 0 }
           // its card stands where the app's card rests: that one goes at once
-          onHandTaken: { var c = home.card(home.cur); if (c) c.set("o", 0) }
+          onHandTaken: { for (var i = 0; i < home.cards.length; i++) { var c = home.card(i); if (c) c.set("o", 0) } }
         }
       }
     }

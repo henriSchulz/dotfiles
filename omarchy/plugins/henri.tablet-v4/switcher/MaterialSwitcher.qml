@@ -34,7 +34,7 @@ import "Nav.js" as Nav
 //                           ~80 ms); warm alone shows nothing and takes no input
 //   open (read only)        content is shown (progress > 0 or still settling); closed = a Loader
 //                           with nothing in it (or only warm), no frames
-//   takeHand(rect, address) over an app the owner's own card was pulled up and rests at `rect` (this
+//   takeHand(rect, address, others) over an app the owner's own card was pulled up and rests at `rect` (this
 //                           item's coordinates): the switcher stands at once, that window's card flies
 //                           from there into its place, the rest fades in — one movement, no second
 //                           entrance. signal handTaken() once its card is there: hide the owner's
@@ -110,8 +110,9 @@ Item {
   function info() { return body.item ? body.item.info() : { open: false, n: 0 } }
   // a hand-over waiting for the content (the Loader builds asynchronously)
   property var pendingHand: null
-  function takeHand(rect, address) {
-    pendingHand = { rect: rect, address: String(address || "") }
+  // others: [{ address, rect }] the owner's neighbour cards beside it — they fly into their places too
+  function takeHand(rect, address, others) {
+    pendingHand = { rect: rect, address: String(address || ""), others: others || [] }
     if (body.item && body.status === Loader.Ready) body.item.takeHand()
   }
 
@@ -203,13 +204,14 @@ Item {
         windows = sw.scan()
         rowX.snap(0)
         launching = -1; handed = false; launchS.snap(0)
-        takenOver = false; handAddress = ""
+        takenOver = false; handAddress = ""; handOthers = ({})
         for (var i = 0; i < n; i++) { var c = cardItem(i); if (c) { c.launch = 0; c.lifted = false; c.refresh() } }
         forceActiveFocus()
       }
       // ---- taken over from the owner's card: the row stands (no rise), that card flies into its place
       property bool takenOver: false
       property string handAddress: ""
+      property var handOthers: ({})          // address → true: neighbours handed over with it
       Spring { id: handS; preset: sw.cfg.enterSpring; reduced: Theme.reduceMotion; target: 0 }
       readonly property real hand: takenOver ? handS.value : 0
       Connections { target: sw; function onProgressChanged() { if (sw.progress <= 0) root.takenOver = false } }
@@ -237,6 +239,18 @@ Item {
           // its place in the row, without the hand's own transform (it may stand at 1 already)
           c.handFrom = c.parent.mapToItem(root, c.x, c.y)
           c.handRect = h.rect
+          var map = {}
+          for (var k = 0; k < h.others.length; k++) {
+            var o = h.others[k]
+            for (var m = 0; m < n; m++) {
+              var oc = cardItem(m)
+              if (!oc || windows[m].address !== o.address || o.address === h.address) continue
+              oc.handFrom = oc.parent.mapToItem(root, oc.x, oc.y)
+              oc.handRect = o.rect
+              map[o.address] = true
+            }
+          }
+          handOthers = map
           handS.snap(1)
           handS.from(1)
         } else handS.snap(0)
@@ -431,8 +445,9 @@ Item {
             SwitcherCard {
               required property var modelData
               entry: modelData
-              dim: (root.launching >= 0 && index !== root.launching ? stage.others : 1) * (modelData.address === root.handAddress ? 1 : 1 - root.hand)
-              hand: modelData.address === root.handAddress ? root.hand : 0
+              readonly property bool handed: modelData.address === root.handAddress || !!root.handOthers[modelData.address]
+              dim: (root.launching >= 0 && index !== root.launching ? stage.others : 1) * (handed ? 1 : 1 - root.hand)
+              hand: handed ? root.hand : 0
               count: root.n
               cardW: root.cardW
               cardH: root.cardH
