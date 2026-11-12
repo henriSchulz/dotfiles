@@ -96,7 +96,7 @@ Item {
     Rectangle {
       anchors.fill: parent
       radius: menu.cfg.radius
-      color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+      color: Theme.userReduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
       border.width: 1 / Screen.devicePixelRatio
       border.color: Theme.r.line.rim
     }

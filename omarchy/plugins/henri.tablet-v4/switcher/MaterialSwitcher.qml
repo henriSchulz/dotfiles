@@ -29,8 +29,11 @@ import "Nav.js" as Nav
 //   press(x, y) / drag(x, y) / lift() / cancel()   a finger in this item's coordinates, for an owner
 //                           that routes touch itself (edge socket, rig); the item has its own
 //                           MouseArea + MultiPointTouchArea otherwise
-//   open (read only)        content is loaded (progress > 0 or still settling); closed = a Loader
-//                           with nothing in it, no captures, no frames
+//   warm: bool             a finger is on the gesture strip: build the cards and take their pictures
+//                           now, while nothing moves (made at the gesture's first frame, they cost it
+//                           ~80 ms); warm alone shows nothing and takes no input
+//   open (read only)        content is shown (progress > 0 or still settling); closed = a Loader
+//                           with nothing in it (or only warm), no frames
 //   info()                  state for tests: { open, n, offset, centred, windows: [{address, name}] }
 Item {
   id: sw
@@ -40,6 +43,7 @@ Item {
   property string screenName: ""
   property Component backdrop: null
   property var appFor: null
+  property bool warm: false
 
   signal switchTo(string address)
   signal closeWindow(string address)
@@ -47,12 +51,16 @@ Item {
 
   readonly property var cfg: Theme.core.surface.material.switcher
   readonly property string family: Theme.core.surface.material.widgets.font[0]
-  readonly property bool open: body.active
+  readonly property bool shows: sw.holding || sw.progress > 0 || enter.moving || enter.value > 0.002
+  readonly property bool open: body.active && shows
   // opening an app holds the switcher as it is until the window stands under the grown card
   property bool holding: false
   // …and then goes at once (the window stands where the card was): no sinking back over it
   property bool handedOff: false
   onProgressChanged: if (progress > 0 && !holding) handedOff = false
+  // warm lingers a moment: the finger's lift ends it just before the owner opens the switcher
+  onWarmChanged: { if (warm && !holding) handedOff = false; if (!warm) warmLinger.restart() }
+  Timer { id: warmLinger; interval: Theme.dur("fast") }
   // what shows: the spring's value (tight while a finger drives, Material's settle once it lets go)
   readonly property real shown: holding ? 1 : Math.max(0, Math.min(1, enter.value))
 
@@ -88,6 +96,14 @@ Item {
     for (var i = 0; i < mons.length; i++) if (mons[i].id === id) return mons[i].name
     return ""
   }
+  // where the window stands on its screen (logical px from the screen's top left): a launched card
+  // lands there — under the status bar a window is shorter than the screen
+  function placeOf(o) {
+    var mons = Hyprland.monitors.values, mx = 0, my = 0
+    for (var i = 0; i < mons.length; i++) if (mons[i].id === o.monitor) { var m = mons[i].lastIpcObject; mx = m ? m.x || 0 : 0; my = m ? m.y || 0 : 0 }
+    if (!o.at || !o.size || !(o.size[0] > 0) || !(o.size[1] > 0)) return null
+    return Qt.rect(o.at[0] - mx, o.at[1] - my, o.size[0], o.size[1])
+  }
   function appOf(cls, title) {
     if (sw.appFor) { var r = sw.appFor(cls); if (r) return r }
     var e = null
@@ -105,7 +121,7 @@ Item {
       if (o.workspace && String(o.workspace.name || "").indexOf("special:") === 0) continue
       if (sw.screenName && monitorName(o.monitor) !== sw.screenName) continue
       var app = appOf(o.class, o.title)
-      out.push({ address: String(o.address), toplevel: t, name: app.name, icon: app.icon,
+      out.push({ address: String(o.address), toplevel: t, name: app.name, icon: app.icon, place: placeOf(o),
                  focus: typeof o.focusHistoryID === "number" ? o.focusHistoryID : Number.MAX_SAFE_INTEGER })
     }
     out.sort(function (a, b) { return b.focus - a.focus })
@@ -115,7 +131,9 @@ Item {
   Loader {
     id: body
     anchors.fill: parent
-    active: !sw.handedOff && (sw.holding || sw.progress > 0 || enter.moving || enter.value > 0.002)
+    active: !sw.handedOff && (sw.shows || sw.warm || warmLinger.running)
+    // made over a few frames: built at a finger's touch, a blocking build held the gesture's first moves
+    asynchronous: true
     sourceComponent: content
   }
 

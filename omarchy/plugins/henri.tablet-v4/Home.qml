@@ -1828,6 +1828,7 @@ Item {
           screenName: per.name
           progress: overlay.mine ? home.swProgress : 0
           dragging: overlay.mine && home.swDragging
+          warm: overlay.mine && home.zoneFinger
           appFor: function (cls) { var id = home.appIdOf(cls), e = home.entries[id]; return e ? { name: e.name, icon: e.icon } : null }
           backdrop: Component {
             FolderBackdrop {

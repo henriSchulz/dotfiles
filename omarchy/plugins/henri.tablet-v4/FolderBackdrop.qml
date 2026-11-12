@@ -11,20 +11,24 @@ Item {
   readonly property var cfg: Theme.core.surface.tablet.home
   // over the blurred wallpaper (v4: the Material scrim, surface.material.color.scrim)
   property color tint: fc.backdropTint
+  // the blur reaches past the wallpaper's rect by its radius: a blur mixes in the transparency beyond
+  // its source, and a light frame showed along the screen's edges (as Home.qml's blurBox)
+  readonly property real pad: fc.backdropBlur
   Image {
     id: wall
-    x: back.wallRect.x; y: back.wallRect.y; width: back.wallRect.width; height: back.wallRect.height
+    x: back.wallRect.x - back.pad; y: back.wallRect.y - back.pad
+    width: back.wallRect.width + 2 * back.pad; height: back.wallRect.height + 2 * back.pad
     source: back.wallSource
     fillMode: Image.PreserveAspectCrop
-    sourceSize.width: back.wallRect.width / back.cfg.blurDownscale
-    sourceSize.height: back.wallRect.height / back.cfg.blurDownscale
+    sourceSize.width: wall.width / back.cfg.blurDownscale
+    sourceSize.height: wall.height / back.cfg.blurDownscale
     visible: false
     cache: true
   }
   MultiEffect {
     x: wall.x; y: wall.y; width: wall.width; height: wall.height
     source: wall
-    visible: !Theme.reduceTransparency && back.wallSource !== ""
+    visible: !Theme.userReduceTransparency && back.wallSource !== ""
     blurEnabled: true
     blur: 1
     blurMax: back.fc.backdropBlur
@@ -32,6 +36,6 @@ Item {
   }
   Rectangle {
     anchors.fill: parent
-    color: Theme.reduceTransparency || back.wallSource === "" ? Theme.r.popover.bgOpaque : back.tint
+    color: Theme.userReduceTransparency || back.wallSource === "" ? Theme.r.popover.bgOpaque : back.tint
   }
 }

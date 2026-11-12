@@ -199,7 +199,7 @@ FocusScope {
     visible: opacity > 0
     Item {
       anchors.fill: parent
-      visible: qs.wallpaper !== "" && !Theme.reduceTransparency
+      visible: qs.wallpaper !== "" && !Theme.userReduceTransparency
       layer.enabled: visible            // blurred once, then only composited while it fades
       Image {
         id: wall
@@ -340,7 +340,7 @@ FocusScope {
       Rectangle {
         anchors.fill: parent
         radius: qs.k.panel.radius
-        color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+        color: Theme.userReduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
         border.width: qs.k.panel.rim
         border.color: Theme.r.line.rim
       }
@@ -452,7 +452,7 @@ FocusScope {
       Rectangle {
         anchors.fill: parent
         radius: qs.k.panel.radius
-        color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+        color: Theme.userReduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
         border.width: qs.k.panel.rim
         border.color: Theme.r.line.rim
       }

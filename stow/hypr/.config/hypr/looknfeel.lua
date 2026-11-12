@@ -172,6 +172,14 @@ hl.layer_rule({ match = { namespace = "velum-surface" }, blur = true, ignore_alp
 hl.layer_rule({ match = { namespace = "velum-surface-dismiss" }, no_anim = true, animation = "none" })
 hl.layer_rule({ match = { namespace = "henri-osd" }, blur = true, ignore_alpha = 0.6 })
 
+-- Tablet mode (henri.tablet-v3/v4): the home screen, its gesture overlay, the folder/search backdrop,
+-- the Quick Settings shade and the status bar animate themselves. Hyprland's layer fade on top made
+-- every one of them start late and mushy (the shade faded in over 200 ms under the finger).
+for _, ns in ipairs({ "velum-home-overlay", "velum-home-screen", "velum-home-folder", "velum-home-indicator",
+                      "velum-tablet-shade", "velum-tablet-statusbar", "velum-dictation-stop" }) do
+  hl.layer_rule({ match = { namespace = ns }, no_anim = true, animation = "none" })
+end
+
 -- Quick Look (GNOME Sushi): Hyprland maps the window at a size of its own and
 -- only a frame later gets the preview's real size, so the default pop-in
 -- (87 %) reads as the card shrinking into place. Starting the pop-in from

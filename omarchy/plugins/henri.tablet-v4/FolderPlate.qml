@@ -26,7 +26,7 @@ Item {
 
   Item {
     anchors.fill: parent
-    visible: !Theme.reduceTransparency && plate.wallSource !== ""
+    visible: !Theme.userReduceTransparency && plate.wallSource !== ""
     layer.enabled: visible
     layer.effect: MultiEffect { maskEnabled: true; maskSource: plateMask; maskThresholdMin: 0.5; maskSpreadAtMin: 1 }
     Image {

@@ -27,10 +27,14 @@ Item {
   property bool lifted: false          // a finger has it (its header hides, as the lab's)
   property bool away: false
   // opening its app: 0 … 1 from its place in the row to the whole screen (`from` = its top left in the
-  // switcher's coordinates at the tap); only transform, the clip's corner and the header's opacity change
+  // switcher's coordinates at the tap); only transform, the clip's corner and height, the picture's width and the header's opacity change
   property real launch: 0
   property real dim: 1                 // the others fade while one opens
   property point from: Qt.point(0, 0)
+  // where it lands: the window's own place (entry.place), else the whole area. The card scales
+  // evenly to the window's width; its picture turns from "cover" to the window's own shape meanwhile
+  readonly property rect goal: entry.place ? entry.place : Qt.rect(0, 0, areaW, areaH)
+  readonly property real grow: goal.width / Math.max(1, cardW)
   readonly property var cfg: Theme.core.surface.material.switcher
   readonly property string family: Theme.core.surface.material.widgets.font[0]
   readonly property bool hasPicture: shot.hasContent
@@ -47,8 +51,8 @@ Item {
   visible: opacity > 0.002
   z: launch > 0 ? 1 : 0
   transform: [
-    Scale { xScale: 1 + (card.areaW / Math.max(1, card.cardW) - 1) * card.launch; yScale: 1 + (card.areaH / Math.max(1, card.cardH) - 1) * card.launch },
-    Translate { x: -card.from.x * card.launch; y: -card.from.y * card.launch }
+    Scale { xScale: 1 + (card.grow - 1) * card.launch; yScale: xScale },
+    Translate { x: (card.goal.x - card.from.x) * card.launch; y: (card.goal.y - card.from.y) * card.launch }
   ]
 
   // its place in the row; a closed neighbour's gap closes on a spring
@@ -100,7 +104,9 @@ Item {
   // ---- the picture on its card, with Velum's popover shadow (a lab influence)
   VShadow { layers: Theme.r.popover.shadow; radius: card.cfg.cardRadius; opacity: 1 - card.launch }
   ClippingRectangle {
-    anchors.fill: parent
+    // growing into its app it takes the window's height (its place may be shorter than the screen)
+    width: parent.width
+    height: card.cardH + (card.goal.height / Math.max(0.001, card.grow) - card.cardH) * card.launch
     // square once it fills the screen (the radius is in card units, the card is scaled up)
     radius: card.cfg.cardRadius * (1 - card.launch)
     color: Theme.dark ? card.cfg.cardDark : card.cfg.cardLight
@@ -120,8 +126,10 @@ Item {
       // cover from the top: as wide as the card, as tall as the window's aspect needs (or the other way)
       readonly property real aspect: sourceSize.width > 0 ? sourceSize.height / sourceSize.width : card.cardH / Math.max(1, card.cardW)
       readonly property bool tall: aspect >= card.cardH / Math.max(1, card.cardW)
-      width: tall ? card.cardW : card.cardH / aspect
-      height: tall ? card.cardW * aspect : card.cardH
+      readonly property real coverW: tall ? card.cardW : card.cardH / aspect
+      // growing into its app it turns to the window's width, as the window will stand
+      width: coverW + (card.cardW - coverW) * card.launch
+      height: width * aspect
       x: (card.cardW - width) / 2
       y: 0
       captureSource: card.entry.toplevel ? card.entry.toplevel.wayland : null

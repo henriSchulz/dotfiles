@@ -20,7 +20,7 @@ Item {
   VShadow { layers: Theme.r.popover.shadow; radius: gl.radius }
   Item {
     anchors.fill: parent
-    visible: !Theme.reduceTransparency && gl.wallSource !== ""
+    visible: !Theme.userReduceTransparency && gl.wallSource !== ""
     layer.enabled: visible
     layer.effect: MultiEffect { maskEnabled: true; maskSource: glassMask; maskThresholdMin: 0.5; maskSpreadAtMin: 1 }
     Image {
@@ -55,7 +55,7 @@ Item {
   Rectangle {
     anchors.fill: parent
     radius: gl.radius
-    color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+    color: Theme.userReduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
     border.width: 1
     border.color: gl.rim
   }

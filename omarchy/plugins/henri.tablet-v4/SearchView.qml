@@ -145,7 +145,7 @@ Item {
   Loader {
     anchors.fill: parent
     opacity: view.fade
-    active: view.visible && view.backdropSource !== null && !Theme.reduceTransparency
+    active: view.visible && view.backdropSource !== null && !Theme.userReduceTransparency
     sourceComponent: Item {
       ShaderEffectSource {
         id: snap
@@ -196,7 +196,7 @@ Item {
     Rectangle {
       anchors.fill: parent
       radius: view.cfg.barHeight / 2
-      color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+      color: Theme.userReduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
       border.width: 1 / Screen.devicePixelRatio
       border.color: Theme.r.line.rim
     }

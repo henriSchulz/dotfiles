@@ -181,7 +181,7 @@ Item {
       y: -sheet.y
       width: drawer.width
       height: drawer.height
-      active: drawer.visible && drawer.backdropSource !== null && !Theme.reduceTransparency
+      active: drawer.visible && drawer.backdropSource !== null && !Theme.userReduceTransparency
       sourceComponent: Item {
         ShaderEffectSource {
           id: snap
@@ -204,7 +204,7 @@ Item {
     }
     Rectangle {
       anchors.fill: parent
-      color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+      color: Theme.userReduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
     }
 
     // head: the handle (a swipe down there takes the sheet along) and the search field
