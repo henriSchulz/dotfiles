@@ -71,7 +71,9 @@ hl.animation({ leaf = "layersOut", enabled = true, speed = 1.4, bezier = "mcIn",
 -- Geschwindigkeit; `speed` ist bei Federn ohne Wirkung. 40 px Spalt wie im
 -- Plugin (gap), damit Geste und Taste dieselbe Geometrie haben.
 hl.curve("spacesSpring", { type = "spring", mass = 1, stiffness = 322, dampening = 35.889 })
-hl.animation({ leaf = "workspaces", enabled = true, speed = 1, spring = "spacesSpring", style = "slide" })
+-- Global: tablet.lua turns the slide off in tablet mode and puts this back when it ends.
+henri_workspaces_anim = { leaf = "workspaces", enabled = true, speed = 1, spring = "spacesSpring", style = "slide" }
+hl.animation(henri_workspaces_anim)
 hl.config({ general = { gaps_workspaces = 40 } })
 
 -- Maus bleibt, wo sie ist. Omarchy setzt warp_on_change_workspace = 1; beim

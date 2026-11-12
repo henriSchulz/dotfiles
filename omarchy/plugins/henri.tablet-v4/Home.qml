@@ -901,13 +901,15 @@ Item {
     if (!r) c.to("o", 0, shrink)
     for (var i = 0; i < cards.length; i++) if (i !== cur && card(i)) card(i).to("o", 0, "snappy")
     backdrop(1, 0, 1, false); dimV.target = 0; labelV.target = 0
-    // the workspace changes now, unseen under the card, so the bar comes down during the flight and
-    // the home screen's own surface is there when the overlay lets go
-    goHomeNow()
+    // the workspace changes once the card has landed (settleTick → goHomeNow): sent during the flight,
+    // the switch's slow frame stopped the card just before the icon (Henri 2026-11-12)
     settleWhen(function () { return c.near(["x", "y", "s"]) }, "home", true)
   }
   // the first empty workspace on the gesture's screen (not just any empty one: another monitor's
   // would leave this screen on its app)
+  // how long the overlay waits after a workspace switch: Hyprland's slide, or in tablet mode (no slide,
+  // tablet.lua) only the frames until the workspace shows
+  readonly property int settleMs: Theme.touch ? cfg.settleTablet : cfg.settle
   property real homeSwitchAt: 0       // when the last switch to an empty workspace went out
   property real appSwitchAt: 0        // when the last switch to an app's workspace went out
   function goHomeNow() {
@@ -1333,9 +1335,11 @@ Item {
       // too, or its window slides in from the side once the overlay is gone)
       var since = home.homeSwitchAt ? Date.now() - home.homeSwitchAt : 0
       var appSince = home.appSwitchAt ? Date.now() - home.appSwitchAt : 0
-      letGo.interval = home.settleTo === "home" ? Math.max(Theme.dur("fast"), home.cfg.settle - since)
-                     : home.settleWait && home.appSwitchAt ? Math.max(Theme.dur("fast"), home.cfg.settle - appSince)
-                     : home.settleWait || home.launchedId ? home.cfg.settle : Theme.dur("fast")
+      var floor = Math.min(Theme.dur("fast"), home.settleMs)
+      letGo.interval = home.settleTo === "home" ? Math.max(floor, home.settleMs - since)
+                     : home.settleWait && home.appSwitchAt ? Math.max(floor, home.settleMs - appSince)
+                     : home.launchedId ? home.cfg.settle      // a new window still turns fullscreen (tablet.lua)
+                     : home.settleWait ? home.settleMs : Theme.dur("fast")
       letGo.restart()
     }
   }
@@ -1834,6 +1838,7 @@ Item {
           progress: overlay.mine ? home.swProgress : 0
           dragging: overlay.mine && home.swDragging
           warm: overlay.mine && home.zoneFinger
+          handoff: home.settleMs
           appFor: function (cls) { var id = home.appIdOf(cls), e = home.entries[id]; return e ? { name: e.name, icon: e.icon } : null }
           backdrop: Component {
             FolderBackdrop {

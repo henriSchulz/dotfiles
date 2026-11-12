@@ -48,6 +48,8 @@ Item {
   property Component backdrop: null
   property var appFor: null
   property bool warm: false
+  // how long the grown card stays after the switch (the owner knows whether Hyprland slides)
+  property int handoff: cfg.launchHandoff
 
   signal switchTo(string address)
   signal closeWindow(string address)
@@ -288,7 +290,7 @@ Item {
         }
       }
       property bool handed: false
-      Timer { id: handoff; interval: sw.cfg.launchHandoff; onTriggered: { sw.handedOff = true; sw.holding = false; enter.snap(0) } }
+      Timer { id: handoff; interval: sw.handoff; onTriggered: { sw.handedOff = true; sw.holding = false; enter.snap(0) } }
       function launchAt(i) {
         var c = cardItem(i)
         if (!c || launching >= 0) return

@@ -317,6 +317,10 @@ local function apply_config()
     -- a finger hides the pointer already (cursor:hide_on_touch, on by default); the touchpad's
     -- pointer goes too once it rests, as on an iPad with a Magic Keyboard
     hl.config({ cursor = { hide_on_touch = true, inactive_timeout = TABLET_CURSOR_IDLE } })
+    -- no workspace slide: the shell's gesture overlay covers every app switch and draws its own
+    -- motion; the slide only ran underneath it, rendered two workspaces during a cast and held the
+    -- overlay ~450 ms before it could let go (henri.tablet-v4, Henri 2026-11-12)
+    hl.animation({ leaf = "workspaces", enabled = false })
     layout_rules(true)
   elseif saved then
     layout_rules(false, saved.layout or "dwindle")
@@ -325,6 +329,7 @@ local function apply_config()
     if saved.under_fs ~= nil then hl.config({ misc = { on_focus_under_fullscreen = saved.under_fs } }) end
     if saved.aspect then hl.config({ layout = { single_window_aspect_ratio = saved.aspect } }) end
     hl.config({ cursor = { inactive_timeout = saved.cursor_idle or 0 } })
+    if henri_workspaces_anim then hl.animation(henri_workspaces_anim) end
     saved = nil
   end
 end
