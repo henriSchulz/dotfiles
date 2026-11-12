@@ -69,6 +69,8 @@ Item {
   Component.onCompleted: slotS.snap(slotS.target)
 
   function follow(dy) { liftS.snap(dy) }
+  // a fresh picture (the last one stays until it comes)
+  function refresh() { if (shot.captureSource) shot.captureFrame() }
   function drop(vy) {
     liftS.velocity = vy
     if (liftS.target !== 0) liftS.target = 0

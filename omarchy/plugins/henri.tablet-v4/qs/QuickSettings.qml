@@ -67,6 +67,9 @@ FocusScope {
   readonly property real progress: Math.max(0, Math.min(1,
     ownDrag ? ownProgress : dragging && !released ? dragProgress : shade.value))
   readonly property bool shown: progress > 0 || dragging || ownDrag || shade.moving
+  // open and standing: the owner's backend reads the system only then (results that came in during a
+  // pull rebuilt tiles and the notification list in the moving frames)
+  readonly property bool still: shown && !dragging && !ownDrag && !shade.moving
   onDraggingChanged: released = false
   Spring {
     id: shade
@@ -200,7 +203,9 @@ FocusScope {
     Item {
       anchors.fill: parent
       visible: qs.wallpaper !== "" && !Theme.userReduceTransparency
-      layer.enabled: visible            // blurred once, then only composited while it fades
+      // blurred once and kept (also while the shade is closed: made again at each pull's first frame,
+      // it held that frame), then only composited while it fades
+      layer.enabled: visible
       Image {
         id: wall
         anchors.fill: parent

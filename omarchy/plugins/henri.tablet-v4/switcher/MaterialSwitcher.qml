@@ -48,6 +48,24 @@ Item {
   property Component backdrop: null
   property var appFor: null
   property bool warm: false
+  // keep the cards made between opens (tablet mode): made at the open, their pictures were not there in
+  // time for a hand-over (the Home button) and an icon placeholder flew. Kept, an open starts on the
+  // last pictures and asks for fresh ones (as henri.tablet-v3's cards do). Made again keepAfter after a
+  // close, when nothing moves
+  property bool keep: false
+  property bool kept: false
+  Timer {
+    id: keepLater
+    interval: sw.cfg.keepAfter
+    running: sw.keep && !sw.kept && !sw.shows && !sw.warm
+    onTriggered: { sw.handedOff = false; sw.kept = true }
+  }
+  onKeepChanged: if (!keep) kept = false
+  onHandedOffChanged: if (handedOff) kept = false       // after a launch the row is made again later
+  // an open (a finger on the edge, or shown): the kept row takes the windows and pictures of now
+  property bool fresh: false
+  function wake() { if (fresh) return; fresh = true; if (body.item) body.item.reopen() }
+  onShowsChanged: { if (shows) wake(); else if (!warm) fresh = false }
   // how long the grown card stays after the switch (the owner knows whether Hyprland slides)
   property int handoff: cfg.launchHandoff
 
@@ -69,7 +87,11 @@ Item {
     if (progress <= 0) pendingHand = null
   }
   // warm lingers a moment: the finger's lift ends it just before the owner opens the switcher
-  onWarmChanged: { if (warm && !holding) handedOff = false; if (!warm) warmLinger.restart() }
+  onWarmChanged: {
+    if (warm && !holding) handedOff = false
+    if (warm) wake()
+    else { warmLinger.restart(); if (!shows) fresh = false }
+  }
   Timer { id: warmLinger; interval: Theme.dur("fast") }
   // what shows: the spring's value (tight while a finger drives, Material's settle once it lets go)
   readonly property real shown: holding ? 1 : Math.max(0, Math.min(1, enter.value))
@@ -147,7 +169,7 @@ Item {
   Loader {
     id: body
     anchors.fill: parent
-    active: !sw.handedOff && (sw.shows || sw.warm || warmLinger.running)
+    active: !sw.handedOff && (sw.shows || sw.warm || warmLinger.running || sw.kept)
     // made over a few frames: built at a finger's touch, a blocking build held the gesture's first moves
     asynchronous: true
     sourceComponent: content
@@ -162,34 +184,62 @@ Item {
 
       // taken once per open: the row never reorders under a finger
       property var windows: []
-      Component.onCompleted: { windows = sw.scan(); forceActiveFocus(); if (sw.pendingHand) Qt.callLater(takeHand) }
+      Component.onCompleted: {
+        windows = sw.scan(); forceActiveFocus()
+        sw.fresh = sw.shows || sw.warm               // made ahead (kept): the next open takes fresh pictures
+        // a hand-over waits (the Home button: nothing warmed the cards): stand still and show nothing
+        // until it is taken — rising meanwhile was a second movement before the card's (Henri 2026-11-12)
+        if (sw.pendingHand) { takenOver = true; handS.snap(1); handWait.start() }
+      }
       readonly property int n: windows.length
       readonly property real cardH: height * sw.cfg.cardShare
       readonly property real cardW: cardH * (width / Math.max(1, height))
       readonly property real step: cardW + sw.cfg.cardGap
       readonly property var range: Nav.bounds(n, step)
       readonly property real p: sw.shown
+      // a kept row at a new open: the windows of now (delegates of known windows stay, with their
+      // last picture until the fresh one comes), nothing left over from the last open
+      function reopen() {
+        windows = sw.scan()
+        rowX.snap(0)
+        launching = -1; handed = false; launchS.snap(0)
+        takenOver = false; handAddress = ""
+        for (var i = 0; i < n; i++) { var c = cardItem(i); if (c) { c.launch = 0; c.lifted = false; c.refresh() } }
+        forceActiveFocus()
+      }
       // ---- taken over from the owner's card: the row stands (no rise), that card flies into its place
       property bool takenOver: false
       property string handAddress: ""
       Spring { id: handS; preset: sw.cfg.enterSpring; reduced: Theme.reduceMotion; target: 0 }
       readonly property real hand: takenOver ? handS.value : 0
       Connections { target: sw; function onProgressChanged() { if (sw.progress <= 0) root.takenOver = false } }
+      // its card and its picture first (the Home button warms nothing: an icon placeholder stood
+      // full screen for a moment); at most handWait, then it goes as it is
+      Timer { id: handWait; interval: Theme.dur("fast") / 8; repeat: true; property real since: 0
+              onRunningChanged: if (running) since = Date.now()
+              onTriggered: root.takeHand() }
       function takeHand() {
         var h = sw.pendingHand
+        if (!h) { handWait.stop(); return }
+        var c = null
+        for (var i = 0; i < n; i++) if (windows[i].address === h.address && cardItem(i)) c = cardItem(i)
+        var ready = c && c.hasPicture
+        if (!ready && n > 0 && Date.now() - handWait.since < sw.cfg.handWait) { if (!handWait.running) handWait.start(); return }
+        handWait.stop()
         sw.pendingHand = null
-        if (!h) return
-        rowX.snap(0)
+        // that card in the middle of the row
+        var at = -1
+        for (var j = 0; j < n; j++) if (windows[j].address === h.address) at = j
+        rowX.snap(at >= 0 ? -Nav.slot(at, n, step) : 0)
         handAddress = h.address
         takenOver = true
-        handS.snap(0)                                    // the row's places as they stand, no hand yet
-        for (var i = 0; i < n; i++) {
-          var c = cardItem(i)
-          if (!c || windows[i].address !== h.address) continue
-          c.handFrom = c.mapToItem(root, 0, 0)
+        if (c) {
+          // its place in the row, without the hand's own transform (it may stand at 1 already)
+          c.handFrom = c.parent.mapToItem(root, c.x, c.y)
           c.handRect = h.rect
-        }
-        handS.from(1)
+          handS.snap(1)
+          handS.from(1)
+        } else handS.snap(0)
         sw.handTaken()
       }
 

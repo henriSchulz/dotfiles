@@ -29,6 +29,7 @@ Item {
   readonly property string wallpaper: homeCtl ? homeCtl.wallpaperLink : ""
   property var shades: ({})                 // screen name → its QuickSettings
   readonly property bool anyShown: { for (var k in shades) if (shades[k].shown) return true; return false }
+  readonly property bool anyStill: { for (var k in shades) if (shades[k].still) return true; return false }
   // for tests: the last things that happened
   property var log: []
   function note(s) { log = log.concat([s]).slice(-30) }   // lint-ok: the test log keeps the last 30
@@ -63,7 +64,8 @@ Item {
 
   // never the owner: it only writes the appearance (the Dark theme tile) through the file
   VelumSettings { id: velum; priority: -2 }
-  QS.QsBackend { id: qsb; live: sh.live; active: sh.anyShown; velum: velum }
+  // reads while a shade stands open (anyStill), once at the start so a first pull shows values
+  QS.QsBackend { id: qsb; live: sh.live; active: sh.anyStill; velum: velum; Component.onCompleted: if (sh.active) refresh() }
   readonly property alias backend: qsb
 
   Connections {
@@ -122,7 +124,12 @@ Item {
       anchors { top: true; bottom: true; left: true; right: true }
       exclusionMode: ExclusionMode.Ignore
       color: "transparent"
-      visible: sh.active && shade.shown
+      // mapped for as long as tablet mode is on, see-through and without input while the shade is closed:
+      // mapping it at the pull's first move rebuilt the surface (wallpaper blur, panels) in that frame and
+      // the shade started late and jerky (Henri 2026-11-12; v3's overlay measured 75–97 ms for the same)
+      visible: sh.active
+      mask: Region { item: shade.shown ? shade : noInput }
+      Item { id: noInput; width: 0; height: 0 }
       WlrLayershell.namespace: "velum-tablet-shade"
       WlrLayershell.layer: WlrLayer.Overlay
       // Escape once it stands; never under the finger that still pulls (taking the keyboard ends its grab)
@@ -135,7 +142,7 @@ Item {
         backend: qsb
         wallpaper: sh.wallpaper
         topInset: 0
-        readonly property bool mapped: win.visible
+        readonly property bool mapped: win.visible && shown
         onOpened: sh.note("opened")
         onClosed: sh.note("closed")
         // a held tile without a page of its own (dnd, dark, night, airplane, rotate): noted only for now
