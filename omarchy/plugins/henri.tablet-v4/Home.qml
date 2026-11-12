@@ -593,7 +593,7 @@ Item {
       if (mon && o.monitor !== mon.id) continue
       var id = appIdOf(o.class), e = entries[id]
       out.push({ key: String(o.address), address: String(o.address), toplevel: t, workspace: o.workspace.id, appId: id, order: i,
-                 icon: e ? e.icon : iconOf(o.class), name: e ? e.name : String(o.title || o.class || ""),
+                 icon: e ? e.icon : iconOf(o.class), name: e ? e.name : String(o.title || o.class || ""), title: String(o.title || ""),
                  focus: typeof o.focusHistoryID === "number" ? o.focusHistoryID : 1000 })
     }
     out.sort(function (a, b) { return b.focus - a.focus })
@@ -1150,13 +1150,14 @@ Item {
   // args: started with them (also when it runs: a running app takes them over D-Bus and shows
   // the item); from: the tile the card grows out of when it is not the app's icon (a widget)
   // fresh: a command that opens a new window even when the app runs (the context menu's New Window)
-  function openApp(id, args, from, fresh) {
+  // address: that window of the app (its long-press menu lists them), else its newest
+  function openApp(id, args, from, fresh, address) {
     if (!active) return
     var e = entries[id]
     if (!e) return
     var list = scanWindows(screenName || (Quickshell.screens[0] ? Quickshell.screens[0].name : ""))
     var at = -1
-    for (var i = list.length - 1; !fresh && i >= 0; i--) if (list[i].appId === id) { at = i; break }
+    for (var i = list.length - 1; !fresh && i >= 0; i--) if (address ? list[i].address === address : list[i].appId === id) { at = i; break }
     note("tap " + id + (at >= 0 ? " (running)" : ""))
     startStat(); mark("open " + id)
     var r = homeScreenItem ? homeScreenItem.iconRect(from || id, coverItem || homeScreenItem) : null
@@ -1199,7 +1200,7 @@ Item {
   property var screenHomes: ({})        // screen name → its interactive home screen (IPC)
   property string menuOpenId: ""         // the item whose menu is open (IPC home: "menu")
   function isNewWindow(a) { return /^new[-_ ]?window$/i.test(a.id || "") || /^new.?window$/i.test(a.name || "") }
-  function menuFor(id, where) {
+  function menuFor(id, where, screen) {
     if (where === "home") return {
       rows: [{ key: "wallpaper", text: "Wallpaper & style", icon: "image" }, { key: "widgets", text: "Widgets", icon: "apps" },
              { key: "settings", text: "Home settings", icon: "settings" }]
@@ -1214,8 +1215,13 @@ Item {
     var e = entries[id]
     if (!e) return null
     var acts = (e.actions || []).filter(function (a) { return !home.isNewWindow(a) && a.command.length }).slice(0, mt.menu.actionsMax)
-    return { header: { icon: e.icon, title: e.name, subtitle: where === "dock" ? "In the dock" : "" },
-             rows: acts.map(function (a) { return { key: "action:" + a.id, text: a.name, icon: "bolt" } }),
+    // its open windows first, newest on top (Henri 2026-11-12: open them from here directly)
+    var wins = scanWindows(screen || screenName || (Quickshell.screens[0] ? Quickshell.screens[0].name : ""))
+               .filter(function (w) { return w.appId === id }).reverse().slice(0, mt.menu.windowsMax)
+    var rows = wins.map(function (w) { return { key: "window:" + w.address, text: w.title || w.name, icon: "window" } })
+    if (rows.length && acts.length) rows.push({ divider: true })
+    return { header: { icon: e.icon, title: e.name, subtitle: wins.length ? (wins.length === 1 ? "1 window" : wins.length + " windows") : where === "dock" ? "In the dock" : "" },
+             rows: rows.concat(acts.map(function (a) { return { key: "action:" + a.id, text: a.name, icon: "bolt" } })),
              tiles: [{ key: "new", text: "New window", icon: "open.external" }, { key: "info", text: "App info", icon: "info" }] }
   }
   function menuChosen(id, key) {
@@ -1226,6 +1232,7 @@ Item {
     var e = entries[id]
     if (!e) return
     if (key === "info") { appInfo(id); return }
+    if (key.indexOf("window:") === 0) { openApp(id, [], id, null, key.slice(7)); return }
     // New window: the entry's own new-window action when it has one (browsers), else the app again
     var want = key.indexOf("action:") === 0 ? function (a) { return a.id === key.slice(7) } : isNewWindow
     var act = (e.actions || []).filter(want)[0]
@@ -1529,7 +1536,7 @@ Item {
           hotApps: home.dockApps
           layout: home.layout
           entries: home.entries
-          menuFor: home.menuFor
+          menuFor: function (id, where) { return home.menuFor(id, where, per.name) }
           nameFolder: function (ids) { return HM.folderName(ids.map(function (a) { return (home.entries[a] || {}).cats || [] }), home.folderNames, "Folder") }
           openFolder: home.openFolder
           snack: home.snack
