@@ -484,8 +484,21 @@ Item {
     swDragging = false
     swProgress = 1
   }
+  // A window that lay hidden in its app's stack (tablet mode's monocle: not the fullscreen one) is faded in
+  // by Hyprland after the focus; the grown card stays until that has ended (settleStack, not settleTablet:
+  // let go earlier, the wallpaper showed through the window for 3-5 frames, Henri 2026-11-12)
+  property bool stackPick: false
+  function hiddenInStack(address) {
+    var tl = Hyprland.toplevels.values
+    for (var i = 0; i < tl.length; i++) {
+      var o = tl[i].lastIpcObject
+      if (o && String(o.address) === address) return Theme.touch && o.fullscreen === 0
+    }
+    return false
+  }
   function switchToWindow(address) {
-    note("switch " + address)
+    stackPick = hiddenInStack(address)
+    note("switch " + address + (stackPick ? " (from the stack)" : ""))
     swKeep = address
     swDragging = false
     swProgress = 0
@@ -1869,7 +1882,7 @@ Item {
           dragging: overlay.mine && home.swDragging
           warm: overlay.mine && home.gestureFinger
           keep: overlay.mine && home.active
-          handoff: home.settleMs
+          handoff: home.stackPick ? home.cfg.settleStack : home.settleMs
           appFor: function (cls) { var id = home.appIdOf(cls), e = home.entries[id]; return e ? { name: e.name, icon: e.icon } : null }
           backdrop: Component {
             FolderBackdrop {

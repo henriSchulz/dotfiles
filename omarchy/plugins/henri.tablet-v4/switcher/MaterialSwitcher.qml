@@ -231,6 +231,9 @@ Item {
       }
       Spring { id: handS; preset: sw.cfg.enterSpring; reduced: Theme.reduceMotion; target: 0 }
       readonly property real hand: takenOver ? handS.value : 0
+      // a hand-over waiting for its card's picture: nothing of the switcher shows yet, the backdrop neither (it
+      // rose over the owner's card meanwhile and showed through it for a frame before the card came, 2026-11-12)
+      readonly property bool waiting: takenOver && handAddress === ""
       Connections { target: sw; function onProgressChanged() { if (sw.progress <= 0) root.takenOver = false } }
       // its card and its picture first (the Home button warms nothing: an icon placeholder stood
       // full screen for a moment); at most handWait, then it goes as it is
@@ -243,7 +246,16 @@ Item {
         var c = null
         for (var i = 0; i < n; i++) if (windows[i].address === h.address && cardItem(i)) c = cardItem(i)
         var ready = c && c.hasPicture
-        if (!ready && n > 0 && Date.now() - handWait.since < sw.cfg.handWait) { if (!handWait.running) handWait.start(); return }
+        if (!ready && n > 0) {
+          if (!handWait.running) handWait.start()      // the wait counts from now (since), not from a last open
+          if (Date.now() - handWait.since < sw.cfg.handWait) {
+            // stand still and show nothing meanwhile, as a row made for this open does. The wait counted from the
+            // last open, so a kept row (the Home button) whose card had no picture yet took the hand at once: an
+            // icon placeholder stood for 2-3 frames (Henri 2026-11-12: "flackert beim Öffnen über Doppelklick")
+            if (!takenOver) { takenOver = true; handS.snap(1) }
+            return
+          }
+        }
         handWait.stop()
         sw.pendingHand = null
         // that card in the middle of the row
@@ -453,13 +465,13 @@ Item {
 
       function info() {
         return { open: true, p: p, n: n, offset: rowX.value, target: rowX.target, step: step, centred: Nav.centred(rowX.value, n, step), fling: lastFling,
-                 cardW: cardW, cardH: cardH,
+                 cardW: cardW, cardH: cardH, takenOver: takenOver, hand: hand, handAddress: handAddress,
                  windows: windows.map(function (w, i) { var c = cardItem(i); return { address: w.address, name: w.name, picture: !!(c && c.hasPicture), away: !!(c && c.away) } }) }
       }
 
       // ---- what lies behind: the owner's backdrop, the scrim
-      Loader { anchors.fill: parent; sourceComponent: sw.backdrop; opacity: root.p; active: sw.backdrop !== null }
-      Rectangle { anchors.fill: parent; color: sw.cfg.scrim; opacity: root.p }
+      Loader { anchors.fill: parent; sourceComponent: sw.backdrop; opacity: root.waiting ? 0 : root.p; active: sw.backdrop !== null }
+      Rectangle { anchors.fill: parent; color: sw.cfg.scrim; opacity: root.waiting ? 0 : root.p }
 
       // ---- the row rises with the finger and settles in the middle
       Item {
