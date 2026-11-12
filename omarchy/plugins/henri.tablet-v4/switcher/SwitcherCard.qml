@@ -34,7 +34,9 @@ Item {
   // where it lands: the window's own place (entry.place), else the whole area. The card scales
   // evenly to the window's width; its picture turns from "cover" to the window's own shape meanwhile
   readonly property rect goal: entry.place ? entry.place : Qt.rect(0, 0, areaW, areaH)
-  readonly property real grow: goal.width / Math.max(1, cardW)
+  // the row's scale (MaterialSwitcher rowScale): transforms here are in the row's units
+  property real rowScale: 1
+  readonly property real grow: goal.width / Math.max(1, cardW * rowScale)
   // taken over from the app's own card (henri.tablet-v3's pull over an app): 1 … 0 from `handRect`
   // (that card on screen, the switcher's coordinates) into its place in the row; `handFrom` = its
   // top left in the row at the take. Only transform changes
@@ -58,9 +60,9 @@ Item {
   z: launch > 0 ? 1 : 0
   transform: [
     Scale { xScale: 1 + (card.grow - 1) * card.launch; yScale: xScale },
-    Translate { x: (card.goal.x - card.from.x) * card.launch; y: (card.goal.y - card.from.y) * card.launch },
-    Scale { xScale: 1 + (card.handRect.width / Math.max(1, card.cardW) - 1) * card.hand; yScale: xScale },
-    Translate { x: (card.handRect.x - card.handFrom.x) * card.hand; y: (card.handRect.y - card.handFrom.y) * card.hand }
+    Translate { x: (card.goal.x - card.from.x) / card.rowScale * card.launch; y: (card.goal.y - card.from.y) / card.rowScale * card.launch },
+    Scale { xScale: 1 + (card.handRect.width / Math.max(1, card.cardW * card.rowScale) - 1) * card.hand; yScale: xScale },
+    Translate { x: (card.handRect.x - card.handFrom.x) / card.rowScale * card.hand; y: (card.handRect.y - card.handFrom.y) / card.rowScale * card.hand }
   ]
 
   // its place in the row; a closed neighbour's gap closes on a spring
@@ -116,7 +118,7 @@ Item {
   ClippingRectangle {
     // growing into its app it takes the window's height (its place may be shorter than the screen)
     width: parent.width
-    height: card.cardH + (card.goal.height / Math.max(0.001, card.grow) - card.cardH) * card.launch
+    height: card.cardH + (card.goal.height / Math.max(0.001, card.grow * card.rowScale) - card.cardH) * card.launch
     // square once it fills the screen (the radius is in card units, the card is scaled up)
     radius: card.cfg.cardRadius * (1 - card.launch)
     color: Theme.dark ? card.cfg.cardDark : card.cfg.cardLight

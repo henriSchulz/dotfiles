@@ -5,6 +5,7 @@ import Quickshell
 import "file:///home/henri/.local/share/velum/qml/Velum"
 import "HomeModel.js" as HM
 import "MaterialModel.js" as MM
+import "Resample.js" as Resample
 import "widgets"
 import "widgets/Widgets.js" as W
 
@@ -26,6 +27,7 @@ Item {
 
   readonly property var mt: Theme.core.surface.material
   readonly property var hm: Theme.core.surface.tablet.home
+  readonly property var tt: Theme.core.surface.tablet
   readonly property var mg: mt.grid
   // ---- from Home.qml
   property var tiles: []          // grid tiles: [{ key, id, name, icon, folder?, items?, widget? }] (not the hotseat's)
@@ -910,7 +912,21 @@ Item {
     property real grabY: 0
     property string want: ""
     property int edge: 0
+    // touches from the iPad cast come in steps (~44 ms): moves are resampled to one per frame
+    // (Resample.js, fed by fingerFeed); the real last point goes in before the lift
+    property var rs: null
+    property real fx: 0
+    property real fy: 0
+    property real rx: 0
+    property real ry: 0
+    function move(px, py) { if (!down0 || !rs) return; rx = px; ry = py; rs.push(Date.now(), px, py) }
+    function feed() {
+      var a = rs ? rs.at(Date.now()) : null
+      if (a && (a.x !== fx || a.y !== fy)) { fx = a.x; fy = a.y; moveNow(a.x, a.y) }
+    }
     function down(px, py) {
+      rs = Resample.create(hs.tt.cast.resampleMinGap, hs.tt.cast.resampleMaxGap)
+      rs.push(Date.now(), px, py); fx = px; fy = py; rx = px; ry = py
       x0 = px; y0 = py; x = px; y = py; down0 = true; held = false; target = null; samples = [[Date.now(), px, py]]
       kind = ""
       if (hs.landing) hs.endDrag()
@@ -927,7 +943,7 @@ Item {
       hs.pressedId = target ? target.id : ""
       hold.restart()
     }
-    function move(px, py) {
+    function moveNow(px, py) {
       if (!down0) return
       x = px; y = py
       var t = Date.now(), list = samples.concat([[t, px, py]])
@@ -951,6 +967,7 @@ Item {
     }
     function up() {
       if (!down0) return
+      if (rx !== fx || ry !== fy) moveNow(rx, ry)
       down0 = false
       hold.stop()
       Qt.callLater(hs.releaseKeys)
@@ -983,6 +1000,7 @@ Item {
       else if (k === "drawer") hs.drawerRelease(0)
     }
   }
+  FrameAnimation { id: fingerFeed; running: finger.down0; onTriggered: finger.feed() }
   MultiPointTouchArea {
     anchors.fill: parent
     enabled: hs.interactive

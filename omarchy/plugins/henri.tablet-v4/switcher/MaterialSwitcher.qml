@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Hyprland
 import "file:///home/henri/.local/share/velum/qml/Velum"
 import "Nav.js" as Nav
+import "../Resample.js" as Resample
 
 // henri.tablet-v4's App Switcher — Android Recents on a tablet (lab/mui-material src/Switcher.jsx):
 // the open windows as one row of cards, the newest on the right and in the middle, each with its real
@@ -75,6 +76,7 @@ Item {
   signal handTaken()
 
   readonly property var cfg: Theme.core.surface.material.switcher
+  readonly property var tt: Theme.core.surface.tablet
   readonly property string family: Theme.core.surface.material.widgets.font[0]
   readonly property bool shows: sw.holding || sw.progress > 0 || enter.moving || enter.value > 0.002
   readonly property bool open: body.active && shows
@@ -204,7 +206,7 @@ Item {
         windows = sw.scan()
         rowX.snap(0)
         launching = -1; handed = false; launchS.snap(0)
-        takenOver = false; handAddress = ""; handOthers = ({}); rowY = 0
+        takenOver = false; handAddress = ""; handOthers = ({}); rowY = 0; rowScale = 1
         for (var i = 0; i < n; i++) { var c = cardItem(i); if (c) { c.launch = 0; c.lifted = false; c.refresh() } }
         forceActiveFocus()
       }
@@ -216,9 +218,12 @@ Item {
       // to the row's size about its own middle). Moving it to the middle of the screen took it down
       // again after the finger had brought it up (Henri 2026-11-12). Within the screen: header to Clear all
       property real rowY: 0
-      function rowYFor(cy) {
-        var lo = -(height / 2 - cardH / 2 - sw.cfg.headerHeight - sw.cfg.headerGap)
-        var hi = height / 2 - cardH / 2 - sw.cfg.clearTop - sw.cfg.clearHeight
+      // …and its size: the row takes the handed card's size, so nothing moves at the hand-over (it grew
+      // to the row's size about its middle, and its lower edge still went down, Henri 2026-11-12)
+      property real rowScale: 1
+      function rowYFor(cy, k) {
+        var lo = -(height / 2 - k * (cardH / 2 + sw.cfg.headerHeight + sw.cfg.headerGap))
+        var hi = height / 2 - k * (cardH / 2 + sw.cfg.clearTop + sw.cfg.clearHeight)
         return Math.max(lo, Math.min(hi, cy - height / 2))
       }
       Spring { id: handS; preset: sw.cfg.enterSpring; reduced: Theme.reduceMotion; target: 0 }
@@ -241,8 +246,11 @@ Item {
         // that card in the middle of the row
         var at = -1
         for (var j = 0; j < n; j++) if (windows[j].address === h.address) at = j
-        rowX.snap(at >= 0 ? -Nav.slot(at, n, step) : 0)
-        rowY = rowYFor(h.rect.y + h.rect.height / 2)
+        var k = Math.max(sw.cfg.handScaleMin, Math.min(sw.cfg.handScaleMax, h.rect.width / Math.max(1, cardW)))
+        rowScale = k
+        // centred on the card, scaled about the screen's middle: the card's middle stays where it is
+        rowX.snap((at >= 0 ? -Nav.slot(at, n, step) : 0) + (h.rect.x + h.rect.width / 2 - width / 2) / k)
+        rowY = rowYFor(h.rect.y + h.rect.height / 2, k)
         handAddress = h.address
         takenOver = true
         if (c) {
@@ -295,14 +303,29 @@ Item {
       // ---- one finger
       property var g: null
       property real lastFling: 0
+      // touches from the iPad cast come in steps (~44 ms): moves glide one per frame (Resample.js, fed
+      // by rowFeed); the real last point goes in before the lift
+      property var rs: null
+      property real fx: 0
+      property real fy: 0
+      property real rx: 0
+      property real ry: 0
+      function move(x, y) { if (!g || !rs) return; rx = x; ry = y; rs.push(Date.now(), x, y) }
+      function feed() {
+        var a = rs ? rs.at(Date.now()) : null
+        if (a && (a.x !== fx || a.y !== fy)) { fx = a.x; fy = a.y; moveNow(a.x, a.y) }
+      }
+      FrameAnimation { id: rowFeed; running: root.g !== null; onTriggered: root.feed() }
       function press(x, y) {
         if (sw.dragging) return
+        rs = Resample.create(sw.tt.cast.resampleMinGap, sw.tt.cast.resampleMaxGap)
+        rs.push(Date.now(), x, y); fx = x; fy = y; rx = x; ry = y
         rowX.snap(rowX.value)
         var c = onClear(x, y) ? -2 : cardAt(x, y)
         g = { x0: x, y0: y, from: rowX.value, kind: c === -2 ? "clear" : "", card: c, samples: [[Date.now(), x, y]] }
         clear.down = c === -2
       }
-      function move(x, y) {
+      function moveNow(x, y) {
         if (!g) return
         var t = Date.now()
         g.samples = Nav.trim(g.samples.concat([[t, x, y]]), t, sw.cfg.sampleWindow)
@@ -312,10 +335,12 @@ Item {
           g.kind = Nav.classify(dx, dy, sw.cfg.slop, g.card >= 0)
           if (g.kind === "lift") { var c0 = cardItem(g.card); if (c0) c0.lifted = true }
         }
-        if (g.kind === "row") rowX.snap(Nav.follow(g.from, dx, range.lo, range.hi, width * sw.cfg.rowRubber))
-        else if (g.kind === "lift") { var c = cardItem(g.card); if (c) c.follow(Math.min(0, dy)) }
+        // the row's own units (it may stand scaled, rowScale)
+        if (g.kind === "row") rowX.snap(Nav.follow(g.from, dx / rowScale, range.lo, range.hi, width * sw.cfg.rowRubber))
+        else if (g.kind === "lift") { var c = cardItem(g.card); if (c) c.follow(Math.min(0, dy) / rowScale) }
       }
       function release() {
+        if (g && (rx !== fx || ry !== fy)) moveNow(rx, ry)
         var d = g
         g = null
         if (!d) return
@@ -328,12 +353,12 @@ Item {
           return
         }
         lastFling = v.x
-        if (d.kind === "row") { settle(Nav.settle(rowX.value, v.x, step, range.lo, range.hi, sw.cfg.flingProject), v.x); return }
+        if (d.kind === "row") { settle(Nav.settle(rowX.value, v.x / rowScale, step, range.lo, range.hi, sw.cfg.flingProject), v.x / rowScale); return }
         var c = cardItem(d.card)
         if (!c) return
         c.lifted = false
-        if (Nav.lifted(c.y - (height / 2 - cardH / 2), v.y, cardH, sw.cfg) === "close") closeAt(d.card, v.y)
-        else c.drop(v.y)
+        if (Nav.lifted(c.y - (height / 2 - cardH / 2), v.y / rowScale, cardH, sw.cfg) === "close") closeAt(d.card, v.y / rowScale)
+        else c.drop(v.y / rowScale)
       }
       function cancel() {
         var d = g
@@ -442,7 +467,7 @@ Item {
         opacity: rise
         readonly property real others: 1 - launchS.value
         transform: [
-          Scale { origin.x: stage.width / 2; origin.y: stage.height / 2; xScale: sw.cfg.enterScale + (1 - sw.cfg.enterScale) * stage.rise; yScale: xScale },
+          Scale { origin.x: stage.width / 2; origin.y: stage.height / 2; xScale: (sw.cfg.enterScale + (1 - sw.cfg.enterScale) * stage.rise) * root.rowScale; yScale: xScale },
           Translate { y: (1 - stage.rise) * stage.height * sw.cfg.enterRise + root.rowY }
         ]
         Item {
@@ -458,6 +483,7 @@ Item {
               readonly property bool handed: modelData.address === root.handAddress || !!root.handOthers[modelData.address]
               dim: (root.launching >= 0 && index !== root.launching ? stage.others : 1) * (handed ? 1 : 1 - root.hand)
               hand: handed ? root.hand : 0
+              rowScale: root.rowScale
               count: root.n
               cardW: root.cardW
               cardH: root.cardH
