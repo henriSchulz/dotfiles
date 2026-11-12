@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "Henri Schulz",
   "license": "MIT",
-  "description": "Velum's on-screen keyboard for the tablet's cast screen: German keys as on an iPad, opened from the window bar (cast screen, tablet mode) or the menu-bar keyboard on a machine with a touchscreen; keys go through fcitx5's virtual keyboard mode (bridge/velum-osk), a real key closes it.",
+  "description": "Velum's on-screen keyboard for the tablet's cast screen: the full German keyboard of an iPad Pro docked over the app with a toolbar (the window bar grows into it), opened from the window bar (cast screen, tablet mode) or the menu-bar keyboard on a machine with a touchscreen; keeps the caret in sight through hyprcaret's caretlift; keys go through fcitx5's virtual keyboard mode (bridge/velum-osk), a real key closes it.",
   "kinds": [
     "overlay",
     "bar-widget"

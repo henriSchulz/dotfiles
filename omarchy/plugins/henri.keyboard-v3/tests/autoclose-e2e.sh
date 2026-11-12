@@ -20,6 +20,12 @@ sig() { cat $R/sig 2>/dev/null; }
 up() { [[ -n $(sig) ]] && HYPRLAND_INSTANCE_SIGNATURE=$(sig) hyprctl version >/dev/null 2>&1; }
 if ! up; then rig/rig.sh start >/dev/null || exit 1; fi
 rig/rig.sh sync >/dev/null
+# the rig's copies take THIS checkout's Velum module (the plugins import it by an absolute path, which
+# is the live checkout)
+for p in $VELUM_RIG_PLUGINS; do
+  d=$R/home/.config/omarchy/plugins/$p
+  [[ -d $d && ! -L $d ]] && grep -rl "file:///home/henri/.local/share/velum" "$d" --include=*.qml --include=*.js | xargs -r sed -i "s|file:///home/henri/.local/share/velum|file://$(dirname "$shell")|g"
+done
 export HYPRLAND_INSTANCE_SIGNATURE=$(sig)
 hyprctl monitors -j | jq -e '.[] | select(.name=="TB")' >/dev/null || hyprctl output create headless TB >/dev/null
 sleep 0.5

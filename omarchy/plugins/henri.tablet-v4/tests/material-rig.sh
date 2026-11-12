@@ -16,7 +16,7 @@ export VELUM_RIG_WS=${VELUM_RIG_WS:-name:velum-rig}
 # its own state: XDG_STATE_HOME is set in the session and would point the shell at the live file
 export XDG_STATE_HOME=$PWD/rig/state/$ID/home/.local/state
 export VELUM_EDGE_SOCKET=$PWD/rig/state/$ID/edge.sock
-export VELUM_RIG_PLUGINS="henri.bar-v3 henri.control-center-v3 henri.clock-v3 henri.power-v3 henri.dock-v3 henri.tablet-v4 henri.menu-v3 henri.wallpaper-v3"
+export VELUM_RIG_PLUGINS="henri.bar-v3 henri.control-center-v3 henri.clock-v3 henri.power-v3 henri.dock-v3 henri.tablet-v4 henri.menu-v3 henri.wallpaper-v3 ${RIG_EXTRA_PLUGINS:-}"
 R=rig/state/$ID F=$R/home W=${RIG_W:-1440} H=${RIG_H:-960}
 vptr=$shell/henri.launchpad-v3/tests/vptr
 sig() { cat $R/sig 2>/dev/null; }

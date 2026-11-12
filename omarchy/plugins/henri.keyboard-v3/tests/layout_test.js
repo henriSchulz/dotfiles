@@ -1,7 +1,7 @@
 // node tests/layout_test.js — the keyboard's layout (Layout.js) without a shell
 const fs = require("fs"), path = require("path"), assert = require("assert")
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "qml", "Velum", "KeyboardLayout.js"), "utf8").replace(".pragma library", "")
-const L = new Function(src + "; return { place, keyAt, text, height, rows, shortcuts, modIcons, keyLabel, comboKey, comboLine }")()
+const L = new Function(src + "; return { place, keyAt, text, height, rows, shortcuts, modIcons, keyLabel, comboKey, comboLine, placeDock, dockHeight }")()
 const s = { padX: 6, padTop: 8, padBottom: 10, gap: 7, keyHeight: 50 }
 let n = 0
 for (const [page, sc, dict] of [["letters", false], ["numbers", false], ["symbols", false], ["letters", true], ["numbers", true], ["symbols", true, true], ["letters", true, true]]) {
@@ -59,3 +59,29 @@ for (const sc of [false, true]) for (const d of [false, true]) for (const pg of 
 assert.deepStrictEqual(L.place("letters", 1080, s).filter(k => k.act === "page").map(k => k.label), [".?123", ".?123"])
 assert.deepStrictEqual(L.place("numbers", 1080, s).filter(k => k.id.split(":")[1] == 3 && k.act === "page").map(k => k.label), ["ABC", "ABC"])
 console.log(`layout: ${n + 35} checks ok`)
+
+// the docked board: one column grid — every letter as wide as every other, on every row and page;
+// a key's left edge on the grid; every row ends at the right edge; rows staggered as on hardware
+const d = { columns: 14.5, keyHeight: 50, gap: 7, padX: 6, padTop: 6, padBottom: 26 }
+for (const page of ["letters", "symbols", "numbers"]) {
+  const keys = L.placeDock(page, 1024, d), pitch = (1024 - 2 * d.padX + d.gap) / d.columns
+  for (let r = 0; r < 5; r++) {
+    const row = keys.filter(k => k.id.split(":")[1] == r), last = row[row.length - 1]
+    if (r !== 3 || page === "letters") assert(Math.abs(last.x + last.w - (1024 - d.padX)) < 0.01, `${page} row ${r} ends at the edge`)
+    for (const k of row) { assert(Math.abs(((k.x - d.padX) / pitch) * 4 - Math.round(((k.x - d.padX) / pitch) * 4)) < 1e-6, `${page} ${k.label || k.act} on the grid`); n++ }
+  }
+  for (const k of keys.filter(k => !k.fn && !k.act)) { assert(Math.abs(k.w - (pitch - d.gap)) < 0.01, `${page} ${k.label} one column wide`); n++ }
+  for (const k of keys) { assert.strictEqual(L.keyAt(keys, k.x + k.w / 2, k.y + k.h / 2, d).id, k.id); n++ }
+}
+const dk = L.placeDock("letters", 1024, d), at = l => dk.find(k => k.label === l)
+const pitch = (1024 - 2 * d.padX + d.gap) / d.columns
+assert(Math.abs(at("a").x - at("q").x - 0.25 * pitch) < 0.01, "a a quarter key right of q (tab 1.5, caps 1.75)")
+assert(Math.abs(at("y").x - at("a").x - 0.5 * pitch) < 0.01, "y half a key right of a (< before it)")
+assert.strictEqual(dk.filter(k => k.key === "Tab").length, 1)
+assert.strictEqual(L.text(at("1"), true), "!", "Shift types the character over the key")
+assert.strictEqual(L.text(at("1"), false), "1")
+assert.strictEqual(L.text(at("q"), true), "Q")
+assert.strictEqual(L.text(at("ß"), true), "?")
+assert.strictEqual(L.dockHeight(d), 6 + 5 * 50 + 4 * 7 + 26)
+assert(L.placeDock("letters", 1024, d).some(k => k.act === "hide") && !L.placeDock("letters", 1024, d).some(k => k.act === "dictate"), "the mic is in the toolbar")
+console.log("dock ok")

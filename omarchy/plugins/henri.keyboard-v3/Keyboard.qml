@@ -28,10 +28,15 @@ import "file:///home/henri/.local/share/velum/qml/Velum/KeyboardLayout.js" as Ke
 // ~/.local/lib/velum/velum-osk), which puts fcitx5 into on-screen-keyboard mode on open. Keys go to
 // the text field through fcitx5 (wtype where no field of an input method has the focus).
 //
-// It floats as an island above the bottom edge (design 2 of lab/web/keyboard.html) and reserves its
-// height while it is up (exclusive zone), so the app moves its text above it. Its command key opens
-// the shortcuts page; combos go to velum-osk as "combo MODS KEY" (wtype, the only path that keeps
-// the modifiers).
+// It lies full width along the bottom edge OVER the app (VKeyboard `dock`, concept A · Morph of
+// lab/web/typing.html with the full layout, Henri 2026-11-12: "lieber wie auf iPad einfach obendrüber"):
+// it reserves nothing, so the app keeps its size and a fullscreen app stays fullscreen. When the caret
+// would end up under the board the app's picture slides up as far as needed and back when the board
+// goes — the hyprcaret plugin does it (`hyprctl caretlift LINE MARGIN` / `caretlift off`), as it knows
+// the caret; without the plugin the board simply lies over the app. The window bar's Keyboard button
+// sends "velum-keyboard morph SCREEN X Y W H" (its plate in screen px): the plate is drawn on here and
+// grows into the board's toolbar while the keys slide up under it. Its toolbar's ⌘ opens the shortcuts
+// page; combos go to velum-osk as "combo MODS KEY" (wtype, the only path that keeps the modifiers).
 //
 // Its mic key dictates (voxtype record start / stop; lit while voxtype records or transcribes). voxtype
 // pastes with wtype, which fcitx5 takes for a real key: while any dictation runs (also one from the
@@ -53,13 +58,19 @@ Item {
   property var manifest: null
 
   readonly property var ks: Theme.core.surface.keyboard
-  // the window: the island, the margin under it and room above for its shadow; it reserves less
-  readonly property real kbHeight: ks.shadowRoom + KeyboardLayout.height(ks) + ks.islandMargin
-  readonly property real kbReserve: KeyboardLayout.height(ks) + ks.islandMargin
+  readonly property var kd: ks.dock
+  // the window: the docked board, toolbar and keys
+  readonly property real kbHeight: kd.toolbar + KeyboardLayout.dockHeight(kd)
 
   // a terminal copies and pastes with Shift added; the shortcuts page follows the focused app
   readonly property string appId: ToplevelManager.activeToplevel ? String(ToplevelManager.activeToplevel.appId || "") : ""
   readonly property bool terminal: /^(foot|footclient|kitty|Alacritty|com\.mitchellh\.ghostty|org\.wezfurlong\.wezterm)$/.test(appId)
+  // the app's name in the toolbar: its desktop entry's, else its id
+  readonly property string appTitle: {
+    var e = null
+    try { e = root.appId ? (DesktopEntries.byId(root.appId) || DesktopEntries.heuristicLookup(root.appId)) : null } catch (err) {}
+    return e && e.name ? e.name : root.appId
+  }
 
   property bool shown: false
   property string screenName: ""      // where the last finger was; else the first screen
@@ -224,38 +235,33 @@ Item {
     Hyprland.dispatch(Hyprland.usingLua ? "hl.dsp.event(\"" + e + "\")" : "event " + e)
   }
   onShownChanged: {
-    announce(); fitFullscreen()
+    announce(); lift()
     if (root.shown) { root.lastWorkspace = root.screenWorkspace; root.lastScreen = root.ownScreen }
   }
 
-  // a fullscreen window ignores the exclusive zone, so the island would cover its last lines: while
-  // the keyboard is up such a window on its screen is maximized (which keeps clear of the zone), and
-  // made fullscreen again when the keyboard goes, if it is still that window and still maximized.
-  // Hyprland.dispatch wraps the string in hl.dispatch(...), hence the function that returns a dispatcher.
-  function fitFullscreen() {
-    if (!Hyprland.usingLua || root.inRig) return
-    var mon = root.screenName || (Quickshell.screens[0] ? Quickshell.screens[0].name : "")
-    if (root.shown)
-      Hyprland.dispatch("(function() local w = hl.get_active_window(); "
-        + "if w and w.fullscreen == 2 and w.monitor and w.monitor.name == \"" + mon + "\" then "
-        + "_G.velum_kb_demoted = w.address; "
-        + "return hl.dsp.window.fullscreen({ mode = \"maximized\", window = \"address:\" .. w.address }) end; "
-        + "return hl.dsp.event(\"velum-keyboard fit\") end)()")
-    else
-      Hyprland.dispatch("(function() local a = _G.velum_kb_demoted; _G.velum_kb_demoted = nil; "
-        + "for _, w in ipairs(hl.get_windows()) do if a and w.address == a and w.fullscreen == 1 then "
-        + "return hl.dsp.window.fullscreen({ mode = \"fullscreen\", window = \"address:\" .. a }) end end; "
-        + "return hl.dsp.event(\"velum-keyboard fit\") end)()")
+  // The caret stays in sight: hyprcaret moves the focused window's picture (and where its input lands)
+  // up while the caret would be under the board, LINE = the board's top edge in layout px. Without the
+  // plugin hyprctl only says it does not know the command.
+  property var lifts: []              // for tests: the caretlift lines sent
+  function lift() {
+    var a = ["off"]
+    var sc = Quickshell.screens.filter(function (s) { return s.name === root.ownScreen })[0]
+    if (root.shown && sc) a = [String(Math.round(sc.y + sc.height - root.kbHeight)), String(root.kd.caretMargin)]
+    var l = root.lifts.slice(-9); l.push(a.join(" ")); root.lifts = l
+    Quickshell.execDetached(["hyprctl", "caretlift"].concat(a))
   }
-  onScreenNameChanged: if (root.shown) announce()
+  onScreenNameChanged: if (root.shown) { announce(); lift() }
 
   function send(line) {
     if (root.inRig) { var l = root.sent.slice(-19); l.push(line); root.sent = l }
     else if (bridge.running) bridge.write(line + "\n")
   }
 
-  function open(byHand) {
+  // the window bar's plate, when the board grows out of it ({ x, y, w, h } in screen px), else null
+  property var morphFrom: null
+  function open(byHand, from) {
     if (!byHand && root.shown) return   // the bridge's "show" after our own "open"
+    root.morphFrom = from && !root.shown && !Theme.reduceMotion ? from : null
     if (byHand) send("open")
     if (root.board) root.board.reset()
     root.withMenu = false
@@ -346,7 +352,7 @@ Item {
     function onRawEvent(event) {
       if (event.name !== "custom") return
       var d = String(event.data)
-      if (d.length > 64) return
+      if (d.length > 96) return
       var name = ""
       if (d.indexOf("velum-hold ") === 0) {
         var a = d.slice(11).trim().split(" ")
@@ -355,6 +361,14 @@ Item {
         return
       }
       if (d === "velum-menu hidden") { if (root.shown && root.withMenu) root.close(true); return }
+      // the window bar's Keyboard button: "velum-keyboard morph SCREEN X Y W H", its plate grows into the toolbar
+      if (d.indexOf("velum-keyboard morph ") === 0) {
+        var mo = d.slice(21).trim().split(" ")
+        if (mo.length !== 5 || !/^[A-Za-z0-9_-]+$/.test(mo[0]) || !mo.slice(1).every(function (v) { return isFinite(v) && v !== "" })) return
+        root.screenName = mo[0]
+        if (!root.shown) root.open(true, { x: Number(mo[1]), y: Number(mo[2]), w: Number(mo[3]), h: Number(mo[4]) })
+        return
+      }
       if (d.indexOf("velum-touch ") === 0) {
         name = d.slice(12).trim()
         root.touchAt = Date.now()
@@ -375,6 +389,11 @@ Item {
     target: "omarchy.keyboard"
     function toggle(): void { if (root.shown) root.dismiss(); else root.open(true) }
     function open(): void { root.open(true) }
+    // rig: the window bar's morph as its event brings it
+    function morph(screen: string, x: real, y: real, w: real, h: real): void { root.screenName = screen; if (!root.shown) root.open(true, { x: x, y: y, w: w, h: h }) }
+    // rig: a toolbar button by name (esc, tab, ctrl, shortcuts, left, up, down, right, undo, redo, paste, mic, hide)
+    function tool(name: string): bool { return root.board ? root.board.tool(name) : false }
+    function lifts(): string { return JSON.stringify(root.lifts) }
     function close(): void { root.dismiss() }
     // rig: a line as the bridge would print it ("focus in", "focus out", "mode physical" …)
     function bridgeSays(line: string): void { root.bridgeLine(line) }
@@ -389,7 +408,7 @@ Item {
       for (var i = 0; i < root.menuItems.length; i++) if (root.menuItems[i].label === label) { w.choose(i); return true }
       return false
     }
-    function state(): string { var b = root.board || {}; return JSON.stringify({ shown: root.shown, page: b.page, shift: b.shift, caps: b.caps, mods: b.mods, terminal: root.terminal, screen: root.screenName, bridge: bridge.running, sent: root.sent, voxState: root.voxState, auto: root.autoOpened, osk: root.oskMode, dismissed: !!root.dismissedWindow }) }
+    function state(): string { var b = root.board || {}; return JSON.stringify({ shown: root.shown, page: b.page, shift: b.shift, caps: b.caps, mods: b.mods, terminal: root.terminal, screen: root.screenName, bridge: bridge.running, sent: root.sent, voxState: root.voxState, auto: root.autoOpened, osk: root.oskMode, dismissed: !!root.dismissedWindow, height: root.kbHeight, title: root.appTitle, morph: !!root.morphFrom }) }
   }
 
   Variants {
@@ -409,39 +428,45 @@ Item {
   }
 
   // ---- the surface ------------------------------------------------------------------------------
+  // one window per screen; the board shows on the screen the last finger was on (ownScreen). In tablet
+  // mode the windows stay mapped, empty and without input while the board is away: mapping one costs
+  // 100–200 ms, and the window bar's plate must be drawn on in the very next frame.
   Variants {
-    model: Quickshell.screens.filter(function (s) { return root.screenName ? s.name === root.screenName : s === Quickshell.screens[0] })
+    model: Quickshell.screens
 
     PanelWindow {
       id: win
       required property var modelData
       screen: modelData
+      readonly property bool mine: modelData.name === root.ownScreen
+      readonly property bool up: mine && root.shown
+      onMineChanged: if (mine) root.board = keys
       anchors { bottom: true; left: true; right: true }
       implicitHeight: root.kbHeight
-      visible: root.shown || slide.running || slideY.value < root.kbHeight
-      exclusionMode: ExclusionMode.Normal
-      exclusiveZone: root.shown ? root.kbReserve : 0
-      // only the island takes fingers; beside it and in its shadow room they reach the app
-      // (by numbers, not `item`: the item's region is taken with the slide's transform at that moment
-      // and was not taken again when it ended, so the first taps missed every key)
-      mask: Region { x: keys.card.x; y: keys.card.y; width: keys.card.width; height: keys.card.height }
+      visible: Theme.touch || up || slide.running || slideY.value < root.kbHeight
+      // over the app: it reserves nothing (the caret is kept in sight by caretlift)
+      exclusionMode: ExclusionMode.Ignore
+      // the whole board takes fingers while it is there, nothing while it is away (by numbers, not
+      // `item`: the item's region is taken with the slide's transform at that moment and was not
+      // taken again when it ended)
+      mask: Region { x: 0; y: 0; width: win.up || slide.running ? win.width : 0; height: root.kbHeight }
       color: "transparent"
       WlrLayershell.namespace: "velum-surface"
       WlrLayershell.layer: WlrLayer.Overlay
       WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
       // up from the bottom edge; going away is quicker than coming
-      property real target: root.shown ? 0 : root.kbHeight
+      property real target: win.up ? 0 : root.kbHeight
       QtObject { id: slideY; property real value: root.kbHeight }
       NumberAnimation {
         id: slide
         target: slideY; property: "value"
-        duration: Theme.reduceMotion ? 0 : root.shown ? Theme.dur("base") : Theme.exit(Theme.dur("base"))
+        duration: Theme.reduceMotion ? 0 : win.up ? root.kd.slide : Theme.exit(root.kd.slide)
         easing.type: Easing.BezierSpline
-        easing.bezierCurve: root.shown ? Theme.curve("out") : Theme.curve("exit")
+        easing.bezierCurve: win.up ? Theme.curve("out") : Theme.curve("exit")
       }
       // `to` is set here, not bound: the handler may run before a binding would follow
-      function slideTo() { slide.stop(); slide.to = win.target; slide.start() }
+      function slideTo() { slide.stop(); slide.to = win.target; slide.start(); if (win.up && root.morphFrom) plate.land() }
       onTargetChanged: slideTo()
       Component.onCompleted: if (slideY.value !== win.target) slideTo()
 
@@ -455,7 +480,11 @@ Item {
         VKeyboard {
           id: keys
           anchors.fill: parent
-          Component.onCompleted: root.board = keys
+          dock: true
+          title: root.appTitle
+          // the toolbar's buttons come only once the plate has landed (and are out while the board is away)
+          toolsShown: win.up && !plate.visible && !root.morphFrom
+          Component.onCompleted: if (win.mine) root.board = keys
           Component.onDestruction: if (root.board === keys) root.board = null
           onTyped: function (text) { root.send("text " + text) }
           onKeyPressed: function (key) { root.send("key " + key) }
@@ -467,6 +496,43 @@ Item {
           dictating: root.dictating
           onDictateRequested: root.dictate()
         }
+      }
+
+      // the window bar's plate (A · Morph): drawn where the bar stood, it widens into the toolbar on the
+      // slide's own timing; it waits where the bar was until the rising board reaches it and then rides
+      // on the board's top edge. Then it fades and the toolbar's buttons come in. Outside the sliding
+      // sheet, so it travels by itself.
+      Rectangle {
+        id: plate
+        property real y0: 0
+        visible: false
+        y: Math.min(y0, Theme.reduceMotion ? 0 : slideY.value)
+        color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
+        border.width: 1 / Screen.devicePixelRatio
+        border.color: Theme.r.line.rim
+        function land() {
+          var f = root.morphFrom
+          grow.stop(); fade.stop()
+          x = f.x; y0 = f.y - (win.modelData.height - root.kbHeight); width = f.w; height = f.h
+          var wb = Theme.core.surface.tablet.windowBar
+          radius = Math.min(f.h / 2, wb.buttonRadius + wb.pad)   // the bar's own corner
+          opacity = 1
+          visible = true
+          root.morphFrom = null      // after `visible`: the toolbar's buttons stay out in between
+          grow.start()
+        }
+        ParallelAnimation {
+          id: grow
+          readonly property int ms: slide.duration
+          readonly property var curve: Theme.curve("out")
+          NumberAnimation { target: plate; property: "x"; to: 0; duration: grow.ms; easing.type: Easing.BezierSpline; easing.bezierCurve: grow.curve }
+          NumberAnimation { target: plate; property: "width"; to: win.width; duration: grow.ms; easing.type: Easing.BezierSpline; easing.bezierCurve: grow.curve }
+          NumberAnimation { target: plate; property: "height"; to: root.kd.toolbar; duration: grow.ms; easing.type: Easing.BezierSpline; easing.bezierCurve: grow.curve }
+          NumberAnimation { target: plate; property: "radius"; to: root.kd.radius; duration: grow.ms; easing.type: Easing.BezierSpline; easing.bezierCurve: grow.curve }
+          onFinished: fade.start()
+        }
+        NumberAnimation { id: fade; target: plate; property: "opacity"; to: 0; duration: Theme.dur("fast"); onFinished: plate.visible = false }
+        Connections { target: win; function onUpChanged() { if (!win.up) { grow.stop(); fade.stop(); plate.visible = false } } }
       }
     }
   }

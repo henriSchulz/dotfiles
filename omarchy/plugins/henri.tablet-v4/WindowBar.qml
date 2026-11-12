@@ -5,9 +5,12 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import "file:///home/henri/.local/share/velum/qml/Velum"
 
-// The small bar above the home indicator where fingers work: the active app's name, Spotlight (with
-// the on-screen keyboard), dictation, the on-screen keyboard, fullscreen and close, on the popover
-// material. Dictation (voxtype) ends with the next tap anywhere on that screen: a clear surface
+// The bar above the home indicator where fingers work: the active app's icon and name, then Search
+// (Spotlight), Dictate, Keyboard, Full Screen and Close — each a symbol with its name under it, a
+// finger's size (concept A · Morph of lab/web/typing.html, Henri 2026-11-12: the 30 px bar was too
+// small) — on the popover material. Keyboard turns the bar into the on-screen keyboard: the plate goes
+// at once and henri.keyboard-v3 draws it on, growing into its toolbar ("velum-keyboard morph SCREEN X Y
+// W H"); while the keyboard is up a tap on the indicator puts it away instead of opening the bar. Dictation (voxtype) ends with the next tap anywhere on that screen: a clear surface
 // over it takes that tap while recording (Henri 2026-10-26). A tap on the indicator opens it
 // (Gesture.js "tap"); nothing sits on the window itself (Henri 2026-10-26: a handle in the window's
 // corner lay over apps' own buttons; design 7 of lab/web/window-bar.html). It folds back after
@@ -64,6 +67,12 @@ Item {
     target: Hyprland
     function onRawEvent(event) {
       var n = event.name
+      if (n === "custom") {
+        var d = String(event.data)
+        if (d.indexOf("velum-keyboard shown ") === 0) wbar.keyboardOn = d.slice(21).trim()
+        else if (d.indexOf("velum-keyboard hidden ") === 0 && wbar.keyboardOn === d.slice(22).trim()) wbar.keyboardOn = ""
+        return
+      }
       if (n === "activewindowv2" || n === "movewindowv2" || n === "openwindow" || n === "closewindow"
           || n === "fullscreen" || n === "changefloatingmode" || n === "workspacev2" || n === "focusedmonv2")
         refresh.restart()
@@ -89,15 +98,16 @@ Item {
   property string openOn: ""
   readonly property bool open: openOn !== ""
   onWinChanged: openOn = ""
-  onOpenChanged: { armed = false; if (open) { hold.restart(); arm.restart() } else hold.stop() }
+  onOpenChanged: { armed = false; if (open) { instantFold = false; hold.restart(); arm.restart() } else hold.stop() }
   Timer { id: hold; interval: wbar.wb.hold; onTriggered: wbar.openOn = "" }
   // the bar opens right above the finger that tapped the indicator: a second tap of a double tap
   // must not close the app, so the bar's buttons wait a moment before they act
   property bool armed: false
   Timer { id: arm; interval: Theme.delay("repeat"); onTriggered: wbar.armed = true }
 
-  // a tap on the home indicator of that screen (Tablet.qml)
+  // a tap on the home indicator of that screen (Tablet.qml); while the keyboard is up there it goes
   function toggle(screenName) {
+    if (keyboardOn === screenName) { openOn = ""; keyboard(screenName); return }
     if (openOn === screenName) { openOn = ""; return }
     // after a shell start Quickshell names no active window until the focus moves: ask Hyprland, then again
     if (!ipc) { Hyprland.refreshToplevels(); Hyprland.refreshWorkspaces(); retry.screenName = screenName; retry.left = 5; retry.restart(); return }
@@ -135,6 +145,16 @@ Item {
   function keyboard(screenName) {
     if (dispatch) dispatch("hl.dsp.event(\"velum-keyboard toggle " + screenName + "\")", "event velum-keyboard toggle " + screenName)
   }
+  // the bar's Keyboard button: the keyboard grows out of the plate at r ({ x, y, w, h } in screen px)
+  function morphKeyboard(screenName, r) {
+    if (!dispatch) return
+    var e = "velum-keyboard morph " + screenName + " " + [r.x, r.y, r.w, r.h].map(Math.round).join(" ")
+    dispatch("hl.dsp.event(\"" + e + "\")", "event " + e)
+  }
+  // where the keyboard is up ("velum-keyboard shown|hidden SCREEN" from henri.keyboard-v3)
+  property string keyboardOn: ""
+  // the plate leaves without its fade when it turns into the keyboard
+  property bool instantFold: false
   // Spotlight (henri.menu-v3). The keyboard never comes by itself, only from its own button (Henri 2026-11-12)
   function search(screenName) {
     if (!dispatch) return
@@ -200,14 +220,22 @@ Item {
     if (dispatch) dispatch("hl.dsp.window.fullscreen({ mode = \"fullscreen\" })", "fullscreen 0")
   }
 
-  // the popover material the bar stands on
+  // the app's icon from its desktop entry, else its class
+  readonly property string appIcon: {
+    if (!ipc) return ""
+    var c = String(ipc.class || ""), e = null
+    try { e = DesktopEntries.byId(c) || DesktopEntries.heuristicLookup(c) } catch (err) {}
+    return Quickshell.iconPath(e && e.icon ? e.icon : c, true) || ""
+  }
+
+  // the popover material the bar stands on; its corner is concentric with the buttons'
   component Plate: Item {
     property string velumSurface: "popover"
     height: wbar.wb.height
-    VShadow { layers: wbar.shadow; radius: Theme.m.radius.control + wbar.wb.pad }
+    VShadow { layers: wbar.shadow; radius: wbar.wb.buttonRadius + wbar.wb.pad }
     Rectangle {
       anchors.fill: parent
-      radius: Theme.m.radius.control + wbar.wb.pad
+      radius: wbar.wb.buttonRadius + wbar.wb.pad
       color: Theme.reduceTransparency ? Theme.r.popover.bgOpaque : Theme.r.popover.bg
       border.width: 1 / Screen.devicePixelRatio
       border.color: Theme.r.line.rim
@@ -247,10 +275,10 @@ Item {
         opacity: pw.on ? 1 : 0
         scale: pw.on || Theme.reduceMotion ? 1 : Theme.motion("barPopup.fromScale")
         transformOrigin: Item.Bottom
-        Behavior on opacity { NumberAnimation { id: cardFade; duration: pw.on ? Theme.transitionMs("barPopup.in") : Theme.exit(Theme.transitionMs("barPopup.in")) } }
+        Behavior on opacity { NumberAnimation { id: cardFade; duration: wbar.instantFold ? 0 : pw.on ? Theme.transitionMs("barPopup.in") : Theme.exit(Theme.transitionMs("barPopup.in")) } }
         Behavior on scale {
           NumberAnimation {
-            duration: pw.on ? Theme.transitionMs("barPopup.in") : Theme.exit(Theme.transitionMs("barPopup.in"))
+            duration: wbar.instantFold ? 0 : pw.on ? Theme.transitionMs("barPopup.in") : Theme.exit(Theme.transitionMs("barPopup.in"))
             easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.motion("barPopup.in").curve
           }
         }
@@ -258,63 +286,96 @@ Item {
           id: row
           x: wbar.wb.pad
           y: wbar.wb.pad
-          VText {
-            id: label
-            text: wbar.appName
-            visible: text !== ""
-            font.weight: Font.DemiBold
-            width: Math.min(implicitWidth, wbar.wb.label + 2 * Theme.layout.control.padX)
-            leftPadding: Theme.layout.control.padX
-            rightPadding: Theme.layout.control.padX
-            height: wbar.wb.height - 2 * wbar.wb.pad
+          height: wbar.wb.height - 2 * wbar.wb.pad
+          // the app: its icon and name
+          Row {
+            id: name
+            visible: label.text !== ""
+            height: parent.height
+            leftPadding: wbar.wb.namePad
+            rightPadding: wbar.wb.namePad
+            spacing: Theme.layout.control.gap
+            Image {
+              anchors.verticalCenter: parent.verticalCenter
+              visible: wbar.appIcon !== ""
+              source: wbar.appIcon
+              width: wbar.wb.nameIcon
+              height: wbar.wb.nameIcon
+              sourceSize.width: wbar.wb.nameIcon * Screen.devicePixelRatio
+              sourceSize.height: wbar.wb.nameIcon * Screen.devicePixelRatio
+              smooth: true
+            }
+            VText {
+              id: label
+              anchors.verticalCenter: parent.verticalCenter
+              text: wbar.appName
+              font.pixelSize: wbar.wb.nameSize
+              font.weight: Font.DemiBold
+              width: Math.min(implicitWidth, wbar.wb.label)
+              elide: Text.ElideRight
+            }
           }
           Rectangle {
-            visible: label.visible
+            visible: name.visible
             width: 1 / Screen.devicePixelRatio
             height: wbar.wb.icon
             anchors.verticalCenter: parent.verticalCenter
             color: Theme.r.popover.line
           }
-          VPressable {
-            id: searchButton
-            width: wbar.wb.button
-            height: wbar.wb.height - 2 * wbar.wb.pad
-            onClicked: if (wbar.armed) { wbar.search(pw.modelData.name); wbar.openOn = "" }
-            VIcon { anchors.centerIn: parent; name: "search"; weight: "bold"; size: wbar.wb.icon; color: searchButton.contentColor }
-          }
-          VPressable {
-            id: micButton
-            width: wbar.wb.button
-            height: wbar.wb.height - 2 * wbar.wb.pad
-            onClicked: if (wbar.armed) { wbar.dictate(pw.modelData.name); wbar.openOn = "" }
-            VIcon { anchors.centerIn: parent; name: "mic"; weight: "bold"; size: wbar.wb.icon; color: micButton.contentColor }
-          }
-          VPressable {
-            id: keyButton
-            width: wbar.wb.button
-            height: wbar.wb.height - 2 * wbar.wb.pad
-            onClicked: if (wbar.armed) { wbar.keyboard(pw.modelData.name); wbar.openOn = "" }
-            VIcon { anchors.centerIn: parent; name: "keyboard"; size: wbar.wb.icon; color: keyButton.contentColor }
-          }
-          VPressable {
-            id: fullButton
-            width: wbar.wb.button
-            height: wbar.wb.height - 2 * wbar.wb.pad
-            onClicked: if (wbar.armed) { wbar.fullscreen(); wbar.openOn = "" }
-            VIcon {
-              anchors.centerIn: parent
-              name: wbar.ipc && wbar.ipc.fullscreen === 2 ? "fullscreen.exit" : "fullscreen"
-              weight: "bold"; size: wbar.wb.icon; color: fullButton.contentColor
+          Repeater {
+            model: [
+              { a: "search", icon: "search", text: "Search" },
+              { a: "dictate", icon: "mic", text: "Dictate" },
+              { a: "keyboard", icon: "keyboard", text: "Keyboard" },
+              { a: "full", icon: wbar.ipc && wbar.ipc.fullscreen === 2 ? "fullscreen.exit" : "fullscreen", text: wbar.ipc && wbar.ipc.fullscreen === 2 ? "Exit Full" : "Full Screen" },
+              { a: "close", icon: "close", text: "Close", danger: true }
+            ]
+            VPressable {
+              id: button
+              required property var modelData
+              objectName: "windowBar:" + modelData.a
+              width: wbar.wb.button
+              height: row.height
+              radius: wbar.wb.buttonRadius
+              onClicked: if (wbar.armed) pw.act(modelData.a)
+              Column {
+                anchors.centerIn: parent
+                VIcon {
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  name: button.modelData.icon
+                  size: wbar.wb.icon
+                  color: button.modelData.danger ? Theme.r.danger : button.contentColor
+                }
+                VText {
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  text: button.modelData.text
+                  font.pixelSize: wbar.wb.buttonLabel
+                  font.weight: Font.Medium
+                  color: Theme.r.popover.inkSecondary
+                }
+              }
             }
           }
-          VPressable {
-            id: closeButton
-            width: wbar.wb.button
-            height: wbar.wb.height - 2 * wbar.wb.pad
-            onClicked: if (wbar.armed) { wbar.close(); wbar.openOn = "" }
-            VIcon { anchors.centerIn: parent; name: "close"; weight: "bold"; size: wbar.wb.icon; color: closeButton.contentColor }
-          }
         }
+      }
+
+      // a button of the bar; Keyboard hands the plate over to the keyboard, which grows it into its toolbar
+      function act(a) {
+        var n = pw.modelData.name
+        if (a === "keyboard") {
+          if (wbar.keyboardOn === n) { wbar.keyboard(n); wbar.openOn = ""; return }
+          var lx = (pw.modelData.width - pw.implicitWidth) / 2 + card.x
+          var ly = pw.modelData.height - pw.margins.bottom - pw.implicitHeight + card.y
+          wbar.morphKeyboard(n, { x: lx, y: ly, w: card.width, h: card.height })
+          wbar.instantFold = true
+          wbar.openOn = ""
+          return
+        }
+        if (a === "search") wbar.search(n)
+        else if (a === "dictate") wbar.dictate(n)
+        else if (a === "full") wbar.fullscreen()
+        else if (a === "close") wbar.close()
+        wbar.openOn = ""
       }
     }
   }
