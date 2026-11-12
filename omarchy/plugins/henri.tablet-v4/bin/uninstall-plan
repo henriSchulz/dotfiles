@@ -1,0 +1,24 @@
+#!/bin/bash
+# What the home screen's Uninstall would run for a desktop entry, without running anything (phase 1 of
+# henri.tablet-v4 asks and does nothing). The system's way is Omarchy's launcher action
+# `omarchy-remove-launcher-entry ID NAME`; this follows its decision read-only and prints one line:
+#   omarchy-remove-launcher-entry ID NAME → what that would do
+#   bin/uninstall-plan DESKTOP-ID [NAME]
+set -u
+id=${1:-}; id=${id%.desktop}; name=${2:-$id}
+[[ $id =~ ^[A-Za-z0-9._+@-]+$ ]] || { echo "no such app"; exit 1; }
+user_dir=${XDG_DATA_HOME:-$HOME/.local/share}/applications
+dirs=("$user_dir")
+IFS=: read -ra data <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+for d in "${data[@]}"; do dirs+=("$d/applications"); done
+file=
+for d in "${dirs[@]}"; do [[ -f $d/$id.desktop ]] && { file=$d/$id.desktop; break; }; done
+[[ -n $file ]] || { echo "no launcher entry for $id"; exit 1; }
+head="omarchy-remove-launcher-entry $id $(printf '%q' "$name")"
+exec_line=$(sed -n 's/^Exec=//p' "$file" | head -1)
+if [[ $exec_line =~ omarchy-launch-webapp|omarchy-webapp-handler ]]; then echo "$head → omarchy-webapp-remove $id"; exit 0; fi
+if [[ $exec_line =~ (^|[[:space:]])(\$TERMINAL|xdg-terminal-exec)[[:space:]].*-e([[:space:]]|$) ]]; then echo "$head → omarchy-tui-remove $id"; exit 0; fi
+if [[ ${file%/*} == "$user_dir" ]]; then echo "$head → rm $file"; exit 0; fi
+if pkg=$(pacman -Qqo "$file" 2>/dev/null | head -1) && [[ -n $pkg ]]; then echo "$head → sudo pacman -Rns $pkg"; exit 0; fi
+if command -v flatpak >/dev/null && flatpak info "$id" >/dev/null 2>&1; then echo "$head → flatpak uninstall $id"; exit 0; fi
+echo "$head → (Omarchy does not know how)"

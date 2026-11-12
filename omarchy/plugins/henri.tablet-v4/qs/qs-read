@@ -1,0 +1,228 @@
+#!/usr/bin/env python3
+"""Read-only system state for the tablet's Quick Settings (henri.tablet-v4 qs/QsBackend.qml).
+
+  qs-read state [--history PREFIX]…   this machine's battery (sysfs), airplane mode (rfkill), Night Light
+                                      (hyprsunset), brightness (brightnessctl), rotation lock, and today's
+                                      battery history per PREFIX from ~/Projects/akku-test/verlauf
+  qs-read notifications DIR           the shell's notification history (one JSON file per notification)
+  qs-read wifi                        the networks NetworkManager has seen (nmcli … --rescan no: no scan here;
+                                      QsBackend asks for one with `nmcli device wifi rescan` first) and the
+                                      names of the saved Wi-Fi connections
+  qs-read tablet                      the casting tablet's name (ipad-link's last "casting to the NAME" in the
+                                      user journal; ipadcast's cast.json has none) and the prefix of its battery
+                                      history in ~/Projects/akku-test/verlauf
+
+Prints one JSON object. Never writes anything. The same sources as lab/mui-material's vite.config.js.
+"""
+import datetime
+import glob
+import re
+import json
+import os
+import subprocess
+import sys
+
+BAT = "/sys/class/power_supply/macsmc-battery"
+VERLAUF = os.path.expanduser("~/Projects/akku-test/verlauf")
+POINTS = 160  # at most this many history points (surface.material.qs.battery.points)
+
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
+def num(path):
+    v = read(path)
+    try:
+        return float(v) if v not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def run(argv, timeout=1.5):
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=timeout).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def battery():
+    bat = BAT
+    if not os.path.isdir(bat):
+        found = [p for p in glob.glob("/sys/class/power_supply/*") if read(p + "/type") == "Battery"]
+        if not found:
+            return None
+        bat = found[0]
+    e = lambda k: (num(f"{bat}/{k}") or 0) / 1e6
+    return {
+        "capacity": num(f"{bat}/capacity"), "status": read(f"{bat}/status"),
+        "watts": abs(num(f"{bat}/power_now") or 0) / 1e6,
+        "energyNow": e("energy_now"), "energyFull": e("energy_full"), "design": e("energy_full_design"),
+        "cycles": num(f"{bat}/cycle_count"), "health": read(f"{bat}/health"),
+        "toEmpty": num(f"{bat}/time_to_empty_now"), "toFull": num(f"{bat}/time_to_full_now"),
+    }
+
+
+def airplane():
+    soft = [read(p + "/soft") for p in glob.glob("/sys/class/rfkill/rfkill*")]
+    soft = [s for s in soft if s is not None]
+    return bool(soft) and all(s == "1" for s in soft)
+
+
+def night():
+    out = run(["hyprctl", "hyprsunset", "temperature"], 1).strip()
+    # only a plain number is an answer (no hyprsunset: an error text, which may hold digits too)
+    return out.isdigit() and int(out) < 6000   # omarchy-toggle-nightlight's IDENTITY_TEMP
+
+
+def brightness():
+    line = run(["brightnessctl", "-m", "-c", "backlight"]).strip().split("\n")[0].split(",")
+    if len(line) < 5:
+        return None
+    try:
+        return {"device": line[0], "percent": int(line[3].rstrip("%")), "raw": int(line[2]), "max": int(line[4])}
+    except ValueError:
+        return None
+
+
+def internal():
+    """This machine's own panel (omarchy-monitor-state's rule: eDP / LVDS / DSI), "" without one (the M1: its
+    screen is the casting iPad)."""
+    try:
+        mons = json.loads(run(["hyprctl", "monitors", "all", "-j"]) or "[]")
+    except ValueError:
+        return ""
+    names = [m.get("name") or "" for m in mons if isinstance(m, dict)]
+    return next((n for n in names if re.match(r"(eDP|LVDS|DSI)-", n)), "")
+
+
+def rotation(cast):
+    rt = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+    if cast:
+        return "locked" if os.path.exists(f"{rt}/ipadcast/rotation-lock") else "unlocked"
+    has_accel = any(read(d + "/name") == "accel_3d" for d in glob.glob("/sys/bus/iio/devices/iio:device*"))
+    if not has_accel:
+        return None
+    return run(["hypr-autorotate", "status"]).strip() or None
+
+
+def history(prefix):
+    day = datetime.date.today().isoformat()
+    rows = []
+    try:
+        with open(os.path.join(VERLAUF, f"{prefix}-{day}.csv")) as f:
+            next(f, None)
+            for line in f:
+                c = line.rstrip("\n").split(",")
+                if len(c) < 3 or c[1] == "LUECKE" or c[2] == "":
+                    continue
+                h, m, *s = (c[0].split(":") + ["0"])[:3]
+                try:
+                    rows.append([int(h) * 60 + int(m) + float(s[0]) / 60, float(c[2])])
+                except ValueError:
+                    continue
+    except OSError:
+        return []
+    if len(rows) > POINTS:
+        step = len(rows) / POINTS
+        rows = [rows[int(i * step)] for i in range(POINTS - 1)] + [rows[-1]]
+    return rows
+
+
+def state(args):
+    cast = os.path.exists(os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "ipadcast", "cast.json"))
+    out = {"battery": battery(), "airplane": airplane(), "night": night(), "brightness": brightness(),
+           "internal": internal(), "rotation": rotation(cast), "history": {}}
+    it = iter(args)
+    for a in it:
+        if a == "--history":
+            p = next(it, "")
+            if p.replace("-", "").isalnum():
+                out["history"][p] = history(p)
+    return out
+
+
+def notifications(d):
+    out = []
+    for f in glob.glob(os.path.join(d, "*.json")):
+        try:
+            with open(f) as fh:
+                n = json.loads(fh.read() or "null")
+        except (OSError, ValueError):
+            continue
+        if not isinstance(n, dict):
+            continue
+        out.append({"id": f"{n.get('timestamp', 0)}-{n.get('id', '')}", "app": n.get("app") or "",
+                    "summary": n.get("summary") or "", "body": n.get("body") or "", "time": n.get("timestamp") or 0})
+    out.sort(key=lambda n: -n["time"])
+    return {"notifications": out}
+
+
+def fields(line):
+    """One line of nmcli -t: fields split at ':', with nmcli's escapes \\: and \\\\ undone."""
+    out, cur, esc = [], [], False
+    for ch in line:
+        if esc:
+            cur.append(ch)
+            esc = False
+        elif ch == "\\":
+            esc = True
+        elif ch == ":":
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    out.append("".join(cur))
+    return out
+
+
+def wifi():
+    nets = {}
+    for line in run(["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list", "--rescan", "no"],
+                    3).splitlines():
+        f = fields(line)
+        if len(f) < 4 or not f[1]:
+            continue
+        try:
+            signal = int(f[2] or 0)
+        except ValueError:
+            signal = 0
+        sec = f[3].strip()
+        n = {"name": f[1], "signal": signal, "connected": f[0].strip() == "*",
+             "secure": sec not in ("", "--") and sec != "OWE"}
+        o = nets.get(n["name"])   # one row per name: the connected access point, else the strongest
+        if not o or (n["connected"] and not o["connected"]) or (n["connected"] == o["connected"] and signal > o["signal"]):
+            nets[n["name"]] = n
+    saved = [f[0] for f in map(fields, run(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"]).splitlines())
+             if len(f) >= 2 and f[1] == "802-11-wireless"]
+    return {"networks": list(nets.values()), "saved": saved}
+
+
+def tablet():
+    name = run(["journalctl", "--user", "-u", "ipad-link.service", "-g", "^casting to the ", "-n", "1",
+                "-o", "cat", "--no-pager"], 2).strip().split("\n")[-1]
+    name = name[len("casting to the "):].strip() if name.startswith("casting to the ") else ""
+    day = datetime.date.today().isoformat()
+    # ipad-link names the history file after the iPad ("iPad Air" -> ipad-air-DAY.csv); else the newest one of today
+    log = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    if not log or not os.path.exists(os.path.join(VERLAUF, f"{log}-{day}.csv")):
+        files = sorted(glob.glob(os.path.join(VERLAUF, f"ipad*-{day}.csv")), key=os.path.getmtime)
+        log = os.path.basename(files[-1])[:-len(f"-{day}.csv")] if files else ""
+    return {"name": name, "log": log}
+
+
+if __name__ == "__main__":
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "state"
+    if cmd == "notifications":
+        print(json.dumps(notifications(sys.argv[2] if len(sys.argv) > 2 else
+                                       os.path.expanduser("~/.local/state/omarchy/notifications/history"))))
+    elif cmd == "wifi":
+        print(json.dumps(wifi()))
+    elif cmd == "tablet":
+        print(json.dumps(tablet()))
+    else:
+        print(json.dumps(state(sys.argv[2:])))

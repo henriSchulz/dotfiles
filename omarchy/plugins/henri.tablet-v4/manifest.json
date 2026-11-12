@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "henri.tablet-v4",
+  "name": "Tablet mode (v4, Material)",
+  "version": "0.1.0",
+  "author": "Henri Schulz",
+  "license": "MIT",
+  "description": "Tablet mode v4: the Material home screen of lab/mui-material (an Android/Pixel launcher on a configured Material theme with Velum influences: Roboto, page dots, hotseat, search bar, long-press menus, drag with Remove / Uninstall and Undo, folders, page breaks) over v3's home indicator gestures, cards, App Switcher and window bar. IPC target henri.tablet4. Active while the Velum setting \"tablet\" is on (`tablet-mode on`).",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Tablet.qml"
+  },
+  "tags": [
+    "tablet",
+    "touch",
+    "gestures",
+    "quickshell",
+    "hyprland",
+    "material"
+  ]
+}

@@ -182,7 +182,10 @@ BarWidget {
       var w = root.QsWindow.window
       if (!w || !w.screen || w.screen.name !== screenName) return
       var dist = Theme.core.surface.tablet.pullTravel
-      // tablet mode: Control Center comes over the whole screen (iPadOS); only the miniatures stay an island
+      // tablet mode: Control Center comes over the whole screen (iPadOS); only the miniatures stay an island.
+      // henri.tablet-v4 brings its own shade for this pull and says so (VGestures.setOut("tabletShade", …)):
+      // then FullCenter leaves it alone (the symbol's tap still opens it)
+      if (surface === "controlCenter" && Theme.touch && VGestures.isOut("tabletShade", screenName)) return
       if (surface === "controlCenter" && Theme.touch) {
         if (phase === "move") { if (!full.open) full.pull = Math.max(0, travel) / dist; return }
         if (!full.pulling) return
