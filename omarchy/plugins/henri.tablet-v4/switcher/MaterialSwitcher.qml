@@ -48,8 +48,13 @@ Item {
   readonly property var cfg: Theme.core.surface.material.switcher
   readonly property string family: Theme.core.surface.material.widgets.font[0]
   readonly property bool open: body.active
+  // opening an app holds the switcher as it is until the window stands under the grown card
+  property bool holding: false
+  // …and then goes at once (the window stands where the card was): no sinking back over it
+  property bool handedOff: false
+  onProgressChanged: if (progress > 0 && !holding) handedOff = false
   // what shows: the spring's value (tight while a finger drives, Material's settle once it lets go)
-  readonly property real shown: Math.max(0, Math.min(1, enter.value))
+  readonly property real shown: holding ? 1 : Math.max(0, Math.min(1, enter.value))
 
   Spring {
     id: enter
@@ -110,7 +115,7 @@ Item {
   Loader {
     id: body
     anchors.fill: parent
-    active: sw.progress > 0 || enter.moving || enter.value > 0.002
+    active: !sw.handedOff && (sw.holding || sw.progress > 0 || enter.moving || enter.value > 0.002)
     sourceComponent: content
   }
 
@@ -187,7 +192,7 @@ Item {
         var v = Nav.velocity(d.samples, Date.now(), sw.cfg.sampleWindow)
         if (d.kind === "clear") { var last = d.samples[d.samples.length - 1]; if (onClear(last[1], last[2])) clearAll(); return }
         if (!d.kind) {                                   // a tap: a card switches, beside it closes
-          if (d.card >= 0 && windows[d.card]) sw.switchTo(windows[d.card].address)
+          if (d.card >= 0 && windows[d.card]) launchAt(d.card)
           else sw.closed()
           return
         }
@@ -206,6 +211,38 @@ Item {
         if (!d) return
         if (d.kind === "row") settle(Nav.settle(rowX.value, 0, step, range.lo, range.hi, 0), 0)
         else if (d.kind === "lift") { var c = cardItem(d.card); if (c) { c.lifted = false; c.drop(0) } }
+      }
+
+      // ---- opening: the tapped card grows from its place to the whole screen with its picture, the rest
+      // fades; only when it covers the screen does the window take the focus underneath (switchTo), and a
+      // moment later the switcher lets go — the window is where the card was, nothing jumps in between
+      property int launching: -1
+      Spring {
+        id: launchS
+        preset: sw.cfg.launchSpring
+        reduced: Theme.reduceMotion
+        target: 0
+        onValueChanged: {
+          var c = root.cardItem(root.launching)
+          if (c) c.launch = value
+          if (root.launching >= 0 && !root.handed && value >= sw.cfg.launchSwitchAt) {
+            root.handed = true
+            sw.switchTo(root.windows[root.launching].address)
+            handoff.restart()
+          }
+        }
+      }
+      property bool handed: false
+      Timer { id: handoff; interval: sw.cfg.launchHandoff; onTriggered: { sw.handedOff = true; sw.holding = false; enter.snap(0) } }
+      function launchAt(i) {
+        var c = cardItem(i)
+        if (!c || launching >= 0) return
+        rowX.snap(rowX.value)
+        c.from = c.mapToItem(root, 0, 0)
+        launching = i
+        handed = false
+        sw.holding = true
+        launchS.target = 1
       }
 
       // ---- closing: the card flies, the window is asked to close, then it leaves the row
@@ -270,6 +307,7 @@ Item {
         id: stage
         anchors.fill: parent
         opacity: root.p
+        readonly property real others: 1 - launchS.value
         transform: [
           Scale { origin.x: stage.width / 2; origin.y: stage.height / 2; xScale: sw.cfg.enterScale + (1 - sw.cfg.enterScale) * root.p; yScale: xScale },
           Translate { y: (1 - root.p) * stage.height * sw.cfg.enterRise }
@@ -284,6 +322,7 @@ Item {
             SwitcherCard {
               required property var modelData
               entry: modelData
+              dim: root.launching >= 0 && index !== root.launching ? stage.others : 1
               count: root.n
               cardW: root.cardW
               cardH: root.cardH
@@ -300,6 +339,7 @@ Item {
           anchors.horizontalCenter: parent.horizontalCenter
           y: parent.height / 2 + root.cardH / 2 + sw.cfg.clearTop
           visible: root.n > 0
+          opacity: stage.others
           width: clearText.implicitWidth + 2 * sw.cfg.clearPad
           height: sw.cfg.clearHeight
           radius: height / 2

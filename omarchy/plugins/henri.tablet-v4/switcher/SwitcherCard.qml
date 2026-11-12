@@ -26,6 +26,11 @@ Item {
   property real areaH: 0
   property bool lifted: false          // a finger has it (its header hides, as the lab's)
   property bool away: false
+  // opening its app: 0 … 1 from its place in the row to the whole screen (`from` = its top left in the
+  // switcher's coordinates at the tap); only transform, the clip's corner and the header's opacity change
+  property real launch: 0
+  property real dim: 1                 // the others fade while one opens
+  property point from: Qt.point(0, 0)
   readonly property var cfg: Theme.core.surface.material.switcher
   readonly property string family: Theme.core.surface.material.widgets.font[0]
   readonly property bool hasPicture: shot.hasContent
@@ -37,9 +42,14 @@ Item {
   opacity: {
     var up = Math.max(0, -liftS.value) / Math.max(1, areaH)
     var o = 1 - Math.min(cfg.liftFade, up)
-    return away ? o * Math.max(0, 1 - up) : o
+    return (away ? o * Math.max(0, 1 - up) : o) * card.dim
   }
   visible: opacity > 0.002
+  z: launch > 0 ? 1 : 0
+  transform: [
+    Scale { xScale: 1 + (card.areaW / Math.max(1, card.cardW) - 1) * card.launch; yScale: 1 + (card.areaH / Math.max(1, card.cardH) - 1) * card.launch },
+    Translate { x: -card.from.x * card.launch; y: -card.from.y * card.launch }
+  ]
 
   // its place in the row; a closed neighbour's gap closes on a spring
   Spring { id: slotS; preset: card.cfg.slotSpring; reduced: Theme.reduceMotion; target: Nav.slot(card.index, card.count, card.step) }
@@ -64,7 +74,7 @@ Item {
     y: -(card.cfg.headerHeight + card.cfg.headerGap)
     height: card.cfg.headerHeight
     spacing: card.cfg.headerGap
-    opacity: card.lifted || card.away ? 0 : 1
+    opacity: card.lifted || card.away ? 0 : 1 - Math.min(1, card.launch * card.cfg.launchFade)
     Image {
       anchors.verticalCenter: parent.verticalCenter
       width: card.cfg.headerIcon
@@ -88,10 +98,11 @@ Item {
   }
 
   // ---- the picture on its card, with Velum's popover shadow (a lab influence)
-  VShadow { layers: Theme.r.popover.shadow; radius: card.cfg.cardRadius }
+  VShadow { layers: Theme.r.popover.shadow; radius: card.cfg.cardRadius; opacity: 1 - card.launch }
   ClippingRectangle {
     anchors.fill: parent
-    radius: card.cfg.cardRadius
+    // square once it fills the screen (the radius is in card units, the card is scaled up)
+    radius: card.cfg.cardRadius * (1 - card.launch)
     color: Theme.dark ? card.cfg.cardDark : card.cfg.cardLight
     // until the picture comes: the app's icon in the middle
     Image {

@@ -36,7 +36,7 @@ ok "E4 short lift drops back" '[[ $(q .sw.n) == 4 && $(titles) == 4 ]]'
 ok "E5 flick up closes the window" '[[ $(q .sw.n) == 3 && $(titles) == 3 && $(q ".log[-1]") == closeWindow* ]]'
 # E6 a real pointer tap on the middle card switches to it
 want=$(q '.sw.windows[.sw.centred].address')
-"$h" ptr m 720 600 s 50 d s 60 u; sleep 0.6
+"$h" ptr m 720 600 s 50 d s 60 u; for f in 1 2 3 4 5; do sleep 0.07; "$h" shot launch-$f >/dev/null; done; sleep 0.3
 got=$(HYPRLAND_INSTANCE_SIGNATURE=$(cat "$here/../../../rig/state/v4sw/sig") hyprctl activewindow -j | jq -r .address)
 ok "E6 tap switches (focus moved to $want)" '[[ $(q .open) == false && $got == "$want" ]]'
 # E7 gesture navigation with the real pointer
