@@ -7,6 +7,7 @@ import Quickshell.Hyprland
 import "file:///home/henri/.local/share/velum/qml/Velum"
 import "Gesture.js" as Gesture
 import "HomeModel.js" as HM
+import "Resample.js" as Resample
 
 // Tablet mode (Theme.touch, settings key "tablet", switched by `tablet-mode`): the home zone
 // along the bottom edge of every screen, with the home indicator, and what a finger does there
@@ -272,12 +273,13 @@ Item {
         if (zone.swallow) return
         zone.pressed = true
         homeCtl.zoneFinger = true
+        homeCtl.gestureFinger = true
         if (root.active) homeCtl.guard("prepare", () => homeCtl.prepare(zone.screen.name))
         root.run(zone.gesture.down(Date.now(), x, y), zone.screen.name); ticker.start()
       }
       function fingerMove(x, y) { if (zone.pressed) root.run(zone.gesture.move(Date.now(), x, y), zone.screen.name) }
-      function fingerUp(x, y) { homeCtl.zoneFinger = false; if (zone.swallow) { zone.swallow = false; return } ticker.stop(); zone.pressed = false; root.run(zone.gesture.up(Date.now(), x, y), zone.screen.name) }
-      function fingerCancel() { homeCtl.zoneFinger = false; if (zone.swallow) { zone.swallow = false; return } ticker.stop(); zone.pressed = false; root.run(zone.gesture.cancel(), zone.screen.name) }
+      function fingerUp(x, y) { homeCtl.zoneFinger = false; homeCtl.gestureFinger = false; if (zone.swallow) { zone.swallow = false; return } ticker.stop(); zone.pressed = false; root.run(zone.gesture.up(Date.now(), x, y), zone.screen.name) }
+      function fingerCancel() { homeCtl.zoneFinger = false; homeCtl.gestureFinger = false; if (zone.swallow) { zone.swallow = false; return } ticker.stop(); zone.pressed = false; root.run(zone.gesture.cancel(), zone.screen.name) }
       MultiPointTouchArea {
         anchors.fill: root.active ? zoneArea : indicatorArea
         maximumTouchPoints: 1
@@ -330,7 +332,8 @@ Item {
     var t = Date.now()
     if (edge === "top") {
       if (phase === "down") {
-        root.castTop = { surface: castSurface(screenName, x), screen: screenName, y0: y, samples: [[t, 0]] }
+        root.castTop = { surface: castSurface(screenName, x), screen: screenName, y0: y, samples: [[t, 0]], rs: root.resampler(), fed: 0 }
+        root.castTop.rs.push(t, x, y)
         note("cast:top:" + root.castTop.surface)
         return
       }
@@ -340,17 +343,20 @@ Item {
       var travel = y - p.y0, list = p.samples.concat([[t, travel]])
       while (list.length > 2 && t - list[0][0] > root.tt.sampleWindow) list.shift()
       p.samples = list
-      if (phase === "move") { VGestures.pull(p.surface, p.screen, "move", travel, 0); return }
+      // moves glide one per frame (castFeed): the points come in steps
+      if (phase === "move") { p.rs.push(t, x, y); return }
       var a = list[0], b = list[list.length - 1]
       root.castTop = null
       VGestures.pull(p.surface, p.screen, "end", travel, b[0] > a[0] ? (b[1] - a[1]) * 1000 / (b[0] - a[0]) : 0)
     } else if (edge === "bottom") {
-      if (root.homePaused) { root.castBottom = null; castTicker.stop(); return }
+      if (root.homePaused) { root.castBottom = null; homeCtl.gestureFinger = false; castTicker.stop(); return }
       if (phase === "down") {
         var sleeping = root.sleepingOn(screenName)
         root.wake()
         if (sleeping) return               // this finger only wakes the indicator
-        root.castBottom = { gesture: Gesture.create(root.tt), screen: screenName }
+        root.castBottom = { gesture: Gesture.create(root.tt), screen: screenName, rs: root.resampler(), fx: x, fy: y }
+        root.castBottom.rs.push(t, x, y)
+        homeCtl.gestureFinger = true
         if (root.active) homeCtl.guard("prepare", () => homeCtl.prepare(screenName))
         root.run(root.castBottom.gesture.down(t, x, y), screenName)
         castTicker.start()
@@ -358,10 +364,31 @@ Item {
       }
       var q = root.castBottom
       if (!q) return
-      if (phase === "move") { root.run(q.gesture.move(t, x, y), q.screen); return }
+      // moves glide one per frame (castFeed): the points come in steps
+      if (phase === "move") { q.rs.push(t, x, y); return }
       castTicker.stop()
       root.castBottom = null
+      homeCtl.gestureFinger = false
+      if (phase === "up" && (x !== q.fx || y !== q.fy)) root.run(q.gesture.move(t, x, y), q.screen)
       root.run(phase === "up" ? q.gesture.up(t, x, y) : q.gesture.cancel(), q.screen)
+    }
+  }
+  function resampler() { return Resample.create(root.tt.cast.resampleMinGap, root.tt.cast.resampleMaxGap) }
+  // the edge fingers' points, one per frame (Resample.js): ipadcast hands them on every ~44 ms, and
+  // a card sitting on each point moved every second or third frame (Henri 2026-11-12: laggy)
+  FrameAnimation {
+    id: castFeed
+    running: root.castBottom !== null || root.castTop !== null
+    onTriggered: {
+      var now = Date.now(), q = root.castBottom, p = root.castTop
+      if (q) {
+        var a = q.rs.at(now)
+        if (a && (a.x !== q.fx || a.y !== q.fy)) { q.fx = a.x; q.fy = a.y; root.run(q.gesture.move(now, a.x, a.y), q.screen) }
+      }
+      if (p) {
+        var b = p.rs.at(now), travel = b ? b.y - p.y0 : 0
+        if (b && travel !== p.fed) { p.fed = travel; VGestures.pull(p.surface, p.screen, "move", travel, 0) }
+      }
     }
   }
   // a resting finger sends no events (as in the home zone)

@@ -660,6 +660,9 @@ Item {
   // a finger of the home zone is down (Tablet.qml): the switcher that finger opened takes no touch
   // until it lifts, or its own release would land on the new surface as a tap
   property bool zoneFinger: false
+  // a finger on the bottom edge, from the home zone or a cast screen's edge (Tablet.qml): the App
+  // Switcher builds its cards meanwhile (warm)
+  property bool gestureFinger: false
   property bool armed: false
   property real areaW: 0
   property real areaH: 0
@@ -1837,7 +1840,7 @@ Item {
           screenName: per.name
           progress: overlay.mine ? home.swProgress : 0
           dragging: overlay.mine && home.swDragging
-          warm: overlay.mine && home.zoneFinger
+          warm: overlay.mine && home.gestureFinger
           handoff: home.settleMs
           appFor: function (cls) { var id = home.appIdOf(cls), e = home.entries[id]; return e ? { name: e.name, icon: e.icon } : null }
           backdrop: Component {
