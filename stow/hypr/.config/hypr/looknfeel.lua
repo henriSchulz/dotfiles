@@ -243,6 +243,9 @@ hl.window_rule({ match = { title = "^System Settings$" }, opacity = "1.0 overrid
 -- start. A fixed-size utility like the settings window: floats, centred, at its own size.
 hl.window_rule({ match = { class = "^boot-switch$" }, float = true, center = true })
 
+-- T7 Sync (~/Projects/t7-sync): the window over the sync between the home and the T7. Floats, centred.
+hl.window_rule({ match = { class = "^t7-sync$" }, float = true, center = true })
+
 -- Velum window frame (~/Projects/velum, surface.window tokens): hairline instead of the theme's
 -- blue border, squircle corners at the variant's radius, the sheet shadow. The desktop's Velum
 -- settings owner writes the state file for the chosen variant; missing, the theme's frame stays.
