@@ -239,6 +239,10 @@ end
 hl.window_rule({ match = { class = "^omarchy-settings$", title = "^System Settings$" }, float = true, center = true })
 hl.window_rule({ match = { title = "^System Settings$" }, opacity = "1.0 override" })
 
+-- Boot Switch (~/Projects/boot-switch): the small window that picks macOS or Omarchy for the next
+-- start. A fixed-size utility like the settings window: floats, centred, at its own size.
+hl.window_rule({ match = { class = "^boot-switch$" }, float = true, center = true })
+
 -- Velum window frame (~/Projects/velum, surface.window tokens): hairline instead of the theme's
 -- blue border, squircle corners at the variant's radius, the sheet shadow. The desktop's Velum
 -- settings owner writes the state file for the chosen variant; missing, the theme's frame stays.
