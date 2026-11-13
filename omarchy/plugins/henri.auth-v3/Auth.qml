@@ -28,8 +28,23 @@ Item {
   readonly property var au: Theme.core.surface.auth
   readonly property bool inRig: !!Quickshell.env("VELUM_SHELL_RIG")
 
-  Loader { id: agentLoader; active: !root.inRig; sourceComponent: Component { PolkitAgent {} } }
+  Loader { id: agentLoader; active: !root.inRig && root.agentWanted; sourceComponent: Component { PolkitAgent {} } }
   readonly property var agent: agentLoader.item
+  // A crash restart of the shell came back while the crashed process still held the registration:
+  // polkit refused the new agent ("An authentication agent already exists for the given subject") and
+  // nothing asked again, so every pkexec fell back to a terminal it does not have (2026-11-13). While
+  // the agent is not registered, it is made anew every au.agentRetry; a registered one is left alone.
+  property bool agentWanted: true
+  Timer {
+    interval: root.au.agentRetry
+    repeat: true
+    running: !root.inRig && !(root.agent && root.agent.isRegistered)
+    onTriggered: {
+      console.warn("velum auth: the polkit agent is not registered, trying again")
+      root.agentWanted = false
+      Qt.callLater(function () { root.agentWanted = true })
+    }
+  }
   readonly property var flow: root.agent && root.agent.isActive && root.agent.flow ? root.agent.flow
                               : pretend.active ? pretend : null
   readonly property bool showing: !!root.flow && !root.flow.isCompleted
