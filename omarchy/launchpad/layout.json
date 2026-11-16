@@ -40,11 +40,26 @@
       "app:vim",
       "app:com.microsoft.VSCode",
       "app:com.github.xournalpp.xournalpp",
-      "app:YouTube",
       "dir:d1",
       "dir:d2",
       "dir:d3",
-      "app:imv"
+      "app:de.henri.IcloudMail",
+      "app:sessions",
+      "app:io.github.yashwanthkamireddi.Skykeep",
+      "app:io.github.yashwanthkamireddi.Skykeep.Calendar",
+      "app:io.github.yashwanthkamireddi.Skykeep.Contacts",
+      "app:io.github.yashwanthkamireddi.Skykeep.Drive",
+      "app:io.github.yashwanthkamireddi.Skykeep.Notes",
+      "app:io.github.yashwanthkamireddi.Skykeep.Photos",
+      "app:io.github.yashwanthkamireddi.Skykeep.Reminders",
+      "app:de.schmidhuberj.tubefeeder",
+      "app:imv",
+      "app:boot-switch",
+      "app:t7-sync"
+    ],
+    [
+      "app:unison",
+      "app:retouch"
     ]
   ],
   "folders": {
@@ -66,7 +81,6 @@
       "cover": null,
       "items": [
         "app:de.henri.IcloudPhotos",
-        "app:foto",
         "app:mpv",
         "app:aether"
       ]
@@ -91,7 +105,6 @@
       "items": [
         "app:omacalc",
         "app:omacut",
-        "app:omawrite",
         "app:system-config-printer",
         "app:voxtype-configure",
         "app:org.gnome.DiskUtility",
@@ -139,6 +152,7 @@
     "app:Zoom",
     "app:aether",
     "app:assistant",
+    "app:boot-switch",
     "app:chromium",
     "app:claude-quick",
     "app:cliamp",
@@ -147,7 +161,9 @@
     "app:com.microsoft.VSCode",
     "app:com.moonlight_stream.Moonlight",
     "app:de.henri.Finder",
+    "app:de.henri.IcloudMail",
     "app:de.henri.IcloudPhotos",
+    "app:de.schmidhuberj.tubefeeder",
     "app:designer",
     "app:dev.tensaku.Tensaku",
     "app:foot",
@@ -155,6 +171,13 @@
     "app:gtkwave",
     "app:iCloud Mail",
     "app:imv",
+    "app:io.github.yashwanthkamireddi.Skykeep",
+    "app:io.github.yashwanthkamireddi.Skykeep.Calendar",
+    "app:io.github.yashwanthkamireddi.Skykeep.Contacts",
+    "app:io.github.yashwanthkamireddi.Skykeep.Drive",
+    "app:io.github.yashwanthkamireddi.Skykeep.Notes",
+    "app:io.github.yashwanthkamireddi.Skykeep.Photos",
+    "app:io.github.yashwanthkamireddi.Skykeep.Reminders",
     "app:keepass",
     "app:libreoffice-calc",
     "app:libreoffice-impress",
@@ -174,8 +197,12 @@
     "app:org.gnome.Papers",
     "app:org.kde.kdenlive",
     "app:qdbusviewer",
+    "app:retouch",
+    "app:sessions",
     "app:signal",
     "app:system-config-printer",
+    "app:t7-sync",
+    "app:unison",
     "app:vim",
     "app:voxtype-configure",
     "app:xdvi"
