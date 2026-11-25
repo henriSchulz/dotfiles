@@ -3,11 +3,7 @@
     "centerAnchor": "",
     "id": "henri.bar-v3",
     "layout": {
-      "center": [
-        {
-          "id": "henri.control-center-v3"
-        }
-      ],
+      "center": [],
       "left": [
         {
           "id": "henri.system-menu-v3"
