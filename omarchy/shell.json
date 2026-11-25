@@ -60,8 +60,7 @@
     "omarchy.notifications",
     "omadock",
     "omarchy.lock",
-    "omarchy.polkit",
-    "henri.notifications-v3"
+    "omarchy.polkit"
   ],
   "idle": {
     "displayOffBattery": 120,
